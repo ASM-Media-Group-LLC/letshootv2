@@ -11,3 +11,5 @@ next-env.d.ts
 # Local editor / Claude Code session config
 .claude/
 *.log
+
+.vercel
