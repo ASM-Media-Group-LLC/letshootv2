@@ -84,7 +84,7 @@ export default function SectionHeading({ label, titleA, highlight, sub, align = 
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-80px' }}
           transition={{ duration: 0.6, ease, delay: 0.4 }}
-          className="mt-5 max-w-xl text-lg leading-relaxed text-paper-mute"
+          className="mt-5 max-w-xl text-lg leading-relaxed text-paper-mute [text-wrap:balance]"
         >
           {sub}
         </motion.p>
