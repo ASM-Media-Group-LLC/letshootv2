@@ -9,13 +9,13 @@ const ease = [0.22, 1, 0.36, 1];
 
 // Self-contained copy (kept out of the big shared i18n dict). Falls back to ES.
 const COPY = {
-  es: { label: 'ANTES / DESPUÉS', titleA: 'Cámara regular vs', highlight: 'Cámara IA', sub: 'Arrastra la barra y mira la transformación. La misma persona, otra liga.', before: 'Cámara regular', after: 'Cámara IA', hint: 'Arrastra para revelar' },
-  en: { label: 'BEFORE / AFTER', titleA: 'Regular camera vs', highlight: 'AI camera', sub: 'Drag the bar and watch the transformation. Same person, another league.', before: 'Regular camera', after: 'AI camera', hint: 'Drag to reveal' },
-  pt: { label: 'ANTES / DEPOIS', titleA: 'Câmara normal vs', highlight: 'Câmara IA', sub: 'Arrasta a barra e vê a transformação. A mesma pessoa, outro nível.', before: 'Câmara normal', after: 'Câmara IA', hint: 'Arrasta para revelar' },
-  fr: { label: 'AVANT / APRÈS', titleA: 'Appareil classique vs', highlight: 'Caméra IA', sub: 'Glisse la barre et regarde la transformation. La même personne, un autre niveau.', before: 'Appareil classique', after: 'Caméra IA', hint: 'Glisse pour révéler' },
-  de: { label: 'VORHER / NACHHER', titleA: 'Normale Kamera vs', highlight: 'KI-Kamera', sub: 'Zieh den Regler und sieh die Verwandlung. Dieselbe Person, eine andere Liga.', before: 'Normale Kamera', after: 'KI-Kamera', hint: 'Zum Aufdecken ziehen' },
-  it: { label: 'PRIMA / DOPO', titleA: 'Fotocamera normale vs', highlight: 'Fotocamera IA', sub: 'Trascina la barra e guarda la trasformazione. La stessa persona, un altro livello.', before: 'Fotocamera normale', after: 'Fotocamera IA', hint: 'Trascina per rivelare' },
-  zh: { label: '对比', titleA: '普通相机 vs', highlight: 'AI 相机', sub: '拖动滑块，见证蜕变。同一个人，完全不同的水准。', before: '普通相机', after: 'AI 相机', hint: '拖动以揭晓' },
+  es: { label: 'ANTES / DESPUÉS', titleA: 'Contenido real vs', highlight: 'Contenido IA', sub: 'Toca la imagen y mira la transformación. La misma persona, otra liga.', before: 'Contenido real', after: 'Contenido IA' },
+  en: { label: 'BEFORE / AFTER', titleA: 'Real content vs', highlight: 'AI content', sub: 'Tap the image and watch the transformation. Same person, another league.', before: 'Real content', after: 'AI content' },
+  pt: { label: 'ANTES / DEPOIS', titleA: 'Conteúdo real vs', highlight: 'Conteúdo IA', sub: 'Toca na imagem e vê a transformação. A mesma pessoa, outro nível.', before: 'Conteúdo real', after: 'Conteúdo IA' },
+  fr: { label: 'AVANT / APRÈS', titleA: 'Contenu réel vs', highlight: 'Contenu IA', sub: "Touche l'image et regarde la transformation. La même personne, un autre niveau.", before: 'Contenu réel', after: 'Contenu IA' },
+  de: { label: 'VORHER / NACHHER', titleA: 'Echter Content vs', highlight: 'KI-Content', sub: 'Tippe das Bild an und sieh die Verwandlung. Dieselbe Person, eine andere Liga.', before: 'Echter Content', after: 'KI-Content' },
+  it: { label: 'PRIMA / DOPO', titleA: 'Contenuto reale vs', highlight: 'Contenuto IA', sub: "Tocca l'immagine e guarda la trasformazione. La stessa persona, un altro livello.", before: 'Contenuto reale', after: 'Contenuto IA' },
+  zh: { label: '对比', titleA: '真实内容 vs', highlight: 'AI 内容', sub: '点击图片，见证蜕变。同一个人，完全不同的水准。', before: '真实内容', after: 'AI 内容' },
 };
 
 const PAIRS = [

@@ -73,6 +73,11 @@ button:focus-visible,
   -webkit-text-stroke: 1.5px rgb(var(--fg));
 }
 
+/* Hero intro text — always light because the gradient backdrop is always dark.
+   Use this instead of text-paper inside the immersive hero phases. */
+.hero-fg       { color: #EEF2F8; }
+.hero-fg-mute  { color: rgba(238, 242, 248, 0.75); }
+
 /* Premium gradient text — sky → brand → deep (blue family only) */
 .text-rainbow {
   background: linear-gradient(135deg, #7fe0ff 0%, #00b1f6 50%, #0a84ff 100%);
@@ -80,19 +85,50 @@ button:focus-visible,
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+/* In light mode the sky-blue end fades into the background; use a darker stop */
+[data-theme='light'] .text-rainbow {
+  background: linear-gradient(135deg, #00b1f6 0%, #0a84ff 55%, #1939B5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 
-/* iOS-style glass morphism */
+/* iOS-style glass morphism — theme-aware so it works on both light and dark */
 .glass-ios {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgb(var(--overlay) / 0.06);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgb(var(--overlay) / 0.12);
+}
+/* On a photo/dark scrim we sometimes need extra contrast */
+[data-theme='light'] .glass-ios {
+  background: rgb(var(--overlay) / 0.05);
+  border-color: rgb(var(--overlay) / 0.10);
 }
 .glass-ios-dark {
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Nav top-bar glass — theme-aware, stronger contrast so it reads cleanly
+   over the colorful hero gradient. */
+.nav-glass {
+  background: rgb(var(--bg) / 0.55);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgb(var(--overlay) / 0.14);
+  box-shadow:
+    0 10px 40px -10px rgb(0 0 0 / 0.30),
+    inset 0 1px 0 rgb(var(--overlay) / 0.10);
+}
+[data-theme='light'] .nav-glass {
+  background: rgb(255 255 255 / 0.75);
+  border-color: rgb(var(--overlay) / 0.12);
+  box-shadow:
+    0 10px 40px -10px rgb(var(--overlay) / 0.20),
+    inset 0 1px 0 rgb(255 255 255 / 0.6);
 }
 
 .card-grad {

@@ -10,7 +10,12 @@ const ease = [0.22, 1, 0.36, 1];
 // Cards with image backgrounds — only on Creators (more aspirational).
 // Agencies → clean cards (more professional / data-driven).
 const CARD_IMAGES = {
-  creators: ['/result-2.jpg', '/result-4.jpg', '/result-5.jpg', '/hero-stage-5.jpg'],
+  // Order matches t.creators.items: [image, map, shirt, wand]
+  // HD realistas · Cualquier locación · Moda virtual · Estilista IA
+  // These card-* files are dedicated to FeatureGrid so Results section keeps
+  // its own result-*.jpg untouched.
+  // Card 0 (Fotos HD) ↔ Card 1 (Cualquier locación): swapped
+  creators: ['/card-localizacion.jpg', '/result-2.jpg', '/card-moda.jpg', '/card-estilista.jpg'],
 };
 
 const ICON_ACCENT = {
@@ -30,14 +35,12 @@ export default function FeatureGrid({ id, sectionKey }) {
       <div className="mx-auto max-w-6xl px-5">
         <SectionHeading label={s.label} titleA={s.titleA} highlight={s.titleHighlight} sub={s.sub} hue={HEAD_HUE[sectionKey] || 'brand'} />
 
+        {/* 2×2 grid — all cards same size, photo gets enough width to show
+            the face clearly. */}
         <div className="mt-14 grid gap-5 sm:grid-cols-2">
           {s.items.map((item, i) => {
             const Icon = ICONS[item.icon];
             const img = imgs ? imgs[i % imgs.length] : null;
-            // Bento layout: first AND last cards span 2 cols when they have images,
-            // creating a balanced rhythm (hero · pair · hero) instead of an orphan row.
-            const isLast = i === s.items.length - 1;
-            const isHero = img && (i === 0 || isLast);
 
             return (
               <motion.div
@@ -45,12 +48,12 @@ export default function FeatureGrid({ id, sectionKey }) {
                 initial={{ opacity: 0, y: 48, scale: 0.96 }}
                 whileInView={{ opacity: 1, y: 0, scale: 1 }}
                 viewport={{ once: true, margin: '-60px' }}
-                transition={{ duration: 0.65, ease, delay: i * 0.12 }}
+                transition={{ duration: 0.55, ease, delay: i * 0.10 }}
                 whileHover={{ y: -8, transition: { duration: 0.3, ease } }}
                 className={`group relative overflow-hidden rounded-3xl border border-line transition-colors hover:border-paper/25 ${
                   img ? '' : 'bg-card hover:shadow-glow-sm'
-                } ${isHero ? 'sm:col-span-2' : ''}`}
-                style={img ? { minHeight: isHero ? '380px' : '320px' } : undefined}
+                }`}
+                style={img ? { minHeight: '460px' } : undefined}
               >
                 {img && (
                   <>
@@ -59,26 +62,27 @@ export default function FeatureGrid({ id, sectionKey }) {
                       src={img}
                       alt=""
                       aria-hidden
-                      className="absolute inset-0 h-full w-full object-cover opacity-70 transition-transform duration-700 ease-out group-hover:scale-105"
-                      style={{ objectPosition: '50% 25%' }}
+                      className="absolute inset-0 h-full w-full object-cover opacity-80 transition-transform duration-700 ease-out group-hover:scale-105"
+                      // Face/upper-body framing: anchor higher so the head is visible
+                      style={{ objectPosition: '50% 15%' }}
                     />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink via-ink/85 to-ink/40" />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-ink/40 via-transparent to-transparent" />
+                    {/* Stronger bottom gradient so text stays legible over the photo */}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink via-ink/70 to-ink/10" />
                   </>
                 )}
 
-                {/* Content */}
-                <div className={img ? 'relative flex h-full min-h-[inherit] flex-col justify-end p-7' : 'p-7'}>
-                  <div className={`grid h-12 w-12 place-items-center rounded-2xl backdrop-blur-md ${iconClass}`}>
-                    {Icon && <Icon size={22} strokeWidth={2.2} aria-hidden />}
+                {/* Content — sized for the narrower 4-col layout */}
+                <div className={img ? 'relative flex h-full min-h-[inherit] flex-col justify-end p-6' : 'p-6'}>
+                  <div className={`grid h-11 w-11 place-items-center rounded-2xl backdrop-blur-md ${iconClass}`}>
+                    {Icon && <Icon size={19} strokeWidth={2.2} aria-hidden />}
                   </div>
-                  <h3 className="mt-5 font-display text-xl font-semibold text-paper sm:text-2xl">{item.t}</h3>
-                  <p className="mt-2 max-w-md text-[15px] leading-relaxed text-paper-mute">{item.d}</p>
-                  <div className="mt-5 flex flex-wrap gap-2">
+                  <h3 className="mt-4 font-display text-lg font-semibold text-paper">{item.t}</h3>
+                  <p className="mt-2 text-[13.5px] leading-relaxed text-paper-mute">{item.d}</p>
+                  <div className="mt-4 flex flex-wrap gap-1.5">
                     {item.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="glass-ios rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-paper"
+                        className="glass-ios rounded-full px-2.5 py-1 font-mono text-[9.5px] uppercase tracking-wider text-paper"
                       >
                         {tag}
                       </span>

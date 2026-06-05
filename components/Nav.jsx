@@ -22,8 +22,10 @@ export default function Nav() {
       const heroTop = hero.offsetTop;
       const heroBottom = heroTop + hero.offsetHeight - window.innerHeight;
       const heroProgress = (window.scrollY - heroTop) / Math.max(1, heroBottom - heroTop);
-      const inEditor = heroProgress > 0.28 && heroProgress < 0.92;
-      setVisible(!inEditor);
+      // Hidden during editor + finale screen; reappears as the hero ends so it
+      // greets the user when content sections start showing.
+      const inImmersive = heroProgress > 0.28 && heroProgress < 0.97;
+      setVisible(!inImmersive);
     };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -47,9 +49,7 @@ export default function Nav() {
         visible ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-[130%] opacity-0'
       }`}
     >
-      <nav className="mx-auto flex max-w-6xl items-center justify-between rounded-2xl px-4 py-2.5 sm:px-6"
-           style={{ background:'rgba(7,10,15,0.32)', backdropFilter:'blur(32px) saturate(180%)', WebkitBackdropFilter:'blur(32px) saturate(180%)', border:'1px solid rgba(255,255,255,0.08)', boxShadow:'0 8px 32px -8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)' }}
-      >
+      <nav className="nav-glass mx-auto flex max-w-6xl items-center justify-between rounded-2xl px-4 py-2.5 sm:px-6">
         <div className="flex items-center gap-8">
           <a href="#top" aria-label="LetShoot">
             <Logo />

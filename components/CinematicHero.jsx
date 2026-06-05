@@ -195,20 +195,28 @@ export default function CinematicHero() {
   }, [p]);
 
   // ── Phase 1: Intro 1 — "Conoce a tu fotógrafo IA." ──
-  // Each phase has its OWN scroll band, no overlap → feels like swiping between screens.
-  // Slides UP and out (translate + fade, like a swipe).
-  const s1O = useTransform(p, [0.00, 0.04, 0.13, 0.17], [1, 1, 1, 0]);
-  const s1Y = useTransform(p, [0.13, 0.17], [0, -vh]);
+  // Fade out IN PLACE with a soft blur (no slide-up). Letter-by-letter intro
+  // is preserved inside <RevealText/>.
+  const s1O    = useTransform(p, [0.00, 0.04, 0.12, 0.16], [1, 1, 1, 0]);
+  const s1Blur = useTransform(p, [0.12, 0.16], [0, 16]);
+  const s1Scale = useTransform(p, [0.12, 0.16], [1, 0.96]);
 
   // ── Phase 2: Intro 2 — "Sin estudio. Sin esperas." ──
-  // Slides UP from below as Phase 1 leaves, slides UP out as editor enters.
-  const s2O = useTransform(p, [0.17, 0.21, 0.30, 0.34], [0, 1, 1, 0]);
-  const s2Y = useTransform(p, [0.17, 0.21, 0.30, 0.34], [vh, 0, 0, -vh]);
-  const l1Y = useTransform(p, [0.17, 0.24], [60, 0]);
-  const l2Y = useTransform(p, [0.20, 0.27], [60, 0]);
+  // Enters with a FLASH: quick zoom-in (1.15→1) + fast opacity ramp.
+  // Exits in place with fade+blur (same as Phase 1).
+  const s2O    = useTransform(p, [0.16, 0.19, 0.29, 0.33], [0, 1, 1, 0]);
+  const s2Scale = useTransform(p, [0.16, 0.20, 0.29, 0.33], [1.18, 1, 1, 0.96]);
+  const s2Blur  = useTransform(p, [0.16, 0.18, 0.29, 0.33], [10, 0, 0, 16]);
+  const l1Y = useTransform(p, [0.16, 0.22], [40, 0]);
+  const l2Y = useTransform(p, [0.19, 0.25], [40, 0]);
   // "Sin esperas." gradient wipe — driven by scroll progress (no whileInView).
-  const l2ClipR = useTransform(p, [0.20, 0.27], [100, 0]);
+  const l2ClipR = useTransform(p, [0.19, 0.27], [100, 0]);
   const l2Clip  = useMotionTemplate`inset(-20% ${l2ClipR}% -20% 0)`;
+
+  // ── Flash overlays — brief bright pulse at each phase transition ──
+  // Two flashes: one when Phase 1 → Phase 2, another when Phase 2 → Editor.
+  const flash1O = useTransform(p, [0.13, 0.155, 0.18], [0, 0.55, 0]);
+  const flash2O = useTransform(p, [0.30, 0.325, 0.36], [0, 0.45, 0]);
 
   // ── Phase 3: Portrait + editor ──
   // Portrait slides UP from below as Phase 2 leaves.
@@ -250,6 +258,12 @@ export default function CinematicHero() {
   // Bubbles fade with editor
   const bubbleO = useTransform(p, [0.38, 0.46, 0.85, 0.90], [0, 1, 1, 0]);
 
+  // ── Finale phase [0.88–1.0]: closing CTA that fills the gap between editor
+  //    end and the next section. Slides up + fades in as the editor fades out.
+  const finaleO = useTransform(p, [0.88, 0.94], [0, 1]);
+  const finaleY = useTransform(p, [0.88, 0.96], [60, 0]);
+  const finaleScale = useTransform(p, [0.88, 0.94], [0.94, 1]);
+
   // Scan progress for editor render bar
   const scanProgressMV = useTransform(p, [WIPES[0][0], WIPES[3][1]], [0, 1]);
   const [scanProgress, setScanProgress] = useState(0);
@@ -259,7 +273,7 @@ export default function CinematicHero() {
   const barSc = p;
 
   return (
-    <section ref={ref} id="hero" className="relative h-[900vh]">
+    <section ref={ref} id="hero" className="relative h-[760vh]">
       <div className="sticky top-0 h-screen w-full overflow-hidden">
 
         {/* Animated gradient backdrop (scoped to hero only) */}
@@ -269,9 +283,33 @@ export default function CinematicHero() {
         {/* Progress bar */}
         <motion.div className="absolute left-0 top-0 z-50 h-[2px] w-full origin-left bg-brand" style={{ scaleX: barSc }} aria-hidden />
 
-        {/* ════ PHASE 1 — Intro 1 (slides up, swipe-out) ════ */}
+        {/* ── Flash overlays — bright pulse at phase transitions ── */}
         <motion.div
-          style={{ opacity: s1O, y: s1Y }}
+          aria-hidden
+          style={{
+            opacity: flash1O,
+            background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.9) 0%, rgba(127,224,255,0.4) 35%, transparent 70%)',
+            mixBlendMode: 'screen',
+          }}
+          className="pointer-events-none absolute inset-0 z-[55]"
+        />
+        <motion.div
+          aria-hidden
+          style={{
+            opacity: flash2O,
+            background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.85) 0%, rgba(0,177,246,0.4) 35%, transparent 70%)',
+            mixBlendMode: 'screen',
+          }}
+          className="pointer-events-none absolute inset-0 z-[55]"
+        />
+
+        {/* ════ PHASE 1 — Intro 1 (fade + blur in place, no slide) ════ */}
+        <motion.div
+          style={{
+            opacity: s1O,
+            scale: s1Scale,
+            filter: useMotionTemplate`blur(${s1Blur}px)`,
+          }}
           className="absolute inset-0 z-30 flex items-center justify-center px-6"
         >
           <RevealText
@@ -280,9 +318,13 @@ export default function CinematicHero() {
           />
         </motion.div>
 
-        {/* ════ PHASE 2 — Intro 2 (slide-up box reveal + gradient wipe) ════ */}
+        {/* ════ PHASE 2 — Intro 2 (zoom-flash in, fade+blur out) ════ */}
         <motion.div
-          style={{ opacity: s2O, y: s2Y }}
+          style={{
+            opacity: s2O,
+            scale: s2Scale,
+            filter: useMotionTemplate`blur(${s2Blur}px)`,
+          }}
           className="absolute inset-0 z-20 flex flex-col items-center justify-center"
         >
           {/* "Sin estudio." — slides up from a "box reveal" mask */}
@@ -324,11 +366,15 @@ export default function CinematicHero() {
           style={{ opacity: portraitO, scale: portraitS, y: portraitY }}
           className="absolute inset-0 z-10 flex items-center justify-center"
         >
-          {/* Portrait + bubbles wrapper — sized explicitly so bubbles can
-              be positioned relative to the portrait dimensions */}
+          {/* Portrait + bubbles wrapper — sized so it never overflows on mobile.
+              height is bounded by BOTH 72vh and (88vw × 5/4) so a narrow viewport
+              shrinks the portrait instead of clipping it. */}
           <div
             className="relative"
-            style={{ height: '72vh', aspectRatio: '4 / 5' }}
+            style={{
+              width: 'min(88vw, calc(72vh * 4 / 5))',
+              aspectRatio: '4 / 5',
+            }}
           >
             <div
               className="relative h-full w-full overflow-hidden rounded-3xl"
@@ -365,8 +411,9 @@ export default function CinematicHero() {
               ))}
             </div>
 
-            {/* ── Comment bubbles around the portrait ── */}
-            <motion.div style={{ opacity: bubbleO }} className="pointer-events-none absolute inset-0">
+            {/* ── Comment bubbles around the portrait ──
+                Hidden on mobile because there's no room next to the portrait. */}
+            <motion.div style={{ opacity: bubbleO }} className="pointer-events-none absolute inset-0 hidden md:block">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`bubbles-${activeStage}`}
@@ -382,6 +429,39 @@ export default function CinematicHero() {
                 </motion.div>
               </AnimatePresence>
             </motion.div>
+          </div>
+        </motion.div>
+
+        {/* ════ FINALE — fills the gap between editor end and next section ════ */}
+        <motion.div
+          style={{ opacity: finaleO, y: finaleY, scale: finaleScale }}
+          className="absolute inset-0 z-30 flex flex-col items-center justify-center px-6 pointer-events-none"
+        >
+          <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-brand">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+            Tu sesión está lista
+          </span>
+          <h2 className="headline text-center text-[clamp(2.5rem,7vw,5.5rem)] leading-[1.05] text-paper">
+            Ahora es <span className="text-rainbow inline-block" style={{ paddingBlock: '0.1em' }}>tu turno.</span>
+          </h2>
+          <p className="mt-5 max-w-xl text-center text-base leading-relaxed text-paper-mute sm:text-lg">
+            Crea fotos y videos de nivel editorial desde cualquier lugar.
+            Sin estudio. Sin esperas.
+          </p>
+          <div className="pointer-events-auto mt-8 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href="#pricing"
+              className="group inline-flex items-center gap-2 rounded-full bg-brand px-8 py-4 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.04]"
+            >
+              {t.hero.ctaPrimary}
+              <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" aria-hidden />
+            </a>
+            <a
+              href="#results"
+              className="glass-ios inline-flex items-center rounded-full px-7 py-3.5 text-base font-medium text-paper transition-colors hover:text-brand"
+            >
+              {t.hero.ctaSecondary}
+            </a>
           </div>
         </motion.div>
 

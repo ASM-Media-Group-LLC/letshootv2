@@ -144,7 +144,7 @@ export default function EditorChrome({ stage = 0, scanProgress = 0 }) {
     <>
 
       {/* ── TOP TOOLBAR ────────────────────────────────────────────────────── */}
-      <div className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between px-6 py-3 sm:px-8">
+      <div className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between px-3 py-3 sm:px-8">
         {/* Left: file menu mock + brand */}
         <div className="flex items-center gap-3">
           <div className="glass-ios flex items-center gap-2 rounded-lg px-3 py-1.5">
