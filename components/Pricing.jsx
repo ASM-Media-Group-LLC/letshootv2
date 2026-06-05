@@ -70,6 +70,116 @@ const COPY = {
       ]},
     },
   },
+  pt: {
+    periodLabels: { m: 'Mensal', q: '3 Meses', a: 'Anual' },
+    save: 'Poupa', perMonth: '/mês', free: 'Grátis', off: '-50%', popular: 'Mais popular',
+    everyA: 'Tudo do', everyB: ', e:', attention: 'Atenção personalizada',
+    plans: {
+      free: { desc: 'Comprova a magia sem pagar nada. A tua primeira sessão é por nossa conta.', cta: 'Experimentar grátis', features: [
+        { t: '1 sessão de teste' }, { t: 'Pré-visualização em baixa resolução' }, { t: 'Sem cartão de crédito' },
+      ]},
+      standard: { desc: 'Tudo o que precisas para deixar o fotógrafo e produzir como profissional.', cta: 'Começar', features: [
+        { t: 'Até 150 fotos IA / mês' }, { t: 'Outfits e localizações', tag: 'Sem limite' }, { t: 'Qualidade HD' }, { t: 'Maquilhagem e estilo IA', tag: 'Exclusivo' },
+      ]},
+      plus: { desc: 'Sobe de nível: mais volume, vídeo e qualidade 4K para crescer sem travões.', cta: 'Começar', features: [
+        { t: 'Até 400 fotos IA / mês' }, { t: 'Vídeos IA curtos', tag: 'Novo' }, { t: 'Qualidade 4K', tag: 'Exclusivo' }, { t: 'Localizações premium' },
+      ]},
+      premium: { desc: 'O arsenal completo: produção ilimitada, prioridade total e licença comercial.', cta: 'Começar', features: [
+        { t: 'Fotos IA ilimitadas' }, { t: 'Vídeos IA longos + reels' }, { t: 'Renders prioritários', tag: 'Sem espera' }, { t: 'Licença comercial', tag: 'Exclusivo' }, { t: 'Suporte prioritário' },
+      ]},
+      elite: { desc: 'O teu estúdio criativo pessoal. Uma equipa real dirige cada sessão por ti.', cta: 'Falar com vendas', features: [
+        { t: 'Gestor de conta dedicado' }, { t: 'Sessões à medida', tag: 'Express' }, { t: 'Direção criativa 1-a-1' }, { t: 'Suporte por linha direta' },
+      ]},
+    },
+  },
+  fr: {
+    periodLabels: { m: 'Mensuel', q: '3 Mois', a: 'Annuel' },
+    save: 'Économise', perMonth: '/mois', free: 'Gratuit', off: '-50%', popular: 'Le plus populaire',
+    everyA: 'Tout de', everyB: ', et :', attention: 'Attention personnalisée',
+    plans: {
+      free: { desc: 'Découvre la magie gratuitement. Ta première séance est offerte.', cta: 'Essai gratuit', features: [
+        { t: '1 séance d’essai' }, { t: 'Aperçu en basse résolution' }, { t: 'Sans carte bancaire' },
+      ]},
+      standard: { desc: 'Tout pour arrêter de payer un photographe et produire comme un pro.', cta: 'Commencer', features: [
+        { t: 'Jusqu’à 150 photos IA / mois' }, { t: 'Tenues et lieux', tag: 'Illimité' }, { t: 'Qualité HD' }, { t: 'Maquillage et style IA', tag: 'Exclusif' },
+      ]},
+      plus: { desc: 'Monte en gamme : plus de volume, de vidéo et de 4K pour grandir sans limite.', cta: 'Commencer', features: [
+        { t: 'Jusqu’à 400 photos IA / mois' }, { t: 'Vidéos IA courtes', tag: 'Nouveau' }, { t: 'Qualité 4K', tag: 'Exclusif' }, { t: 'Lieux premium' },
+      ]},
+      premium: { desc: 'L’arsenal complet : production illimitée, priorité totale et licence commerciale.', cta: 'Commencer', features: [
+        { t: 'Photos IA illimitées' }, { t: 'Vidéos IA longues + reels' }, { t: 'Rendus prioritaires', tag: 'Sans attente' }, { t: 'Licence commerciale', tag: 'Exclusif' }, { t: 'Support prioritaire' },
+      ]},
+      elite: { desc: 'Ton studio créatif personnel. Une vraie équipe dirige chaque séance pour toi.', cta: 'Contacter les ventes', features: [
+        { t: 'Gestionnaire de compte dédié' }, { t: 'Séances sur mesure', tag: 'Express' }, { t: 'Direction créative en 1-à-1' }, { t: 'Support par ligne directe' },
+      ]},
+    },
+  },
+  de: {
+    periodLabels: { m: 'Monatlich', q: '3 Monate', a: 'Jährlich' },
+    save: 'Spare', perMonth: '/Mon.', free: 'Kostenlos', off: '-50%', popular: 'Am beliebtesten',
+    everyA: 'Alles aus', everyB: ', und:', attention: 'Persönliche Betreuung',
+    plans: {
+      free: { desc: 'Erlebe die Magie kostenlos. Deine erste Session geht auf uns.', cta: 'Kostenlos testen', features: [
+        { t: '1 Test-Session' }, { t: 'Vorschau in niedriger Auflösung' }, { t: 'Keine Kreditkarte nötig' },
+      ]},
+      standard: { desc: 'Alles, um den Fotografen zu ersetzen und wie ein Profi zu produzieren.', cta: 'Loslegen', features: [
+        { t: 'Bis zu 150 KI-Fotos / Mon.' }, { t: 'Outfits & Locations', tag: 'Unbegrenzt' }, { t: 'HD-Qualität' }, { t: 'KI-Make-up & Styling', tag: 'Exklusiv' },
+      ]},
+      plus: { desc: 'Leg nach: mehr Volumen, Video und 4K-Qualität für grenzenloses Wachstum.', cta: 'Loslegen', features: [
+        { t: 'Bis zu 400 KI-Fotos / Mon.' }, { t: 'Kurze KI-Videos', tag: 'Neu' }, { t: '4K-Qualität', tag: 'Exklusiv' }, { t: 'Premium-Locations' },
+      ]},
+      premium: { desc: 'Das volle Arsenal: unbegrenzte Produktion, Top-Priorität und Lizenz.', cta: 'Loslegen', features: [
+        { t: 'Unbegrenzte KI-Fotos' }, { t: 'Lange KI-Videos + Reels' }, { t: 'Prioritäts-Renders', tag: 'Ohne Warten' }, { t: 'Kommerzielle Lizenz', tag: 'Exklusiv' }, { t: 'Prioritäts-Support' },
+      ]},
+      elite: { desc: 'Dein persönliches Kreativstudio. Ein echtes Team leitet jede Session für dich.', cta: 'Vertrieb kontaktieren', features: [
+        { t: 'Dedizierter Account-Manager' }, { t: 'Maßgeschneiderte Sessions', tag: 'Express' }, { t: '1-zu-1 Kreativ-Direktion' }, { t: 'Support per Direktleitung' },
+      ]},
+    },
+  },
+  it: {
+    periodLabels: { m: 'Mensile', q: '3 Mesi', a: 'Annuale' },
+    save: 'Risparmia', perMonth: '/mese', free: 'Gratis', off: '-50%', popular: 'Più popolare',
+    everyA: 'Tutto di', everyB: ', e:', attention: 'Attenzione personalizzata',
+    plans: {
+      free: { desc: 'Prova la magia senza pagare. La tua prima sessione è offerta da noi.', cta: 'Prova gratis', features: [
+        { t: '1 sessione di prova' }, { t: 'Anteprima in bassa risoluzione' }, { t: 'Senza carta di credito' },
+      ]},
+      standard: { desc: 'Tutto ciò che serve per lasciare il fotografo e produrre come un pro.', cta: 'Inizia', features: [
+        { t: 'Fino a 150 foto IA / mese' }, { t: 'Outfit e location', tag: 'Illimitati' }, { t: 'Qualità HD' }, { t: 'Trucco e stile IA', tag: 'Esclusivo' },
+      ]},
+      plus: { desc: 'Sali di livello: più volume, video e qualità 4K per crescere senza limiti.', cta: 'Inizia', features: [
+        { t: 'Fino a 400 foto IA / mese' }, { t: 'Video IA brevi', tag: 'Nuovo' }, { t: 'Qualità 4K', tag: 'Esclusivo' }, { t: 'Location premium' },
+      ]},
+      premium: { desc: 'L’arsenale completo: produzione illimitata, priorità totale e licenza commerciale.', cta: 'Inizia', features: [
+        { t: 'Foto IA illimitate' }, { t: 'Video IA lunghi + reel' }, { t: 'Render prioritari', tag: 'Zero attesa' }, { t: 'Licenza commerciale', tag: 'Esclusivo' }, { t: 'Supporto prioritario' },
+      ]},
+      elite: { desc: 'Il tuo studio creativo personale. Un team reale dirige ogni sessione per te.', cta: 'Contatta le vendite', features: [
+        { t: 'Account manager dedicato' }, { t: 'Sessioni su misura', tag: 'Express' }, { t: 'Direzione creativa 1-a-1' }, { t: 'Supporto con linea diretta' },
+      ]},
+    },
+  },
+  zh: {
+    periodLabels: { m: '按月', q: '3个月', a: '按年' },
+    save: '省', perMonth: '/月', free: '免费', off: '-50%', popular: '最受欢迎',
+    everyA: '包含', everyB: ' 的全部，外加：', attention: '专属服务',
+    plans: {
+      free: { desc: '免费体验这份魔力，首次拍摄由我们买单。', cta: '免费试用', features: [
+        { t: '1 次试用拍摄' }, { t: '低分辨率预览' }, { t: '无需信用卡' },
+      ]},
+      standard: { desc: '告别摄影师，像专业人士一样产出所需的一切。', cta: '开始', features: [
+        { t: '每月最多 150 张 AI 照片' }, { t: '服装与场景', tag: '无限' }, { t: '高清画质' }, { t: 'AI 妆容与造型', tag: '专属' },
+      ]},
+      plus: { desc: '升级体验：更多产量、视频与 4K 画质，助你无限成长。', cta: '开始', features: [
+        { t: '每月最多 400 张 AI 照片' }, { t: 'AI 短视频', tag: '新' }, { t: '4K 画质', tag: '专属' }, { t: '高级场景' },
+      ]},
+      premium: { desc: '全套武器库：无限产出、最高优先级与商用授权。', cta: '开始', features: [
+        { t: '无限 AI 照片' }, { t: 'AI 长视频 + Reels' }, { t: '优先渲染', tag: '零等待' }, { t: '商用授权', tag: '专属' }, { t: '优先支持' },
+      ]},
+      elite: { desc: '你的专属创意工作室，由真实团队执导每一次拍摄。', cta: '联系销售', features: [
+        { t: '专属客户经理' }, { t: '定制拍摄', tag: 'Express' }, { t: '一对一创意指导' }, { t: '专线支持' },
+      ]},
+    },
+  },
 };
 
 const fmt = (n) => n.toFixed(2);
@@ -131,14 +241,14 @@ export default function Pricing() {
                 viewport={{ once: true, margin: '-40px' }}
                 transition={{ duration: 0.45, ease, delay: i * 0.06 }}
                 whileHover={{ y: -6 }}
-                className={`group relative flex flex-col overflow-hidden rounded-3xl border p-5 transition-shadow duration-300 ${
+                className={`group relative flex flex-col rounded-3xl border p-5 transition-shadow duration-300 ${
                   plan.popular ? 'border-brand bg-brand/[0.07] shadow-glow-sm' :
                   plan.attention ? 'border-brand/70 bg-card' : 'border-line bg-card hover:border-paper/20'
                 }`}
               >
                 {/* Glow wash on the featured plan */}
                 {plan.popular && (
-                  <div className="pointer-events-none absolute inset-x-0 -top-px h-28 bg-gradient-to-b from-brand/20 to-transparent" aria-hidden />
+                  <div className="pointer-events-none absolute inset-x-0 -top-px h-28 rounded-t-3xl bg-gradient-to-b from-brand/20 to-transparent" aria-hidden />
                 )}
 
                 {/* Attention ribbon */}

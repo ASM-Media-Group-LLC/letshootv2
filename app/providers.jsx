@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { dict, SUPPORTED_LANGS } from '@/lib/i18n';
 
@@ -9,6 +9,10 @@ const LangContext = createContext({ lang: 'es', setLang: () => {}, t: dict.es })
 
 export function LangProvider({ children }) {
   const [lang, setLang] = useState('es');
+  // Skip the very first write so the initial 'es' never overwrites the stored
+  // value before the read effect applies it (otherwise lang resets on reload,
+  // especially under React StrictMode's double-mount in dev).
+  const firstWrite = useRef(true);
 
   useEffect(() => {
     const stored = typeof window !== 'undefined' && localStorage.getItem('letshoot-lang');
@@ -23,10 +27,10 @@ export function LangProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('letshoot-lang', lang);
-      document.documentElement.lang = lang;
-    }
+    if (typeof window === 'undefined') return;
+    if (firstWrite.current) { firstWrite.current = false; return; }
+    localStorage.setItem('letshoot-lang', lang);
+    document.documentElement.lang = lang;
   }, [lang]);
 
   return (
