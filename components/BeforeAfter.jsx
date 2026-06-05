@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Before/After reveal slider.
-// • Initial state: handle at far left → "antes" is fully visible.
+// • Initial state: handle near the middle → curtain "semi-open" so it's obvious
+//   it's a comparison (both sides + divider visible).
 // • Click / tap anywhere on the image → toggles between fully closed (pos=0)
 //   and fully open (pos=100), animated.
 // • Drag the handle (or anywhere with intent) → manual control.
 // Click vs drag is detected by movement threshold during the pointer down→up.
 export default function BeforeAfter({ before, after, beforeLabel, afterLabel, alt = '' }) {
-  const [pos, setPos] = useState(0);            // ← starts at 0: only "antes" visible
+  const [pos, setPos] = useState(48);           // ← starts half-open (comparison is obvious); first tap → full AI
   const [dragging, setDragging] = useState(false);
   const [animating, setAnimating] = useState(false);
   const containerRef = useRef(null);
