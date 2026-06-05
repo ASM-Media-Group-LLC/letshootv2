@@ -115,9 +115,9 @@ export default function CinematicHero() {
 
         {/* ── RIGHT: Before/After comparison ───────────────────────────────── */}
         <motion.div
-          initial={{ opacity: 0, x: 32, scale: 0.96 }}
-          animate={{ opacity: 1, x: 0, scale: 1 }}
-          transition={{ duration: 0.85, ease, delay: 0.28 }}
+          initial={{ opacity: 0, x: 40, scale: 0.94, clipPath: 'inset(0 0 100% 0 round 1.5rem)' }}
+          animate={{ opacity: 1, x: 0, scale: 1, clipPath: 'inset(0 0 0% 0 round 1.5rem)' }}
+          transition={{ duration: 0.95, ease, delay: 0.35 }}
           className="w-full max-w-sm flex-shrink-0 lg:max-w-md"
         >
           <AutoTransform

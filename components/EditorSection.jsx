@@ -74,11 +74,22 @@ const LABELS = {
   ],
 };
 
+const TITLES = {
+  es: { eyebrow: 'Detrás de cámaras', title: 'Así funciona el sistema' },
+  en: { eyebrow: 'Behind the scenes', title: 'How the system works' },
+  pt: { eyebrow: 'Nos bastidores', title: 'Como funciona o sistema' },
+  fr: { eyebrow: 'Dans les coulisses', title: 'Comment fonctionne le système' },
+  de: { eyebrow: 'Hinter den Kulissen', title: 'So funktioniert das System' },
+  it: { eyebrow: 'Dietro le quinte', title: 'Come funziona il sistema' },
+  zh: { eyebrow: '幕后', title: '系统如何运作' },
+};
+
 const ease = [0.22, 1, 0.36, 1];
 
 export default function EditorSection() {
   const { t, lang } = useLang();
   const labels = LABELS[lang] || LABELS.es;
+  const titles = TITLES[lang] || TITLES.es;
 
   const ref = useRef(null);
   const { scrollYProgress: p } = useScroll({ target: ref, offset: ['start start', 'end end'] });
@@ -130,6 +141,15 @@ export default function EditorSection() {
   const ctaO = useTransform(p, [0.78, 0.88], [0, 1]);
   const ctaY = useTransform(p, [0.78, 0.88], [20, 0]);
 
+  // Title: scroll-driven entrance, then fades out as the transformation kicks in
+  const titleO = useTransform(p, [0, 0.025, 0.09, 0.14], [0, 1, 1, 0]);
+  const titleY = useTransform(p, [0, 0.04, 0.14], [28, 0, -16]);
+
+  // Portrait: scroll-driven entrance (reliable inside the sticky scroller)
+  const portraitO = useTransform(p, [0, 0.03], [0, 1]);
+  const portraitScale = useTransform(p, [0, 0.06], [0.93, 1]);
+  const portraitY = useTransform(p, [0, 0.05], [28, 0]);
+
   return (
     <section ref={ref} className="relative h-[520vh] bg-ink">
       <div className="sticky top-0 h-screen w-full overflow-hidden bg-ink">
@@ -137,11 +157,31 @@ export default function EditorSection() {
         {/* Editor workspace background */}
         <EditorBg />
 
-        {/* Editor chrome (toolbar, panels) */}
-        <EditorChrome stage={activeStage} scanProgress={scanProgress} />
+        {/* Section title — static wrapper centers it; inner motion handles entrance/fade */}
+        <div className="pointer-events-none absolute left-1/2 top-[8%] z-40 w-full max-w-xl -translate-x-1/2 px-6 text-center">
+          <motion.div style={{ opacity: titleO, y: titleY }}>
+            <span className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 font-mono text-[10px] uppercase tracking-widest text-brand">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+              {titles.eyebrow}
+            </span>
+            <h2 className="headline mt-3 text-[clamp(1.6rem,3.4vw,2.6rem)] leading-tight text-paper">
+              {titles.title}
+            </h2>
+          </motion.div>
+        </div>
 
-        {/* Portrait centered */}
-        <div className="absolute inset-0 z-10 flex items-center justify-center">
+        {/* Editor chrome — constrained to content margins so panels stay near center */}
+        <div className="absolute inset-0 z-20">
+          <div className="relative mx-auto h-full max-w-5xl px-4 sm:px-6">
+            <EditorChrome stage={activeStage} scanProgress={scanProgress} />
+          </div>
+        </div>
+
+        {/* Portrait centered — scroll-driven entrance */}
+        <motion.div
+          style={{ opacity: portraitO, scale: portraitScale, y: portraitY }}
+          className="absolute inset-0 z-10 flex items-center justify-center"
+        >
           <div className="relative">
             <div
               className="relative overflow-hidden rounded-3xl"
@@ -191,7 +231,7 @@ export default function EditorSection() {
               </motion.div>
             </AnimatePresence>
           </div>
-        </div>
+        </motion.div>
 
         {/* CTA at the end */}
         <motion.div style={{ opacity: ctaO, y: ctaY }}

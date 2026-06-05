@@ -19,11 +19,22 @@ export default function AutoTransform({
   const shutter = useMotionValue(1);      // subtle scale pulse on capture
   const [showAI, setShowAI] = useState(false);
   const peekRef = useRef(false);
+  const rootRef = useRef(null);
+  const visibleRef = useRef(true);
+
+  // Pause the loop while the hero is scrolled out of view (saves CPU).
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([e]) => { visibleRef.current = e.isIntersecting; }, { threshold: 0.05 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
     let active = true;
     const wait = (ms) => new Promise(r => setTimeout(r, ms));
-    const holdForPeek = async () => { while (peekRef.current) { await wait(100); if (!active) return false; } return true; };
+    const holdForPeek = async () => { while ((peekRef.current || !visibleRef.current) && active) { await wait(150); } return active; };
 
     // One camera-flash capture: blink white, swap image at the peak.
     async function capture(toAI) {
@@ -62,6 +73,7 @@ export default function AutoTransform({
 
   return (
     <motion.div
+      ref={rootRef}
       className="relative w-full select-none overflow-hidden rounded-3xl"
       style={{
         aspectRatio: '4 / 5', scale: shutter,
@@ -108,7 +120,8 @@ export default function AutoTransform({
               key="real"
               initial={{ opacity: 0, y: -6, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="glass-ios inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-paper"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-white backdrop-blur-md"
+              style={{ background: 'rgba(7,10,15,0.6)' }}
             >
               <Camera size={11} aria-hidden /> {beforeLabel}
             </motion.span>
