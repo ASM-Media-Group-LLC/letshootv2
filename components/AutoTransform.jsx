@@ -12,29 +12,18 @@ import { Sparkles, Camera } from 'lucide-react';
 const flashEase = [0.4, 0, 0.2, 1];
 
 export default function AutoTransform({
-  before, after, beforeLabel = 'Real', afterLabel = 'IA', badge = '2s', alt = '',
+  before, after, beforeLabel = 'Real', afterLabel = 'IA', badge = '2s', alt = '', showLabel = true, stayOnAI = false,
 }) {
   const afterOpacity = useMotionValue(0); // 0 = real shown, 1 = AI shown
   const flash = useMotionValue(0);        // white overlay
   const shutter = useMotionValue(1);      // subtle scale pulse on capture
   const [showAI, setShowAI] = useState(false);
   const peekRef = useRef(false);
-  const rootRef = useRef(null);
-  const visibleRef = useRef(true);
-
-  // Pause the loop while the hero is scrolled out of view (saves CPU).
-  useEffect(() => {
-    const el = rootRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver(([e]) => { visibleRef.current = e.isIntersecting; }, { threshold: 0.05 });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
 
   useEffect(() => {
     let active = true;
     const wait = (ms) => new Promise(r => setTimeout(r, ms));
-    const holdForPeek = async () => { while ((peekRef.current || !visibleRef.current) && active) { await wait(150); } return active; };
+    const holdForPeek = async () => { while (peekRef.current && active) { await wait(150); } return active; };
 
     // One camera-flash capture: blink white, swap image at the peak.
     async function capture(toAI) {
@@ -50,30 +39,39 @@ export default function AutoTransform({
     }
 
     async function loop() {
-      // settle on real
+      // settle on real, then capture → AI
       afterOpacity.set(0); setShowAI(false); flash.set(0);
-      await wait(700);
+      await wait(800);
+      if (!(await holdForPeek())) return;
+      await capture(true);     // → AI
       while (active) {
-        if (!(await holdForPeek())) return;
-        await capture(true);   // → AI
-        if (!active) return;
-        await wait(2000);      // admire the AI result
-        if (!(await holdForPeek())) return;
-        await capture(false);  // → real
-        if (!active) return;
-        await wait(1400);
+        if (stayOnAI) {
+          // Rest on AI; periodically re-flash through real to keep it alive
+          await wait(3400);
+          if (!(await holdForPeek())) return;
+          await capture(false); // brief real
+          await wait(300);
+          if (!(await holdForPeek())) return;
+          await capture(true);  // back to AI
+        } else {
+          await wait(2000);     // admire the AI result
+          if (!(await holdForPeek())) return;
+          await capture(false); // → real
+          await wait(1400);
+          if (!(await holdForPeek())) return;
+          await capture(true);  // → AI
+        }
       }
     }
     loop();
     return () => { active = false; };
-  }, [afterOpacity, flash, shutter]);
+  }, [afterOpacity, flash, shutter, stayOnAI]);
 
   const startPeek = () => { peekRef.current = true; afterOpacity.set(0); setShowAI(false); };
-  const endPeek = () => { peekRef.current = false; };
+  const endPeek = () => { peekRef.current = false; if (stayOnAI) { afterOpacity.set(1); setShowAI(true); } };
 
   return (
     <motion.div
-      ref={rootRef}
       className="relative w-full select-none overflow-hidden rounded-3xl"
       style={{
         aspectRatio: '4 / 5', scale: shutter,
@@ -104,6 +102,7 @@ export default function AutoTransform({
       />
 
       {/* Status pill — switches text + style between real / AI */}
+      {showLabel && (
       <div className="pointer-events-none absolute left-3 top-3 z-30">
         <AnimatePresence mode="wait" initial={false}>
           {showAI ? (
@@ -128,6 +127,7 @@ export default function AutoTransform({
           )}
         </AnimatePresence>
       </div>
+      )}
     </motion.div>
   );
 }

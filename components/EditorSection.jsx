@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useScroll, useTransform, useMotionTemplate } from 'framer-motion';
-import { ArrowRight } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import EditorChrome, { EditorBg } from './EditorChrome';
 import SectionHeading from './SectionHeading';
@@ -88,7 +87,7 @@ const TITLES = {
 const ease = [0.22, 1, 0.36, 1];
 
 export default function EditorSection() {
-  const { t, lang } = useLang();
+  const { lang } = useLang();
   const labels = LABELS[lang] || LABELS.es;
   const titles = TITLES[lang] || TITLES.es;
 
@@ -138,10 +137,6 @@ export default function EditorSection() {
   const slo3=useTransform(w3,[0,0.04,0.96,1],[0,1,1,0]);
   const sl=[{y:sly0,o:slo0},{y:sly1,o:slo1},{y:sly2,o:slo2},{y:sly3,o:slo3}];
 
-  // CTA
-  const ctaO = useTransform(p, [0.78, 0.88], [0, 1]);
-  const ctaY = useTransform(p, [0.78, 0.88], [20, 0]);
-
   // Portrait: scroll-driven entrance (reliable inside the sticky scroller)
   const portraitO = useTransform(p, [0, 0.03], [0, 1]);
   const portraitScale = useTransform(p, [0, 0.06], [0.93, 1]);
@@ -151,7 +146,7 @@ export default function EditorSection() {
     <section className="relative w-full bg-ink">
 
       {/* ── Section heading (normal flow — integrated like the other sections) ── */}
-      <div className="mx-auto max-w-6xl px-5 pt-24 sm:pt-28">
+      <div className="mx-auto max-w-6xl px-5 pt-28 pb-20 sm:pt-32 sm:pb-28">
         <SectionHeading
           align="center"
           hue="gradient"
@@ -230,16 +225,6 @@ export default function EditorSection() {
               </motion.div>
             </AnimatePresence>
           </div>
-        </motion.div>
-
-        {/* CTA at the end */}
-        <motion.div style={{ opacity: ctaO, y: ctaY }}
-          className="absolute bottom-10 inset-x-0 z-40 flex justify-center px-5">
-          <a href="#pricing"
-            className="group inline-flex items-center gap-2 rounded-full bg-brand px-8 py-4 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.04]">
-            {t.hero.ctaPrimary}
-            <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" aria-hidden />
-          </a>
         </motion.div>
 
         </div>

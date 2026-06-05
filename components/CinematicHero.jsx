@@ -113,29 +113,63 @@ export default function CinematicHero() {
           </motion.div>
         </motion.div>
 
-        {/* ── RIGHT: Before/After comparison ───────────────────────────────── */}
+        {/* ── RIGHT: Stacked rotated cards (real behind · AI front w/ flash) ─── */}
         <motion.div
-          initial={{ opacity: 0, x: 40, scale: 0.94, clipPath: 'inset(0 0 100% 0 round 1.5rem)' }}
-          animate={{ opacity: 1, x: 0, scale: 1, clipPath: 'inset(0 0 0% 0 round 1.5rem)' }}
-          transition={{ duration: 0.95, ease, delay: 0.35 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, ease, delay: 0.3 }}
           className="w-full max-w-sm flex-shrink-0 lg:max-w-md"
         >
-          <AutoTransform
-            before="/hero-real.jpg"
-            after="/hero-ia.jpg"
-            beforeLabel={baLbl.before}
-            afterLabel={baLbl.after}
-            badge="2s"
-            alt="Transformación LetShoot"
-          />
-          <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-widest text-paper-dim">
-            {lang === 'es' ? 'De contenido real a IA en segundos · mantén pulsado para comparar' :
-             lang === 'en' ? 'Real content to AI in seconds · press & hold to compare' :
-             lang === 'pt' ? 'De conteúdo real a IA em segundos · mantém pressionado para comparar' :
-             lang === 'fr' ? 'Du contenu réel à l’IA en secondes · maintiens pour comparer' :
-             lang === 'de' ? 'Von echt zu KI in Sekunden · halten zum Vergleichen' :
-             lang === 'it' ? 'Da contenuto reale a IA in secondi · tieni premuto per confrontare' :
-             '真实内容秒变 AI · 按住对比'}
+          <div className="relative mx-auto flex h-[clamp(380px,54vh,560px)] w-full items-center justify-center">
+
+            {/* Back card — Contenido real (static) */}
+            <motion.div
+              initial={{ opacity: 0, x: 70, rotate: 0 }}
+              animate={{ opacity: 1, x: '-15%', rotate: -7 }}
+              transition={{ duration: 0.9, ease, delay: 0.35 }}
+              whileHover={{ rotate: -10, y: -10, transition: { duration: 0.3 } }}
+              className="absolute z-10 w-[62%] overflow-hidden rounded-3xl"
+              style={{ aspectRatio: '4 / 5', boxShadow: '0 30px 70px -20px rgba(0,0,0,0.6), 0 0 0 1px rgba(var(--overlay)/0.12)' }}
+            >
+              <img src="/hero-real.jpg" alt="Contenido real" className="h-full w-full object-cover" style={{ objectPosition: '50% 12%' }} draggable={false} />
+              <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-white backdrop-blur-md" style={{ background: 'rgba(7,10,15,0.6)' }}>
+                {baLbl.before}
+              </span>
+            </motion.div>
+
+            {/* Front card — Contenido IA with camera-flash transform */}
+            <motion.div
+              initial={{ opacity: 0, x: 70, rotate: 0 }}
+              animate={{ opacity: 1, x: '15%', rotate: 7 }}
+              transition={{ duration: 0.9, ease, delay: 0.5 }}
+              whileHover={{ rotate: 10, y: -10, transition: { duration: 0.3 } }}
+              className="absolute z-20 w-[62%]"
+              style={{ aspectRatio: '4 / 5' }}
+            >
+              <AutoTransform
+                before="/hero-real.jpg"
+                after="/hero-ia.jpg"
+                beforeLabel={baLbl.before}
+                afterLabel={baLbl.after}
+                badge="2s"
+                showLabel={false}
+                stayOnAI
+                alt="Transformación LetShoot"
+              />
+              <span className="pointer-events-none absolute left-3 top-3 z-30 inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-on-accent shadow-glow">
+                {baLbl.after}
+              </span>
+            </motion.div>
+          </div>
+
+          <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-widest text-paper-dim">
+            {lang === 'es' ? 'De contenido real a IA en segundos' :
+             lang === 'en' ? 'Real content to AI in seconds' :
+             lang === 'pt' ? 'De conteúdo real a IA em segundos' :
+             lang === 'fr' ? 'Du contenu réel à l’IA en secondes' :
+             lang === 'de' ? 'Von echtem Content zu KI in Sekunden' :
+             lang === 'it' ? 'Da contenuto reale a IA in secondi' :
+             '真实内容秒变 AI'}
           </p>
         </motion.div>
 
