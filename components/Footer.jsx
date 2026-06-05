@@ -10,10 +10,10 @@ export default function Footer() {
   return (
     <footer className="border-t border-line bg-ink-2">
       <div className="mx-auto max-w-6xl px-5 py-16">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 text-center sm:grid-cols-2 sm:text-left lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
           <div>
             <Logo size="lg" />
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-paper-mute">{f.tagline}</p>
+            <p className="mx-auto mt-4 max-w-xs text-sm leading-relaxed text-paper-mute sm:mx-0">{f.tagline}</p>
           </div>
 
           {f.cols.map((col) => (
