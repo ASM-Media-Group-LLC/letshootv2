@@ -10,13 +10,13 @@ import AutoTransform from './AutoTransform';
 
 // Before/After labels per lang
 const BA_LABELS = {
-  es: { before: 'Foto real', after: 'Foto IA' },
-  en: { before: 'Real photo', after: 'AI photo' },
-  pt: { before: 'Foto real', after: 'Foto IA' },
-  fr: { before: 'Photo réelle', after: 'Photo IA' },
-  de: { before: 'Echtes Foto', after: 'KI-Foto' },
-  it: { before: 'Foto reale', after: 'Foto IA' },
-  zh: { before: '真实照片', after: 'AI 照片' },
+  es: { before: 'Contenido real', after: 'Contenido IA' },
+  en: { before: 'Real content', after: 'AI content' },
+  pt: { before: 'Conteúdo real', after: 'Conteúdo IA' },
+  fr: { before: 'Contenu réel', after: 'Contenu IA' },
+  de: { before: 'Echter Inhalt', after: 'KI-Inhalt' },
+  it: { before: 'Contenuto reale', after: 'Contenuto IA' },
+  zh: { before: '真实内容', after: 'AI 内容' },
 };
 
 const ease = [0.22, 1, 0.36, 1];
@@ -121,21 +121,21 @@ export default function CinematicHero() {
           className="w-full max-w-sm flex-shrink-0 lg:max-w-md"
         >
           <AutoTransform
-            before="/ba-before-1.jpg"
-            after="/ba-after-1.jpg"
+            before="/hero-real.jpg"
+            after="/hero-ia.jpg"
             beforeLabel={baLbl.before}
             afterLabel={baLbl.after}
             badge="2s"
             alt="Transformación LetShoot"
           />
           <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-widest text-paper-dim">
-            {lang === 'es' ? 'Mantén pulsado para ver tu foto real' :
-             lang === 'en' ? 'Press & hold to see your real photo' :
-             lang === 'pt' ? 'Mantém pressionado para ver a foto real' :
-             lang === 'fr' ? 'Maintiens pour voir ta photo réelle' :
-             lang === 'de' ? 'Halten, um dein echtes Foto zu sehen' :
-             lang === 'it' ? 'Tieni premuto per vedere la foto reale' :
-             '按住查看真实照片'}
+            {lang === 'es' ? 'De contenido real a IA en segundos · mantén pulsado para comparar' :
+             lang === 'en' ? 'Real content to AI in seconds · press & hold to compare' :
+             lang === 'pt' ? 'De conteúdo real a IA em segundos · mantém pressionado para comparar' :
+             lang === 'fr' ? 'Du contenu réel à l’IA en secondes · maintiens pour comparer' :
+             lang === 'de' ? 'Von echt zu KI in Sekunden · halten zum Vergleichen' :
+             lang === 'it' ? 'Da contenuto reale a IA in secondi · tieni premuto per confrontare' :
+             '真实内容秒变 AI · 按住对比'}
           </p>
         </motion.div>
 
