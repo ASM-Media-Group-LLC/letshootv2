@@ -41,65 +41,85 @@ const S2 = {
   zh: { l1: '无需摄影棚。', l2: '无需等待。' },
 };
 
-// Burbujas de comentario por etapa (posiciones around the portrait)
-// position: { side: 'left'|'right', y: percent from top }
-const BUBBLES = {
+// Comment bubble texts per stage (positions are language-independent).
+// We keep the side/y positions in a separate array and only translate the text.
+const BUBBLE_LAYOUT = [
+  [{ side: 'left',  y: 18 }, { side: 'right', y: 38 }, { side: 'left',  y: 62 }],
+  [{ side: 'left',  y: 20 }, { side: 'right', y: 42 }, { side: 'left',  y: 68 }],
+  [{ side: 'right', y: 22 }, { side: 'left',  y: 46 }, { side: 'right', y: 70 }],
+  [{ side: 'left',  y: 16 }, { side: 'right', y: 40 }, { side: 'left',  y: 64 }],
+  [{ side: 'right', y: 18 }, { side: 'left',  y: 44 }, { side: 'right', y: 68 }],
+];
+
+const BUBBLE_TEXTS = {
   es: [
-    [
-      { text: 'Rostro real',   side: 'left',  y: 18 },
-      { text: 'Sin filtros',   side: 'right', y: 38 },
-      { text: 'Piel natural',  side: 'left',  y: 62 },
-    ],
-    [
-      { text: 'Smokey eyes',   side: 'left',  y: 20 },
-      { text: 'Labios nude',   side: 'right', y: 42 },
-      { text: 'Glam editorial',side: 'left',  y: 68 },
-    ],
-    [
-      { text: 'Blazer crema',  side: 'right', y: 22 },
-      { text: 'Premium style', side: 'left',  y: 46 },
-      { text: 'Textura tejido',side: 'right', y: 70 },
-    ],
-    [
-      { text: 'New York',      side: 'left',  y: 16 },
-      { text: 'Golden hour',   side: 'right', y: 40 },
-      { text: 'Skyline',       side: 'left',  y: 64 },
-    ],
-    [
-      { text: 'Maldivas',      side: 'right', y: 18 },
-      { text: 'Playa privada', side: 'left',  y: 44 },
-      { text: 'HD · Editorial',side: 'right', y: 68 },
-    ],
+    ['Rostro real',   'Sin filtros',    'Piel natural'],
+    ['Smokey eyes',   'Labios nude',    'Glam editorial'],
+    ['Blazer crema',  'Premium style',  'Textura tejido'],
+    ['New York',      'Golden hour',    'Skyline'],
+    ['Maldivas',      'Playa privada',  'HD · Editorial'],
   ],
   en: [
-    [
-      { text: 'Real face',       side: 'left',  y: 18 },
-      { text: 'No filters',      side: 'right', y: 38 },
-      { text: 'Natural skin',    side: 'left',  y: 62 },
-    ],
-    [
-      { text: 'Smokey eyes',     side: 'left',  y: 20 },
-      { text: 'Nude lips',       side: 'right', y: 42 },
-      { text: 'Editorial glam',  side: 'left',  y: 68 },
-    ],
-    [
-      { text: 'Cream blazer',    side: 'right', y: 22 },
-      { text: 'Premium style',   side: 'left',  y: 46 },
-      { text: 'Fabric texture',  side: 'right', y: 70 },
-    ],
-    [
-      { text: 'New York',        side: 'left',  y: 16 },
-      { text: 'Golden hour',     side: 'right', y: 40 },
-      { text: 'Skyline',         side: 'left',  y: 64 },
-    ],
-    [
-      { text: 'Maldives',        side: 'right', y: 18 },
-      { text: 'Private beach',   side: 'left',  y: 44 },
-      { text: 'HD · Editorial',  side: 'right', y: 68 },
-    ],
+    ['Real face',     'No filters',     'Natural skin'],
+    ['Smokey eyes',   'Nude lips',      'Editorial glam'],
+    ['Cream blazer',  'Premium style',  'Fabric texture'],
+    ['New York',      'Golden hour',    'Skyline'],
+    ['Maldives',      'Private beach',  'HD · Editorial'],
+  ],
+  pt: [
+    ['Rosto real',    'Sem filtros',    'Pele natural'],
+    ['Smokey eyes',   'Lábios nude',    'Glam editorial'],
+    ['Blazer creme',  'Estilo premium', 'Textura do tecido'],
+    ['Nova Iorque',   'Golden hour',    'Skyline'],
+    ['Maldivas',      'Praia privada',  'HD · Editorial'],
+  ],
+  fr: [
+    ['Visage réel',   'Sans filtres',   'Peau naturelle'],
+    ['Smokey eyes',   'Lèvres nude',    'Glam éditorial'],
+    ['Blazer crème',  'Style premium',  'Texture tissu'],
+    ['New York',      'Golden hour',    'Skyline'],
+    ['Maldives',      'Plage privée',   'HD · Éditorial'],
+  ],
+  de: [
+    ['Echtes Gesicht','Ohne Filter',    'Natürliche Haut'],
+    ['Smokey Eyes',   'Nude Lippen',    'Editorial-Glam'],
+    ['Creme-Blazer',  'Premium-Style',  'Stoff-Textur'],
+    ['New York',      'Golden Hour',    'Skyline'],
+    ['Malediven',     'Privatstrand',   'HD · Editorial'],
+  ],
+  it: [
+    ['Volto reale',   'Senza filtri',   'Pelle naturale'],
+    ['Smokey eyes',   'Labbra nude',    'Glam editoriale'],
+    ['Blazer crema',  'Stile premium',  'Texture tessuto'],
+    ['New York',      'Golden hour',    'Skyline'],
+    ['Maldive',       'Spiaggia privata','HD · Editorial'],
+  ],
+  zh: [
+    ['真实面孔',      '无滤镜',         '自然肌肤'],
+    ['烟熏妆',        '裸色唇',         '编辑级妆容'],
+    ['奶油西装',      '高级风格',       '面料质感'],
+    ['纽约',          '黄金时刻',       '天际线'],
+    ['马尔代夫',      '私人海滩',       'HD · 编辑级'],
   ],
 };
-const getBubbles = (l) => BUBBLES[l] || BUBBLES.es;
+
+const getBubbles = (l) => {
+  const texts = BUBBLE_TEXTS[l] || BUBBLE_TEXTS.es;
+  return BUBBLE_LAYOUT.map((stage, i) =>
+    stage.map((pos, j) => ({ ...pos, text: texts[i]?.[j] || '' }))
+  );
+};
+
+// ── Finale phase copy (closing CTA at the end of the hero) ──
+const FINALE = {
+  es: { pill: 'Tu sesión está lista',  pre: 'Ahora es ',         hi: 'tu turno.',          body: 'Crea fotos y videos de nivel editorial desde cualquier lugar. Sin estudio. Sin esperas.' },
+  en: { pill: 'Your session is ready', pre: "Now it's ",         hi: 'your turn.',         body: 'Create editorial-level photos and videos from anywhere. No studio. No waiting.' },
+  pt: { pill: 'A tua sessão está pronta', pre: 'Agora é a ',     hi: 'tua vez.',           body: 'Cria fotos e vídeos de nível editorial de qualquer lugar. Sem estúdio. Sem esperas.' },
+  fr: { pill: 'Ta séance est prête',   pre: 'À toi de ',         hi: 'jouer.',             body: "Crée des photos et vidéos de niveau éditorial depuis n'importe où. Sans studio. Sans attente." },
+  de: { pill: 'Deine Session ist bereit', pre: 'Jetzt bist ',    hi: 'du dran.',           body: 'Erstelle Editorial-Fotos und -Videos von überall. Kein Studio. Kein Warten.' },
+  it: { pill: 'La tua sessione è pronta', pre: 'Ora tocca a ',   hi: 'te.',                body: 'Crea foto e video di livello editoriale da ovunque. Nessuno studio. Nessuna attesa.' },
+  zh: { pill: '你的会话已就绪',          pre: '现在轮到 ',         hi: '你了。',              body: '从任何地方创建编辑级别的照片和视频。无需摄影棚。无需等待。' },
+};
 
 const ease = [0.22, 1, 0.36, 1];
 const WIPES = [[0.36,0.50],[0.50,0.62],[0.62,0.72],[0.72,0.83]];
@@ -167,6 +187,7 @@ export default function CinematicHero() {
   const { t, lang } = useLang();
   const s1 = S1[lang] || S1.es;
   const s2 = S2[lang] || S2.es;
+  const finale = FINALE[lang] || FINALE.es;
   const bubblesByStage = getBubbles(lang);
 
   const ref  = useRef(null);
@@ -439,14 +460,13 @@ export default function CinematicHero() {
         >
           <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-brand">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
-            Tu sesión está lista
+            {finale.pill}
           </span>
           <h2 className="headline text-center text-[clamp(2.5rem,7vw,5.5rem)] leading-[1.05] text-paper">
-            Ahora es <span className="text-rainbow inline-block" style={{ paddingBlock: '0.1em' }}>tu turno.</span>
+            {finale.pre}<span className="text-rainbow inline-block" style={{ paddingBlock: '0.1em' }}>{finale.hi}</span>
           </h2>
           <p className="mt-5 max-w-xl text-center text-base leading-relaxed text-paper-mute sm:text-lg">
-            Crea fotos y videos de nivel editorial desde cualquier lugar.
-            Sin estudio. Sin esperas.
+            {finale.body}
           </p>
           <div className="pointer-events-auto mt-8 flex flex-wrap items-center justify-center gap-3">
             <a
