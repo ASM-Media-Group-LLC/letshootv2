@@ -79,6 +79,86 @@ const AGENCY = {
     yourPrice: 'Your price', creators: 'Creators', volumeTitle: 'Volume pricing (per creator)', perMonth: '/mo', cta: 'Talk to sales',
     fine: 'Cancel anytime. Prices exclude applicable taxes.',
   },
+  pt: {
+    desc: 'Produção de IA centralizada para agências que gerem vários criadores. Preço por volume.',
+    planDesc: { agency: 'Produção centralizada para agências que gerem vários criadores.', advanced: 'Tudo do Agency mais direção de arte avançada, branding à medida e suporte prioritário.' },
+    featuresTitle: 'Incluído', advancedTitle: 'O Agency Advanced acrescenta',
+    features: [
+      { t: 'Criadores ilimitados', tag: 'Exclusivo' }, { t: 'Fotos IA ilimitadas', tag: 'Sem limite' }, { t: 'Adiciona ou remove criadores', tag: 'Flexível' },
+      { t: 'Dashboard de agência centralizado' }, { t: 'Relatórios em tempo real' }, { t: 'Produção 24/7 (IA + equipa)' },
+      { t: 'Vídeos IA + reels' }, { t: 'Localizações premium' }, { t: 'Licença comercial' }, { t: 'Início imediato' },
+      { t: 'Renders prioritários' }, { t: 'Gestão de talento' },
+    ],
+    advancedFeatures: [
+      { t: 'Direção de arte avançada', tag: 'Avançado' }, { t: 'Branding e estilos à medida', tag: 'Avançado' }, { t: 'Suporte prioritário', tag: 'Exclusivo' },
+    ],
+    yourPrice: 'O teu preço', creators: 'Criadores', volumeTitle: 'Preço por volume (por criador)', perMonth: '/mês', cta: 'Falar com vendas',
+    fine: 'Cancela quando quiseres. Preços sem impostos aplicáveis.',
+  },
+  fr: {
+    desc: 'Production IA centralisée pour les agences gérant plusieurs créateurs. Tarif dégressif.',
+    planDesc: { agency: 'Production centralisée pour les agences gérant plusieurs créateurs.', advanced: 'Tout d’Agency plus direction artistique avancée, branding sur mesure et support prioritaire.' },
+    featuresTitle: 'Inclus', advancedTitle: 'Agency Advanced ajoute',
+    features: [
+      { t: 'Créateurs illimités', tag: 'Exclusif' }, { t: 'Photos IA illimitées', tag: 'Sans limite' }, { t: 'Ajoute ou retire des créateurs', tag: 'Flexible' },
+      { t: 'Tableau de bord d’agence centralisé' }, { t: 'Rapports en temps réel' }, { t: 'Production 24/7 (IA + équipe)' },
+      { t: 'Vidéos IA + reels' }, { t: 'Lieux premium' }, { t: 'Licence commerciale' }, { t: 'Démarrage immédiat' },
+      { t: 'Rendus prioritaires' }, { t: 'Gestion des talents' },
+    ],
+    advancedFeatures: [
+      { t: 'Direction artistique avancée', tag: 'Avancé' }, { t: 'Branding et styles sur mesure', tag: 'Avancé' }, { t: 'Support prioritaire', tag: 'Exclusif' },
+    ],
+    yourPrice: 'Ton prix', creators: 'Créateurs', volumeTitle: 'Tarif dégressif (par créateur)', perMonth: '/mois', cta: 'Contacter les ventes',
+    fine: 'Annule quand tu veux. Prix hors taxes applicables.',
+  },
+  de: {
+    desc: 'Zentralisierte KI-Produktion für Agenturen mit mehreren Creators. Mengenrabatt.',
+    planDesc: { agency: 'Zentralisierte Produktion für Agenturen mit mehreren Creators.', advanced: 'Alles aus Agency plus erweiterte Art-Direction, individuelles Branding und Prioritäts-Support.' },
+    featuresTitle: 'Enthalten', advancedTitle: 'Agency Advanced ergänzt',
+    features: [
+      { t: 'Unbegrenzte Creators', tag: 'Exklusiv' }, { t: 'Unbegrenzte KI-Fotos', tag: 'Unbegrenzt' }, { t: 'Creators hinzufügen/entfernen', tag: 'Flexibel' },
+      { t: 'Zentrales Agentur-Dashboard' }, { t: 'Echtzeit-Reporting' }, { t: '24/7-Produktion (KI + Team)' },
+      { t: 'KI-Videos + Reels' }, { t: 'Premium-Locations' }, { t: 'Kommerzielle Lizenz' }, { t: 'Sofortiger Start' },
+      { t: 'Prioritäts-Renders' }, { t: 'Talent-Management' },
+    ],
+    advancedFeatures: [
+      { t: 'Erweiterte Art-Direction', tag: 'Erweitert' }, { t: 'Individuelles Branding & Styles', tag: 'Erweitert' }, { t: 'Prioritäts-Support', tag: 'Exklusiv' },
+    ],
+    yourPrice: 'Dein Preis', creators: 'Creators', volumeTitle: 'Mengenpreis (pro Creator)', perMonth: '/Mon.', cta: 'Vertrieb kontaktieren',
+    fine: 'Jederzeit kündbar. Preise zzgl. anfallender Steuern.',
+  },
+  it: {
+    desc: 'Produzione IA centralizzata per agenzie che gestiscono più creator. Prezzo a volume.',
+    planDesc: { agency: 'Produzione centralizzata per agenzie che gestiscono più creator.', advanced: 'Tutto di Agency più art direction avanzata, branding su misura e supporto prioritario.' },
+    featuresTitle: 'Incluso', advancedTitle: 'Agency Advanced aggiunge',
+    features: [
+      { t: 'Creator illimitati', tag: 'Esclusivo' }, { t: 'Foto IA illimitate', tag: 'Illimitate' }, { t: 'Aggiungi o rimuovi creator', tag: 'Flessibile' },
+      { t: 'Dashboard agenzia centralizzata' }, { t: 'Report in tempo reale' }, { t: 'Produzione 24/7 (IA + team)' },
+      { t: 'Video IA + reel' }, { t: 'Location premium' }, { t: 'Licenza commerciale' }, { t: 'Avvio immediato' },
+      { t: 'Render prioritari' }, { t: 'Gestione talenti' },
+    ],
+    advancedFeatures: [
+      { t: 'Art direction avanzata', tag: 'Avanzato' }, { t: 'Branding e stili su misura', tag: 'Avanzato' }, { t: 'Supporto prioritario', tag: 'Esclusivo' },
+    ],
+    yourPrice: 'Il tuo prezzo', creators: 'Creator', volumeTitle: 'Prezzo a volume (per creator)', perMonth: '/mese', cta: 'Contatta le vendite',
+    fine: 'Disdici quando vuoi. Prezzi IVA esclusa.',
+  },
+  zh: {
+    desc: '为管理多位创作者的代理机构提供集中式 AI 制作，按量计价。',
+    planDesc: { agency: '为管理多位创作者的代理机构提供集中式制作。', advanced: '包含 Agency 的全部，外加高级艺术指导、定制品牌与优先支持。' },
+    featuresTitle: '包含', advancedTitle: 'Agency Advanced 额外提供',
+    features: [
+      { t: '无限创作者', tag: '专属' }, { t: '无限 AI 照片', tag: '无限' }, { t: '随时增减创作者', tag: '灵活' },
+      { t: '集中式代理仪表盘' }, { t: '实时报告' }, { t: '7×24 制作（AI + 团队）' },
+      { t: 'AI 视频 + Reels' }, { t: '高级场景' }, { t: '商用授权' }, { t: '立即开始' },
+      { t: '优先渲染' }, { t: '人才管理' },
+    ],
+    advancedFeatures: [
+      { t: '高级艺术指导', tag: '进阶' }, { t: '定制品牌与风格', tag: '进阶' }, { t: '优先支持', tag: '专属' },
+    ],
+    yourPrice: '你的价格', creators: '创作者', volumeTitle: '按量计价（每位创作者）', perMonth: '/月', cta: '联系销售',
+    fine: '随时取消。价格不含适用税费。',
+  },
 };
 
 const BUSINESS = {
@@ -93,6 +173,36 @@ const BUSINESS = {
     sub: 'Tailored AI production for companies that need custom workflows, SLAs and dedicated support.',
     featuresTitle: 'Includes', price: 'Custom', cta: 'Request a quote',
     features: ['Flexible features', 'White-label reporting', 'Team access', 'API & custom integrations', 'Custom onboarding', 'Dedicated support', 'SLA guarantees', 'Corporate billing'],
+  },
+  pt: {
+    desc: 'Cobertura à medida para marcas, plataformas e produtoras com fluxos próprios.',
+    sub: 'Produção de IA personalizada para empresas que precisam de fluxos à medida, SLA e suporte dedicado.',
+    featuresTitle: 'Inclui', price: 'À medida', cta: 'Pedir orçamento',
+    features: ['Funções à medida', 'Relatórios white-label', 'Acesso de equipa', 'Integrações e API', 'Onboarding personalizado', 'Suporte dedicado', 'Garantias SLA', 'Faturação corporativa'],
+  },
+  fr: {
+    desc: 'Couverture sur mesure pour marques, plateformes et studios avec workflows propres.',
+    sub: 'Production IA personnalisée pour les entreprises ayant besoin de workflows sur mesure, de SLA et d’un support dédié.',
+    featuresTitle: 'Comprend', price: 'Sur mesure', cta: 'Demander un devis',
+    features: ['Fonctions sur mesure', 'Rapports en marque blanche', 'Accès équipe', 'Intégrations et API', 'Onboarding personnalisé', 'Support dédié', 'Garanties SLA', 'Facturation entreprise'],
+  },
+  de: {
+    desc: 'Maßgeschneiderte Abdeckung für Marken, Plattformen und Studios mit eigenen Workflows.',
+    sub: 'Individuelle KI-Produktion für Unternehmen mit maßgeschneiderten Workflows, SLAs und dediziertem Support.',
+    featuresTitle: 'Enthält', price: 'Individuell', cta: 'Angebot anfordern',
+    features: ['Flexible Funktionen', 'White-Label-Reporting', 'Team-Zugang', 'Integrationen & API', 'Individuelles Onboarding', 'Dedizierter Support', 'SLA-Garantien', 'Firmen-Abrechnung'],
+  },
+  it: {
+    desc: 'Copertura su misura per brand, piattaforme e studi con workflow propri.',
+    sub: 'Produzione IA personalizzata per aziende che necessitano di workflow su misura, SLA e supporto dedicato.',
+    featuresTitle: 'Include', price: 'Su misura', cta: 'Richiedi un preventivo',
+    features: ['Funzioni su misura', 'Report white-label', 'Accesso team', 'Integrazioni e API', 'Onboarding personalizzato', 'Supporto dedicato', 'Garanzie SLA', 'Fatturazione aziendale'],
+  },
+  zh: {
+    desc: '为拥有自有流程的品牌、平台与制作方提供定制化覆盖。',
+    sub: '为需要定制流程、SLA 与专属支持的企业提供量身定制的 AI 制作。',
+    featuresTitle: '包含', price: '定制', cta: '申请报价',
+    features: ['定制功能', '白标报告', '团队访问', '集成与 API', '定制入驻', '专属支持', 'SLA 保证', '企业账单'],
   },
 };
 
