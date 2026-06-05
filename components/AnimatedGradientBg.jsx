@@ -44,6 +44,7 @@ export default function AnimatedGradientBg({
   containerStyle  = {},
   topOffset       = 0,
   containerClassName = '',
+  interactive     = true,   // radial center drifts toward the cursor
 }) {
   // Watch the [data-theme] attribute on <html> so we can swap palettes live.
   const [theme, setTheme] = useState('dark');
@@ -62,6 +63,21 @@ export default function AnimatedGradientBg({
   }
 
   const containerRef = useRef(null);
+  // Radial-gradient center: target (tx,ty) follows the cursor, current (cx,cy) lerps toward it.
+  const centerRef = useRef({ tx: 50, ty: 20, cx: 50, cy: 20 });
+
+  // Cursor tracking — drift the gradient center toward the pointer.
+  useEffect(() => {
+    if (!interactive) return;
+    const onMove = (e) => {
+      const nx = e.clientX / window.innerWidth - 0.5;   // -0.5 .. 0.5
+      const ny = e.clientY / window.innerHeight - 0.5;
+      centerRef.current.tx = 50 + nx * 46;              // ~27% .. 73%
+      centerRef.current.ty = 20 + ny * 34;              // ~3% .. 37%
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onMove);
+  }, [interactive]);
 
   useEffect(() => {
     let raf;
@@ -74,8 +90,13 @@ export default function AnimatedGradientBg({
       if (!Breathing) dir = 0;
       width += dir * animationSpeed;
 
+      // Ease the gradient center toward the cursor target
+      const c = centerRef.current;
+      c.cx += (c.tx - c.cx) * 0.06;
+      c.cy += (c.ty - c.cy) * 0.06;
+
       const stops = gradientStops.map((s, i) => `${colors[i]} ${s}%`).join(', ');
-      const gradient = `radial-gradient(${width}% ${width + topOffset}% at 50% 20%, ${stops})`;
+      const gradient = `radial-gradient(${width}% ${width + topOffset}% at ${c.cx.toFixed(2)}% ${c.cy.toFixed(2)}%, ${stops})`;
       if (containerRef.current) containerRef.current.style.background = gradient;
       raf = requestAnimationFrame(tick);
     };
