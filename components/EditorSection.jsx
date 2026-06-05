@@ -5,6 +5,7 @@ import { motion, AnimatePresence, useScroll, useTransform, useMotionTemplate } f
 import { ArrowRight } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import EditorChrome, { EditorBg } from './EditorChrome';
+import SectionHeading from './SectionHeading';
 
 // ── Scroll-driven AI editor section ─────────────────────────────────────────
 // h-[520vh] sticky — shows the 5-stage photo transformation with the editor UI.
@@ -75,13 +76,13 @@ const LABELS = {
 };
 
 const TITLES = {
-  es: { eyebrow: 'Detrás de cámaras', title: 'Así funciona el sistema' },
-  en: { eyebrow: 'Behind the scenes', title: 'How the system works' },
-  pt: { eyebrow: 'Nos bastidores', title: 'Como funciona o sistema' },
-  fr: { eyebrow: 'Dans les coulisses', title: 'Comment fonctionne le système' },
-  de: { eyebrow: 'Hinter den Kulissen', title: 'So funktioniert das System' },
-  it: { eyebrow: 'Dietro le quinte', title: 'Come funziona il sistema' },
-  zh: { eyebrow: '幕后', title: '系统如何运作' },
+  es: { label: 'Detrás de cámaras', titleA: 'Así funciona', highlight: 'la magia', sub: 'Sube una selfie y la IA reconstruye maquillaje, outfit y locación, paso a paso.' },
+  en: { label: 'Behind the scenes', titleA: 'How the', highlight: 'magic works', sub: 'Upload a selfie and the AI rebuilds makeup, outfit and location, step by step.' },
+  pt: { label: 'Nos bastidores', titleA: 'Como funciona', highlight: 'a magia', sub: 'Envia uma selfie e a IA recria maquilhagem, outfit e localização, passo a passo.' },
+  fr: { label: 'Dans les coulisses', titleA: 'La magie,', highlight: 'expliquée', sub: 'Envoie un selfie et l’IA recrée maquillage, tenue et lieu, étape par étape.' },
+  de: { label: 'Hinter den Kulissen', titleA: 'So funktioniert', highlight: 'die Magie', sub: 'Lade ein Selfie hoch und die KI baut Make-up, Outfit und Location Schritt für Schritt auf.' },
+  it: { label: 'Dietro le quinte', titleA: 'Come funziona', highlight: 'la magia', sub: 'Carica un selfie e l’IA ricrea trucco, outfit e location, passo dopo passo.' },
+  zh: { label: '幕后', titleA: '魔法', highlight: '如何运作', sub: '上传一张自拍，AI 逐步重建妆容、服装与场景。' },
 };
 
 const ease = [0.22, 1, 0.36, 1];
@@ -141,34 +142,32 @@ export default function EditorSection() {
   const ctaO = useTransform(p, [0.78, 0.88], [0, 1]);
   const ctaY = useTransform(p, [0.78, 0.88], [20, 0]);
 
-  // Title: scroll-driven entrance, then fades out as the transformation kicks in
-  const titleO = useTransform(p, [0, 0.025, 0.09, 0.14], [0, 1, 1, 0]);
-  const titleY = useTransform(p, [0, 0.04, 0.14], [28, 0, -16]);
-
   // Portrait: scroll-driven entrance (reliable inside the sticky scroller)
   const portraitO = useTransform(p, [0, 0.03], [0, 1]);
   const portraitScale = useTransform(p, [0, 0.06], [0.93, 1]);
   const portraitY = useTransform(p, [0, 0.05], [28, 0]);
 
   return (
-    <section ref={ref} className="relative h-[520vh] bg-ink">
-      <div className="sticky top-0 h-screen w-full overflow-hidden bg-ink">
+    <section className="relative w-full bg-ink">
+
+      {/* ── Section heading (normal flow — integrated like the other sections) ── */}
+      <div className="mx-auto max-w-6xl px-5 pt-24 sm:pt-28">
+        <SectionHeading
+          align="center"
+          hue="gradient"
+          label={titles.label}
+          titleA={titles.titleA}
+          highlight={titles.highlight}
+          sub={titles.sub}
+        />
+      </div>
+
+      {/* ── Scroll-scrubbed editor canvas ─────────────────────────────────────── */}
+      <div ref={ref} className="relative h-[460vh]">
+        <div className="sticky top-0 h-screen w-full overflow-hidden">
 
         {/* Editor workspace background */}
         <EditorBg />
-
-        {/* Section title — static wrapper centers it; inner motion handles entrance/fade */}
-        <div className="pointer-events-none absolute left-1/2 top-[8%] z-40 w-full max-w-xl -translate-x-1/2 px-6 text-center">
-          <motion.div style={{ opacity: titleO, y: titleY }}>
-            <span className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 font-mono text-[10px] uppercase tracking-widest text-brand">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
-              {titles.eyebrow}
-            </span>
-            <h2 className="headline mt-3 text-[clamp(1.6rem,3.4vw,2.6rem)] leading-tight text-paper">
-              {titles.title}
-            </h2>
-          </motion.div>
-        </div>
 
         {/* Editor chrome — constrained to content margins so panels stay near center */}
         <div className="absolute inset-0 z-20">
@@ -243,6 +242,7 @@ export default function EditorSection() {
           </a>
         </motion.div>
 
+        </div>
       </div>
     </section>
   );
