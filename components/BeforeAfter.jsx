@@ -11,7 +11,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 // • Drag the handle (or anywhere with intent) → manual control.
 // Click vs drag is detected by movement threshold during the pointer down→up.
 export default function BeforeAfter({ before, after, beforeLabel, afterLabel, alt = '' }) {
-  const [pos, setPos] = useState(48);           // ← starts half-open (comparison is obvious); first tap → full AI
+  const [pos, setPos] = useState(20);           // ← starts slightly open (peek of AI on the left); first tap → full AI
   const [dragging, setDragging] = useState(false);
   const [animating, setAnimating] = useState(false);
   const containerRef = useRef(null);
