@@ -6,16 +6,17 @@
 import { motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 
-// Cinematic dark palette (default)
+// Cinematic dark palette (default) — muted/desaturated so it doesn't read as
+// "all electric blue". Subtle navy → steel-blue → violet, dark overall.
 const DARK_COLORS = [
-  '#020308',  // pure dark center
-  '#0A1F4A',  // deep navy
-  '#1B4FBF',  // electric blue
-  '#00B1F6',  // brand cyan (logo)
-  '#7B5BFF',  // violet bridge
-  '#FF3D7F',  // vivid pink
-  '#FF9A5A',  // warm coral
-  '#FFD600',  // gold edge
+  '#05070E',  // near-black center
+  '#0C1628',  // deep navy
+  '#162A47',  // muted navy-blue
+  '#26446B',  // steel blue (replaces electric cyan)
+  '#3C4566',  // blue-slate bridge
+  '#473E5C',  // muted violet
+  '#221F30',  // dark plum
+  '#0A0C12',  // dark edge
 ];
 
 // Soft, cohesive blue-grey palette for light mode — muted so the glow stays

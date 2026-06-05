@@ -3,22 +3,9 @@
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { useLang } from '@/app/providers';
+import Particles from './Particles';
 
 const ease = [0.22, 1, 0.36, 1];
-
-// Deterministic floating blue particles (no Math.random → SSR-safe)
-const BLUES = ['rgba(0,177,246,1)', 'rgba(127,224,255,1)', 'rgba(10,132,255,1)'];
-const PARTICLES = Array.from({ length: 28 }, (_, i) => ({
-  x: (i * 36.7) % 100,
-  y: (i * 21.3) % 100,
-  size: 2 + (i % 4),              // 2–5px
-  dur: 9 + (i % 7) * 1.8,         // 9–19.8s
-  delay: (i % 9) * 0.7,           // 0–5.6s
-  drift: 30 + (i % 5) * 14,       // 30–86px upward
-  sway: ((i % 3) - 1) * 18,       // -18 / 0 / 18px
-  op: 0.35 + (i % 4) * 0.14,      // 0.35–0.77
-  color: BLUES[i % BLUES.length],
-}));
 
 export default function FinalCta() {
   const { t } = useLang();
@@ -41,22 +28,8 @@ export default function FinalCta() {
         <div className="pointer-events-none absolute -right-[10%] bottom-[-20%] h-[360px] w-[360px] rounded-full" aria-hidden
           style={{ background: 'radial-gradient(circle, rgba(127,224,255,0.14), transparent 70%)' }} />
 
-        {/* Particles */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-          {PARTICLES.map((pt, i) => (
-            <motion.span
-              key={i}
-              className="absolute rounded-full"
-              style={{
-                left: `${pt.x}%`, top: `${pt.y}%`, width: pt.size, height: pt.size,
-                background: pt.color,
-                boxShadow: `0 0 ${pt.size * 2.5}px ${pt.size * 0.8}px ${pt.color}`,
-              }}
-              animate={{ y: [0, -pt.drift, 0], x: [0, pt.sway, 0], opacity: [0, pt.op, pt.op, 0] }}
-              transition={{ duration: pt.dur, ease: 'easeInOut', repeat: Infinity, delay: pt.delay }}
-            />
-          ))}
-        </div>
+        {/* Floating particles (drift with the cursor) */}
+        <Particles interactive parallax={18} />
 
         {/* Soft inner vignette to keep the copy readable */}
         <div

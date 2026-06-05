@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import AnimatedGradientBg from './AnimatedGradientBg';
+import Particles from './Particles';
 
 // ── Simple hero: CTA left + before/after comparison right ─────────────────────
 
@@ -29,6 +30,8 @@ export default function CinematicHero() {
       {/* Animated gradient backdrop */}
       <AnimatedGradientBg topOffset={20} />
       <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-transparent via-transparent to-ink" aria-hidden />
+      {/* Floating particles that drift with the cursor */}
+      <Particles className="z-[2]" parallax={30} />
 
       {/* Content — pt accounts for the fixed nav so nothing hugs the topbar */}
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col-reverse items-center justify-center gap-12 px-5 pb-20 pt-32 sm:pt-36 lg:flex-row lg:gap-16 lg:py-32">
