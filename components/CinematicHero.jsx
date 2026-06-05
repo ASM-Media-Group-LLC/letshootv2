@@ -122,46 +122,49 @@ export default function CinematicHero() {
           <div className="relative grid grid-cols-2 gap-3 sm:gap-4">
             {/* Real */}
             <motion.figure
-              initial={{ opacity: 0, y: 28 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease, delay: 0.4 }}
+              initial={{ opacity: 0, y: 36, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.8, ease, delay: 0.55 }}
               className="relative overflow-hidden rounded-3xl"
               style={{ aspectRatio: '4 / 5', boxShadow: '0 30px 70px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--overlay)/0.12)' }}
             >
               <img src="/hero-real.jpg" alt="Contenido real" className="h-full w-full object-cover" style={{ objectPosition: '50% 12%' }} draggable={false} />
-              <figcaption className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-white backdrop-blur-md" style={{ background: 'rgba(7,10,15,0.6)' }}>
+              <motion.figcaption
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease, delay: 0.9 }}
+                className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-white backdrop-blur-md"
+                style={{ background: 'rgba(7,10,15,0.6)' }}
+              >
                 {baLbl.before}
-              </figcaption>
+              </motion.figcaption>
             </motion.figure>
 
             {/* AI */}
             <motion.figure
-              initial={{ opacity: 0, y: 28 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease, delay: 0.55 }}
+              initial={{ opacity: 0, y: 36, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.8, ease, delay: 0.95 }}
               className="relative overflow-hidden rounded-3xl"
               style={{ aspectRatio: '4 / 5', boxShadow: '0 30px 70px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--overlay)/0.12)' }}
             >
               <img src="/hero-ia.jpg" alt="Contenido IA" className="h-full w-full object-cover" style={{ objectPosition: '50% 12%' }} draggable={false} />
-              <figcaption className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-on-accent shadow-glow">
+              <motion.figcaption
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease, delay: 1.3 }}
+                className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-on-accent shadow-glow"
+              >
                 {baLbl.after}
-              </figcaption>
+              </motion.figcaption>
             </motion.figure>
-
-            {/* Center arrow badge — before → after */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.6 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1], delay: 0.8 }}
-              className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
-            >
-              <div className="grid h-10 w-10 place-items-center rounded-full bg-brand text-on-accent shadow-glow ring-4 ring-ink">
-                <ArrowRight size={18} strokeWidth={2.5} aria-hidden />
-              </div>
-            </motion.div>
           </div>
 
-          <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-widest text-paper-dim">
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease, delay: 1.45 }}
+            className="mt-5 text-center font-mono text-[10px] uppercase tracking-widest text-paper-dim">
             {lang === 'es' ? 'De contenido real a IA en segundos' :
              lang === 'en' ? 'Real content to AI in seconds' :
              lang === 'pt' ? 'De conteúdo real a IA em segundos' :
@@ -169,7 +172,7 @@ export default function CinematicHero() {
              lang === 'de' ? 'Von echtem Content zu KI in Sekunden' :
              lang === 'it' ? 'Da contenuto reale a IA in secondi' :
              '真实内容秒变 AI'}
-          </p>
+          </motion.p>
         </motion.div>
 
       </div>
