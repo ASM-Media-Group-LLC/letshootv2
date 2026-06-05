@@ -64,16 +64,6 @@ export default function CinematicHero() {
             </span>
           </motion.h1>
 
-          {/* Body */}
-          <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease, delay: 0.32 }}
-            className="mt-6 max-w-lg text-lg leading-relaxed text-paper-mute"
-          >
-            {t.hero.body}
-          </motion.p>
-
           {/* CTAs */}
           <motion.div
             initial={{ opacity: 0, y: 14 }}
