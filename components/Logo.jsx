@@ -22,9 +22,10 @@ export default function Logo({ size = 'base', className = '' }) {
         height: `${h}px`,
         width: 'auto',
         display: 'inline-block',
-        // In light mode, the white "hoot" text needs a subtle shadow to be readable
+        // The "hoot" part is white — needs dark shadow in light mode to be readable.
+        // In dark mode it shows naturally on dark backgrounds.
         filter: theme === 'light'
-          ? 'drop-shadow(0 0 1px rgba(14,20,30,0.45)) drop-shadow(0 0 2px rgba(14,20,30,0.25))'
+          ? 'drop-shadow(0 0 2px rgba(7,10,15,0.7)) drop-shadow(0 1px 3px rgba(7,10,15,0.5))'
           : 'none',
       }}
       draggable={false}
