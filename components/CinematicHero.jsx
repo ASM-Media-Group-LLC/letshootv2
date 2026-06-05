@@ -31,7 +31,7 @@ export default function CinematicHero() {
       <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-transparent via-transparent to-ink" aria-hidden />
 
       {/* Content — pt accounts for the fixed nav so nothing hugs the topbar */}
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center gap-12 px-5 pb-20 pt-32 sm:pt-36 lg:flex-row lg:gap-16 lg:py-32">
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col-reverse items-center justify-center gap-12 px-5 pb-20 pt-32 sm:pt-36 lg:flex-row lg:gap-16 lg:py-32">
 
         {/* ── LEFT: CTA ────────────────────────────────────────────────────── */}
         <motion.div

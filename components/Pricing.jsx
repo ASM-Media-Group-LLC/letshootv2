@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { Check, Plus, Minus, ArrowRight } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import SectionHeading from './SectionHeading';
 
@@ -23,6 +23,78 @@ const PERIODS = [
   { key: 'q', mult: 0.85, off: 15 },
   { key: 'a', mult: 0.75, off: 25 },
 ];
+
+// Top-level tabs
+const TABS = {
+  es: { creator: 'Creador', agency: 'Agencia', business: 'Empresa' },
+  en: { creator: 'Creator', agency: 'Agency', business: 'Business' },
+  pt: { creator: 'Criador', agency: 'Agência', business: 'Empresa' },
+  fr: { creator: 'Créateur', agency: 'Agence', business: 'Entreprise' },
+  de: { creator: 'Creator', agency: 'Agentur', business: 'Unternehmen' },
+  it: { creator: 'Creator', agency: 'Agenzia', business: 'Azienda' },
+  zh: { creator: '创作者', agency: '代理', business: '企业' },
+};
+
+// Agency: volume pricing per creator (language-independent)
+const AGENCY_PLANS = [
+  { key: 'agency',   name: 'Agency',          volume: [[3, 99.99], [5, 82.99], [8, 60.99], [Infinity, 59.99]] },
+  { key: 'advanced', name: 'Agency Advanced', volume: [[3, 116.99], [5, 91.99], [8, 75.99], [Infinity, 68.99]] },
+];
+function perCreator(plan, n) {
+  for (const [max, price] of plan.volume) if (n <= max) return price;
+  return plan.volume[plan.volume.length - 1][1];
+}
+
+// Agency / Business copy (es + en; others fall back to en)
+const AGENCY = {
+  es: {
+    desc: 'Producción de IA centralizada para agencias que gestionan varios creadores. Precio por volumen.',
+    planDesc: { agency: 'Producción centralizada para agencias que gestionan varios creadores.', advanced: 'Todo lo de Agency más dirección de arte avanzada, branding a medida y soporte prioritario.' },
+    featuresTitle: 'Incluido', advancedTitle: 'Agency Advanced añade',
+    features: [
+      { t: 'Creadores ilimitados', tag: 'Exclusivo' }, { t: 'Fotos IA ilimitadas', tag: 'Sin límite' }, { t: 'Añade o quita creadores', tag: 'Flexible' },
+      { t: 'Dashboard de agencia centralizado' }, { t: 'Reportes en tiempo real' }, { t: 'Producción 24/7 (IA + equipo)' },
+      { t: 'Videos IA + reels' }, { t: 'Locaciones premium' }, { t: 'Licencia comercial' }, { t: 'Inicio inmediato' },
+      { t: 'Renders prioritarios' }, { t: 'Gestión de talento' },
+    ],
+    advancedFeatures: [
+      { t: 'Dirección de arte avanzada', tag: 'Avanzado' }, { t: 'Branding y estilos a medida', tag: 'Avanzado' }, { t: 'Soporte prioritario', tag: 'Exclusivo' },
+    ],
+    yourPrice: 'Tu precio', creators: 'Creadores', volumeTitle: 'Precio por volumen (por creador)', perMonth: '/mes', cta: 'Hablar con ventas',
+    fine: 'Cancela cuando quieras. Precios sin impuestos aplicables.',
+  },
+  en: {
+    desc: 'Centralized AI production for agencies managing multiple creators. Volume pricing.',
+    planDesc: { agency: 'Centralized production for agencies managing multiple creators.', advanced: 'Everything in Agency plus advanced art direction, custom branding and priority support.' },
+    featuresTitle: 'Included', advancedTitle: 'Agency Advanced adds',
+    features: [
+      { t: 'Unlimited creators', tag: 'Exclusive' }, { t: 'Unlimited AI photos', tag: 'Uncapped' }, { t: 'Add or remove creators', tag: 'Flexible' },
+      { t: 'Centralized agency dashboard' }, { t: 'Real-time reporting' }, { t: '24/7 production (AI + team)' },
+      { t: 'AI videos + reels' }, { t: 'Premium locations' }, { t: 'Commercial license' }, { t: 'Immediate start' },
+      { t: 'Priority renders' }, { t: 'Talent management' },
+    ],
+    advancedFeatures: [
+      { t: 'Advanced art direction', tag: 'Advanced' }, { t: 'Custom branding & styles', tag: 'Advanced' }, { t: 'Priority support', tag: 'Exclusive' },
+    ],
+    yourPrice: 'Your price', creators: 'Creators', volumeTitle: 'Volume pricing (per creator)', perMonth: '/mo', cta: 'Talk to sales',
+    fine: 'Cancel anytime. Prices exclude applicable taxes.',
+  },
+};
+
+const BUSINESS = {
+  es: {
+    desc: 'Cobertura a medida para marcas, plataformas y productoras con flujos propios.',
+    sub: 'Producción de IA personalizada para empresas que necesitan flujos a medida, SLA y soporte dedicado.',
+    featuresTitle: 'Incluye', price: 'A medida', cta: 'Solicitar cotización',
+    features: ['Funciones a medida', 'Reportes white-label', 'Acceso de equipo', 'Integraciones y API', 'Onboarding personalizado', 'Soporte dedicado', 'Garantías SLA', 'Facturación corporativa'],
+  },
+  en: {
+    desc: 'Custom coverage for brands, platforms and studios with bespoke workflows.',
+    sub: 'Tailored AI production for companies that need custom workflows, SLAs and dedicated support.',
+    featuresTitle: 'Includes', price: 'Custom', cta: 'Request a quote',
+    features: ['Flexible features', 'White-label reporting', 'Team access', 'API & custom integrations', 'Custom onboarding', 'Dedicated support', 'SLA guarantees', 'Corporate billing'],
+  },
+};
 
 // ── Copy per language (es + en; others fall back to en) ──────────────────────
 const COPY = {
@@ -184,12 +256,69 @@ const COPY = {
 
 const fmt = (n) => n.toFixed(2);
 
+// Small feature row used across tabs
+function Feature({ f }) {
+  return (
+    <li className="flex items-start gap-2 text-[13px] text-paper-mute">
+      <Check size={15} className="mt-0.5 shrink-0 text-brand" aria-hidden />
+      <span className="flex-1">
+        {f.t}
+        {f.tag && (
+          <span className="ml-1.5 inline-block rounded bg-hair/10 px-1.5 py-px align-middle font-mono text-[9px] uppercase tracking-wide text-paper-dim">
+            {f.tag}
+          </span>
+        )}
+      </span>
+    </li>
+  );
+}
+
 export default function Pricing() {
   const { t, lang } = useLang();
   const p = t.pricing;
   const c = COPY[lang] || COPY.en;
+  const tabs = TABS[lang] || TABS.en;
+  const ag = AGENCY[lang] || AGENCY.en;
+  const biz = BUSINESS[lang] || BUSINESS.en;
+
+  const [tab, setTab] = useState('creator');
   const [period, setPeriod] = useState('m');
+  const [agencyPlan, setAgencyPlan] = useState('agency');
+  const [creators, setCreators] = useState(2);
   const mult = PERIODS.find((x) => x.key === period).mult;
+
+  const TAB_KEYS = ['creator', 'agency', 'business'];
+  const aPlan = AGENCY_PLANS.find((x) => x.key === agencyPlan);
+  const agPer = perCreator(aPlan, creators) * mult;
+  const agTotal = agPer * creators;
+
+  // Reusable billing toggle (creator + agency)
+  const billingToggle = (
+    <div className="mx-auto mt-10 flex w-full max-w-md items-stretch gap-1 rounded-full border border-line bg-card/80 p-1.5 backdrop-blur">
+      {PERIODS.map((per) => {
+        const active = period === per.key;
+        return (
+          <button
+            key={per.key}
+            type="button"
+            onClick={() => setPeriod(per.key)}
+            className={`relative flex flex-1 flex-col items-center justify-center rounded-full px-3 py-2 text-sm font-bold transition-all duration-200 ${
+              active ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:bg-hair/[0.04] hover:text-paper'
+            }`}
+          >
+            <span>{c.periodLabels[per.key]}</span>
+            {per.off && (
+              <span className={`mt-0.5 rounded-full px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide ${
+                active ? 'bg-on-accent/20 text-on-accent' : 'bg-brand/15 text-brand'
+              }`}>
+                {c.save} {per.off}%
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   return (
     <section id="pricing" className="relative bg-ink-2 py-24 sm:py-28">
@@ -200,33 +329,25 @@ export default function Pricing() {
           <SectionHeading label={p.label} titleA={p.titleA} highlight={p.titleHighlight} sub={p.sub} align="center" hue="gradient" />
         </div>
 
-        {/* Billing period toggle */}
-        <div className="mx-auto mt-10 flex w-full max-w-md items-stretch gap-1 rounded-full border border-line bg-card/80 p-1.5 backdrop-blur">
-          {PERIODS.map((per) => {
-            const active = period === per.key;
-            return (
-              <button
-                key={per.key}
-                type="button"
-                onClick={() => setPeriod(per.key)}
-                className={`relative flex flex-1 flex-col items-center justify-center rounded-full px-3 py-2 text-sm font-bold transition-all duration-200 ${
-                  active ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:bg-hair/[0.04] hover:text-paper'
-                }`}
-              >
-                <span>{c.periodLabels[per.key]}</span>
-                {per.off && (
-                  <span className={`mt-0.5 rounded-full px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide ${
-                    active ? 'bg-on-accent/20 text-on-accent' : 'bg-brand/15 text-brand'
-                  }`}>
-                    {c.save} {per.off}%
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Audience tabs: Creator / Agency / Business */}
+        <div className="mx-auto mt-9 flex w-full max-w-sm items-stretch gap-1 rounded-full border border-line bg-card p-1">
+          {TAB_KEYS.map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setTab(k)}
+              className={`flex-1 rounded-full px-4 py-2 text-sm font-bold transition-colors ${
+                tab === k ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'
+              }`}
+            >
+              {tabs[k]}
+            </button>
+          ))}
         </div>
 
-        {/* Plan cards */}
+        {/* ── CREATOR ─────────────────────────────────────────────────────── */}
+        {tab === 'creator' && (<>
+        {billingToggle}
         <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {PLANS.map((plan, i) => {
             const pc = c.plans[plan.key];
@@ -319,6 +440,128 @@ export default function Pricing() {
             );
           })}
         </div>
+        </>)}
+
+        {/* ── AGENCY ──────────────────────────────────────────────────────── */}
+        {tab === 'agency' && (<>
+        {/* Agency / Agency Advanced switch */}
+        <div className="mx-auto mt-9 flex w-full max-w-md items-stretch gap-1 rounded-full border border-line bg-card p-1">
+          {AGENCY_PLANS.map((ap) => (
+            <button
+              key={ap.key}
+              type="button"
+              onClick={() => setAgencyPlan(ap.key)}
+              className={`flex-1 rounded-full px-3 py-2 text-sm font-bold transition-colors ${
+                agencyPlan === ap.key ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'
+              }`}
+            >
+              {ap.name}
+            </button>
+          ))}
+        </div>
+
+        {billingToggle}
+
+        <motion.div
+          key={agencyPlan}
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease }}
+          className="mx-auto mt-12 grid max-w-5xl gap-5 lg:grid-cols-[1.3fr_1fr]"
+        >
+          {/* Features */}
+          <div className="rounded-3xl border border-line bg-card p-6 sm:p-8">
+            <p className="text-[15px] leading-relaxed text-paper-mute">{ag.planDesc[agencyPlan]}</p>
+            <h4 className="mt-6 font-mono text-[11px] font-semibold uppercase tracking-widest text-paper-dim">{ag.featuresTitle}</h4>
+            <ul className="mt-4 grid gap-2.5 sm:grid-cols-2">
+              {ag.features.map((f, i) => <Feature key={i} f={f} />)}
+            </ul>
+            {agencyPlan === 'advanced' && (
+              <>
+                <h4 className="mt-6 font-mono text-[11px] font-semibold uppercase tracking-widest text-brand">{ag.advancedTitle}</h4>
+                <ul className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                  {ag.advancedFeatures.map((f, i) => <Feature key={i} f={f} />)}
+                </ul>
+              </>
+            )}
+          </div>
+
+          {/* Price calculator */}
+          <div className="flex flex-col rounded-3xl border border-brand bg-brand/[0.06] p-6 shadow-glow-sm sm:p-8">
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-widest text-paper-mute">{ag.yourPrice}</span>
+            <div className="mt-2 flex items-baseline gap-1">
+              <span className="font-display text-[2.8rem] leading-none text-brand">${fmt(agTotal)}</span>
+              <span className="text-sm text-paper-dim">{ag.perMonth}</span>
+            </div>
+
+            {/* Creator stepper */}
+            <div className="mt-6 flex items-center justify-between rounded-2xl border border-line bg-ink-2 px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold text-paper">{ag.creators}</div>
+                <div className="font-mono text-[11px] text-paper-dim">{creators} × ${fmt(agPer)}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" aria-label="-" onClick={() => setCreators((n) => Math.max(1, n - 1))}
+                  className="grid h-8 w-8 place-items-center rounded-full border border-line text-paper transition-colors hover:border-brand/60 hover:text-brand">
+                  <Minus size={15} aria-hidden />
+                </button>
+                <span className="w-8 text-center font-display text-lg text-paper">{creators}</span>
+                <button type="button" aria-label="+" onClick={() => setCreators((n) => Math.min(50, n + 1))}
+                  className="grid h-8 w-8 place-items-center rounded-full border border-line text-paper transition-colors hover:border-brand/60 hover:text-brand">
+                  <Plus size={15} aria-hidden />
+                </button>
+              </div>
+            </div>
+
+            {/* Volume table */}
+            <h4 className="mt-6 font-mono text-[10px] font-semibold uppercase tracking-widest text-paper-dim">{ag.volumeTitle}</h4>
+            <div className="mt-3 space-y-1.5">
+              {[['1-3', 0], ['4-5', 1], ['6-8', 2], ['9+', 3]].map(([label, idx]) => {
+                const tierPrice = aPlan.volume[idx][1] * mult;
+                const activeRow = (idx === 0 && creators <= 3) || (idx === 1 && creators >= 4 && creators <= 5) || (idx === 2 && creators >= 6 && creators <= 8) || (idx === 3 && creators >= 9);
+                return (
+                  <div key={label} className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm ${activeRow ? 'bg-brand/15 text-paper' : 'text-paper-mute'}`}>
+                    <span className="font-mono text-[12px]">{label}</span>
+                    <span className={activeRow ? 'font-semibold text-brand' : ''}>${fmt(tierPrice)}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <a href="#" className="mt-7 inline-flex items-center justify-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
+              {ag.cta} <ArrowRight size={16} aria-hidden />
+            </a>
+            <p className="mt-3 text-center font-mono text-[10px] text-paper-dim">{ag.fine}</p>
+          </div>
+        </motion.div>
+        </>)}
+
+        {/* ── BUSINESS ────────────────────────────────────────────────────── */}
+        {tab === 'business' && (
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease }}
+          className="mx-auto mt-12 max-w-4xl overflow-hidden rounded-3xl border border-brand/40 bg-card p-8 sm:p-10"
+        >
+          <div className="grid gap-8 sm:grid-cols-2 sm:items-center">
+            <div>
+              <h3 className="headline text-3xl text-paper">{biz.price}</h3>
+              <p className="mt-3 text-[15px] leading-relaxed text-paper-mute">{biz.desc}</p>
+              <p className="mt-2 text-[13px] leading-relaxed text-paper-dim">{biz.sub}</p>
+              <a href="#" className="mt-7 inline-flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 text-sm font-bold text-on-accent shadow-glow transition-transform hover:scale-[1.04]">
+                {biz.cta} <ArrowRight size={16} aria-hidden />
+              </a>
+            </div>
+            <div className="rounded-2xl border border-line bg-ink-2 p-6">
+              <h4 className="font-mono text-[11px] font-semibold uppercase tracking-widest text-paper-dim">{biz.featuresTitle}</h4>
+              <ul className="mt-4 grid gap-2.5">
+                {biz.features.map((f, i) => <Feature key={i} f={{ t: f }} />)}
+              </ul>
+            </div>
+          </div>
+        </motion.div>
+        )}
       </div>
     </section>
   );
