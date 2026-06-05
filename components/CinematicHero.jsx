@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import AnimatedGradientBg from './AnimatedGradientBg';
-import BeforeAfter from './BeforeAfter';
+import AutoTransform from './AutoTransform';
 
 // ── Simple hero: CTA left + before/after comparison right ─────────────────────
 
@@ -31,8 +31,8 @@ export default function CinematicHero() {
       <AnimatedGradientBg topOffset={20} />
       <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-transparent via-transparent to-ink" aria-hidden />
 
-      {/* Content */}
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center gap-12 px-5 py-24 lg:flex-row lg:gap-16 lg:py-0">
+      {/* Content — pt accounts for the fixed nav so nothing hugs the topbar */}
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center gap-12 px-5 pb-20 pt-32 sm:pt-36 lg:flex-row lg:gap-16 lg:py-32">
 
         {/* ── LEFT: CTA ────────────────────────────────────────────────────── */}
         <motion.div
@@ -120,21 +120,22 @@ export default function CinematicHero() {
           transition={{ duration: 0.85, ease, delay: 0.28 }}
           className="w-full max-w-sm flex-shrink-0 lg:max-w-md"
         >
-          <BeforeAfter
+          <AutoTransform
             before="/ba-before-1.jpg"
             after="/ba-after-1.jpg"
             beforeLabel={baLbl.before}
             afterLabel={baLbl.after}
+            badge="2s"
             alt="Transformación LetShoot"
           />
           <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-widest text-paper-dim">
-            {lang === 'es' ? 'Toca para revelar la transformación' :
-             lang === 'en' ? 'Tap to reveal the transformation' :
-             lang === 'pt' ? 'Toca para revelar a transformação' :
-             lang === 'fr' ? 'Touche pour révéler la transformation' :
-             lang === 'de' ? 'Tippe um die Verwandlung zu sehen' :
-             lang === 'it' ? 'Tocca per rivelare la trasformazione' :
-             '点击查看变化'}
+            {lang === 'es' ? 'Mantén pulsado para ver tu foto real' :
+             lang === 'en' ? 'Press & hold to see your real photo' :
+             lang === 'pt' ? 'Mantém pressionado para ver a foto real' :
+             lang === 'fr' ? 'Maintiens pour voir ta photo réelle' :
+             lang === 'de' ? 'Halten, um dein echtes Foto zu sehen' :
+             lang === 'it' ? 'Tieni premuto per vedere la foto reale' :
+             '按住查看真实照片'}
           </p>
         </motion.div>
 
