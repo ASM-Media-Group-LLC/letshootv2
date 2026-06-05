@@ -1,5 +1,6 @@
 import Nav from '@/components/Nav';
 import CinematicHero from '@/components/CinematicHero';
+import EditorSection from '@/components/EditorSection';
 import HowItWorks from '@/components/HowItWorks';
 import FeatureGrid from '@/components/FeatureGrid';
 import Comparison from '@/components/Comparison';
@@ -15,6 +16,7 @@ export default function Page() {
     <main className="relative z-10 min-h-screen">
       <Nav />
       <CinematicHero />
+      <EditorSection />
       <HowItWorks />
       <FeatureGrid id="creators" sectionKey="creators" />
       <FeatureGrid id="agencies" sectionKey="agencies" />
