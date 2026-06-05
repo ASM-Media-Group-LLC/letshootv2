@@ -6,6 +6,20 @@ import { useLang } from '@/app/providers';
 
 const ease = [0.22, 1, 0.36, 1];
 
+// Deterministic floating blue particles (no Math.random → SSR-safe)
+const BLUES = ['rgba(0,177,246,1)', 'rgba(127,224,255,1)', 'rgba(10,132,255,1)'];
+const PARTICLES = Array.from({ length: 28 }, (_, i) => ({
+  x: (i * 36.7) % 100,
+  y: (i * 21.3) % 100,
+  size: 2 + (i % 4),              // 2–5px
+  dur: 9 + (i % 7) * 1.8,         // 9–19.8s
+  delay: (i % 9) * 0.7,           // 0–5.6s
+  drift: 30 + (i % 5) * 14,       // 30–86px upward
+  sway: ((i % 3) - 1) * 18,       // -18 / 0 / 18px
+  op: 0.35 + (i % 4) * 0.14,      // 0.35–0.77
+  color: BLUES[i % BLUES.length],
+}));
+
 export default function FinalCta() {
   const { t } = useLang();
   const c = t.finalCta;
@@ -20,42 +34,35 @@ export default function FinalCta() {
         transition={{ duration: 0.6, ease }}
         className="card-grad relative overflow-hidden rounded-[2.5rem] border border-brand/25 px-6 py-16 text-center shadow-soft sm:py-24"
       >
-        {/* ── Animated background ─────────────────────────────────────────── */}
-        {/* Slow rotating conic sheen */}
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 h-[160%] w-[160%] -translate-x-1/2 -translate-y-1/2 opacity-[0.18]"
-          style={{ background: 'conic-gradient(from 0deg, transparent 0%, rgba(0,177,246,0.55) 18%, transparent 38%, transparent 62%, rgba(127,224,255,0.45) 80%, transparent 100%)' }}
-          animate={{ rotate: 360 }}
-          transition={{ duration: 28, ease: 'linear', repeat: Infinity }}
-        />
-        {/* Drifting aurora orbs */}
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute -left-[12%] -top-[30%] h-[380px] w-[380px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(0,177,246,0.40), transparent 70%)' }}
-          animate={{ x: [0, 70, 0], y: [0, 36, 0], scale: [1, 1.15, 1] }}
-          transition={{ duration: 13, ease: 'easeInOut', repeat: Infinity }}
-        />
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute -right-[12%] -bottom-[30%] h-[400px] w-[400px] rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(127,224,255,0.32), transparent 70%)' }}
-          animate={{ x: [0, -60, 0], y: [0, -30, 0], scale: [1.1, 1, 1.1] }}
-          transition={{ duration: 16, ease: 'easeInOut', repeat: Infinity }}
-        />
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/3 h-[300px] w-[300px] -translate-x-1/2 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(10,132,255,0.30), transparent 70%)' }}
-          animate={{ x: [-40, 40, -40], y: [0, 24, 0], scale: [1, 1.2, 1] }}
-          transition={{ duration: 19, ease: 'easeInOut', repeat: Infinity }}
-        />
+        {/* ── Animated background: floating blue particles ────────────────── */}
+        {/* Two soft ambient glows for depth */}
+        <div className="pointer-events-none absolute -left-[10%] top-[-20%] h-[340px] w-[340px] rounded-full" aria-hidden
+          style={{ background: 'radial-gradient(circle, rgba(0,177,246,0.18), transparent 70%)' }} />
+        <div className="pointer-events-none absolute -right-[10%] bottom-[-20%] h-[360px] w-[360px] rounded-full" aria-hidden
+          style={{ background: 'radial-gradient(circle, rgba(127,224,255,0.14), transparent 70%)' }} />
+
+        {/* Particles */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+          {PARTICLES.map((pt, i) => (
+            <motion.span
+              key={i}
+              className="absolute rounded-full"
+              style={{
+                left: `${pt.x}%`, top: `${pt.y}%`, width: pt.size, height: pt.size,
+                background: pt.color,
+                boxShadow: `0 0 ${pt.size * 2.5}px ${pt.size * 0.8}px ${pt.color}`,
+              }}
+              animate={{ y: [0, -pt.drift, 0], x: [0, pt.sway, 0], opacity: [0, pt.op, pt.op, 0] }}
+              transition={{ duration: pt.dur, ease: 'easeInOut', repeat: Infinity, delay: pt.delay }}
+            />
+          ))}
+        </div>
+
         {/* Soft inner vignette to keep the copy readable */}
         <div
           className="pointer-events-none absolute inset-0"
           aria-hidden
-          style={{ background: 'radial-gradient(ellipse 80% 70% at 50% 50%, transparent 35%, rgb(var(--bg) / 0.55) 100%)' }}
+          style={{ background: 'radial-gradient(ellipse 80% 70% at 50% 50%, transparent 45%, rgb(var(--bg) / 0.45) 100%)' }}
         />
 
         <div className="relative">

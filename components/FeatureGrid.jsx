@@ -66,8 +66,9 @@ export default function FeatureGrid({ id, sectionKey }) {
                       // Face/upper-body framing: anchor higher so the head is visible
                       style={{ objectPosition: '50% 15%' }}
                     />
-                    {/* Stronger bottom gradient so text stays legible over the photo */}
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink via-ink/70 to-ink/10" />
+                    {/* Fixed dark gradient (theme-independent) so the photo keeps
+                        contrast and white text stays legible in light & dark mode. */}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent" />
                   </>
                 )}
 
@@ -76,13 +77,15 @@ export default function FeatureGrid({ id, sectionKey }) {
                   <div className={`grid h-11 w-11 place-items-center rounded-2xl backdrop-blur-md ${iconClass}`}>
                     {Icon && <Icon size={19} strokeWidth={2.2} aria-hidden />}
                   </div>
-                  <h3 className="mt-4 font-display text-lg font-semibold text-paper">{item.t}</h3>
-                  <p className="mt-2 text-[13.5px] leading-relaxed text-paper-mute">{item.d}</p>
+                  <h3 className={`mt-4 font-display text-lg font-semibold ${img ? 'text-white' : 'text-paper'}`}>{item.t}</h3>
+                  <p className={`mt-2 text-[13.5px] leading-relaxed ${img ? 'text-white/75' : 'text-paper-mute'}`}>{item.d}</p>
                   <div className="mt-4 flex flex-wrap gap-1.5">
                     {item.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="glass-ios rounded-full px-2.5 py-1 font-mono text-[9.5px] uppercase tracking-wider text-paper"
+                        className={`rounded-full px-2.5 py-1 font-mono text-[9.5px] uppercase tracking-wider ${
+                          img ? 'border border-white/20 bg-white/10 text-white backdrop-blur-md' : 'glass-ios text-paper'
+                        }`}
                       >
                         {tag}
                       </span>

@@ -18,16 +18,17 @@ const DARK_COLORS = [
   '#FFD600',  // gold edge
 ];
 
-// Soft pastel palette for light mode — same family, much lighter values
+// Soft, cohesive blue-grey palette for light mode — muted so the glow stays
+// subtle (no pure-white center, no pink/gold wash that read as too bright).
 const LIGHT_COLORS = [
-  '#FFFFFF',  // white center
-  '#EEF6FF',  // very light blue
-  '#D6E9FF',  // soft blue
-  '#A8D4FF',  // sky blue
-  '#C8C2FF',  // soft violet
-  '#FFC2DD',  // soft pink
-  '#FFD8B8',  // soft coral
-  '#FFEDA8',  // soft gold
+  '#F2F7FD',  // soft off-white blue
+  '#E9F1FB',  // very light blue
+  '#DCEAF8',  // light blue
+  '#C7DCF3',  // soft blue
+  '#B6D0EF',  // muted sky
+  '#C4D1EE',  // soft periwinkle
+  '#D6DEF2',  // pale blue-grey
+  '#E6EBF6',  // near-bg
 ];
 
 // Stable ref so React's useEffect deps don't recreate it each render
