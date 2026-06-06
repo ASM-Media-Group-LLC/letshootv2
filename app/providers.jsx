@@ -15,14 +15,22 @@ export function LangProvider({ children }) {
   const firstWrite = useRef(true);
 
   useEffect(() => {
+    // 1) Respect a saved preference (user changed it manually before).
     const stored = typeof window !== 'undefined' && localStorage.getItem('letshoot-lang');
     if (stored && SUPPORTED_LANGS.includes(stored)) {
       setLang(stored);
       return;
     }
+    // 2) Auto-detect: walk the user's ordered language preferences and pick the
+    //    first one we support (e.g. ['en-US','pt'] → 'en'). Falls back to 'es'.
     if (typeof navigator !== 'undefined') {
-      const navLang = (navigator.language || 'es').slice(0, 2).toLowerCase();
-      if (SUPPORTED_LANGS.includes(navLang)) setLang(navLang);
+      const prefs = navigator.languages && navigator.languages.length
+        ? navigator.languages
+        : [navigator.language || 'es'];
+      const match = prefs
+        .map((l) => l.slice(0, 2).toLowerCase())
+        .find((l) => SUPPORTED_LANGS.includes(l));
+      if (match) setLang(match);
     }
   }, []);
 
