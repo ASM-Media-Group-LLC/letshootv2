@@ -59,10 +59,10 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.75, ease, delay: 0.22 }}
-            className="headline text-[clamp(2.6rem,5.5vw,5rem)] leading-[1.05] text-paper"
+            className="headline text-[clamp(2.6rem,5.5vw,5rem)] leading-[1.05] text-paper [text-wrap:balance]"
           >
             {t.hero.pre}{' '}
-            <span className="text-rainbow inline-block" style={{ paddingBlock: '0.06em' }}>
+            <span className="text-rainbow" style={{ paddingBlock: '0.06em' }}>
               {t.hero.highlight}
             </span>
           </motion.h1>
