@@ -34,7 +34,7 @@ export default function CinematicHero() {
       <Particles className="z-[2]" parallax={30} />
 
       {/* Content — pt accounts for the fixed nav so nothing hugs the topbar */}
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col-reverse items-center justify-center gap-12 px-5 pb-20 pt-32 sm:pt-36 lg:flex-row lg:gap-16 lg:py-32">
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col-reverse items-center justify-center gap-12 px-5 pb-20 pt-32 sm:pt-36 lg:flex-row lg:gap-14 lg:py-32">
 
         {/* ── LEFT: CTA ────────────────────────────────────────────────────── */}
         <motion.div
@@ -110,7 +110,7 @@ export default function CinematicHero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, ease, delay: 0.3 }}
-          className="w-full max-w-sm flex-shrink-0 lg:max-w-xl"
+          className="w-full max-w-md flex-shrink-0 lg:max-w-2xl"
         >
           <div className="relative grid grid-cols-2 gap-3 sm:gap-4">
             {/* Real */}
