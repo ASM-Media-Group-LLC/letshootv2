@@ -48,7 +48,7 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease, delay: 0.15 }}
-            className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-brand"
+            className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand/10 px-3 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-brand"
           >
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
             {t.hero.eyebrow}
@@ -72,18 +72,18 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.65, ease, delay: 0.42 }}
-            className="mt-9 flex flex-wrap items-center justify-center gap-3 lg:justify-start"
+            className="mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center lg:justify-start"
           >
             <a
               href="#pricing"
-              className="group inline-flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.04]"
+              className="group inline-flex items-center justify-center gap-2 rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.04]"
             >
               {t.hero.ctaPrimary}
               <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" aria-hidden />
             </a>
             <a
               href="#before-after"
-              className="glass-ios inline-flex items-center rounded-full px-7 py-3.5 text-base font-medium text-paper transition-colors hover:text-brand"
+              className="glass-ios inline-flex items-center justify-center rounded-full px-7 py-3.5 text-base font-medium text-paper transition-colors hover:text-brand"
             >
               {t.hero.ctaSecondary}
             </a>
@@ -110,16 +110,16 @@ export default function CinematicHero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, ease, delay: 0.3 }}
-          className="w-full max-w-md flex-shrink-0 lg:max-w-2xl"
+          className="w-full max-w-sm flex-shrink-0 sm:max-w-md lg:max-w-2xl"
         >
-          <div className="relative grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="relative grid grid-cols-2 gap-2 sm:gap-4">
             {/* Real */}
             <motion.figure
               initial={{ opacity: 0, y: 36, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.8, ease, delay: 0.55 }}
-              className="relative overflow-hidden rounded-3xl"
-              style={{ aspectRatio: '4 / 5', boxShadow: '0 30px 70px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--overlay)/0.12)' }}
+              className="relative overflow-hidden rounded-2xl ring-1 ring-white/10"
+              style={{ aspectRatio: '3 / 4', boxShadow: '0 40px 80px -16px rgba(0,0,0,0.75), 0 0 0 1px rgba(var(--overlay)/0.18)' }}
             >
               <img src="/hero-real.jpg" alt={baLbl.before} className="h-full w-full object-cover" style={{ objectPosition: '50% 12%' }} draggable={false} />
               <motion.figcaption
@@ -138,8 +138,8 @@ export default function CinematicHero() {
               initial={{ opacity: 0, y: 36, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.8, ease, delay: 0.95 }}
-              className="relative overflow-hidden rounded-3xl"
-              style={{ aspectRatio: '4 / 5', boxShadow: '0 30px 70px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--overlay)/0.12)' }}
+              className="relative overflow-hidden rounded-2xl ring-1 ring-brand/40"
+              style={{ aspectRatio: '3 / 4', boxShadow: '0 40px 80px -16px rgba(0,0,0,0.75), 0 0 40px -8px rgba(var(--color-brand)/0.25), 0 0 0 1px rgba(var(--overlay)/0.18)' }}
             >
               <img src="/hero-ia.jpg" alt={baLbl.after} className="h-full w-full object-cover" style={{ objectPosition: '50% 12%' }} draggable={false} />
               <motion.figcaption
