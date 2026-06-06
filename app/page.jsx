@@ -11,7 +11,6 @@ import FinalCta from '@/components/FinalCta';
 import Footer from '@/components/Footer';
 
 export default function Page() {
-  // z-10 so sections stack above the fixed MeshBg canvas
   return (
     <main className="relative z-10 min-h-screen">
       <Nav />
