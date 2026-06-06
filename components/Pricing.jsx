@@ -24,6 +24,17 @@ const PERIODS = [
   { key: 'a', mult: 0.75, off: 25 },
 ];
 
+// Stepper aria-labels (creator count +/-)
+const STEP_ARIA = {
+  es: { less: 'Quitar creador', more: 'Añadir creador' },
+  en: { less: 'Remove creator', more: 'Add creator' },
+  pt: { less: 'Remover criador', more: 'Adicionar criador' },
+  fr: { less: 'Retirer un créateur', more: 'Ajouter un créateur' },
+  de: { less: 'Creator entfernen', more: 'Creator hinzufügen' },
+  it: { less: 'Rimuovi creator', more: 'Aggiungi creator' },
+  zh: { less: '减少创作者', more: '增加创作者' },
+};
+
 // Top-level tabs
 const TABS = {
   es: { creator: 'Creador', agency: 'Agencia', business: 'Empresa' },
@@ -390,6 +401,7 @@ export default function Pricing() {
   const tabs = TABS[lang] || TABS.en;
   const ag = AGENCY[lang] || AGENCY.en;
   const biz = BUSINESS[lang] || BUSINESS.en;
+  const stepAria = STEP_ARIA[lang] || STEP_ARIA.en;
 
   const [tab, setTab] = useState('creator');
   const [period, setPeriod] = useState('m');
@@ -611,12 +623,12 @@ export default function Pricing() {
                 <div className="font-mono text-[11px] text-paper-dim">{creators} × ${fmt(agPer)}</div>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" aria-label="-" onClick={() => setCreators((n) => Math.max(1, n - 1))}
+                <button type="button" aria-label={stepAria.less} onClick={() => setCreators((n) => Math.max(1, n - 1))}
                   className="grid h-8 w-8 place-items-center rounded-full border border-line text-paper transition-colors hover:border-brand/60 hover:text-brand">
                   <Minus size={15} aria-hidden />
                 </button>
                 <span className="w-8 text-center font-display text-lg text-paper">{creators}</span>
-                <button type="button" aria-label="+" onClick={() => setCreators((n) => Math.min(50, n + 1))}
+                <button type="button" aria-label={stepAria.more} onClick={() => setCreators((n) => Math.min(50, n + 1))}
                   className="grid h-8 w-8 place-items-center rounded-full border border-line text-paper transition-colors hover:border-brand/60 hover:text-brand">
                   <Plus size={15} aria-hidden />
                 </button>

@@ -121,7 +121,7 @@ export default function CinematicHero() {
               className="relative overflow-hidden rounded-3xl"
               style={{ aspectRatio: '4 / 5', boxShadow: '0 30px 70px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--overlay)/0.12)' }}
             >
-              <img src="/hero-real.jpg" alt="Contenido real" className="h-full w-full object-cover" style={{ objectPosition: '50% 12%' }} draggable={false} />
+              <img src="/hero-real.jpg" alt={baLbl.before} className="h-full w-full object-cover" style={{ objectPosition: '50% 12%' }} draggable={false} />
               <motion.figcaption
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -141,7 +141,7 @@ export default function CinematicHero() {
               className="relative overflow-hidden rounded-3xl"
               style={{ aspectRatio: '4 / 5', boxShadow: '0 30px 70px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(var(--overlay)/0.12)' }}
             >
-              <img src="/hero-ia.jpg" alt="Contenido IA" className="h-full w-full object-cover" style={{ objectPosition: '50% 12%' }} draggable={false} />
+              <img src="/hero-ia.jpg" alt={baLbl.after} className="h-full w-full object-cover" style={{ objectPosition: '50% 12%' }} draggable={false} />
               <motion.figcaption
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}

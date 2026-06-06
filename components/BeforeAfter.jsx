@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLang } from '@/app/providers';
+
+const ARIA = {
+  es: 'Comparar antes y después', en: 'Compare before and after', pt: 'Comparar antes e depois',
+  fr: 'Comparer avant et après', de: 'Vorher und nachher vergleichen', it: 'Confronta prima e dopo', zh: '对比前后',
+};
 
 // Before/After reveal slider.
 // • Initial state: handle near the middle → curtain "semi-open" so it's obvious
@@ -11,6 +17,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 // • Drag the handle (or anywhere with intent) → manual control.
 // Click vs drag is detected by movement threshold during the pointer down→up.
 export default function BeforeAfter({ before, after, beforeLabel, afterLabel, alt = '' }) {
+  const { lang } = useLang();
+  const ariaLabel = ARIA[lang] || ARIA.en;
   const [pos, setPos] = useState(20);           // ← starts slightly open (peek of AI on the left); first tap → full AI
   const [dragging, setDragging] = useState(false);
   const [animating, setAnimating] = useState(false);
@@ -115,7 +123,7 @@ export default function BeforeAfter({ before, after, beforeLabel, afterLabel, al
         <div
           role="slider"
           tabIndex={0}
-          aria-label="Comparar antes y después"
+          aria-label={ariaLabel}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(pos)}
