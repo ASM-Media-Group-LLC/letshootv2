@@ -5,7 +5,7 @@ import { ArrowRight } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import AnimatedGradientBg from './AnimatedGradientBg';
 import Particles from './Particles';
-import CreatorsCarousel from './CreatorsCarousel';
+import PanoramaCarousel from './PanoramaCarousel';
 
 const ease = [0.22, 1, 0.36, 1];
 
@@ -76,8 +76,8 @@ export default function CinematicHero() {
         transition={{ duration: 0.9, ease, delay: 0.45 }}
         className="relative z-[2] mt-8 flex flex-1 items-center"
       >
-        <div className="w-full">
-          <CreatorsCarousel images={SHOWCASE} />
+        <div className="h-[clamp(320px,56vh,580px)] w-full">
+          <PanoramaCarousel images={SHOWCASE} />
         </div>
       </motion.div>
     </section>
