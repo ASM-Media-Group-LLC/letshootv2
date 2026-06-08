@@ -13,23 +13,22 @@ export default function PanoramaCarousel({ images }) {
       const N = images.length;
       const center = (N - 1) / 2;
       const first = itemsRef.current[0];
-      const w = first ? first.offsetWidth : 260;
-      const S = w * 0.96;                       // spacing → cards sit side by side with gaps (no overlap)
+      const w = first ? first.offsetWidth : 300;
+      // Concave cylinder: cards tile the curved wall (shared edges, no gaps).
+      // Center sits deepest (smallest); its height matches the receding inner
+      // edge of the neighbours, so the seams align into a continuous arc.
+      const stepDeg = 23;                                  // angular gap per card
+      const stepRad = (stepDeg * Math.PI) / 180;
+      const R = w / (2 * Math.sin(stepRad / 2)) * 0.96;    // radius so chords ≈ card width
       itemsRef.current.forEach((el, i) => {
         if (!el) return;
         const rel = i - center;
         const a = Math.abs(rel);
-        const sign = Math.sign(rel);
-        // Panorama: equal-size cards on a concave curved wall. Center is flat &
-        // front; sides rotate away, recede and fade. No size morphing.
-        const x = rel * S;
-        const rotY = -sign * Math.min(a, 3) * 34;          // rotation grows outward
-        const tz = -a * 130;                                // sides recede (center stays front)
-        const scale = a <= 1 ? 1 : Math.max(0.82, 1 - (a - 1) * 0.1);
-        const opacity = a <= 1 ? 1 : Math.max(0, 1 - (a - 1) * 0.55);
-        el.style.transform = `translate(-50%, -50%) translateX(${x}px) rotateY(${rotY}deg) translateZ(${tz}px) scale(${scale})`;
+        const theta = rel * stepDeg;
+        el.style.transform = `translate(-50%, -50%) rotateY(${theta}deg) translateZ(${-R}px)`;
+        el.style.transformOrigin = '50% 50%';
         el.style.zIndex = String(Math.round(100 - a * 10));
-        el.style.opacity = String(opacity);
+        el.style.opacity = String(a >= 3 ? 0.55 : 1);      // edge cards half-faded
       });
     };
     apply();
@@ -39,7 +38,7 @@ export default function PanoramaCarousel({ images }) {
 
   return (
     <div
-      className="relative h-full w-full [perspective:1150px] [transform-style:preserve-3d]"
+      className="relative h-full w-full [perspective:1700px] [transform-style:preserve-3d]"
       style={{
         maskImage: 'linear-gradient(to right, transparent, black 14%, black 86%, transparent)',
         WebkitMaskImage: 'linear-gradient(to right, transparent, black 14%, black 86%, transparent)',
