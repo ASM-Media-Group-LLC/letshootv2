@@ -25,13 +25,13 @@ export default function CinematicHero() {
       <Particles className="z-[2]" parallax={28} />
       <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-transparent via-transparent to-ink" aria-hidden />
 
-      {/* ── Centered text ─────────────────────────────────────────────────── */}
-      <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pt-28 text-center sm:pt-32">
+      {/* ── Centered text (minimal) ──────────────────────────────────────── */}
+      <div className="relative z-10 flex flex-col items-center px-5 pt-28 text-center sm:pt-32">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease, delay: 0.1 }}
-          className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-brand"
+          className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-brand"
         >
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
           {t.hero.eyebrow}
@@ -41,26 +41,17 @@ export default function CinematicHero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.75, ease, delay: 0.18 }}
-          className="headline mx-auto max-w-4xl text-[clamp(2.6rem,6.5vw,5.5rem)] leading-[1.02] text-paper [text-wrap:balance]"
+          className="headline mx-auto max-w-3xl text-[clamp(2.4rem,5.5vw,4.5rem)] leading-[1.02] text-paper [text-wrap:balance]"
         >
           {t.hero.pre}{' '}
           <span className="text-rainbow" style={{ paddingBlock: '0.06em' }}>{t.hero.highlight}</span>
         </motion.h1>
 
-        <motion.p
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease, delay: 0.3 }}
-          className="mt-6 max-w-xl text-lg leading-relaxed text-paper-mute [text-wrap:balance]"
-        >
-          {t.hero.body}
-        </motion.p>
-
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.65, ease, delay: 0.42 }}
-          className="mt-9 flex flex-wrap items-center justify-center gap-3"
+          transition={{ duration: 0.65, ease, delay: 0.32 }}
+          className="mt-7 flex flex-wrap items-center justify-center gap-3"
         >
           <a
             href="#pricing"
@@ -78,14 +69,16 @@ export default function CinematicHero() {
         </motion.div>
       </div>
 
-      {/* ── 3D coverflow carousel ─────────────────────────────────────────── */}
+      {/* ── 3D coverflow carousel (the centerpiece) ───────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.9, ease, delay: 0.5 }}
-        className="relative z-[2] mt-6 h-[clamp(240px,40vh,420px)] w-full"
+        transition={{ duration: 0.9, ease, delay: 0.45 }}
+        className="relative z-[2] mt-8 flex flex-1 items-center"
       >
-        <CoverflowMarquee images={SHOWCASE} />
+        <div className="h-[clamp(340px,60vh,600px)] w-full">
+          <CoverflowMarquee images={SHOWCASE} />
+        </div>
       </motion.div>
     </section>
   );

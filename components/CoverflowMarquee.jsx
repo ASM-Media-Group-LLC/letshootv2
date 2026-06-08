@@ -12,7 +12,7 @@ export default function CoverflowMarquee({ images, speed = 0.0042 }) {
   useEffect(() => {
     const measure = () => {
       const first = itemsRef.current[0];
-      if (first) spacingRef.current = first.offsetWidth * 0.74;
+      if (first) spacingRef.current = first.offsetWidth * 0.66;
     };
     measure();
     window.addEventListener('resize', measure);
@@ -29,11 +29,12 @@ export default function CoverflowMarquee({ images, speed = 0.0042 }) {
         let rel = ((i - pos) % N + N) % N;   // 0..N
         if (rel > N / 2) rel -= N;           // -N/2..N/2
         const norm = rel / (N / 2);          // -1..1
+        const a = Math.abs(norm);
         const x = rel * S;
-        const rotY = -norm * 44;             // arc tilt
-        const tz = -Math.abs(norm) * 260;    // depth
-        const scale = 1 - Math.abs(norm) * 0.28;
-        const opacity = Math.max(0, 1 - Math.abs(norm) * 1.08);
+        const rotY = -Math.sign(norm) * Math.min(a, 1) * 52;  // stronger arc tilt
+        const tz = -a * 360;                                  // deeper recession
+        const scale = 1 - a * 0.32;                           // center pops more
+        const opacity = Math.max(0, 1 - a * 1.15);
         el.style.transform = `translate(-50%, -50%) translateX(${x}px) rotateY(${rotY}deg) translateZ(${tz}px) scale(${scale})`;
         el.style.zIndex = String(Math.round(100 - Math.abs(rel) * 12));
         el.style.opacity = String(opacity);
@@ -46,7 +47,7 @@ export default function CoverflowMarquee({ images, speed = 0.0042 }) {
 
   return (
     <div
-      className="relative h-full w-full [perspective:1500px] [transform-style:preserve-3d]"
+      className="relative h-full w-full [perspective:1200px] [transform-style:preserve-3d]"
       style={{
         maskImage: 'linear-gradient(to right, transparent, black 13%, black 87%, transparent)',
         WebkitMaskImage: 'linear-gradient(to right, transparent, black 13%, black 87%, transparent)',
@@ -57,7 +58,7 @@ export default function CoverflowMarquee({ images, speed = 0.0042 }) {
         <div
           key={i}
           ref={(el) => (itemsRef.current[i] = el)}
-          className="absolute left-1/2 top-1/2 aspect-[3/4] h-[clamp(210px,34vh,360px)] overflow-hidden rounded-3xl shadow-2xl ring-1 ring-white/10 will-change-transform"
+          className="absolute left-1/2 top-1/2 aspect-[3/4] h-[clamp(320px,56vh,580px)] overflow-hidden rounded-3xl shadow-2xl ring-1 ring-white/10 will-change-transform"
           style={{ transform: 'translate(-50%, -50%)' }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
