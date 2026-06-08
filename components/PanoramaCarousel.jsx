@@ -9,27 +9,24 @@ export default function PanoramaCarousel({ images }) {
   const itemsRef = useRef([]);
 
   useEffect(() => {
-    const lerp = (x, a, b) => a + (b - a) * x;
     const apply = () => {
       const N = images.length;
       const center = (N - 1) / 2;
       const first = itemsRef.current[0];
       const w = first ? first.offsetWidth : 260;
-      const S = w * 0.62;
-      const maxA = Math.max(1, center);
+      const S = w * 0.96;                       // spacing → cards sit side by side with gaps (no overlap)
       itemsRef.current.forEach((el, i) => {
         if (!el) return;
         const rel = i - center;
         const a = Math.abs(rel);
         const sign = Math.sign(rel);
-        // Scale peaks at the first neighbours; center is smallest; edges shrink.
-        const scale = a <= 1
-          ? lerp(a, 0.82, 1.0)
-          : Math.max(0.55, lerp((a - 1) / (maxA - 1 || 1), 1.0, 0.6));
+        // Panorama: equal-size cards on a concave curved wall. Center is flat &
+        // front; sides rotate away, recede and fade. No size morphing.
         const x = rel * S;
-        const rotY = -sign * Math.min(a, 3) * 21;          // angle grows outward
-        const tz = (scale - 0.82) * 240 - a * 55;           // neighbours forward, center back
-        const opacity = a <= 1 ? 1 : Math.max(0, 1 - (a - 1) * 0.5);
+        const rotY = -sign * Math.min(a, 3) * 34;          // rotation grows outward
+        const tz = -a * 130;                                // sides recede (center stays front)
+        const scale = a <= 1 ? 1 : Math.max(0.82, 1 - (a - 1) * 0.1);
+        const opacity = a <= 1 ? 1 : Math.max(0, 1 - (a - 1) * 0.55);
         el.style.transform = `translate(-50%, -50%) translateX(${x}px) rotateY(${rotY}deg) translateZ(${tz}px) scale(${scale})`;
         el.style.zIndex = String(Math.round(100 - a * 10));
         el.style.opacity = String(opacity);
