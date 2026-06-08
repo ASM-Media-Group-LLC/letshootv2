@@ -19,7 +19,7 @@ export default function PanoramaCarousel({ images }) {
     const measure = () => {
       const first = itemsRef.current[0];
       const W = first ? first.offsetWidth : 300;
-      const gap = W * 0.2;                    // visible gap between cards
+      const gap = W * 0.1;                    // tighter gap between cards
       R = (W + gap) / (2 * Math.sin((STEP * Math.PI / 180) / 2));
     };
 
