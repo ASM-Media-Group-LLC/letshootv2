@@ -11,8 +11,8 @@ const ease = [0.22, 1, 0.36, 1];
 
 // AI-generated showcase images for the coverflow carousel
 const SHOWCASE = [
-  '/hero-ia.jpg', '/result-2.jpg', '/card-moda.jpg', '/card-estilista.jpg',
-  '/card-localizacion.jpg', '/result-4.jpg', '/result-5.jpg', '/hero-stage-5.jpg',
+  '/card-localizacion.jpg', '/result-2.jpg', '/card-moda.jpg', '/hero-ia.jpg',
+  '/result-4.jpg', '/card-estilista.jpg', '/result-5.jpg',
 ];
 
 export default function CinematicHero() {
