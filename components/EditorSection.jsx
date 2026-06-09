@@ -17,60 +17,53 @@ import SectionHeading from './SectionHeading';
 
 const SRCS = [
   '/hero-stage-1.jpg', '/hero-stage-2.jpg',
-  '/hero-stage-3.jpg', '/hero-stage-4.jpg', '/hero-stage-5.jpg',
+  '/hero-stage-3.jpg', '/hero-stage-4.jpg',
 ];
 
-const WIPES = [[0.05,0.20],[0.22,0.38],[0.40,0.55],[0.57,0.72]];
+const WIPES = [[0.06,0.24],[0.30,0.48],[0.54,0.72]];
 
 const LABELS = {
   es: [
-    { sub: 'Analizando rasgos...',      n: '01' },
+    { sub: 'Analizando rasgos...',       n: '01' },
     { sub: 'Aplicando maquillaje IA...', n: '02' },
     { sub: 'Rediseñando vestuario...',   n: '03' },
     { sub: 'Generando locación IA...',   n: '04' },
-    { sub: '¡Sesión lista!',             n: '05' },
   ],
   en: [
     { sub: 'Analyzing features...',     n: '01' },
     { sub: 'Applying AI makeup...',     n: '02' },
     { sub: 'Redesigning outfit...',     n: '03' },
     { sub: 'Generating AI location...', n: '04' },
-    { sub: 'Session ready!',            n: '05' },
   ],
   pt: [
     { sub: 'A analisar traços...',               n: '01' },
     { sub: 'A aplicar maquilhagem IA...',        n: '02' },
     { sub: 'A redesenhar vestuário...',          n: '03' },
     { sub: 'A gerar localização IA...',          n: '04' },
-    { sub: 'Sessão pronta!',                     n: '05' },
   ],
   fr: [
     { sub: 'Analyse des traits...',              n: '01' },
     { sub: 'Application du maquillage IA...',   n: '02' },
     { sub: 'Redesign de la tenue...',           n: '03' },
     { sub: 'Génération de lieu IA...',          n: '04' },
-    { sub: 'Séance prête !',                    n: '05' },
   ],
   de: [
     { sub: 'Gesichtszüge analysieren...',       n: '01' },
     { sub: 'KI-Make-up anwenden...',            n: '02' },
     { sub: 'Outfit neu gestalten...',           n: '03' },
     { sub: 'KI-Location generieren...',         n: '04' },
-    { sub: 'Session bereit!',                   n: '05' },
   ],
   it: [
     { sub: 'Analisi dei tratti...',             n: '01' },
     { sub: 'Applicazione trucco IA...',         n: '02' },
     { sub: 'Riprogettazione outfit...',         n: '03' },
     { sub: 'Generazione location IA...',        n: '04' },
-    { sub: 'Sessione pronta!',                  n: '05' },
   ],
   zh: [
     { sub: '分析面部特征...',   n: '01' },
     { sub: '应用 AI 妆容...', n: '02' },
     { sub: '重新设计服装...',  n: '03' },
     { sub: '生成 AI 地点...', n: '04' },
-    { sub: '会话已就绪！',    n: '05' },
   ],
 };
 
@@ -104,38 +97,34 @@ export default function EditorSection() {
 
   useEffect(() => {
     return p.on('change', v => {
-      if      (v >= WIPES[3][0]) setActive(4);
-      else if (v >= WIPES[2][0]) setActive(3);
+      if      (v >= WIPES[2][0]) setActive(3);
       else if (v >= WIPES[1][0]) setActive(2);
       else if (v >= WIPES[0][0]) setActive(1);
       else                       setActive(0);
     });
   }, [p]);
 
-  const spMV = useTransform(p, [WIPES[0][0], WIPES[3][1]], [0, 1]);
+  const spMV = useTransform(p, [WIPES[0][0], WIPES[2][1]], [0, 1]);
   useEffect(() => spMV.on('change', v => setSP(Math.max(0, Math.min(1, v)))), [spMV]);
 
   // Wipe clips (top → bottom scanline)
   const w0=useTransform(p,WIPES[0],[0,1]); const w1=useTransform(p,WIPES[1],[0,1]);
-  const w2=useTransform(p,WIPES[2],[0,1]); const w3=useTransform(p,WIPES[3],[0,1]);
+  const w2=useTransform(p,WIPES[2],[0,1]);
   const b0=useTransform(w0,[0,1],[100,0]); const b1=useTransform(w1,[0,1],[100,0]);
-  const b2=useTransform(w2,[0,1],[100,0]); const b3=useTransform(w3,[0,1],[100,0]);
+  const b2=useTransform(w2,[0,1],[100,0]);
   const cp1=useMotionTemplate`inset(0 0 ${b0}% 0)`;
   const cp2=useMotionTemplate`inset(0 0 ${b1}% 0)`;
   const cp3=useMotionTemplate`inset(0 0 ${b2}% 0)`;
-  const cp4=useMotionTemplate`inset(0 0 ${b3}% 0)`;
-  const clips=[null,cp1,cp2,cp3,cp4];
+  const clips=[null,cp1,cp2,cp3];
 
   // Scanline Y + opacity (all hooks at top level — no hooks inside loops)
   const sly0=useMotionTemplate`${useTransform(w0,[0,1],[0,100])}%`;
   const sly1=useMotionTemplate`${useTransform(w1,[0,1],[0,100])}%`;
   const sly2=useMotionTemplate`${useTransform(w2,[0,1],[0,100])}%`;
-  const sly3=useMotionTemplate`${useTransform(w3,[0,1],[0,100])}%`;
   const slo0=useTransform(w0,[0,0.04,0.96,1],[0,1,1,0]);
   const slo1=useTransform(w1,[0,0.04,0.96,1],[0,1,1,0]);
   const slo2=useTransform(w2,[0,0.04,0.96,1],[0,1,1,0]);
-  const slo3=useTransform(w3,[0,0.04,0.96,1],[0,1,1,0]);
-  const sl=[{y:sly0,o:slo0},{y:sly1,o:slo1},{y:sly2,o:slo2},{y:sly3,o:slo3}];
+  const sl=[{y:sly0,o:slo0},{y:sly1,o:slo1},{y:sly2,o:slo2}];
 
   // Portrait: scroll-driven entrance (reliable inside the sticky scroller)
   const portraitO = useTransform(p, [0, 0.03], [0, 1]);
@@ -220,7 +209,7 @@ export default function EditorSection() {
                 {/* right */}
                 <div className="absolute left-[calc(100%+1.25rem)] top-[45%] flex flex-col items-start gap-1.5">
                   <div className="flex items-center gap-1"><div className="h-1.5 w-1.5 rounded-full bg-brand/60"/><div className="h-px w-8 bg-gradient-to-r from-transparent to-brand/60"/></div>
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-paper-mute">{labels[activeStage]?.n} / 05</span>
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-paper-mute">{labels[activeStage]?.n} / 0{labels.length}</span>
                 </div>
               </motion.div>
             </AnimatePresence>
