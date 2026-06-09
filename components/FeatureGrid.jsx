@@ -12,7 +12,12 @@ const ease = [0.22, 1, 0.36, 1];
 const CARD_IMAGES = {
   // Order matches t.creators.items: [image, map, shirt, wand]
   // HD realistas · Cualquier locación · Moda virtual · Estilista IA
-  creators: ['/card-hd.jpg', '/result-2.jpg', '/card-moda.jpg', '/card-estilista.jpg'],
+  creators: ['/card-hd.jpg', '/card-locacion.jpg', '/card-moda.jpg', '/card-estilista.jpg'],
+};
+
+// Per-card object-position so each subject is framed/centered nicely
+const CARD_POS = {
+  creators: ['50% 32%', '50% 30%', '50% 10%', '50% 16%'],
 };
 
 const ICON_ACCENT = {
@@ -26,6 +31,7 @@ export default function FeatureGrid({ id, sectionKey }) {
   const s = t[sectionKey];
   const iconClass = ICON_ACCENT[sectionKey] || ICON_ACCENT.creators;
   const imgs = CARD_IMAGES[sectionKey]; // undefined for agencies → clean cards
+  const pos = CARD_POS[sectionKey];
 
   return (
     <section id={id} className="relative w-full bg-ink py-24 sm:py-28">
@@ -60,8 +66,8 @@ export default function FeatureGrid({ id, sectionKey }) {
                       alt=""
                       aria-hidden
                       className="absolute inset-0 h-full w-full object-cover opacity-80 transition-transform duration-700 ease-out group-hover:scale-105"
-                      // Face/upper-body framing: anchor higher so the head is visible
-                      style={{ objectPosition: '50% 15%' }}
+                      // Per-card framing so each subject is centered/visible
+                      style={{ objectPosition: pos ? pos[i % pos.length] : '50% 15%' }}
                     />
                     {/* Fixed dark gradient (theme-independent) so the photo keeps
                         contrast and white text stays legible in light & dark mode. */}
