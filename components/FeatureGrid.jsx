@@ -12,10 +12,7 @@ const ease = [0.22, 1, 0.36, 1];
 const CARD_IMAGES = {
   // Order matches t.creators.items: [image, map, shirt, wand]
   // HD realistas · Cualquier locación · Moda virtual · Estilista IA
-  // These card-* files are dedicated to FeatureGrid so Results section keeps
-  // its own result-*.jpg untouched.
-  // Card 0 (Fotos HD) ↔ Card 1 (Cualquier locación): swapped
-  creators: ['/card-localizacion.jpg', '/result-2.jpg', '/card-moda.jpg', '/card-estilista.jpg'],
+  creators: ['/card-hd.jpg', '/result-2.jpg', '/card-moda.jpg', '/card-estilista.jpg'],
 };
 
 const ICON_ACCENT = {
