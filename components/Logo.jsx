@@ -7,7 +7,7 @@ import { useTheme } from '@/app/providers';
 
 export default function Logo({ size = 'base', className = '' }) {
   const { theme } = useTheme();
-  const h = size === 'lg' ? 38 : 28;
+  const h = size === 'lg' ? 38 : size === 'sm' ? 22 : 28;
   const src = theme === 'light' ? '/logo-light.png' : '/logo.png';
 
   return (

@@ -52,7 +52,7 @@ export default function Nav() {
       <nav className="nav-glass mx-auto flex max-w-6xl items-center justify-between rounded-2xl px-4 py-2.5 sm:px-6">
         <div className="flex items-center gap-8">
           <a href="#top" aria-label="LetShoot">
-            <Logo />
+            <Logo size="sm" />
           </a>
           <div className="hidden items-center gap-7 md:flex">
             {links.map((l) => (

@@ -36,25 +36,15 @@ export default function CinematicHero() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease }}
-          className="mb-6 h-[clamp(40px,5vw,60px)] w-auto"
+          className="mb-7 h-[clamp(40px,5vw,60px)] w-auto"
           draggable={false}
         />
-
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease, delay: 0.1 }}
-          className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest text-brand"
-        >
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
-          {t.hero.eyebrow}
-        </motion.div>
 
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.75, ease, delay: 0.18 }}
-          className="headline mx-auto max-w-3xl text-[clamp(2.4rem,5.5vw,4.5rem)] leading-[1.02] text-paper [text-wrap:balance]"
+          transition={{ duration: 0.75, ease, delay: 0.15 }}
+          className="headline mx-auto whitespace-nowrap text-[clamp(1.6rem,5vw,4rem)] leading-[1.05] text-paper"
         >
           {t.hero.pre}{' '}
           <span className="text-rainbow" style={{ paddingBlock: '0.06em' }}>{t.hero.highlight}</span>
