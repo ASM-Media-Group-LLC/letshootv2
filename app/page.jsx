@@ -4,7 +4,6 @@ import EditorSection from '@/components/EditorSection';
 import HowItWorks from '@/components/HowItWorks';
 import FeatureGrid from '@/components/FeatureGrid';
 import Comparison from '@/components/Comparison';
-import BeforeAfterSection from '@/components/BeforeAfterSection';
 import Results from '@/components/Results';
 import Pricing from '@/components/Pricing';
 import FinalCta from '@/components/FinalCta';
@@ -20,7 +19,6 @@ export default function Page() {
       <FeatureGrid id="creators" sectionKey="creators" />
       <FeatureGrid id="agencies" sectionKey="agencies" />
       <Comparison />
-      <BeforeAfterSection />
       <Results />
       <Pricing />
       <FinalCta />

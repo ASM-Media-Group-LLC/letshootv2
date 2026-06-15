@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
-import { useLang } from '@/app/providers';
+import { useLang, useTheme } from '@/app/providers';
 import AnimatedGradientBg from './AnimatedGradientBg';
 import Particles from './Particles';
 import PanoramaCarousel from './PanoramaCarousel';
@@ -17,6 +17,8 @@ const SHOWCASE = [
 
 export default function CinematicHero() {
   const { t } = useLang();
+  const { theme } = useTheme();
+  const unlokLogo = theme === 'light' ? '/logo-unlok-dark.png' : '/logo-unlok.png';
 
   return (
     <section id="hero" className="relative flex min-h-screen w-full flex-col overflow-hidden">
@@ -26,7 +28,18 @@ export default function CinematicHero() {
       <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-transparent via-transparent to-ink" aria-hidden />
 
       {/* ── Centered text (minimal) ──────────────────────────────────────── */}
-      <div className="relative z-10 flex flex-col items-center px-5 pt-28 text-center sm:pt-32">
+      <div className="relative z-10 flex flex-col items-center px-5 pt-24 text-center sm:pt-28">
+        {/* LetShoot · by Unlok logo */}
+        <motion.img
+          src={unlokLogo}
+          alt="LetShoot by Unlok"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease }}
+          className="mb-6 h-[clamp(40px,5vw,60px)] w-auto"
+          draggable={false}
+        />
+
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -61,7 +74,7 @@ export default function CinematicHero() {
             <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" aria-hidden />
           </a>
           <a
-            href="#before-after"
+            href="#results"
             className="glass-ios inline-flex items-center rounded-full px-7 py-3.5 text-base font-medium text-paper transition-colors hover:text-brand"
           >
             {t.hero.ctaSecondary}
