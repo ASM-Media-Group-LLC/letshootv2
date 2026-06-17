@@ -10,10 +10,10 @@ const ease = [0.22, 1, 0.36, 1];
 
 // ── Plans (language-independent: name, price, structure) ─────────────────────
 const PLANS = [
-  { key: 'standard', name: 'Standard', base: 200 },
-  { key: 'plus',     name: 'Plus',     base: 400, inherits: 'Standard' },
-  { key: 'premium',  name: 'Premium',  base: 800, inherits: 'Plus', popular: true },
-  { key: 'elite',    name: 'Elite',    base: 1000, inherits: 'Premium', attention: true },
+  { key: 'standard', name: 'Glow',      base: 200 },
+  { key: 'plus',     name: 'Spotlight', base: 400 },
+  { key: 'premium',  name: 'Icon',      base: 800, popular: true },
+  { key: 'elite',    name: 'VIP',       base: 1000, attention: true },
 ];
 
 // Billing periods (mult = discount applied, off = badge under label)
@@ -226,17 +226,17 @@ const COPY = {
       free: { desc: 'Comprueba la magia sin pagar nada. Tu primera sesión corre por nuestra cuenta.', cta: 'Probar gratis', features: [
         { t: '1 sesión de prueba' }, { t: 'Vista previa en baja resolución' }, { t: 'Sin tarjeta de crédito' },
       ]},
-      standard: { desc: 'Todo para producir tu propio contenido que vende y dejar de pagar fotógrafo.', cta: 'Empezar', features: [
-        { t: 'Hasta 150 fotos IA / mes' }, { t: 'Outfits y locaciones', tag: 'Sin límite' }, { t: 'Calidad HD' }, { t: 'Maquillaje y estilo IA', tag: 'Exclusivo' },
+      standard: { desc: 'Tu primer set listo para vender. Nosotros lo creamos, tú apruebas.', cta: 'Empezar', unit: '≈ $25 por foto', features: [
+        { t: '8 fotos IA / mes' }, { t: '2 videos IA / mes', tag: 'Incluidos' }, { t: 'Locaciones y outfits a elección' }, { t: 'Calidad HD' }, { t: 'Tú solo apruebas y publicas' },
       ]},
-      plus: { desc: 'Sube de nivel: más volumen, video y calidad 4K para crecer sin frenos.', cta: 'Empezar', features: [
-        { t: 'Hasta 400 fotos IA / mes' }, { t: 'Videos IA cortos', tag: 'Nuevo' }, { t: 'Calidad 4K', tag: 'Exclusivo' }, { t: 'Locaciones premium' },
+      plus: { desc: 'Más volumen y video para publicar sin parar y vender más.', cta: 'Empezar', unit: '≈ $20 por foto', features: [
+        { t: '20 fotos IA / mes' }, { t: '5 videos IA + reels / mes' }, { t: 'Calidad 4K', tag: 'Exclusivo' }, { t: 'Locaciones premium' }, { t: 'Entrega prioritaria' },
       ]},
-      premium: { desc: 'El arsenal completo: producción ilimitada, prioridad total y licencia comercial.', cta: 'Empezar', features: [
-        { t: 'Fotos IA ilimitadas' }, { t: 'Videos IA largos + reels' }, { t: 'Renders prioritarios', tag: 'Sin espera' }, { t: 'Licencia comercial', tag: 'Exclusivo' }, { t: 'Soporte prioritario' },
+      premium: { desc: 'Producción seria para creadoras que viven de su contenido.', cta: 'Empezar', unit: '≈ $16 por foto', features: [
+        { t: '50 fotos IA / mes' }, { t: '12 videos IA + reels / mes' }, { t: 'Licencia comercial', tag: 'Exclusivo' }, { t: 'Dirección creativa' }, { t: 'Entrega exprés + soporte prioritario' },
       ]},
-      elite: { desc: 'Tu estudio creativo personal. Un equipo real dirige cada sesión por ti.', cta: 'Hablar con ventas', features: [
-        { t: 'Gestor de cuenta dedicado' }, { t: 'Sesiones a medida', tag: 'Express' }, { t: 'Dirección creativa 1-a-1' }, { t: 'Soporte por línea directa' },
+      elite: { desc: 'Tu estudio creativo personal. Un equipo dedicado solo a ti.', cta: 'Hablar con ventas', unit: '≈ $12.50 por foto', features: [
+        { t: '80 fotos IA / mes' }, { t: '20 videos IA + reels / mes' }, { t: 'Gestor de cuenta dedicado' }, { t: 'Dirección creativa 1-a-1' }, { t: 'Máxima prioridad' },
       ]},
     },
   },
@@ -248,17 +248,17 @@ const COPY = {
       free: { desc: 'See the magic for free. Your first session is on us.', cta: 'Try for free', features: [
         { t: '1 trial session' }, { t: 'Low-res preview' }, { t: 'No credit card required' },
       ]},
-      standard: { desc: 'Everything to produce your own content that sells and ditch the photographer.', cta: 'Get started', features: [
-        { t: 'Up to 150 AI photos / mo' }, { t: 'Outfits & locations', tag: 'Unlimited' }, { t: 'HD quality' }, { t: 'AI makeup & styling', tag: 'Exclusive' },
+      standard: { desc: 'Your first set ready to sell. We create it, you approve.', cta: 'Get started', unit: '≈ $25 per photo', features: [
+        { t: '8 AI photos / mo' }, { t: '2 AI videos / mo', tag: 'Included' }, { t: 'Your choice of locations & outfits' }, { t: 'HD quality' }, { t: 'You just approve & post' },
       ]},
-      plus: { desc: 'Level up: more volume, video and 4K quality to grow without limits.', cta: 'Get started', features: [
-        { t: 'Up to 400 AI photos / mo' }, { t: 'Short AI videos', tag: 'New' }, { t: '4K quality', tag: 'Exclusive' }, { t: 'Premium locations' },
+      plus: { desc: 'More volume and video to post nonstop and sell more.', cta: 'Get started', unit: '≈ $20 per photo', features: [
+        { t: '20 AI photos / mo' }, { t: '5 AI videos + reels / mo' }, { t: '4K quality', tag: 'Exclusive' }, { t: 'Premium locations' }, { t: 'Priority delivery' },
       ]},
-      premium: { desc: 'The full arsenal: unlimited production, top priority and commercial rights.', cta: 'Get started', features: [
-        { t: 'Unlimited AI photos' }, { t: 'Long AI videos + reels' }, { t: 'Priority renders', tag: 'Zero wait' }, { t: 'Commercial license', tag: 'Exclusive' }, { t: 'Priority support' },
+      premium: { desc: 'Serious production for creators who live off their content.', cta: 'Get started', unit: '≈ $16 per photo', features: [
+        { t: '50 AI photos / mo' }, { t: '12 AI videos + reels / mo' }, { t: 'Commercial license', tag: 'Exclusive' }, { t: 'Creative direction' }, { t: 'Express delivery + priority support' },
       ]},
-      elite: { desc: 'Your personal creative studio. A real team directs every session for you.', cta: 'Talk to sales', features: [
-        { t: 'Dedicated account manager' }, { t: 'Custom sessions', tag: 'Express' }, { t: '1-on-1 creative direction' }, { t: 'Direct-line support' },
+      elite: { desc: 'Your personal creative studio. A team dedicated only to you.', cta: 'Talk to sales', unit: '≈ $12.50 per photo', features: [
+        { t: '80 AI photos / mo' }, { t: '20 AI videos + reels / mo' }, { t: 'Dedicated account manager' }, { t: '1-on-1 creative direction' }, { t: 'Top priority' },
       ]},
     },
   },
@@ -473,7 +473,6 @@ export default function Pricing() {
           {PLANS.map((plan, i) => {
             const pc = c.plans[plan.key];
             const price = plan.base * mult;
-            const original = plan.base * 2 * mult;
             const highlight = plan.popular || plan.attention;
             return (
               <motion.div
@@ -500,28 +499,22 @@ export default function Pricing() {
                   </div>
                 )}
 
-                {/* Name + popular / off badge */}
+                {/* Name + popular badge */}
                 <div className="relative flex items-center justify-between">
                   <span className="font-mono text-[11px] font-semibold uppercase tracking-widest text-paper-mute">{plan.name}</span>
-                  {plan.popular ? (
+                  {plan.popular && (
                     <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-on-accent">{c.popular}</span>
-                  ) : plan.base > 0 ? (
-                    <span className="rounded-md bg-brand/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand">{c.off}</span>
-                  ) : null}
+                  )}
                 </div>
 
                 {/* Price */}
-                {plan.base > 0 ? (
-                  <div className="relative mt-3">
-                    <span className="font-mono text-xs text-paper-dim line-through">${fmt(original)}</span>
-                    <div className="flex items-baseline gap-1">
-                      <span className={`font-display text-[2.6rem] leading-none ${plan.popular ? 'text-brand' : 'text-paper'}`}>${fmt(price)}</span>
-                      <span className="text-sm text-paper-dim">{c.perMonth}</span>
-                    </div>
+                <div className="relative mt-3">
+                  <div className="flex items-baseline gap-1">
+                    <span className={`font-display text-[2.6rem] leading-none ${plan.popular ? 'text-brand' : 'text-paper'}`}>${fmt(price)}</span>
+                    <span className="text-sm text-paper-dim">{c.perMonth}</span>
                   </div>
-                ) : (
-                  <div className="relative mt-3 font-display text-[2.6rem] leading-none text-paper">{c.free}</div>
-                )}
+                  {pc.unit && <span className="font-mono text-[11px] text-paper-dim">{pc.unit}</span>}
+                </div>
 
                 <p className="relative mt-4 min-h-[2.5rem] text-[13px] leading-relaxed text-paper-mute">{pc.desc}</p>
 
