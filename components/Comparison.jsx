@@ -14,7 +14,7 @@ export default function Comparison() {
   return (
     <section className="relative bg-ink-2 py-24 sm:py-28">
       <div className="mx-auto max-w-5xl px-5">
-        <SectionHeading label={c.label} titleA={c.titleA} highlight={c.titleHighlight} align="center" hue="brand" />
+        <SectionHeading label={c.label} titleA={c.titleA} highlight={c.titleHighlight} sub={c.sub} align="center" hue="brand" />
 
         {/* ── Mobile: stacked cards (table doesn't fit 3 cols) ──────────────── */}
         <motion.div
