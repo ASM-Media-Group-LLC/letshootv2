@@ -1,222 +1,156 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence, useScroll, useTransform, useMotionTemplate } from 'framer-motion';
+import { useRef, useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { MoveHorizontal } from 'lucide-react';
 import { useLang } from '@/app/providers';
-import EditorChrome, { EditorBg } from './EditorChrome';
 import SectionHeading from './SectionHeading';
-
-// ── Scroll-driven AI editor section ─────────────────────────────────────────
-// h-[520vh] sticky — shows the 5-stage photo transformation with the editor UI.
-// Scroll bands:
-//   [0.05, 0.20] → stage 0→1 (makeup)
-//   [0.22, 0.38] → stage 1→2 (outfit)
-//   [0.40, 0.55] → stage 2→3 (NYC)
-//   [0.57, 0.72] → stage 3→4 (beach)
-//   [0.80, 0.95] → CTA appears
-
-const SRCS = [
-  '/hero-stage-1.jpg', '/hero-stage-2.jpg',
-  '/hero-stage-3.jpg', '/hero-stage-4.jpg',
-];
-
-const WIPES = [[0.06,0.24],[0.30,0.48],[0.54,0.72]];
-
-const LABELS = {
-  es: [
-    { sub: 'Analizando rasgos...',       n: '01' },
-    { sub: 'Aplicando maquillaje IA...', n: '02' },
-    { sub: 'Rediseñando vestuario...',   n: '03' },
-    { sub: 'Generando locación IA...',   n: '04' },
-  ],
-  en: [
-    { sub: 'Analyzing features...',     n: '01' },
-    { sub: 'Applying AI makeup...',     n: '02' },
-    { sub: 'Redesigning outfit...',     n: '03' },
-    { sub: 'Generating AI location...', n: '04' },
-  ],
-  pt: [
-    { sub: 'A analisar traços...',               n: '01' },
-    { sub: 'A aplicar maquilhagem IA...',        n: '02' },
-    { sub: 'A redesenhar vestuário...',          n: '03' },
-    { sub: 'A gerar localização IA...',          n: '04' },
-  ],
-  fr: [
-    { sub: 'Analyse des traits...',              n: '01' },
-    { sub: 'Application du maquillage IA...',   n: '02' },
-    { sub: 'Redesign de la tenue...',           n: '03' },
-    { sub: 'Génération de lieu IA...',          n: '04' },
-  ],
-  de: [
-    { sub: 'Gesichtszüge analysieren...',       n: '01' },
-    { sub: 'KI-Make-up anwenden...',            n: '02' },
-    { sub: 'Outfit neu gestalten...',           n: '03' },
-    { sub: 'KI-Location generieren...',         n: '04' },
-  ],
-  it: [
-    { sub: 'Analisi dei tratti...',             n: '01' },
-    { sub: 'Applicazione trucco IA...',         n: '02' },
-    { sub: 'Riprogettazione outfit...',         n: '03' },
-    { sub: 'Generazione location IA...',        n: '04' },
-  ],
-  zh: [
-    { sub: '分析面部特征...',   n: '01' },
-    { sub: '应用 AI 妆容...', n: '02' },
-    { sub: '重新设计服装...',  n: '03' },
-    { sub: '生成 AI 地点...', n: '04' },
-  ],
-};
-
-const TITLES = {
-  es: { label: 'Detrás de cámaras', titleA: 'Así funciona', highlight: 'la magia', sub: 'Sube una selfie y la IA reconstruye maquillaje, outfit y locación, paso a paso.' },
-  en: { label: 'Behind the scenes', titleA: 'How the', highlight: 'magic works', sub: 'Upload a selfie and the AI rebuilds makeup, outfit and location, step by step.' },
-  pt: { label: 'Nos bastidores', titleA: 'Como funciona', highlight: 'a magia', sub: 'Envia uma selfie e a IA recria maquilhagem, outfit e localização, passo a passo.' },
-  fr: { label: 'Dans les coulisses', titleA: 'La magie,', highlight: 'expliquée', sub: 'Envoie un selfie et l’IA recrée maquillage, tenue et lieu, étape par étape.' },
-  de: { label: 'Hinter den Kulissen', titleA: 'So funktioniert', highlight: 'die Magie', sub: 'Lade ein Selfie hoch und die KI baut Make-up, Outfit und Location Schritt für Schritt auf.' },
-  it: { label: 'Dietro le quinte', titleA: 'Come funziona', highlight: 'la magia', sub: 'Carica un selfie e l’IA ricrea trucco, outfit e location, passo dopo passo.' },
-  zh: { label: '幕后', titleA: '魔法', highlight: '如何运作', sub: '上传一张自拍，AI 逐步重建妆容、服装与场景。' },
-};
 
 const ease = [0.22, 1, 0.36, 1];
 
+// Before / after example pairs (selfie → editorial result)
+const PAIRS = [
+  { before: '/ba-before-1.jpg', after: '/ba-after-1.jpg' },
+  { before: '/ba-before-2.jpg', after: '/ba-after-2.jpg' },
+];
+
+const TITLES = {
+  es: { label: 'ANTES / DESPUÉS', titleA: 'De selfie a', highlight: 'portada', sub: 'La misma tú. Arrastra el control y mira en qué se convierte una selfie normal.', before: 'Tu selfie', after: 'Con LetShoot', drag: 'Arrastra' },
+  en: { label: 'BEFORE / AFTER', titleA: 'From selfie to', highlight: 'cover', sub: 'The same you. Drag the handle and see what an ordinary selfie becomes.', before: 'Your selfie', after: 'With LetShoot', drag: 'Drag' },
+  pt: { label: 'ANTES / DEPOIS', titleA: 'De selfie a', highlight: 'capa', sub: 'A mesma tu. Arrasta o controlo e vê no que se transforma uma selfie normal.', before: 'A tua selfie', after: 'Com LetShoot', drag: 'Arrasta' },
+  fr: { label: 'AVANT / APRÈS', titleA: 'Du selfie à la', highlight: 'couverture', sub: 'La même toi. Glisse le curseur et vois ce que devient un simple selfie.', before: 'Ton selfie', after: 'Avec LetShoot', drag: 'Glisse' },
+  de: { label: 'VORHER / NACHHER', titleA: 'Vom Selfie zum', highlight: 'Cover', sub: 'Dasselbe Du. Zieh den Regler und sieh, was aus einem normalen Selfie wird.', before: 'Dein Selfie', after: 'Mit LetShoot', drag: 'Ziehen' },
+  it: { label: 'PRIMA / DOPO', titleA: 'Dal selfie alla', highlight: 'copertina', sub: 'La stessa te. Trascina il cursore e guarda in cosa si trasforma un selfie normale.', before: 'Il tuo selfie', after: 'Con LetShoot', drag: 'Trascina' },
+  zh: { label: '前 / 后', titleA: '从自拍到', highlight: '封面大片', sub: '同样的你。拖动滑块，看看一张普通自拍如何蜕变。', before: '你的自拍', after: '用 LetShoot', drag: '拖动' },
+};
+
 export default function EditorSection() {
   const { lang } = useLang();
-  const labels = LABELS[lang] || LABELS.es;
-  const titles = TITLES[lang] || TITLES.es;
+  const t = TITLES[lang] || TITLES.es;
 
-  const ref = useRef(null);
-  const { scrollYProgress: p } = useScroll({ target: ref, offset: ['start start', 'end end'] });
+  const [pairIdx, setPairIdx] = useState(0);
+  const [pos, setPos] = useState(50);
+  const frameRef = useRef(null);
+  const dragging = useRef(false);
 
-  const [activeStage, setActive] = useState(0);
-  const [scanProgress, setSP]   = useState(0);
-  const [reduced, setReduced]   = useState(false);
+  const pair = PAIRS[pairIdx];
 
-  useEffect(() => {
-    if (window.matchMedia) setReduced(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const setFromClientX = useCallback((clientX) => {
+    const el = frameRef.current;
+    if (!el || clientX == null) return;
+    const rect = el.getBoundingClientRect();
+    const pct = ((clientX - rect.left) / rect.width) * 100;
+    setPos(Math.max(0, Math.min(100, pct)));
   }, []);
 
-  useEffect(() => {
-    return p.on('change', v => {
-      if      (v >= WIPES[2][0]) setActive(3);
-      else if (v >= WIPES[1][0]) setActive(2);
-      else if (v >= WIPES[0][0]) setActive(1);
-      else                       setActive(0);
-    });
-  }, [p]);
+  const onPointerDown = (e) => {
+    dragging.current = true;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setFromClientX(e.clientX);
+  };
+  const onPointerMove = (e) => {
+    if (dragging.current) setFromClientX(e.clientX);
+  };
+  const onPointerUp = () => { dragging.current = false; };
 
-  const spMV = useTransform(p, [WIPES[0][0], WIPES[2][1]], [0, 1]);
-  useEffect(() => spMV.on('change', v => setSP(Math.max(0, Math.min(1, v)))), [spMV]);
-
-  // Wipe clips (top → bottom scanline)
-  const w0=useTransform(p,WIPES[0],[0,1]); const w1=useTransform(p,WIPES[1],[0,1]);
-  const w2=useTransform(p,WIPES[2],[0,1]);
-  const b0=useTransform(w0,[0,1],[100,0]); const b1=useTransform(w1,[0,1],[100,0]);
-  const b2=useTransform(w2,[0,1],[100,0]);
-  const cp1=useMotionTemplate`inset(0 0 ${b0}% 0)`;
-  const cp2=useMotionTemplate`inset(0 0 ${b1}% 0)`;
-  const cp3=useMotionTemplate`inset(0 0 ${b2}% 0)`;
-  const clips=[null,cp1,cp2,cp3];
-
-  // Scanline Y + opacity (all hooks at top level — no hooks inside loops)
-  const sly0=useMotionTemplate`${useTransform(w0,[0,1],[0,100])}%`;
-  const sly1=useMotionTemplate`${useTransform(w1,[0,1],[0,100])}%`;
-  const sly2=useMotionTemplate`${useTransform(w2,[0,1],[0,100])}%`;
-  const slo0=useTransform(w0,[0,0.04,0.96,1],[0,1,1,0]);
-  const slo1=useTransform(w1,[0,0.04,0.96,1],[0,1,1,0]);
-  const slo2=useTransform(w2,[0,0.04,0.96,1],[0,1,1,0]);
-  const sl=[{y:sly0,o:slo0},{y:sly1,o:slo1},{y:sly2,o:slo2}];
-
-  // Portrait: scroll-driven entrance (reliable inside the sticky scroller)
-  const portraitO = useTransform(p, [0, 0.03], [0, 1]);
-  const portraitScale = useTransform(p, [0, 0.06], [0.93, 1]);
-  const portraitY = useTransform(p, [0, 0.05], [28, 0]);
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowLeft') setPos((p) => Math.max(0, p - 4));
+    else if (e.key === 'ArrowRight') setPos((p) => Math.min(100, p + 4));
+  };
 
   return (
-    <section className="relative w-full bg-ink">
-
-      {/* ── Section heading (normal flow — integrated like the other sections) ── */}
+    <section className="relative w-full overflow-hidden bg-ink">
       <div className="mx-auto max-w-6xl px-5 pt-28 pb-20 sm:pt-32 sm:pb-28">
         <SectionHeading
           align="center"
           hue="gradient"
-          label={titles.label}
-          titleA={titles.titleA}
-          highlight={titles.highlight}
-          sub={titles.sub}
+          label={t.label}
+          titleA={t.titleA}
+          highlight={t.highlight}
+          sub={t.sub}
         />
-      </div>
 
-      {/* ── Scroll-scrubbed editor canvas ─────────────────────────────────────── */}
-      <div ref={ref} className="relative h-[460vh]">
-        <div className="sticky top-0 h-screen w-full overflow-hidden">
-
-        {/* Editor workspace background */}
-        <EditorBg />
-
-        {/* Editor chrome — constrained to content margins so panels stay near center */}
-        <div className="absolute inset-0 z-20">
-          <div className="relative mx-auto h-full max-w-5xl px-4 sm:px-6">
-            <EditorChrome stage={activeStage} scanProgress={scanProgress} />
-          </div>
-        </div>
-
-        {/* Portrait centered — scroll-driven entrance */}
+        {/* ── Interactive before/after slider ─────────────────────────────── */}
         <motion.div
-          style={{ opacity: portraitO, scale: portraitScale, y: portraitY }}
-          className="absolute inset-0 z-10 flex items-center justify-center"
+          initial={{ opacity: 0, y: 28 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-60px' }}
+          transition={{ duration: 0.6, ease }}
+          className="mx-auto mt-12 flex flex-col items-center"
         >
-          <div className="relative">
-            <div
-              className="relative overflow-hidden rounded-3xl"
-              style={{
-                width: 'min(88vw, calc(72vh * 4 / 5))',
-                aspectRatio: '4 / 5',
-                boxShadow: '0 40px 100px -20px rgba(0,0,0,0.6), 0 0 0 1px rgba(var(--overlay)/0.12)',
-              }}
-            >
-              {SRCS.map((src, i) => (
-                <motion.img
-                  key={src}
-                  src={src}
-                  alt={i===0 ? 'Foto original antes de LetShoot' : ''}
-                  className="absolute inset-0 h-full w-full object-cover"
-                  style={{ objectPosition:'50% 18%', ...(clips[i] ? { clipPath: clips[i] } : {}) }}
-                  draggable={false}
-                />
-              ))}
+          <div
+            ref={frameRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerLeave={onPointerUp}
+            className="relative select-none overflow-hidden rounded-3xl border border-hair/15 shadow-soft"
+            style={{
+              width: 'min(90vw, calc(70vh * 4 / 5), 460px)',
+              aspectRatio: '4 / 5',
+              touchAction: 'none',
+              cursor: 'ew-resize',
+              boxShadow: '0 40px 100px -20px rgba(0,0,0,0.6), 0 0 0 1px rgba(var(--overlay)/0.1)',
+            }}
+          >
+            {/* AFTER — full background (the impressive result) */}
+            <img
+              src={pair.after}
+              alt="Resultado con LetShoot"
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              draggable={false}
+            />
+            {/* BEFORE — clipped to the left of the handle (the original selfie) */}
+            <img
+              src={pair.before}
+              alt="Selfie original"
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
+              draggable={false}
+            />
 
-              {/* Scanlines */}
-              {sl.map((s, i) => (
-                <motion.div key={i} className="pointer-events-none absolute inset-x-0 z-20"
-                  style={{ top:s.y, opacity:s.o, height:'3px', marginTop:'-1.5px',
-                    background:'linear-gradient(90deg,transparent 0%,rgba(0,177,246,0.5) 10%,rgba(127,224,255,1) 50%,rgba(0,177,246,0.5) 90%,transparent 100%)',
-                    boxShadow:'0 0 18px 6px rgba(0,177,246,0.45)' }}
+            {/* Corner labels */}
+            <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/55 px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur">
+              {t.before}
+            </span>
+            <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-brand/85 px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-on-accent backdrop-blur">
+              {t.after}
+            </span>
+
+            {/* Divider + handle */}
+            <div
+              className="pointer-events-none absolute inset-y-0 z-10"
+              style={{ left: `${pos}%`, transform: 'translateX(-50%)' }}
+            >
+              <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-white/90 shadow-[0_0_12px_2px_rgba(0,177,246,0.5)]" />
+              <button
+                type="button"
+                aria-label={t.drag}
+                onKeyDown={onKeyDown}
+                className="pointer-events-auto absolute top-1/2 left-1/2 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-white/95 text-ink shadow-glow focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <MoveHorizontal size={18} aria-hidden />
+              </button>
+            </div>
+          </div>
+
+          {/* Example switcher */}
+          {PAIRS.length > 1 && (
+            <div className="mt-6 flex items-center gap-2">
+              {PAIRS.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`Ejemplo ${i + 1}`}
+                  onClick={() => { setPairIdx(i); setPos(50); }}
+                  className={`h-2.5 rounded-full transition-all ${
+                    i === pairIdx ? 'w-7 bg-brand' : 'w-2.5 bg-hair/30 hover:bg-hair/50'
+                  }`}
                 />
               ))}
             </div>
-
-            {/* Bubble annotations — desktop only */}
-            <AnimatePresence mode="wait">
-              <motion.div key={activeStage} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration:0.35,ease}}
-                className="pointer-events-none absolute inset-0 hidden lg:block">
-                {/* left */}
-                <div className="absolute right-[calc(100%+1.25rem)] top-1/4 flex flex-col items-end gap-1.5">
-                  <span className="glass-ios whitespace-nowrap rounded-2xl px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-paper" style={{borderBottomRightRadius:'0.3rem'}}>
-                    {labels[activeStage]?.sub}
-                  </span>
-                  <div className="flex items-center gap-1"><div className="h-px w-8 bg-gradient-to-r from-brand/60 to-transparent"/><div className="h-1.5 w-1.5 rounded-full bg-brand/60"/></div>
-                </div>
-                {/* right */}
-                <div className="absolute left-[calc(100%+1.25rem)] top-[45%] flex flex-col items-start gap-1.5">
-                  <div className="flex items-center gap-1"><div className="h-1.5 w-1.5 rounded-full bg-brand/60"/><div className="h-px w-8 bg-gradient-to-r from-transparent to-brand/60"/></div>
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-paper-mute">{labels[activeStage]?.n} / 0{labels.length}</span>
-                </div>
-              </motion.div>
-            </AnimatePresence>
-          </div>
+          )}
         </motion.div>
-
-        </div>
       </div>
     </section>
   );

@@ -10,11 +10,10 @@ const ease = [0.22, 1, 0.36, 1];
 
 // ── Plans (language-independent: name, price, structure) ─────────────────────
 const PLANS = [
-  { key: 'free',     name: 'Free',     base: 0 },
-  { key: 'standard', name: 'Standard', base: 79.99 },
-  { key: 'plus',     name: 'Plus',     base: 119.99, inherits: 'Standard' },
-  { key: 'premium',  name: 'Premium',  base: 199.99, inherits: 'Plus', popular: true },
-  { key: 'elite',    name: 'Elite',    base: 399.00, inherits: 'Premium', attention: true },
+  { key: 'standard', name: 'Standard', base: 200 },
+  { key: 'plus',     name: 'Plus',     base: 400, inherits: 'Standard' },
+  { key: 'premium',  name: 'Premium',  base: 800, inherits: 'Plus', popular: true },
+  { key: 'elite',    name: 'Elite',    base: 1000, inherits: 'Premium', attention: true },
 ];
 
 // Billing periods (mult = discount applied, off = badge under label)
@@ -227,7 +226,7 @@ const COPY = {
       free: { desc: 'Comprueba la magia sin pagar nada. Tu primera sesión corre por nuestra cuenta.', cta: 'Probar gratis', features: [
         { t: '1 sesión de prueba' }, { t: 'Vista previa en baja resolución' }, { t: 'Sin tarjeta de crédito' },
       ]},
-      standard: { desc: 'Todo lo que necesitas para dejar de pagar fotógrafo y producir como pro.', cta: 'Empezar', features: [
+      standard: { desc: 'Todo para producir tu propio contenido que vende y dejar de pagar fotógrafo.', cta: 'Empezar', features: [
         { t: 'Hasta 150 fotos IA / mes' }, { t: 'Outfits y locaciones', tag: 'Sin límite' }, { t: 'Calidad HD' }, { t: 'Maquillaje y estilo IA', tag: 'Exclusivo' },
       ]},
       plus: { desc: 'Sube de nivel: más volumen, video y calidad 4K para crecer sin frenos.', cta: 'Empezar', features: [
@@ -249,7 +248,7 @@ const COPY = {
       free: { desc: 'See the magic for free. Your first session is on us.', cta: 'Try for free', features: [
         { t: '1 trial session' }, { t: 'Low-res preview' }, { t: 'No credit card required' },
       ]},
-      standard: { desc: 'Everything you need to ditch the photographer and shoot like a pro.', cta: 'Get started', features: [
+      standard: { desc: 'Everything to produce your own content that sells and ditch the photographer.', cta: 'Get started', features: [
         { t: 'Up to 150 AI photos / mo' }, { t: 'Outfits & locations', tag: 'Unlimited' }, { t: 'HD quality' }, { t: 'AI makeup & styling', tag: 'Exclusive' },
       ]},
       plus: { desc: 'Level up: more volume, video and 4K quality to grow without limits.', cta: 'Get started', features: [
@@ -375,7 +374,7 @@ const COPY = {
   },
 };
 
-const fmt = (n) => n.toFixed(2);
+const fmt = (n) => (Number.isInteger(n) ? n.toLocaleString('en-US') : n.toFixed(2));
 
 // Small feature row used across tabs
 function Feature({ f }) {
@@ -470,7 +469,7 @@ export default function Pricing() {
         {/* ── CREATOR ─────────────────────────────────────────────────────── */}
         {tab === 'creator' && (<>
         {billingToggle}
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {PLANS.map((plan, i) => {
             const pc = c.plans[plan.key];
             const price = plan.base * mult;
