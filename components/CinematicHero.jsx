@@ -1,11 +1,17 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import PanoramaCarousel from './PanoramaCarousel';
 
 const ease = [0.22, 1, 0.36, 1];
+
+// On-brand influencer shots (beach / glam / sensual) for the cinematic backdrop
+const BG_IMAGES = [
+  '/card-locacion.jpg', '/result-4.jpg', '/result-5.jpg', '/card-moda.jpg', '/result-2.jpg',
+];
 
 // AI-generated showcase images for the coverflow carousel
 const SHOWCASE = [
@@ -13,33 +19,53 @@ const SHOWCASE = [
   '/result-4.jpg', '/card-hd.jpg', '/result-5.jpg',
 ];
 
+// ── Cinematic crossfading Ken-Burns backdrop ────────────────────────────────
+function CinematicBackdrop() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setI((p) => (p + 1) % BG_IMAGES.length), 4200);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-ink">
+      <AnimatePresence initial={false}>
+        <motion.img
+          key={i}
+          src={BG_IMAGES[i]}
+          alt=""
+          aria-hidden
+          draggable={false}
+          initial={{ opacity: 0, scale: 1.0 }}
+          animate={{
+            opacity: 1,
+            scale: 1.12,
+            transition: { opacity: { duration: 1.6, ease }, scale: { duration: 6, ease: 'linear' } },
+          }}
+          exit={{ opacity: 0, transition: { duration: 1.6, ease } }}
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ objectPosition: '50% 28%' }}
+        />
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function CinematicHero() {
   const { t } = useLang();
 
   return (
     <section id="hero" className="relative w-full bg-ink">
-      {/* ── Full-screen cinematic video intro ─────────────────────────────── */}
+      {/* ── Full-screen cinematic photo intro ─────────────────────────────── */}
       <div className="relative flex min-h-[100svh] w-full flex-col items-center justify-center overflow-hidden">
-        {/* Looping video background */}
-        <video
-          className="absolute inset-0 h-full w-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
-          poster="/hero-poster.jpg"
-          aria-hidden
-        >
-          <source src="/hero-avatar.mp4" type="video/mp4" />
-        </video>
+        <CinematicBackdrop />
 
-        {/* Cinematic overlays for mood + text legibility */}
-        <div className="pointer-events-none absolute inset-0 bg-black/45" aria-hidden />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-ink/75 via-transparent to-ink" aria-hidden />
+        {/* Cinematic overlays — light enough to let the photo pop, dark enough to read */}
+        <div className="pointer-events-none absolute inset-0 bg-black/25" aria-hidden />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-ink/55 via-transparent to-ink" aria-hidden />
         <div
           className="pointer-events-none absolute inset-0"
           aria-hidden
-          style={{ background: 'radial-gradient(ellipse 72% 60% at 50% 45%, transparent 38%, rgb(var(--bg) / 0.6) 100%)' }}
+          style={{ background: 'radial-gradient(ellipse 88% 78% at 50% 42%, transparent 54%, rgb(var(--bg) / 0.5) 100%)' }}
         />
 
         {/* ── Intro content (the "wow" reveal) ───────────────────────────── */}
