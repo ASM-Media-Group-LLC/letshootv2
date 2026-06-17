@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Plus, Minus, ArrowRight } from 'lucide-react';
+import { Check, ArrowRight, Sparkles } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import SectionHeading from './SectionHeading';
 
@@ -222,21 +222,22 @@ const COPY = {
     periodLabels: { m: 'Mensual', q: '3 Meses', a: 'Anual' },
     save: 'Ahorra', perMonth: '/mes', free: 'Gratis', off: '-50%', popular: 'Más popular',
     everyA: 'Todo lo de', everyB: ', y:', attention: 'Atención personalizada',
+    setupPromo: 'Promo de lanzamiento: el setup de tu clon IA (valor $1,000) es GRATIS desde el plan Spotlight. En Glow: +$150 único.',
     plans: {
       free: { desc: 'Comprueba la magia sin pagar nada. Tu primera sesión corre por nuestra cuenta.', cta: 'Probar gratis', features: [
         { t: '1 sesión de prueba' }, { t: 'Vista previa en baja resolución' }, { t: 'Sin tarjeta de crédito' },
       ]},
       standard: { desc: 'Tu primer set listo para vender. Nosotros lo creamos, tú apruebas.', cta: 'Empezar', unit: '≈ $25 por foto', features: [
-        { t: '8 fotos IA / mes' }, { t: '2 videos IA / mes', tag: 'Incluidos' }, { t: 'Locaciones y outfits a elección' }, { t: 'Calidad HD' }, { t: 'Tú solo apruebas y publicas' },
+        { t: '8 fotos IA / mes' }, { t: '2 videos IA / mes', tag: 'Incluidos' }, { t: 'Locaciones y outfits a elección' }, { t: 'Calidad HD' }, { t: 'Setup del clon IA: +$150 único' },
       ]},
       plus: { desc: 'Más volumen y video para publicar sin parar y vender más.', cta: 'Empezar', unit: '≈ $20 por foto', features: [
-        { t: '20 fotos IA / mes' }, { t: '5 videos IA + reels / mes' }, { t: 'Calidad 4K', tag: 'Exclusivo' }, { t: 'Locaciones premium' }, { t: 'Entrega prioritaria' },
+        { t: '20 fotos IA / mes' }, { t: '5 videos IA + reels / mes' }, { t: 'Calidad 4K', tag: 'Exclusivo' }, { t: 'Locaciones premium' }, { t: 'Setup del clon IA GRATIS', tag: 'Valor $1,000' },
       ]},
       premium: { desc: 'Producción seria para creadoras que viven de su contenido.', cta: 'Empezar', unit: '≈ $16 por foto', features: [
-        { t: '50 fotos IA / mes' }, { t: '12 videos IA + reels / mes' }, { t: 'Licencia comercial', tag: 'Exclusivo' }, { t: 'Dirección creativa' }, { t: 'Entrega exprés + soporte prioritario' },
+        { t: '50 fotos IA / mes' }, { t: '12 videos IA + reels / mes' }, { t: 'Licencia comercial', tag: 'Exclusivo' }, { t: 'Dirección creativa' }, { t: 'Setup del clon IA GRATIS', tag: 'Valor $1,000' },
       ]},
       elite: { desc: 'Tu estudio creativo personal. Un equipo dedicado solo a ti.', cta: 'Hablar con ventas', unit: '≈ $12.50 por foto', features: [
-        { t: '80 fotos IA / mes' }, { t: '20 videos IA + reels / mes' }, { t: 'Gestor de cuenta dedicado' }, { t: 'Dirección creativa 1-a-1' }, { t: 'Máxima prioridad' },
+        { t: '80 fotos IA / mes' }, { t: '20 videos IA + reels / mes' }, { t: 'Gestor de cuenta dedicado' }, { t: 'Dirección creativa 1-a-1' }, { t: 'Setup del clon IA GRATIS', tag: 'Valor $1,000' },
       ]},
     },
   },
@@ -244,21 +245,22 @@ const COPY = {
     periodLabels: { m: 'Monthly', q: '3 Months', a: 'Annual' },
     save: 'Save', perMonth: '/mo', free: 'Free', off: '-50%', popular: 'Most popular',
     everyA: 'Everything in', everyB: ', and:', attention: 'Personalized attention',
+    setupPromo: 'Launch promo: your AI clone setup ($1,000 value) is FREE from the Spotlight plan up. On Glow: +$150 one-time.',
     plans: {
       free: { desc: 'See the magic for free. Your first session is on us.', cta: 'Try for free', features: [
         { t: '1 trial session' }, { t: 'Low-res preview' }, { t: 'No credit card required' },
       ]},
       standard: { desc: 'Your first set ready to sell. We create it, you approve.', cta: 'Get started', unit: '≈ $25 per photo', features: [
-        { t: '8 AI photos / mo' }, { t: '2 AI videos / mo', tag: 'Included' }, { t: 'Your choice of locations & outfits' }, { t: 'HD quality' }, { t: 'You just approve & post' },
+        { t: '8 AI photos / mo' }, { t: '2 AI videos / mo', tag: 'Included' }, { t: 'Your choice of locations & outfits' }, { t: 'HD quality' }, { t: 'AI clone setup: +$150 one-time' },
       ]},
       plus: { desc: 'More volume and video to post nonstop and sell more.', cta: 'Get started', unit: '≈ $20 per photo', features: [
-        { t: '20 AI photos / mo' }, { t: '5 AI videos + reels / mo' }, { t: '4K quality', tag: 'Exclusive' }, { t: 'Premium locations' }, { t: 'Priority delivery' },
+        { t: '20 AI photos / mo' }, { t: '5 AI videos + reels / mo' }, { t: '4K quality', tag: 'Exclusive' }, { t: 'Premium locations' }, { t: 'AI clone setup FREE', tag: '$1,000 value' },
       ]},
       premium: { desc: 'Serious production for creators who live off their content.', cta: 'Get started', unit: '≈ $16 per photo', features: [
-        { t: '50 AI photos / mo' }, { t: '12 AI videos + reels / mo' }, { t: 'Commercial license', tag: 'Exclusive' }, { t: 'Creative direction' }, { t: 'Express delivery + priority support' },
+        { t: '50 AI photos / mo' }, { t: '12 AI videos + reels / mo' }, { t: 'Commercial license', tag: 'Exclusive' }, { t: 'Creative direction' }, { t: 'AI clone setup FREE', tag: '$1,000 value' },
       ]},
       elite: { desc: 'Your personal creative studio. A team dedicated only to you.', cta: 'Talk to sales', unit: '≈ $12.50 per photo', features: [
-        { t: '80 AI photos / mo' }, { t: '20 AI videos + reels / mo' }, { t: 'Dedicated account manager' }, { t: '1-on-1 creative direction' }, { t: 'Top priority' },
+        { t: '80 AI photos / mo' }, { t: '20 AI videos + reels / mo' }, { t: 'Dedicated account manager' }, { t: '1-on-1 creative direction' }, { t: 'AI clone setup FREE', tag: '$1,000 value' },
       ]},
     },
   },
@@ -450,26 +452,16 @@ export default function Pricing() {
           <SectionHeading label={p.label} titleA={p.titleA} highlight={p.titleHighlight} sub={p.sub} align="center" hue="gradient" />
         </div>
 
-        {/* Audience tabs: Creator / Agency / Business */}
-        <div className="mx-auto mt-9 flex w-full max-w-sm items-stretch gap-1 rounded-full border border-line bg-card p-1">
-          {TAB_KEYS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setTab(k)}
-              className={`flex-1 rounded-full px-4 py-2 text-sm font-bold transition-colors ${
-                tab === k ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'
-              }`}
-            >
-              {tabs[k]}
-            </button>
-          ))}
-        </div>
+        {/* ── Launch promo: free AI-clone setup ───────────────────────────── */}
+        {c.setupPromo && (
+          <div className="mx-auto mt-9 flex max-w-2xl items-center justify-center gap-2.5 rounded-2xl border border-brand/40 bg-brand/[0.07] px-5 py-3 text-center">
+            <Sparkles size={18} className="shrink-0 text-brand" aria-hidden />
+            <p className="text-[13px] font-medium leading-snug text-paper">{c.setupPromo}</p>
+          </div>
+        )}
 
-        {/* ── CREATOR ─────────────────────────────────────────────────────── */}
-        {tab === 'creator' && (<>
-        {billingToggle}
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* ── Creator plans (monthly) ─────────────────────────────────────── */}
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {PLANS.map((plan, i) => {
             const pc = c.plans[plan.key];
             const price = plan.base * mult;
@@ -554,128 +546,6 @@ export default function Pricing() {
             );
           })}
         </div>
-        </>)}
-
-        {/* ── AGENCY ──────────────────────────────────────────────────────── */}
-        {tab === 'agency' && (<>
-        {/* Agency / Agency Advanced switch */}
-        <div className="mx-auto mt-9 flex w-full max-w-md items-stretch gap-1 rounded-full border border-line bg-card p-1">
-          {AGENCY_PLANS.map((ap) => (
-            <button
-              key={ap.key}
-              type="button"
-              onClick={() => setAgencyPlan(ap.key)}
-              className={`flex-1 rounded-full px-3 py-2 text-sm font-bold transition-colors ${
-                agencyPlan === ap.key ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'
-              }`}
-            >
-              {ap.name}
-            </button>
-          ))}
-        </div>
-
-        {billingToggle}
-
-        <motion.div
-          key={agencyPlan}
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease }}
-          className="mx-auto mt-12 grid max-w-5xl gap-5 lg:grid-cols-[1.3fr_1fr]"
-        >
-          {/* Features */}
-          <div className="rounded-3xl border border-line bg-card p-6 sm:p-8">
-            <p className="text-[15px] leading-relaxed text-paper-mute">{ag.planDesc[agencyPlan]}</p>
-            <h4 className="mt-6 font-mono text-[11px] font-semibold uppercase tracking-widest text-paper-dim">{ag.featuresTitle}</h4>
-            <ul className="mt-4 grid gap-2.5 sm:grid-cols-2">
-              {ag.features.map((f, i) => <Feature key={i} f={f} />)}
-            </ul>
-            {agencyPlan === 'advanced' && (
-              <>
-                <h4 className="mt-6 font-mono text-[11px] font-semibold uppercase tracking-widest text-brand">{ag.advancedTitle}</h4>
-                <ul className="mt-4 grid gap-2.5 sm:grid-cols-2">
-                  {ag.advancedFeatures.map((f, i) => <Feature key={i} f={f} />)}
-                </ul>
-              </>
-            )}
-          </div>
-
-          {/* Price calculator */}
-          <div className="flex flex-col rounded-3xl border border-brand bg-brand/[0.06] p-6 shadow-glow-sm sm:p-8">
-            <span className="font-mono text-[11px] font-semibold uppercase tracking-widest text-paper-mute">{ag.yourPrice}</span>
-            <div className="mt-2 flex items-baseline gap-1">
-              <span className="font-display text-[2.8rem] leading-none text-brand">${fmt(agTotal)}</span>
-              <span className="text-sm text-paper-dim">{ag.perMonth}</span>
-            </div>
-
-            {/* Creator stepper */}
-            <div className="mt-6 flex items-center justify-between rounded-2xl border border-line bg-ink-2 px-4 py-3">
-              <div>
-                <div className="text-sm font-semibold text-paper">{ag.creators}</div>
-                <div className="font-mono text-[11px] text-paper-dim">{creators} × ${fmt(agPer)}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button type="button" aria-label={stepAria.less} onClick={() => setCreators((n) => Math.max(1, n - 1))}
-                  className="grid h-8 w-8 place-items-center rounded-full border border-line text-paper transition-colors hover:border-brand/60 hover:text-brand">
-                  <Minus size={15} aria-hidden />
-                </button>
-                <span className="w-8 text-center font-display text-lg text-paper">{creators}</span>
-                <button type="button" aria-label={stepAria.more} onClick={() => setCreators((n) => Math.min(50, n + 1))}
-                  className="grid h-8 w-8 place-items-center rounded-full border border-line text-paper transition-colors hover:border-brand/60 hover:text-brand">
-                  <Plus size={15} aria-hidden />
-                </button>
-              </div>
-            </div>
-
-            {/* Volume table */}
-            <h4 className="mt-6 font-mono text-[10px] font-semibold uppercase tracking-widest text-paper-dim">{ag.volumeTitle}</h4>
-            <div className="mt-3 space-y-1.5">
-              {[['1-3', 0], ['4-5', 1], ['6-8', 2], ['9+', 3]].map(([label, idx]) => {
-                const tierPrice = aPlan.volume[idx][1] * mult;
-                const activeRow = (idx === 0 && creators <= 3) || (idx === 1 && creators >= 4 && creators <= 5) || (idx === 2 && creators >= 6 && creators <= 8) || (idx === 3 && creators >= 9);
-                return (
-                  <div key={label} className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm ${activeRow ? 'bg-brand/15 text-paper' : 'text-paper-mute'}`}>
-                    <span className="font-mono text-[12px]">{label}</span>
-                    <span className={activeRow ? 'font-semibold text-brand' : ''}>${fmt(tierPrice)}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            <a href="#" className="mt-7 inline-flex items-center justify-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
-              {ag.cta} <ArrowRight size={16} aria-hidden />
-            </a>
-            <p className="mt-3 text-center font-mono text-[10px] text-paper-dim">{ag.fine}</p>
-          </div>
-        </motion.div>
-        </>)}
-
-        {/* ── BUSINESS ────────────────────────────────────────────────────── */}
-        {tab === 'business' && (
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease }}
-          className="mx-auto mt-12 max-w-4xl overflow-hidden rounded-3xl border border-brand/40 bg-card p-8 sm:p-10"
-        >
-          <div className="grid gap-8 sm:grid-cols-2 sm:items-center">
-            <div>
-              <h3 className="headline text-3xl text-paper">{biz.price}</h3>
-              <p className="mt-3 text-[15px] leading-relaxed text-paper-mute">{biz.desc}</p>
-              <p className="mt-2 text-[13px] leading-relaxed text-paper-dim">{biz.sub}</p>
-              <a href="#" className="mt-7 inline-flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 text-sm font-bold text-on-accent shadow-glow transition-transform hover:scale-[1.04]">
-                {biz.cta} <ArrowRight size={16} aria-hidden />
-              </a>
-            </div>
-            <div className="rounded-2xl border border-line bg-ink-2 p-6">
-              <h4 className="font-mono text-[11px] font-semibold uppercase tracking-widest text-paper-dim">{biz.featuresTitle}</h4>
-              <ul className="mt-4 grid gap-2.5">
-                {biz.features.map((f, i) => <Feature key={i} f={{ t: f }} />)}
-              </ul>
-            </div>
-          </div>
-        </motion.div>
-        )}
       </div>
     </section>
   );
