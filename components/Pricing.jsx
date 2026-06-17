@@ -222,7 +222,8 @@ const COPY = {
     periodLabels: { m: 'Mensual', q: '3 Meses', a: 'Anual' },
     save: 'Ahorra', perMonth: '/mes', free: 'Gratis', off: '-50%', popular: 'Más popular',
     everyA: 'Todo lo de', everyB: ', y:', attention: 'Atención personalizada',
-    setupPromo: 'Promo de lanzamiento: el setup de tu clon IA (valor $1,000) es GRATIS desde el plan Spotlight. En Glow: +$150 único.',
+    launch: '50% OFF · precios de lanzamiento', launchTag: 'Lanzamiento', setupTitle: 'Setup de tu clon IA, GRATIS',
+    setupPromo: 'Valor $1,000 — gratis desde el plan Spotlight. En Glow: +$150 único.',
     plans: {
       free: { desc: 'Comprueba la magia sin pagar nada. Tu primera sesión corre por nuestra cuenta.', cta: 'Probar gratis', features: [
         { t: '1 sesión de prueba' }, { t: 'Vista previa en baja resolución' }, { t: 'Sin tarjeta de crédito' },
@@ -245,7 +246,8 @@ const COPY = {
     periodLabels: { m: 'Monthly', q: '3 Months', a: 'Annual' },
     save: 'Save', perMonth: '/mo', free: 'Free', off: '-50%', popular: 'Most popular',
     everyA: 'Everything in', everyB: ', and:', attention: 'Personalized attention',
-    setupPromo: 'Launch promo: your AI clone setup ($1,000 value) is FREE from the Spotlight plan up. On Glow: +$150 one-time.',
+    launch: '50% OFF · launch prices', launchTag: 'Launch', setupTitle: 'AI clone setup, FREE',
+    setupPromo: '$1,000 value — free from the Spotlight plan up. On Glow: +$150 one-time.',
     plans: {
       free: { desc: 'See the magic for free. Your first session is on us.', cta: 'Try for free', features: [
         { t: '1 trial session' }, { t: 'Low-res preview' }, { t: 'No credit card required' },
@@ -450,14 +452,39 @@ export default function Pricing() {
       <div className="relative mx-auto max-w-7xl px-5">
         <div className="mx-auto max-w-2xl text-center">
           <SectionHeading label={p.label} titleA={p.titleA} highlight={p.titleHighlight} sub={p.sub} align="center" hue="gradient" />
+          {c.launch && (
+            <div className="mx-auto mt-5 inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-brand">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand/70" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
+              </span>
+              {c.launch}
+            </div>
+          )}
         </div>
 
         {/* ── Launch promo: free AI-clone setup ───────────────────────────── */}
         {c.setupPromo && (
-          <div className="mx-auto mt-9 flex max-w-2xl items-center justify-center gap-2.5 rounded-2xl border border-brand/40 bg-brand/[0.07] px-5 py-3 text-center">
-            <Sparkles size={18} className="shrink-0 text-brand" aria-hidden />
-            <p className="text-[13px] font-medium leading-snug text-paper">{c.setupPromo}</p>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-40px' }}
+            transition={{ duration: 0.5, ease }}
+            className="mx-auto mt-10 max-w-3xl overflow-hidden rounded-2xl bg-gradient-to-r from-brand/40 via-brand/20 to-brand/40 p-px shadow-glow-sm"
+          >
+            <div className="flex flex-col items-center gap-3.5 rounded-[15px] bg-ink-2/90 px-6 py-5 text-center backdrop-blur sm:flex-row sm:gap-4 sm:text-left">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-brand/15 ring-1 ring-brand/40">
+                <Sparkles size={22} className="text-brand" aria-hidden />
+              </div>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+                  <span className="rounded-full bg-brand px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-on-accent">{c.launchTag}</span>
+                  <span className="font-display text-base font-semibold text-paper sm:text-lg">{c.setupTitle}</span>
+                </div>
+                <p className="mt-1 text-[13px] leading-snug text-paper-mute">{c.setupPromo}</p>
+              </div>
+            </div>
+          </motion.div>
         )}
 
         {/* ── Creator plans (monthly) ─────────────────────────────────────── */}
@@ -465,6 +492,7 @@ export default function Pricing() {
           {PLANS.map((plan, i) => {
             const pc = c.plans[plan.key];
             const price = plan.base * mult;
+            const original = price * 2;
             const highlight = plan.popular || plan.attention;
             return (
               <motion.div
@@ -499,8 +527,12 @@ export default function Pricing() {
                   )}
                 </div>
 
-                {/* Price */}
+                {/* Price — launch 50% off */}
                 <div className="relative mt-3">
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="font-mono text-sm text-paper-dim line-through decoration-paper-dim/60">${fmt(original)}</span>
+                    <span className="rounded bg-brand/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand">-50%</span>
+                  </div>
                   <div className="flex items-baseline gap-1">
                     <span className={`font-display text-[2.6rem] leading-none ${plan.popular ? 'text-brand' : 'text-paper'}`}>${fmt(price)}</span>
                     <span className="text-sm text-paper-dim">{c.perMonth}</span>
