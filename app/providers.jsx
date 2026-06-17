@@ -7,6 +7,43 @@ import { dict, SUPPORTED_LANGS } from '@/lib/i18n';
 /* ─── LANGUAGE ─── */
 const LangContext = createContext({ lang: 'es', setLang: () => {}, t: dict.es });
 
+// US/Canada timezones → English; Brazil → Portuguese; rest of the Americas → Spanish.
+const US_CA_TZ = new Set([
+  'America/New_York', 'America/Detroit', 'America/Toronto', 'America/Chicago',
+  'America/Denver', 'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage',
+  'America/Vancouver', 'America/Edmonton', 'America/Winnipeg', 'America/Halifax',
+  'America/Boise', 'America/Indiana/Indianapolis', 'America/Kentucky/Louisville',
+  'America/Regina', 'America/St_Johns', 'Pacific/Honolulu',
+]);
+const BRAZIL_TZ = new Set([
+  'America/Sao_Paulo', 'America/Bahia', 'America/Fortaleza', 'America/Recife',
+  'America/Manaus', 'America/Belem', 'America/Cuiaba', 'America/Campo_Grande',
+  'America/Porto_Velho', 'America/Boa_Vista', 'America/Maceio', 'America/Noronha',
+]);
+
+// Pick a language from the visitor's location (timezone) first, then their
+// browser languages, then a sensible default.
+function detectLang() {
+  if (typeof Intl !== 'undefined') {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      if (tz.startsWith('US/') || tz.startsWith('Canada/') || US_CA_TZ.has(tz)) return 'en';
+      if (BRAZIL_TZ.has(tz)) return SUPPORTED_LANGS.includes('pt') ? 'pt' : 'es';
+      if (tz.startsWith('America/')) return 'es'; // rest of the Americas = Latin America
+    } catch (e) { /* ignore */ }
+  }
+  if (typeof navigator !== 'undefined') {
+    const prefs = navigator.languages && navigator.languages.length
+      ? navigator.languages
+      : [navigator.language || ''];
+    const match = prefs
+      .map((l) => l.slice(0, 2).toLowerCase())
+      .find((l) => SUPPORTED_LANGS.includes(l));
+    if (match) return match;
+  }
+  return 'en';
+}
+
 export function LangProvider({ children }) {
   const [lang, setLang] = useState('es');
   // Skip the very first write so the initial 'es' never overwrites the stored
@@ -21,17 +58,8 @@ export function LangProvider({ children }) {
       setLang(stored);
       return;
     }
-    // 2) Auto-detect: walk the user's ordered language preferences and pick the
-    //    first one we support (e.g. ['en-US','pt'] → 'en'). Falls back to 'es'.
-    if (typeof navigator !== 'undefined') {
-      const prefs = navigator.languages && navigator.languages.length
-        ? navigator.languages
-        : [navigator.language || 'es'];
-      const match = prefs
-        .map((l) => l.slice(0, 2).toLowerCase())
-        .find((l) => SUPPORTED_LANGS.includes(l));
-      if (match) setLang(match);
-    }
+    const detected = detectLang();
+    if (detected) setLang(detected);
   }, []);
 
   useEffect(() => {
