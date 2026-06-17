@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, TrendingUp } from 'lucide-react';
+import { Wallet, TrendingUp, Zap } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import SectionHeading from './SectionHeading';
 
@@ -11,40 +11,47 @@ const ease = [0.22, 1, 0.36, 1];
 const T = {
   es: {
     label: 'CALCULADORA', titleA: 'Haz números —', highlight: 'te conviene',
-    sub: 'Mira cuánto te ahorras y cuánto puedes ganar vendiendo tu contenido exclusivo.',
-    sTitle: 'Cuánto te ahorras', sPhotos: 'Fotos al mes',
-    sTrad: 'Con fotógrafo', sLs: 'Con LetShoot', sSave: 'Te ahorras', perMonth: '/mes',
-    rTitle: 'Cuánto puedes ganar', rPlan: 'Inviertes en LetShoot', rSubs: 'Suscriptores',
-    rPrice: 'Precio de suscripción', rRevenue: 'Ganas al mes', rNet: 'Ganancia neta', rRoi: 'Retorno',
-    rDisc: 'Estimación. Tus resultados dependen de tu audiencia.',
+    sub: 'Mira lo que te ahorras (tiempo y dinero) y cuánto puedes ganar vendiendo tus piezas de contenido.',
+    sTitle: 'Cuánto te ahorras', sPieces: 'Piezas de contenido', sPiecesHint: 'fotos + videos',
+    sTrad: 'Hacerlo tú', sLs: 'Con LetShoot', sSave: 'Te ahorras', perMonth: '/mes',
+    sSpeed: 'Y en vez de semanas de vueltas, gastos y producción, lo tienes en días — listo para vender.',
+    rTitle: 'Cuánto puedes ganar', rPlan: 'Inviertes', rGet: 'Recibes', rPieces: 'piezas',
+    rPerPiece: 'Ganas por pieza', rRevenue: 'Ganas vendiéndolas', rNet: 'Ganancia neta', rRoi: 'Retorno',
+    rDisc: 'Estimación. Lo que ganas depende de cómo vendas tu contenido.',
   },
   en: {
     label: 'CALCULATOR', titleA: 'Run the numbers —', highlight: "it's worth it",
-    sub: 'See how much you save and how much you can earn selling your exclusive content.',
-    sTitle: 'How much you save', sPhotos: 'Photos per month',
-    sTrad: 'With a photographer', sLs: 'With LetShoot', sSave: 'You save', perMonth: '/mo',
-    rTitle: 'How much you can earn', rPlan: 'You invest in LetShoot', rSubs: 'Subscribers',
-    rPrice: 'Subscription price', rRevenue: 'You earn monthly', rNet: 'Net profit', rRoi: 'Return',
-    rDisc: 'Estimate. Your results depend on your audience.',
+    sub: 'See what you save (time and money) and how much you can earn selling your content pieces.',
+    sTitle: 'How much you save', sPieces: 'Content pieces', sPiecesHint: 'photos + videos',
+    sTrad: 'Doing it yourself', sLs: 'With LetShoot', sSave: 'You save', perMonth: '/mo',
+    sSpeed: 'And instead of weeks of running around, costs and production, you get it in days — ready to sell.',
+    rTitle: 'How much you can earn', rPlan: 'You invest', rGet: 'You get', rPieces: 'pieces',
+    rPerPiece: 'You earn per piece', rRevenue: 'You earn selling them', rNet: 'Net profit', rRoi: 'Return',
+    rDisc: 'Estimate. What you earn depends on how you sell your content.',
   },
 };
 
 const money = (n) => '$' + Math.round(n).toLocaleString('en-US');
 const PLAN_PRICES = [200, 400, 800, 1000];
+// Content pieces (photos + videos) delivered per plan
+const PLAN_PIECES = { 200: 10, 400: 25, 800: 62, 1000: 100 };
 
-// LetShoot monthly price for a given photo count (matches the plan tiers)
-function lsCost(photos) {
-  if (photos <= 8) return 200;
-  if (photos <= 20) return 400;
-  if (photos <= 50) return 800;
+// LetShoot monthly price for a given number of pieces (matches the plan tiers)
+function lsCost(pieces) {
+  if (pieces <= 10) return 200;
+  if (pieces <= 25) return 400;
+  if (pieces <= 62) return 800;
   return 1000;
 }
 
-function Slider({ label, value, min, max, step = 1, onChange, display }) {
+function Slider({ label, hint, value, min, max, step = 1, onChange, display }) {
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-paper-mute">{label}</span>
+      <div className="flex items-end justify-between">
+        <span className="text-sm text-paper-mute">
+          {label}
+          {hint && <span className="ml-1.5 font-mono text-[10px] text-paper-dim">{hint}</span>}
+        </span>
         <span className="font-display text-lg text-paper">{display}</span>
       </div>
       <input
@@ -54,7 +61,7 @@ function Slider({ label, value, min, max, step = 1, onChange, display }) {
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-2 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line accent-brand"
+        className="mt-2 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line"
         style={{ accentColor: 'rgb(var(--brand, 0 177 246))' }}
       />
     </div>
@@ -65,18 +72,18 @@ export default function ValueCalculators() {
   const { lang } = useLang();
   const t = T[lang] || T.es;
 
-  // Savings calc
-  const [photos, setPhotos] = useState(20);
-  const trad = photos * 130; // ~$130/photo all-in for a real shoot
-  const ls = lsCost(photos);
+  // Savings calc — content pieces
+  const [pieces, setPieces] = useState(25);
+  const trad = pieces * 120; // ~$120 per finished piece via a real shoot (photographer, makeup, location, time)
+  const ls = lsCost(pieces);
   const save = Math.max(0, trad - ls);
   const savePct = trad ? Math.round((save / trad) * 100) : 0;
 
-  // ROI calc
+  // Earnings calc — pieces you sell
   const [invest, setInvest] = useState(400);
-  const [subs, setSubs] = useState(200);
-  const [subPrice, setSubPrice] = useState(10);
-  const revenue = subs * subPrice;
+  const [perPiece, setPerPiece] = useState(50);
+  const gotPieces = PLAN_PIECES[invest];
+  const revenue = gotPieces * perPiece;
   const net = revenue - invest;
   const roi = invest ? revenue / invest : 0;
 
@@ -103,7 +110,7 @@ export default function ValueCalculators() {
             </div>
 
             <div className="mt-7">
-              <Slider label={t.sPhotos} value={photos} min={4} max={80} onChange={setPhotos} display={photos} />
+              <Slider label={t.sPieces} hint={t.sPiecesHint} value={pieces} min={5} max={100} onChange={setPieces} display={pieces} />
             </div>
 
             <div className="mt-8 grid grid-cols-2 gap-3">
@@ -117,15 +124,20 @@ export default function ValueCalculators() {
               </div>
             </div>
 
-            <div className="mt-auto pt-6">
+            <div className="mt-6">
               <div className="rounded-2xl border border-brand/40 bg-brand/[0.06] px-5 py-4 text-center">
                 <div className="font-mono text-[11px] uppercase tracking-wider text-paper-mute">{t.sSave}</div>
                 <div className="mt-1 font-display text-3xl text-brand">{money(save)}<span className="ml-2 align-middle text-base text-paper-mute">({savePct}%)</span></div>
               </div>
             </div>
+
+            <div className="mt-auto flex items-start gap-2 pt-5 text-left">
+              <Zap size={15} className="mt-0.5 shrink-0 text-brand" aria-hidden />
+              <p className="text-[12px] leading-relaxed text-paper-mute">{t.sSpeed}</p>
+            </div>
           </motion.div>
 
-          {/* ── Earnings / ROI calculator ───────────────────────────────── */}
+          {/* ── Earnings calculator ─────────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -155,11 +167,13 @@ export default function ValueCalculators() {
                   </button>
                 ))}
               </div>
+              <div className="mt-2 text-center font-mono text-[11px] text-paper-dim">
+                {t.rGet}: <span className="text-paper">{gotPieces} {t.rPieces}</span>
+              </div>
             </div>
 
-            <div className="mt-6 space-y-5">
-              <Slider label={t.rSubs} value={subs} min={20} max={2000} step={10} onChange={setSubs} display={subs.toLocaleString('en-US')} />
-              <Slider label={t.rPrice} value={subPrice} min={5} max={50} onChange={setSubPrice} display={money(subPrice) + t.perMonth} />
+            <div className="mt-6">
+              <Slider label={t.rPerPiece} value={perPiece} min={10} max={300} step={5} onChange={setPerPiece} display={money(perPiece)} />
             </div>
 
             <div className="mt-7 grid grid-cols-2 gap-3">
@@ -173,13 +187,14 @@ export default function ValueCalculators() {
               </div>
             </div>
 
-            <div className="mt-auto pt-6">
+            <div className="mt-6">
               <div className="rounded-2xl border border-brand/40 bg-brand/[0.06] px-5 py-4 text-center">
                 <div className="font-mono text-[11px] uppercase tracking-wider text-paper-mute">{t.rRevenue}</div>
-                <div className="mt-1 font-display text-3xl text-brand">{money(revenue)}<span className="text-base text-paper-mute">{t.perMonth}</span></div>
+                <div className="mt-1 font-display text-3xl text-brand">{money(revenue)}</div>
               </div>
-              <p className="mt-3 text-center font-mono text-[10px] leading-relaxed text-paper-dim">{t.rDisc}</p>
             </div>
+
+            <p className="mt-auto pt-4 text-center font-mono text-[10px] leading-relaxed text-paper-dim">{t.rDisc}</p>
           </motion.div>
         </div>
       </div>
