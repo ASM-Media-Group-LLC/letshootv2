@@ -14,6 +14,10 @@ export default function Footer() {
           <div>
             <Logo size="lg" />
             <p className="mx-auto mt-4 max-w-xs text-sm leading-relaxed text-paper-mute sm:mx-0">{f.tagline}</p>
+            <div className="mt-5 flex items-center justify-center gap-2 sm:justify-start">
+              {f.builtFor && <span className="font-mono text-[10px] uppercase tracking-wider text-paper-dim">{f.builtFor}</span>}
+              <img src="/onlyfans-logo.png" alt="OnlyFans" className="h-4 w-auto opacity-90" draggable={false} />
+            </div>
           </div>
 
           {f.cols.map((col) => (

@@ -108,9 +108,12 @@ export default function CinematicHero() {
             {t.hero.platformsLabel && (
               <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white/60">{t.hero.platformsLabel}</span>
             )}
-            <span className="inline-flex items-center rounded-md bg-[#00AFF0] px-2.5 py-1 text-[15px] font-extrabold leading-none text-white shadow-[0_0_22px_rgba(0,175,240,0.45)]">
-              OnlyFans
-            </span>
+            <img
+              src="/onlyfans-logo.png"
+              alt="OnlyFans"
+              className="h-6 w-auto drop-shadow-[0_0_18px_rgba(0,175,240,0.45)] sm:h-7"
+              draggable={false}
+            />
           </motion.div>
         </motion.div>
 
