@@ -27,6 +27,15 @@ export default function CinematicHero() {
 
       {/* ── Centered text (minimal) ──────────────────────────────────────── */}
       <div className="relative z-10 flex flex-col items-center px-5 pt-24 text-center sm:pt-28">
+        <motion.span
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease, delay: 0.05 }}
+          className="mb-5 inline-block rounded-full border border-hair/15 bg-card/40 px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute backdrop-blur sm:text-[11px]"
+        >
+          {t.hero.eyebrow}
+        </motion.span>
+
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -37,11 +46,20 @@ export default function CinematicHero() {
           <span className="text-rainbow" style={{ paddingBlock: '0.06em' }}>{t.hero.highlight}</span>
         </motion.h1>
 
+        <motion.p
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease, delay: 0.28 }}
+          className="mx-auto mt-5 max-w-xl text-[clamp(0.95rem,2.2vw,1.15rem)] leading-relaxed text-paper-mute"
+        >
+          {t.hero.body}
+        </motion.p>
+
         <motion.div
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.65, ease, delay: 0.32 }}
-          className="mt-7 flex flex-wrap items-center justify-center gap-3"
+          transition={{ duration: 0.65, ease, delay: 0.42 }}
+          className="mt-8 flex flex-wrap items-center justify-center gap-3"
         >
           <a
             href="#pricing"
