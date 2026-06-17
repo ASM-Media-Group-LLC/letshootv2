@@ -6,6 +6,7 @@ import FeatureGrid from '@/components/FeatureGrid';
 import Comparison from '@/components/Comparison';
 import Results from '@/components/Results';
 import Pricing from '@/components/Pricing';
+import ValueCalculators from '@/components/ValueCalculators';
 import FinalCta from '@/components/FinalCta';
 import Footer from '@/components/Footer';
 
@@ -21,6 +22,7 @@ export default function Page() {
       <Comparison />
       <Results />
       <Pricing />
+      <ValueCalculators />
       <FinalCta />
       <Footer />
     </main>
