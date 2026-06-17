@@ -1,17 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import PanoramaCarousel from './PanoramaCarousel';
 
 const ease = [0.22, 1, 0.36, 1];
-
-// On-brand influencer shots (beach / glam / sensual) for the cinematic backdrop
-const BG_IMAGES = [
-  '/card-locacion.jpg', '/result-4.jpg', '/result-5.jpg', '/card-moda.jpg', '/result-2.jpg',
-];
 
 // AI-generated showcase images for the coverflow carousel
 const SHOWCASE = [
@@ -19,53 +13,33 @@ const SHOWCASE = [
   '/result-4.jpg', '/card-hd.jpg', '/result-5.jpg',
 ];
 
-// ── Cinematic crossfading Ken-Burns backdrop ────────────────────────────────
-function CinematicBackdrop() {
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setI((p) => (p + 1) % BG_IMAGES.length), 4200);
-    return () => clearInterval(id);
-  }, []);
-  return (
-    <div className="absolute inset-0 overflow-hidden bg-ink">
-      <AnimatePresence initial={false}>
-        <motion.img
-          key={i}
-          src={BG_IMAGES[i]}
-          alt=""
-          aria-hidden
-          draggable={false}
-          initial={{ opacity: 0, scale: 1.0 }}
-          animate={{
-            opacity: 1,
-            scale: 1.12,
-            transition: { opacity: { duration: 1.6, ease }, scale: { duration: 6, ease: 'linear' } },
-          }}
-          exit={{ opacity: 0, transition: { duration: 1.6, ease } }}
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: '50% 28%' }}
-        />
-      </AnimatePresence>
-    </div>
-  );
-}
-
 export default function CinematicHero() {
   const { t } = useLang();
 
   return (
     <section id="hero" className="relative w-full bg-ink">
-      {/* ── Full-screen cinematic photo intro ─────────────────────────────── */}
+      {/* ── Full-screen cinematic video intro ─────────────────────────────── */}
       <div className="relative flex min-h-[100svh] w-full flex-col items-center justify-center overflow-hidden">
-        <CinematicBackdrop />
+        {/* Looping cinematic video background (Miami / Ocean Drive) */}
+        <video
+          className="absolute inset-0 h-full w-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+          poster="/hero-miami-poster.jpg"
+          aria-hidden
+        >
+          <source src="/hero-miami.mp4" type="video/mp4" />
+        </video>
 
-        {/* Cinematic overlays — light enough to let the photo pop, dark enough to read */}
-        <div className="pointer-events-none absolute inset-0 bg-black/25" aria-hidden />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-ink/55 via-transparent to-ink" aria-hidden />
+        {/* Cinematic overlays — light enough to let the footage pop, dark enough to read */}
+        <div className="pointer-events-none absolute inset-0 bg-black/30" aria-hidden />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-ink/60 via-transparent to-ink" aria-hidden />
         <div
           className="pointer-events-none absolute inset-0"
           aria-hidden
-          style={{ background: 'radial-gradient(ellipse 88% 78% at 50% 42%, transparent 54%, rgb(var(--bg) / 0.5) 100%)' }}
+          style={{ background: 'radial-gradient(ellipse 88% 78% at 50% 42%, transparent 52%, rgb(var(--bg) / 0.55) 100%)' }}
         />
 
         {/* ── Intro content (the "wow" reveal) ───────────────────────────── */}
@@ -88,7 +62,7 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 26, filter: 'blur(10px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.95, ease, delay: 0.36 }}
-            className="headline mx-auto max-w-[15ch] text-[clamp(2.1rem,7vw,5rem)] leading-[1.02] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.65)] sm:max-w-none sm:whitespace-nowrap"
+            className="headline mx-auto max-w-[15ch] text-[clamp(2.1rem,7vw,5rem)] leading-[1.02] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)] sm:max-w-none sm:whitespace-nowrap"
           >
             {t.hero.pre}{' '}
             <span className="text-rainbow" style={{ paddingBlock: '0.06em' }}>{t.hero.highlight}</span>
@@ -98,7 +72,7 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.85, ease, delay: 0.55 }}
-            className="mx-auto mt-5 max-w-xl text-[clamp(0.95rem,2.2vw,1.15rem)] leading-relaxed text-white/85 drop-shadow-[0_1px_12px_rgba(0,0,0,0.7)]"
+            className="mx-auto mt-5 max-w-xl text-[clamp(0.95rem,2.2vw,1.15rem)] leading-relaxed text-white/90 drop-shadow-[0_1px_14px_rgba(0,0,0,0.8)]"
           >
             {t.hero.body}
           </motion.p>
