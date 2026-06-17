@@ -97,6 +97,21 @@ export default function CinematicHero() {
               {t.hero.ctaSecondary}
             </a>
           </motion.div>
+
+          {/* Platform badge — built for OnlyFans creators */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease, delay: 0.9 }}
+            className="mt-7 flex items-center justify-center gap-2.5"
+          >
+            {t.hero.platformsLabel && (
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white/60">{t.hero.platformsLabel}</span>
+            )}
+            <span className="inline-flex items-center rounded-md bg-[#00AFF0] px-2.5 py-1 text-[15px] font-extrabold leading-none text-white shadow-[0_0_22px_rgba(0,175,240,0.45)]">
+              OnlyFans
+            </span>
+          </motion.div>
         </motion.div>
 
         {/* Scroll cue */}
