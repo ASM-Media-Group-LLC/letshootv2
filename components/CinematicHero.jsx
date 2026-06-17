@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
-import { useLang, useTheme } from '@/app/providers';
+import { useLang } from '@/app/providers';
 import AnimatedGradientBg from './AnimatedGradientBg';
 import Particles from './Particles';
 import PanoramaCarousel from './PanoramaCarousel';
@@ -17,8 +17,6 @@ const SHOWCASE = [
 
 export default function CinematicHero() {
   const { t } = useLang();
-  const { theme } = useTheme();
-  const unlokLogo = theme === 'light' ? '/logo-unlok-dark.png' : '/logo-unlok.png';
 
   return (
     <section id="hero" className="relative flex min-h-screen w-full flex-col overflow-hidden">
@@ -29,17 +27,6 @@ export default function CinematicHero() {
 
       {/* ── Centered text (minimal) ──────────────────────────────────────── */}
       <div className="relative z-10 flex flex-col items-center px-5 pt-24 text-center sm:pt-28">
-        {/* LetShoot · by Unlok logo */}
-        <motion.img
-          src={unlokLogo}
-          alt="LetShoot by Unlok"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease }}
-          className="mb-7 h-[clamp(40px,5vw,60px)] w-auto"
-          draggable={false}
-        />
-
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
