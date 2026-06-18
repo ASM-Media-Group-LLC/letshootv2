@@ -15,24 +15,34 @@ const PRESETS = [
 ];
 const TRAD_PHOTO = 120;  // traditional cost per photo
 const TRAD_VIDEO = 300;  // traditional cost per video
-const LS_PHOTO = 10;     // LetShoot cost per photo
-const LS_VIDEO = 25;     // LetShoot cost per video
+
+// LetShoot cost = the pack that covers the requested volume (coherent with our packs)
+const PACK_TIERS = [
+  { name: 'Test', maxPieces: 21, price: 249 },
+  { name: 'Core', maxPieces: 47, price: 499 },
+  { name: 'Pro',  maxPieces: 94, price: 899 },
+];
+function lsCost(pieces) {
+  const tier = PACK_TIERS.find((p) => pieces <= p.maxPieces);
+  if (tier) return { price: tier.price, name: tier.name };
+  return { price: Math.round(pieces * 9.5), name: 'Agency' }; // beyond Pro → custom/agency estimate
+}
 
 const T = {
   en: {
     label: 'CALCULATOR', titleA: 'Run the numbers —', highlight: "it's worth it",
-    sub: 'Drag the sliders to forecast: how much you save versus a traditional shoot, and how much you can earn selling the content.',
+    sub: 'Move the sliders: see what your photos and videos cost with LetShoot — and what you could sell them for on OnlyFans.',
     quick: 'Quick start', photosLabel: 'Photos', videosLabel: 'Videos', earnPer: 'You earn per piece',
     costLabel: 'Cost', earningsLabel: 'Earnings', traditional: 'Traditional shoot', withLs: 'With LetShoot',
-    save: 'You save', earn: 'You earn selling them', roi: 'Return',
+    save: 'You save', earn: 'You earn selling them', roi: 'Return', net: 'Net profit',
     disc: 'Estimate. What you earn depends on how you sell your content.',
   },
   es: {
     label: 'CALCULADORA', titleA: 'Haz números —', highlight: 'te conviene',
-    sub: 'Mueve los sliders para pronosticar: cuánto te ahorras vs una sesión tradicional, y cuánto puedes ganar vendiendo el contenido.',
+    sub: 'Mueve los sliders: mira cuánto te cuestan tus fotos y videos en LetShoot — y en cuánto los venderías en OnlyFans.',
     quick: 'Inicio rápido', photosLabel: 'Fotos', videosLabel: 'Videos', earnPer: 'Ganas por pieza',
     costLabel: 'Costo', earningsLabel: 'Ganancias', traditional: 'Sesión tradicional', withLs: 'Con LetShoot',
-    save: 'Te ahorras', earn: 'Ganas vendiéndolas', roi: 'Retorno',
+    save: 'Te ahorras', earn: 'Ganas vendiéndolas', roi: 'Retorno', net: 'Ganancia neta',
     disc: 'Estimación. Lo que ganas depende de cómo vendas tu contenido.',
   },
 };
@@ -66,11 +76,12 @@ export default function ValueCalculators() {
 
   const pieces = photos + videos;
   const trad = photos * TRAD_PHOTO + videos * TRAD_VIDEO;
-  const ls = photos * LS_PHOTO + videos * LS_VIDEO;
-  const save = Math.max(0, trad - ls);
+  const ls = lsCost(pieces);
+  const save = Math.max(0, trad - ls.price);
   const savePct = trad ? Math.round((save / trad) * 100) : 0;
   const revenue = pieces * perPiece;
-  const roi = ls ? revenue / ls : 0;
+  const net = revenue - ls.price;
+  const roi = ls.price ? revenue / ls.price : 0;
 
   const activePreset = PRESETS.findIndex((p) => p.photos === photos && p.videos === videos);
 
@@ -110,7 +121,7 @@ export default function ValueCalculators() {
 
           {/* Movable inputs */}
           <Slider label={t.photosLabel} value={photos} min={5} max={150} onChange={setPhotos} display={photos} />
-          <Slider label={t.videosLabel} value={videos} min={0} max={20} onChange={setVideos} display={videos} />
+          <Slider label={t.videosLabel} value={videos} min={0} max={10} onChange={setVideos} display={videos} />
           <Slider label={t.earnPer} value={perPiece} min={20} max={150} step={5} onChange={setPerPiece} display={money(perPiece)} />
 
           {/* Cost / savings */}
@@ -123,7 +134,7 @@ export default function ValueCalculators() {
               </div>
               <div className="mt-1 flex items-baseline justify-between text-sm">
                 <span className="text-paper-dim">{t.withLs}</span>
-                <span className="font-display text-paper">{money(ls)}</span>
+                <span className="font-display text-paper">{money(ls.price)} <span className="ml-1 align-middle rounded bg-brand/15 px-1.5 py-0.5 font-mono text-[10px] text-brand">{ls.name}</span></span>
               </div>
               <div className="mt-4 rounded-xl border border-brand/40 bg-brand/[0.06] px-4 py-3 text-center">
                 <div className="font-mono text-[10px] uppercase tracking-wider text-paper-mute">{t.save}</div>
@@ -139,6 +150,10 @@ export default function ValueCalculators() {
               <div className="flex items-baseline justify-between text-sm">
                 <span className="text-paper-dim">{pieces} × {money(perPiece)}</span>
                 <span className="font-display text-paper">{money(revenue)}</span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between text-sm">
+                <span className="text-paper-dim">{t.net}</span>
+                <span className="font-display text-paper">{money(net)}</span>
               </div>
               <div className="mt-1 flex items-baseline justify-between text-sm">
                 <span className="text-paper-dim">{t.roi}</span>
