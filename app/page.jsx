@@ -3,7 +3,7 @@ import CinematicHero from '@/components/CinematicHero';
 import Comparison from '@/components/Comparison';
 import Solution from '@/components/Solution';
 import Concepts from '@/components/Concepts';
-import EditorSection from '@/components/EditorSection';
+import Showcase from '@/components/Showcase';
 import HowItWorks from '@/components/HowItWorks';
 import Results from '@/components/Results';
 import Pricing from '@/components/Pricing';
@@ -20,7 +20,7 @@ export default function Page() {
       <Comparison />
       <Solution />
       <Concepts />
-      <EditorSection />
+      <Showcase />
       <HowItWorks />
       <Results />
       <Pricing />
