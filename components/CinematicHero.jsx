@@ -145,7 +145,7 @@ export default function CinematicHero() {
         transition={{ duration: 0.8, ease }}
         className="relative z-[2] pb-16 pt-4"
       >
-        <div className="h-[clamp(320px,52vh,560px)] w-full">
+        <div className="h-56 w-full sm:h-[clamp(320px,52vh,560px)]">
           <PanoramaCarousel images={SHOWCASE} />
         </div>
       </motion.div>

@@ -17,7 +17,7 @@ export default function PanoramaCarousel({ images }) {
         {loop.map((src, i) => (
           <div
             key={i}
-            className="relative mr-4 aspect-[3/4] h-[clamp(300px,52vh,540px)] shrink-0 overflow-hidden rounded-3xl shadow-2xl ring-1 ring-white/10"
+            className="relative mr-3 aspect-[3/4] h-48 shrink-0 overflow-hidden rounded-2xl shadow-2xl ring-1 ring-white/10 sm:mr-4 sm:h-[clamp(300px,52vh,540px)] sm:rounded-3xl"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
