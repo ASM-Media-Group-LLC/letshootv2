@@ -19,7 +19,7 @@ const COPY = {
     label: 'PACKAGES', titleA: 'Choose your', highlight: 'sales content pack',
     sub: 'Curated, ready-to-sell photo and video packs — built for PPV, chat sales and custom-style fan requests.',
     oneTime: 'one-time pack', cta: 'Get Started', popular: 'Most popular',
-    setupPromo: 'AI clone setup ($1,000 value) included FREE with every pack — limited time.',
+    setupTag: 'Limited time', setupTitle: 'AI clone setup — FREE', setupDetail: '$1,000 value, included with every pack.',
     packs: {
       test: { desc: 'Try the workflow and get your first batch of sellable content.', features: ['20 final photos', '1 short AI video', '5 sales concepts', 'Curated delivery', '1 technical revision only'] },
       core: { desc: 'The sweet spot — a solid content bank for chats and PPV drops.', features: ['45 final photos', '2 short AI videos', '10 sales concepts', 'Curated delivery', '1 technical revision only'] },
@@ -33,7 +33,7 @@ const COPY = {
     label: 'PAQUETES', titleA: 'Elige tu', highlight: 'paquete de contenido',
     sub: 'Paquetes curados de fotos y videos listos para vender — hechos para PPV, ventas por chat y pedidos personalizados de fans.',
     oneTime: 'pago único', cta: 'Empezar', popular: 'Más popular',
-    setupPromo: 'Setup de tu clon IA (valor $1,000) GRATIS con cada paquete — por tiempo limitado.',
+    setupTag: 'Tiempo limitado', setupTitle: 'Setup de tu clon IA — GRATIS', setupDetail: 'Valor $1,000, incluido con cada paquete.',
     packs: {
       test: { desc: 'Prueba el flujo y recibe tu primer lote de contenido vendible.', features: ['20 fotos finales', '1 video IA corto', '5 conceptos de venta', 'Entrega curada', 'Solo 1 revisión técnica'] },
       core: { desc: 'El punto justo — un buen banco de contenido para chats y PPV.', features: ['45 fotos finales', '2 videos IA cortos', '10 conceptos de venta', 'Entrega curada', 'Solo 1 revisión técnica'] },
@@ -64,10 +64,20 @@ export default function Pricing() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-40px' }}
           transition={{ duration: 0.5, ease }}
-          className="mx-auto mt-9 flex max-w-2xl items-center justify-center gap-2.5 rounded-2xl border border-brand/40 bg-brand/[0.07] px-5 py-3 text-center"
+          className="mx-auto mt-9 max-w-2xl overflow-hidden rounded-2xl bg-gradient-to-r from-brand/50 via-brand/20 to-brand/50 p-px shadow-glow-sm"
         >
-          <Sparkles size={18} className="shrink-0 text-brand" aria-hidden />
-          <p className="text-[13px] font-medium leading-snug text-paper">{c.setupPromo}</p>
+          <div className="flex flex-col items-center gap-3.5 rounded-[15px] bg-ink-2/90 px-6 py-4 text-center backdrop-blur sm:flex-row sm:gap-4 sm:text-left">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand/15 ring-1 ring-brand/40">
+              <Sparkles size={20} className="text-brand" aria-hidden />
+            </div>
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+                <span className="rounded-full bg-brand px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-on-accent">{c.setupTag}</span>
+                <span className="font-display text-base font-semibold text-paper sm:text-lg">{c.setupTitle}</span>
+              </div>
+              <p className="mt-1 text-[13px] leading-snug text-paper-mute">{c.setupDetail}</p>
+            </div>
+          </div>
         </motion.div>
 
         {/* 3 packs */}
