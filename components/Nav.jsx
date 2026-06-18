@@ -41,6 +41,7 @@ export default function Nav() {
     { href: '#delivery', label: es ? 'Cómo funciona' : 'How it works' },
     { href: '#concepts', label: es ? 'Conceptos' : 'Concepts' },
     { href: '#pricing', label: es ? 'Paquetes' : 'Packages' },
+    { href: '#calculadora', label: es ? 'Calculadora' : 'Calculator' },
     { href: '#results', label: t.nav.results },
   ];
 

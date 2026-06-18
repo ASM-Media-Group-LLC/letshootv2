@@ -7,11 +7,11 @@ import SectionHeading from './SectionHeading';
 
 const ease = [0.22, 1, 0.36, 1];
 
-// Matches the real packs (pieces = photos + videos)
+// Mirrors exactly what each pack delivers (photos + videos)
 const PACKS = [
-  { name: 'Test', price: 249, pieces: 21 },
-  { name: 'Core', price: 499, pieces: 47 },
-  { name: 'Pro',  price: 899, pieces: 94 },
+  { name: 'Test', price: 249, photos: 20, videos: 1 },
+  { name: 'Core', price: 499, photos: 45, videos: 2 },
+  { name: 'Pro',  price: 899, photos: 90, videos: 4 },
 ];
 const TRAD_PER_PIECE = 120; // ~cost to produce one finished piece the traditional way
 
@@ -19,7 +19,7 @@ const T = {
   en: {
     label: 'CALCULATOR', titleA: 'Run the numbers —', highlight: "it's worth it",
     sub: 'Pick a pack and see what you save versus a traditional shoot — and what you can earn selling the content.',
-    pick: 'Choose your pack', youGet: 'You get', pieces: 'content pieces',
+    pick: 'Choose your pack', youGet: 'You get', photosW: 'photos', videosW: 'videos',
     earnPer: 'You earn per piece', traditional: 'Traditional shoot', withLs: 'With LetShoot',
     save: 'You save', earn: 'You earn selling them', roi: 'Return',
     disc: 'Estimate. What you earn depends on how you sell your content.',
@@ -27,7 +27,7 @@ const T = {
   es: {
     label: 'CALCULADORA', titleA: 'Haz números —', highlight: 'te conviene',
     sub: 'Elige un pack y mira cuánto te ahorras vs una sesión tradicional — y cuánto puedes ganar vendiendo el contenido.',
-    pick: 'Elige tu pack', youGet: 'Recibes', pieces: 'piezas de contenido',
+    pick: 'Elige tu pack', youGet: 'Recibes', photosW: 'fotos', videosW: 'videos',
     earnPer: 'Ganas por pieza', traditional: 'Sesión tradicional', withLs: 'Con LetShoot',
     save: 'Te ahorras', earn: 'Ganas vendiéndolas', roi: 'Retorno',
     disc: 'Estimación. Lo que ganas depende de cómo vendas tu contenido.',
@@ -43,11 +43,12 @@ export default function ValueCalculators() {
   const [idx, setIdx] = useState(1); // Core by default
   const [perPiece, setPerPiece] = useState(50);
   const pack = PACKS[idx];
+  const pieces = pack.photos + pack.videos;
 
-  const trad = pack.pieces * TRAD_PER_PIECE;
+  const trad = pieces * TRAD_PER_PIECE;
   const save = Math.max(0, trad - pack.price);
   const savePct = trad ? Math.round((save / trad) * 100) : 0;
-  const revenue = pack.pieces * perPiece;
+  const revenue = pieces * perPiece;
   const roi = pack.price ? revenue / pack.price : 0;
 
   return (
@@ -83,7 +84,7 @@ export default function ValueCalculators() {
             ))}
           </div>
           <div className="mt-2.5 text-center font-mono text-[11px] text-paper-dim">
-            {t.youGet}: <span className="text-paper">{pack.pieces} {t.pieces}</span>
+            {t.youGet}: <span className="text-paper">{pack.photos} {t.photosW} + {pack.videos} {t.videosW}</span>
           </div>
 
           {/* Earn per piece */}
@@ -127,7 +128,7 @@ export default function ValueCalculators() {
                 <span className="font-display text-brand">{roi.toFixed(roi >= 10 ? 0 : 1)}x</span>
               </div>
               <div className="mt-1 flex items-baseline justify-between text-sm">
-                <span className="text-paper-dim">{pack.pieces} × {money(perPiece)}</span>
+                <span className="text-paper-dim">{pieces} × {money(perPiece)}</span>
                 <span className="font-display text-paper">{money(revenue)}</span>
               </div>
               <div className="mt-4 rounded-xl border border-brand/40 bg-brand/[0.06] px-4 py-3 text-center">
