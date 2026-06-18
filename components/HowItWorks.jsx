@@ -1,116 +1,74 @@
 'use client';
 
-import { useRef } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useLang } from '@/app/providers';
-import { ICONS } from './icons';
 import SectionHeading from './SectionHeading';
 
 const ease = [0.22, 1, 0.36, 1];
 
-export default function HowItWorks() {
-  const { t } = useLang();
-  const h = t.how;
+const T = {
+  en: {
+    label: 'HOW DELIVERY WORKS', titleA: 'From brief to', highlight: 'sales-ready pack',
+    sub: 'A simple, curated process — designed to protect your time and your brand.',
+    steps: [
+      'You submit references, model style, approved boundaries and the type of content you want.',
+      'We create more images than we deliver.',
+      'Our team filters and selects only the strongest, usable assets.',
+      'You receive a curated final pack — ready to sell.',
+      'Revisions apply only to technical errors, not personal taste.',
+    ],
+    note: 'You are not paying for every AI generation. You are paying for the final curated content selected for sales use.',
+  },
+  es: {
+    label: 'CÓMO SE ENTREGA', titleA: 'Del brief al', highlight: 'paquete listo para vender',
+    sub: 'Un proceso simple y curado — diseñado para cuidar tu tiempo y tu marca.',
+    steps: [
+      'Nos envías referencias, el estilo de la modelo, los límites aprobados y el tipo de contenido que quieres.',
+      'Generamos más imágenes de las que entregamos.',
+      'Nuestro equipo filtra y selecciona solo lo mejor y usable.',
+      'Recibes un paquete final curado — listo para vender.',
+      'Las revisiones aplican solo a errores técnicos, no a gustos personales.',
+    ],
+    note: 'No pagas por cada generación de IA. Pagas por el contenido final curado, seleccionado para vender.',
+  },
+};
 
-  const ref = useRef(null);
-  // Animated draw of the connecting line as user scrolls into view
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start 80%', 'end 20%'] });
-  const lineWidth = useTransform(scrollYProgress, [0, 0.6], ['0%', '100%']);
+export default function HowItWorks() {
+  const { lang } = useLang();
+  const t = T[lang] || T.en;
 
   return (
-    <section className="relative w-full bg-ink py-24 sm:py-28">
-      <div className="mx-auto max-w-6xl px-5">
-        <SectionHeading label={h.label} titleA={h.titleA} highlight={h.titleHighlight} sub={h.sub} hue="gradient" />
-
-        <div ref={ref} className="relative mt-16">
-          {/* Animated draw-on connector line */}
-          <div className="pointer-events-none absolute left-0 right-0 top-12 hidden h-px md:block">
-            <motion.div
-              className="h-full origin-left"
-              style={{
-                width: lineWidth,
-                background: 'linear-gradient(90deg, transparent 0%, rgba(0,177,246,0.5) 8%, rgba(127,224,255,0.85) 50%, rgba(0,177,246,0.5) 92%, transparent 100%)',
-              }}
-              aria-hidden
-            />
-          </div>
-
-          <div className="grid gap-8 md:grid-cols-3 md:gap-10">
-            {h.steps.map((s, i) => {
-              const Icon = ICONS[s.icon];
-              return (
-                <motion.div
-                  key={s.n}
-                  initial={{ opacity: 0, y: 60 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: '-60px' }}
-                  transition={{ duration: 0.65, ease, delay: i * 0.18 }}
-                  className="relative"
-                >
-                  {/* Big number circle with pop-in animation */}
-                  <motion.div
-                    initial={{ scale: 0.4, opacity: 0, rotate: -20 }}
-                    whileInView={{ scale: 1, opacity: 1, rotate: 0 }}
-                    viewport={{ once: true, margin: '-60px' }}
-                    transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1], delay: i * 0.18 + 0.15 }}
-                    className="relative z-10 mx-auto mb-6 md:mx-0"
-                  >
-                    <div
-                      className="grid h-24 w-24 place-items-center rounded-full"
-                      style={{ background: 'radial-gradient(circle at 30% 30%, rgba(0,177,246,0.35), rgba(10,84,255,0.18) 60%, transparent 80%)' }}
-                    >
-                      <div className="glass-ios grid h-16 w-16 place-items-center rounded-full">
-                        <span className="headline text-2xl text-rainbow">{s.n}</span>
-                      </div>
-                    </div>
-                    {/* Pulsing ring */}
-                    <motion.div
-                      className="pointer-events-none absolute inset-0 rounded-full border border-brand/30"
-                      animate={{ scale: [1, 1.25, 1.25], opacity: [0.5, 0, 0] }}
-                      transition={{ duration: 2.4, ease: 'easeOut', repeat: Infinity, delay: i * 0.4 }}
-                      aria-hidden
-                    />
-                  </motion.div>
-
-                  {/* Card */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: '-60px' }}
-                    transition={{ duration: 0.55, ease, delay: i * 0.18 + 0.3 }}
-                    whileHover={{ y: -6 }}
-                    className="group relative overflow-hidden rounded-3xl border border-line bg-card p-7 transition-colors hover:border-paper/20"
-                  >
-                    {/* Icon chip with floating animation */}
-                    <motion.div
-                      animate={{ y: [0, -4, 0] }}
-                      transition={{ duration: 3, ease: 'easeInOut', repeat: Infinity, delay: i * 0.3 }}
-                      className="glass-ios grid h-12 w-12 place-items-center rounded-2xl text-brand"
-                    >
-                      {Icon && <Icon size={20} strokeWidth={2.2} aria-hidden />}
-                    </motion.div>
-
-                    <h3 className="mt-5 font-display text-xl font-semibold text-paper">{s.t}</h3>
-                    <p className="mt-2 text-[15px] leading-relaxed text-paper-mute">{s.d}</p>
-
-                    {/* Radial accent on hover */}
-                    <div
-                      className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full opacity-0 transition-opacity duration-500 group-hover:opacity-100"
-                      style={{ background: 'radial-gradient(circle, rgba(0,177,246,0.22), transparent 70%)' }}
-                      aria-hidden
-                    />
-
-                    {/* Hover shine sweep */}
-                    <div
-                      className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 transition-all duration-1000 group-hover:translate-x-full group-hover:opacity-100"
-                      aria-hidden
-                    />
-                  </motion.div>
-                </motion.div>
-              );
-            })}
-          </div>
+    <section id="delivery" className="relative bg-ink py-24 sm:py-28">
+      <div className="mx-auto max-w-4xl px-5">
+        <div className="mx-auto max-w-2xl text-center">
+          <SectionHeading label={t.label} titleA={t.titleA} highlight={t.highlight} sub={t.sub} align="center" hue="gradient" />
         </div>
+
+        <div className="mt-12 space-y-3">
+          {t.steps.map((step, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-40px' }}
+              transition={{ duration: 0.45, ease, delay: i * 0.05 }}
+              className="flex items-center gap-4 rounded-2xl border border-line bg-card px-5 py-4"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand/15 font-display text-base text-brand">{i + 1}</span>
+              <p className="text-[15px] leading-relaxed text-paper">{step}</p>
+            </motion.div>
+          ))}
+        </div>
+
+        <motion.p
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6, ease }}
+          className="mx-auto mt-10 max-w-2xl rounded-2xl border border-brand/30 bg-brand/[0.06] px-6 py-5 text-center text-[15px] font-medium leading-relaxed text-paper"
+        >
+          {t.note}
+        </motion.p>
       </div>
     </section>
   );

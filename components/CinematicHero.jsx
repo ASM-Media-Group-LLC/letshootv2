@@ -68,7 +68,7 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 26, filter: 'blur(10px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.95, ease, delay: 0.36 }}
-            className="headline mx-auto max-w-[15ch] text-[clamp(2.1rem,7vw,5rem)] leading-[1.02] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)] sm:max-w-none sm:whitespace-nowrap"
+            className="headline mx-auto max-w-[20ch] text-[clamp(1.9rem,5.2vw,4.2rem)] leading-[1.06] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]"
           >
             {t.hero.pre}{' '}
             <span className="text-rainbow" style={{ paddingBlock: '0.06em' }}>{t.hero.highlight}</span>
@@ -97,7 +97,7 @@ export default function CinematicHero() {
               <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" aria-hidden />
             </a>
             <a
-              href="#results"
+              href="#pricing"
               className="inline-flex items-center rounded-full border border-white/25 bg-white/5 px-7 py-3.5 text-base font-medium text-white backdrop-blur transition-colors hover:bg-white/10"
             >
               {t.hero.ctaSecondary}

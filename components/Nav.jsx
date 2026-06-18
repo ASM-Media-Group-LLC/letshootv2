@@ -7,7 +7,8 @@ import LangToggle from './LangToggle';
 import ThemeToggle from './ThemeToggle';
 
 export default function Nav() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const es = lang === 'es';
   // Visible by default so the nav shows during the intro vapor text screens
   const [visible, setVisible] = useState(true);
 
@@ -37,9 +38,9 @@ export default function Nav() {
   }, []);
 
   const links = [
-    { href: '#creators', label: t.nav.creators },
-    { href: '#agencies', label: t.nav.agencies },
-    { href: '#pricing', label: t.nav.pricing },
+    { href: '#delivery', label: es ? 'Cómo funciona' : 'How it works' },
+    { href: '#concepts', label: es ? 'Conceptos' : 'Concepts' },
+    { href: '#pricing', label: es ? 'Paquetes' : 'Packages' },
     { href: '#results', label: t.nav.results },
   ];
 
