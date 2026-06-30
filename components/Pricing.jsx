@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Check, ArrowRight, Sparkles } from 'lucide-react';
+import { Check, ArrowRight, Sparkles, ChevronDown } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import SectionHeading from './SectionHeading';
 
@@ -19,8 +19,10 @@ const COPY = {
     label: 'PACKAGES', titleA: 'Choose your', highlight: 'sales content pack',
     sub: 'Curated, ready-to-sell photo and video packs — built for PPV, chat sales and custom-style fan requests.',
     oneTime: 'one-time pack', cta: 'Get Started', popular: 'Most popular',
-    setupTag: 'Free for 7 days', setupTitle: 'Your AI clone, built for free', freeWord: 'FREE', was3k: '$3,000',
-    setupDetail: 'The custom model behind all your content. Normally $3,000 — free with any pack for the next 7 days.',
+    setupTag: 'Free for 7 days', setupTitle: 'Your AI clone, built for free', freeWord: 'FREE', valRange: '$3,000–$10,000',
+    setupDetail: 'The custom model behind all your content. Normally $3,000–$10,000 — free with any pack for the next 7 days.',
+    whyTitle: 'Why does the price vary?',
+    whyText: 'Building an accurate AI clone is custom work. The price depends on how much detail has to be reproduced faithfully — tattoos, scars or past surgeries, moles and beauty marks, piercings and other unique features all take extra work to get right. Simpler likenesses start around $3,000; highly detailed ones reach $10,000. For your launch, it is 100% free for the next 7 days.',
     packs: {
       test: { desc: 'Try the workflow and get your first batch of sellable content.', features: ['20 final photos', '1 short AI video', '5 sales concepts', 'Curated delivery', '1 technical revision only'] },
       core: { desc: 'The sweet spot — a solid content bank for chats and PPV drops.', features: ['45 final photos', '2 short AI videos', '10 sales concepts', 'Curated delivery', '1 technical revision only'] },
@@ -34,8 +36,10 @@ const COPY = {
     label: 'PAQUETES', titleA: 'Elige tu', highlight: 'paquete de contenido',
     sub: 'Paquetes curados de fotos y videos listos para vender — hechos para PPV, ventas por chat y pedidos personalizados de fans.',
     oneTime: 'pago único', cta: 'Empezar', popular: 'Más popular',
-    setupTag: 'Gratis por 7 días', setupTitle: 'Tu clon IA, creado gratis', freeWord: 'GRATIS', was3k: '$3,000',
-    setupDetail: 'El molde que crea todo tu contenido. Normalmente $3,000 — gratis con cualquier pack los próximos 7 días.',
+    setupTag: 'Gratis por 7 días', setupTitle: 'Tu clon IA, creado gratis', freeWord: 'GRATIS', valRange: '$3,000–$10,000',
+    setupDetail: 'El molde que crea todo tu contenido. Normalmente $3,000–$10,000 — gratis con cualquier pack los próximos 7 días.',
+    whyTitle: '¿Por qué varía el precio?',
+    whyText: 'Crear un clon IA preciso es un trabajo a medida. El precio depende de cuánto detalle hay que reproducir fielmente — tatuajes, cicatrices o cirugías previas, lunares y marcas, piercings y otros rasgos únicos toman más trabajo para que queden bien. Los casos simples empiezan alrededor de $3,000; los muy detallados llegan a $10,000. Por lanzamiento, es 100% gratis los próximos 7 días.',
     packs: {
       test: { desc: 'Prueba el flujo y recibe tu primer lote de contenido vendible.', features: ['20 fotos finales', '1 video IA corto', '5 conceptos de venta', 'Entrega curada', 'Solo 1 revisión técnica'] },
       core: { desc: 'El punto justo — un buen banco de contenido para chats y PPV.', features: ['45 fotos finales', '2 videos IA cortos', '10 conceptos de venta', 'Entrega curada', 'Solo 1 revisión técnica'] },
@@ -68,25 +72,36 @@ export default function Pricing() {
           transition={{ duration: 0.5, ease }}
           className="mx-auto mt-9 max-w-3xl overflow-hidden rounded-3xl bg-gradient-to-r from-brand/60 via-brand/25 to-brand/60 p-px shadow-glow"
         >
-          <div className="flex flex-col items-center gap-5 rounded-[23px] bg-ink-2/95 px-6 py-6 text-center backdrop-blur sm:flex-row sm:gap-5 sm:text-left">
-            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-brand/15 ring-1 ring-brand/40">
-              <Sparkles size={26} className="text-brand" aria-hidden />
-            </div>
-            <div className="flex-1">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-on-accent">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-on-accent/70" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-on-accent" />
+          <div className="rounded-[23px] bg-ink-2/95 px-6 py-6 backdrop-blur">
+            <div className="flex flex-col items-center gap-5 text-center sm:flex-row sm:gap-5 sm:text-left">
+              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-brand/15 ring-1 ring-brand/40">
+                <Sparkles size={26} className="text-brand" aria-hidden />
+              </div>
+              <div className="flex-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-on-accent">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-on-accent/70" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-on-accent" />
+                  </span>
+                  {c.setupTag}
                 </span>
-                {c.setupTag}
-              </span>
-              <h3 className="mt-2 font-display text-xl text-paper sm:text-2xl">{c.setupTitle}</h3>
-              <p className="mt-1.5 text-[13px] leading-snug text-paper-mute">{c.setupDetail}</p>
+                <h3 className="mt-2 font-display text-xl text-paper sm:text-2xl">{c.setupTitle}</h3>
+                <p className="mt-1.5 text-[13px] leading-snug text-paper-mute">{c.setupDetail}</p>
+              </div>
+              <div className="shrink-0 text-center">
+                <div className="whitespace-nowrap font-mono text-[13px] text-paper-dim line-through decoration-paper-dim/60">{c.valRange}</div>
+                <div className="font-display text-4xl leading-none text-brand">{c.freeWord}</div>
+              </div>
             </div>
-            <div className="shrink-0 text-center">
-              <div className="font-mono text-sm text-paper-dim line-through decoration-paper-dim/60">{c.was3k}</div>
-              <div className="font-display text-4xl leading-none text-brand">{c.freeWord}</div>
-            </div>
+
+            {/* Why the price varies */}
+            <details className="group mt-4 border-t border-line/70 pt-3">
+              <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 text-[12px] font-medium text-paper-mute transition-colors hover:text-brand sm:justify-start">
+                {c.whyTitle}
+                <ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden />
+              </summary>
+              <p className="mt-2 text-[13px] leading-relaxed text-paper-mute">{c.whyText}</p>
+            </details>
           </div>
         </motion.div>
 
