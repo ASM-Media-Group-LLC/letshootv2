@@ -9,8 +9,8 @@ const ease = [0.22, 1, 0.36, 1];
 
 // Packs (language-independent price + structure)
 const PACKS = [
-  { key: 'test', name: 'Test Pack', price: 499, was: 1100 },
-  { key: 'core', name: 'Core Pack', price: 699, was: 1500, popular: true },
+  { key: 'test', name: 'Test Pack', price: 249, was: 500 },
+  { key: 'core', name: 'Core Pack', price: 499, was: 1000, popular: true },
   { key: 'pro',  name: 'Pro Pack',  price: 899, was: 2000 },
 ];
 
