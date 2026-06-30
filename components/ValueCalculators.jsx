@@ -18,8 +18,8 @@ const TRAD_VIDEO = 300;  // traditional cost per video
 
 // LetShoot cost = the pack that covers the requested volume (coherent with our packs)
 const PACK_TIERS = [
-  { name: 'Test', maxPieces: 21, price: 249 },
-  { name: 'Core', maxPieces: 47, price: 499 },
+  { name: 'Test', maxPieces: 21, price: 499 },
+  { name: 'Core', maxPieces: 47, price: 699 },
   { name: 'Pro',  maxPieces: 94, price: 899 },
 ];
 function lsCost(pieces) {
