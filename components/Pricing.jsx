@@ -21,8 +21,10 @@ const COPY = {
     oneTime: 'one-time pack', cta: 'Get Started', popular: 'Most popular',
     setupTag: 'Free for 7 days', setupTitle: 'Your AI clone, built for free', freeWord: 'FREE', valRange: '$3,000–$10,000',
     setupDetail: 'The custom model behind all your content. Normally $3,000–$10,000 — free with any pack for the next 7 days.',
-    whyTitle: 'Why does the price vary?',
-    whyText: 'Building an accurate AI clone is custom work. The price depends on how much detail has to be reproduced faithfully — tattoos, scars or past surgeries, moles and beauty marks, piercings and other unique features all take extra work to get right. Simpler likenesses start around $3,000; highly detailed ones reach $10,000. For your launch, it is 100% free for the next 7 days.',
+    whyTitle: 'Why the investment varies',
+    whyIntro: 'Every clone is hand-built to match you exactly. The investment scales with the level of detail we reproduce:',
+    whyFactors: ['Tattoos & body art', 'Scars or past surgeries', 'Moles & beauty marks', 'Piercings & accessories', 'Skin tone & texture', 'Other distinctive features'],
+    whyOutro: 'Simpler likenesses start at $3,000; highly detailed builds reach $10,000 — free for every client during the 7-day launch.',
     packs: {
       test: { desc: 'Try the workflow and get your first batch of sellable content.', features: ['20 final photos', '1 short AI video', '5 sales concepts', 'Curated delivery', '1 technical revision only'] },
       core: { desc: 'The sweet spot — a solid content bank for chats and PPV drops.', features: ['45 final photos', '2 short AI videos', '10 sales concepts', 'Curated delivery', '1 technical revision only'] },
@@ -38,8 +40,10 @@ const COPY = {
     oneTime: 'pago único', cta: 'Empezar', popular: 'Más popular',
     setupTag: 'Gratis por 7 días', setupTitle: 'Tu clon IA, creado gratis', freeWord: 'GRATIS', valRange: '$3,000–$10,000',
     setupDetail: 'El molde que crea todo tu contenido. Normalmente $3,000–$10,000 — gratis con cualquier pack los próximos 7 días.',
-    whyTitle: '¿Por qué varía el precio?',
-    whyText: 'Crear un clon IA preciso es un trabajo a medida. El precio depende de cuánto detalle hay que reproducir fielmente — tatuajes, cicatrices o cirugías previas, lunares y marcas, piercings y otros rasgos únicos toman más trabajo para que queden bien. Los casos simples empiezan alrededor de $3,000; los muy detallados llegan a $10,000. Por lanzamiento, es 100% gratis los próximos 7 días.',
+    whyTitle: 'Por qué varía la inversión',
+    whyIntro: 'Cada clon se construye a mano para que sea idéntico a ti. La inversión sube según el nivel de detalle que reproducimos:',
+    whyFactors: ['Tatuajes y arte corporal', 'Cicatrices o cirugías previas', 'Lunares y marcas de belleza', 'Piercings y accesorios', 'Tono y textura de piel', 'Otros rasgos distintivos'],
+    whyOutro: 'Los casos simples empiezan en $3,000; los muy detallados llegan a $10,000 — gratis para todas durante el lanzamiento de 7 días.',
     packs: {
       test: { desc: 'Prueba el flujo y recibe tu primer lote de contenido vendible.', features: ['20 fotos finales', '1 video IA corto', '5 conceptos de venta', 'Entrega curada', 'Solo 1 revisión técnica'] },
       core: { desc: 'El punto justo — un buen banco de contenido para chats y PPV.', features: ['45 fotos finales', '2 videos IA cortos', '10 conceptos de venta', 'Entrega curada', 'Solo 1 revisión técnica'] },
@@ -96,11 +100,24 @@ export default function Pricing() {
 
             {/* Why the price varies */}
             <details className="group mt-4 border-t border-line/70 pt-3">
-              <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 text-[12px] font-medium text-paper-mute transition-colors hover:text-brand sm:justify-start">
+              <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-paper-mute transition-colors hover:text-brand sm:justify-start">
                 {c.whyTitle}
                 <ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden />
               </summary>
-              <p className="mt-2 text-[13px] leading-relaxed text-paper-mute">{c.whyText}</p>
+              <div className="mt-4">
+                <p className="text-[13px] leading-relaxed text-paper-mute">{c.whyIntro}</p>
+                <ul className="mt-4 grid gap-x-5 gap-y-2.5 sm:grid-cols-2">
+                  {c.whyFactors.map((f, i) => (
+                    <li key={i} className="flex items-center gap-2.5 text-[13px] text-paper">
+                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand/15 text-brand">
+                        <Check size={12} aria-hidden />
+                      </span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-4 border-t border-line/70 pt-3 text-[12px] leading-relaxed text-paper-dim">{c.whyOutro}</p>
+              </div>
             </details>
           </div>
         </motion.div>
