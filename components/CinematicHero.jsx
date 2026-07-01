@@ -68,17 +68,33 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 26, filter: 'blur(10px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.95, ease, delay: 0.36 }}
-            className="headline mx-auto max-w-[20ch] text-[clamp(1.9rem,5.2vw,4.2rem)] leading-[1.06] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]"
+            className="headline mx-auto max-w-[15ch] text-[clamp(2rem,5.4vw,4.3rem)] leading-[1.04] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]"
           >
-            {t.hero.pre}{' '}
-            <span className="text-rainbow" style={{ paddingBlock: '0.06em' }}>{t.hero.highlight}</span>
+            {t.hero.pre.replace(/\s*—\s*$/, '')}
           </motion.h1>
+
+          {/* Value proposition — three-beat rhythm, cleanly measured */}
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.85, ease, delay: 0.5 }}
+            className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 font-display text-[clamp(1.1rem,3vw,1.9rem)] font-semibold tracking-tight"
+          >
+            {t.hero.highlight.split(',').map((seg, i, arr) => (
+              <span key={i} className="inline-flex items-center gap-3">
+                <span className="text-rainbow">{seg.trim()}</span>
+                {i < arr.length - 1 && (
+                  <span className="text-white/25" aria-hidden>·</span>
+                )}
+              </span>
+            ))}
+          </motion.div>
 
           <motion.p
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.85, ease, delay: 0.55 }}
-            className="mx-auto mt-5 max-w-xl text-[clamp(0.95rem,2.2vw,1.15rem)] leading-relaxed text-white/90 drop-shadow-[0_1px_14px_rgba(0,0,0,0.8)]"
+            transition={{ duration: 0.85, ease, delay: 0.6 }}
+            className="mx-auto mt-6 max-w-md text-[clamp(0.9rem,2vw,1.05rem)] leading-relaxed text-white/85 drop-shadow-[0_1px_14px_rgba(0,0,0,0.8)]"
           >
             {t.hero.body}
           </motion.p>
