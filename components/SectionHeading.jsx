@@ -35,7 +35,7 @@ export default function SectionHeading({ label, titleA, highlight, sub, align = 
         </motion.span>
       )}
 
-      <h2 className="headline max-w-3xl text-[clamp(2.25rem,6vw,4.25rem)] text-paper">
+      <h2 className="headline max-w-3xl text-[clamp(2.25rem,6vw,4.25rem)] leading-[1.06] text-paper [text-wrap:balance]">
         <motion.span
           initial={{ opacity: 0, y: 28, filter: 'blur(10px)' }}
           whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
