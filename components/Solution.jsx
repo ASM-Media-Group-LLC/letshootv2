@@ -2,16 +2,15 @@
 
 import { Fragment } from 'react';
 import { motion } from 'framer-motion';
-import { MessageCircle, Clock, Hourglass, TrendingDown, ArrowRight, ArrowDown, Zap } from 'lucide-react';
+import { MessageCircle, Clock, Hourglass, TrendingDown, ArrowRight, ArrowDown, Zap, Check } from 'lucide-react';
 import { useLang } from '@/app/providers';
-import SectionHeading from './SectionHeading';
 
 const ease = [0.22, 1, 0.36, 1];
 
 const T = {
   en: {
-    label: 'THE REAL PROBLEM',
-    titleA: '', highlight: 'We have your content ready at the right moment, for you.',
+    label: 'The real problem',
+    highlight: 'We have your content ready at the right moment — for you.',
     sub: 'The money is made in the chat, and the fan won’t wait. When the content isn’t ready, this is what happens:',
     chain: [
       { t: 'The fan asks', d: 'In the chat, they want something right now.' },
@@ -27,8 +26,8 @@ const T = {
     diff: 'A single image can make you a lot of money — and that’s exactly where others want their cut, as if they were your partners. Not with us: we produce on another level, and it’s part of your subscription, period. Everything you earn with our content, however much, stays 100% yours.',
   },
   es: {
-    label: 'EL PROBLEMA REAL',
-    titleA: '', highlight: 'Tenemos tu contenido en el momento indicado para ti.',
+    label: 'El problema real',
+    highlight: 'Tenemos tu contenido en el momento indicado — para ti.',
     sub: 'El dinero se hace en el chat, y el fan no espera. Cuando el contenido no está listo, pasa esto:',
     chain: [
       { t: 'El fan pide', d: 'En el chat, quiere algo al instante.' },
@@ -52,45 +51,83 @@ export default function Solution() {
   const t = T[lang] || T.en;
 
   return (
-    <section id="por-que" className="relative scroll-mt-24 bg-ink py-24 sm:py-28">
-      <div className="mx-auto max-w-5xl px-5">
-        <div className="mx-auto max-w-2xl text-center">
-          <SectionHeading label={t.label} titleA={t.titleA} highlight={t.highlight} sub={t.sub} align="center" hue="gradient" />
-        </div>
+    <section id="por-que" className="relative scroll-mt-24 overflow-hidden bg-ink py-24 sm:py-28">
+      {/* ambient depth */}
+      <div className="blob left-1/2 top-24 h-[420px] w-[520px] -translate-x-1/2 bg-brand/10" aria-hidden />
+      <div className="blob bottom-0 right-[8%] h-[280px] w-[280px] bg-rose-500/10" aria-hidden />
 
-        {/* ── Cause → effect chain (the wall of text, made scannable) ───────── */}
-        <div className="mt-14 flex flex-col items-stretch gap-3 md:flex-row md:items-stretch">
+      <div className="relative mx-auto max-w-5xl px-5">
+        {/* ── Heading ──────────────────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-80px' }}
+          transition={{ duration: 0.6, ease }}
+          className="mx-auto max-w-2xl text-center"
+        >
+          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-hair/5 px-3.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgb(var(--brand,0_177_246))]" />
+            {t.label}
+          </span>
+          <h2 className="headline mx-auto mt-5 max-w-[18ch] text-[clamp(1.85rem,4vw,3rem)] leading-[1.1] text-rainbow [text-wrap:balance]">
+            {t.highlight}
+          </h2>
+          <p className="mx-auto mt-5 max-w-lg text-[15px] leading-relaxed text-paper-mute [text-wrap:balance]">
+            {t.sub}
+          </p>
+        </motion.div>
+
+        {/* ── Cause → effect chain ─────────────────────────────────────────── */}
+        <div className="relative mt-12 flex flex-col items-stretch gap-3 md:flex-row md:items-stretch md:gap-0">
+          {/* connector line (desktop) */}
+          <div className="pointer-events-none absolute left-0 right-0 top-[52px] hidden h-px bg-gradient-to-r from-transparent via-line to-transparent md:block" aria-hidden />
+
           {t.chain.map((step, i) => {
             const Icon = ICONS[i];
             const loss = step.loss;
             return (
               <Fragment key={i}>
                 <motion.div
-                  initial={{ opacity: 0, y: 18 }}
+                  initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: '-40px' }}
-                  transition={{ duration: 0.5, ease, delay: i * 0.08 }}
-                  className={`flex flex-1 flex-col items-center rounded-2xl border p-5 text-center ${
-                    loss ? 'border-rose-500/40 bg-rose-500/[0.07]' : 'border-line bg-card'
+                  transition={{ duration: 0.5, ease, delay: i * 0.09 }}
+                  className={`group relative flex flex-1 flex-col items-center rounded-2xl border p-6 text-center backdrop-blur-sm transition-all duration-300 md:mx-1.5 ${
+                    loss
+                      ? 'border-rose-500/30 bg-gradient-to-b from-rose-500/[0.12] to-rose-500/[0.03] hover:border-rose-500/50'
+                      : 'border-line bg-gradient-to-b from-card to-ink-2/60 hover:-translate-y-1 hover:border-brand/40'
                   }`}
                 >
-                  <div
-                    className={`mb-3 flex h-11 w-11 items-center justify-center rounded-full ${
-                      loss ? 'bg-rose-500/15 text-rose-400' : 'bg-brand/15 text-brand'
+                  {/* step number */}
+                  <span
+                    className={`absolute right-3 top-3 font-mono text-[11px] font-semibold ${
+                      loss ? 'text-rose-400/70' : 'text-paper-dim'
                     }`}
                   >
-                    <Icon size={20} aria-hidden />
+                    {loss ? '✕' : `0${i + 1}`}
+                  </span>
+
+                  {/* icon chip */}
+                  <div
+                    className={`relative z-[1] mb-4 flex h-14 w-14 items-center justify-center rounded-2xl ring-1 transition-transform duration-300 group-hover:scale-105 ${
+                      loss
+                        ? 'bg-rose-500/15 text-rose-400 ring-rose-500/25'
+                        : 'bg-brand/12 text-brand ring-brand/25'
+                    }`}
+                  >
+                    <Icon size={24} aria-hidden strokeWidth={1.75} />
                   </div>
-                  <div className={`font-display text-base font-semibold ${loss ? 'text-rose-200' : 'text-paper'}`}>
+
+                  <div className={`font-display text-[17px] font-semibold ${loss ? 'text-rose-200' : 'text-paper'}`}>
                     {step.t}
                   </div>
-                  <p className="mt-1 text-sm leading-snug text-paper-mute">{step.d}</p>
+                  <p className="mt-1.5 text-[13.5px] leading-snug text-paper-mute">{step.d}</p>
                 </motion.div>
 
                 {i < t.chain.length - 1 && (
-                  <div className="flex shrink-0 items-center justify-center text-paper-dim">
-                    <ArrowRight className="hidden h-5 w-5 md:block" aria-hidden />
-                    <ArrowDown className="h-5 w-5 md:hidden" aria-hidden />
+                  <div className="flex shrink-0 items-center justify-center py-1 text-paper-dim md:py-0">
+                    <ArrowRight className="hidden h-4 w-4 md:block" aria-hidden />
+                    <ArrowDown className="h-4 w-4 md:hidden" aria-hidden />
                   </div>
                 )}
               </Fragment>
@@ -100,19 +137,21 @@ export default function Solution() {
 
         {/* ── Resolution ───────────────────────────────────────────────────── */}
         <motion.div
-          initial={{ opacity: 0, y: 18 }}
+          initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-40px' }}
-          transition={{ duration: 0.55, ease }}
-          className="mx-auto mt-8 max-w-3xl rounded-3xl border border-brand/40 bg-brand/[0.06] p-7 text-center shadow-glow-sm sm:p-9"
+          transition={{ duration: 0.6, ease }}
+          className="relative mx-auto mt-10 max-w-3xl overflow-hidden rounded-3xl border border-brand/40 bg-gradient-to-b from-brand/[0.1] to-brand/[0.02] p-8 text-center shadow-glow sm:p-10"
         >
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand/15 text-brand">
-            <Zap size={22} aria-hidden />
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/15 text-brand ring-1 ring-brand/30">
+            <Zap size={26} aria-hidden strokeWidth={1.75} />
           </div>
-          <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-brand">{t.solveKicker}</div>
-          <h3 className="mt-2 font-display text-2xl font-semibold text-paper sm:text-3xl">{t.solveTitle}</h3>
-          <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-paper">{t.solve}</p>
-          <p className="mx-auto mt-4 max-w-xl border-t border-brand/15 pt-4 text-[14px] leading-relaxed text-paper-mute">
+          <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-brand">{t.solveKicker}</div>
+          <h3 className="mx-auto mt-2 max-w-md font-display text-2xl font-semibold text-paper [text-wrap:balance] sm:text-[1.75rem]">
+            {t.solveTitle}
+          </h3>
+          <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-paper [text-wrap:balance]">{t.solve}</p>
+          <p className="mx-auto mt-5 max-w-xl border-t border-brand/15 pt-5 text-[14px] leading-relaxed text-paper-mute [text-wrap:balance]">
             {t.custom}
           </p>
         </motion.div>
@@ -123,10 +162,15 @@ export default function Solution() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-40px' }}
           transition={{ duration: 0.6, ease }}
-          className="mx-auto mt-6 max-w-3xl rounded-2xl border border-line bg-card px-6 py-6 text-center"
+          className="mx-auto mt-6 flex max-w-3xl items-start gap-4 rounded-2xl border border-line bg-card px-6 py-6 text-left"
         >
-          <h3 className="font-display text-lg font-semibold text-paper sm:text-xl">{t.diffTitle}</h3>
-          <p className="mx-auto mt-2 max-w-2xl text-[14px] leading-relaxed text-paper-mute">{t.diff}</p>
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/12 text-brand ring-1 ring-brand/20">
+            <Check size={18} aria-hidden strokeWidth={2.25} />
+          </div>
+          <div>
+            <h3 className="font-display text-lg font-semibold text-paper sm:text-xl">{t.diffTitle}</h3>
+            <p className="mt-1.5 text-[14px] leading-relaxed text-paper-mute">{t.diff}</p>
+          </div>
         </motion.div>
       </div>
     </section>
