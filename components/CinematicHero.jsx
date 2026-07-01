@@ -90,20 +90,11 @@ export default function CinematicHero() {
             ))}
           </motion.div>
 
-          <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.85, ease, delay: 0.6 }}
-            className="mx-auto mt-6 max-w-md text-[clamp(0.9rem,2vw,1.05rem)] leading-relaxed text-white/85 drop-shadow-[0_1px_14px_rgba(0,0,0,0.8)]"
-          >
-            {t.hero.body}
-          </motion.p>
-
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.75, ease, delay: 0.72 }}
-            className="mt-8 flex flex-wrap items-center justify-center gap-3"
+            transition={{ duration: 0.75, ease, delay: 0.66 }}
+            className="mt-9 flex flex-wrap items-center justify-center gap-3"
           >
             <a
               href="#pricing"
