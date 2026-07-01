@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check, ArrowRight, Sparkles, ChevronDown } from 'lucide-react';
 import { useLang } from '@/app/providers';
@@ -7,18 +8,26 @@ import SectionHeading from './SectionHeading';
 
 const ease = [0.22, 1, 0.36, 1];
 
-// Packs (language-independent price + structure)
+// Packs — per-month price for each billing period (m = monthly, q = quarterly, a = annual)
 const PACKS = [
-  { key: 'test', name: 'Test Pack', price: 249, was: 500 },
-  { key: 'core', name: 'Core Pack', price: 499, was: 1000, popular: true },
-  { key: 'pro',  name: 'Pro Pack',  price: 899, was: 2000 },
+  { key: 'test', name: 'Test Pack', was: 500,  m: 249, q: 219, a: 179 },
+  { key: 'core', name: 'Core Pack', was: 1000, m: 499, q: 439, a: 359, popular: true },
+  { key: 'pro',  name: 'Pro Pack',  was: 2000, m: 899, q: 789, a: 649 },
+];
+// Billing periods: months billed + discount vs monthly (for the toggle badge)
+const PERIODS = [
+  { key: 'm', months: 1,  off: 0 },
+  { key: 'q', months: 3,  off: 12 },
+  { key: 'a', months: 12, off: 28 },
 ];
 
 const COPY = {
   en: {
     label: 'PACKAGES', titleA: 'Choose your', highlight: 'sales content pack',
     sub: 'Curated, ready-to-sell photo and video packs — built for PPV, chat sales and custom-style fan requests.',
-    oneTime: 'one-time pack', cta: 'Get Started', popular: 'Most popular',
+    perMo: '/mo', cta: 'Get Started', popular: 'Most popular',
+    periods: { m: 'Monthly', q: 'Quarterly', a: 'Annual' }, save: 'Save',
+    billed: { m: 'billed monthly', q: 'billed every 3 months', a: 'billed yearly' },
     setupTag: 'Free for 7 days', setupTitle: 'Your AI clone, built for free', freeWord: 'FREE', valRange: '$3,000–$10,000',
     setupDetail: 'The custom model behind all your content. Normally $3,000–$10,000 — free with any pack for the next 7 days.',
     whyTitle: 'Why the investment varies',
@@ -37,7 +46,9 @@ const COPY = {
   es: {
     label: 'PAQUETES', titleA: 'Elige tu', highlight: 'paquete de contenido',
     sub: 'Paquetes curados de fotos y videos listos para vender — hechos para PPV, ventas por chat y pedidos personalizados de fans.',
-    oneTime: 'pago único', cta: 'Empezar', popular: 'Más popular',
+    perMo: '/mes', cta: 'Empezar', popular: 'Más popular',
+    periods: { m: 'Mensual', q: 'Trimestral', a: 'Anual' }, save: 'Ahorra',
+    billed: { m: 'facturado mensual', q: 'facturado cada 3 meses', a: 'facturado al año' },
     setupTag: 'Gratis por 7 días', setupTitle: 'Tu clon IA, creado gratis', freeWord: 'GRATIS', valRange: '$3,000–$10,000',
     setupDetail: 'El molde que crea todo tu contenido. Normalmente $3,000–$10,000 — gratis con cualquier pack los próximos 7 días.',
     whyTitle: 'Por qué varía la inversión',
@@ -58,6 +69,7 @@ const COPY = {
 export default function Pricing() {
   const { lang } = useLang();
   const c = COPY[lang] || COPY.en;
+  const [period, setPeriod] = useState('m');
 
   return (
     <section id="pricing" className="relative bg-ink-2 py-24 sm:py-28">
@@ -122,10 +134,37 @@ export default function Pricing() {
           </div>
         </motion.div>
 
+        {/* Billing period toggle */}
+        <div className="mx-auto mt-10 flex w-full max-w-md items-stretch gap-1 rounded-full border border-line bg-card p-1.5">
+          {PERIODS.map((per) => {
+            const active = period === per.key;
+            return (
+              <button
+                key={per.key}
+                type="button"
+                onClick={() => setPeriod(per.key)}
+                className={`relative flex flex-1 flex-col items-center justify-center rounded-full px-3 py-2 text-sm font-bold transition-all duration-200 ${
+                  active ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'
+                }`}
+              >
+                <span>{c.periods[per.key]}</span>
+                {per.off > 0 && (
+                  <span className={`mt-0.5 rounded-full px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide ${active ? 'bg-on-accent/20 text-on-accent' : 'bg-brand/15 text-brand'}`}>
+                    {c.save} {per.off}%
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {/* 3 packs */}
-        <div className="mx-auto mt-12 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mx-auto mt-8 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {PACKS.map((pack, i) => {
             const pc = c.packs[pack.key];
+            const price = pack[period];
+            const months = PERIODS.find((p) => p.key === period).months;
+            const billedTotal = price * months;
             return (
               <motion.div
                 key={pack.key}
@@ -152,11 +191,14 @@ export default function Pricing() {
                 <div className="relative mt-3">
                   <div className="mb-1 flex items-center gap-2">
                     <span className="font-mono text-sm text-paper-dim line-through decoration-paper-dim/60">${pack.was.toLocaleString('en-US')}</span>
-                    <span className="rounded bg-brand/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand">-{Math.round((1 - pack.price / pack.was) * 100)}%</span>
+                    <span className="rounded bg-brand/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand">-{Math.round((1 - price / pack.was) * 100)}%</span>
                   </div>
                   <div className="flex items-baseline gap-1.5">
-                    <span className={`font-display text-[2.8rem] leading-none ${pack.popular ? 'text-brand' : 'text-paper'}`}>${pack.price}</span>
-                    <span className="font-mono text-[11px] text-paper-dim">{c.oneTime}</span>
+                    <span className={`font-display text-[2.8rem] leading-none ${pack.popular ? 'text-brand' : 'text-paper'}`}>${price}</span>
+                    <span className="font-mono text-[11px] text-paper-dim">{c.perMo}</span>
+                  </div>
+                  <div className="mt-1 font-mono text-[11px] text-paper-dim">
+                    {period === 'm' ? c.billed.m : `$${billedTotal.toLocaleString('en-US')} ${c.billed[period]}`}
                   </div>
                 </div>
 
