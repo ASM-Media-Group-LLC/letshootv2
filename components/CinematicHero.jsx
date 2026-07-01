@@ -68,9 +68,25 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 26, filter: 'blur(10px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.95, ease, delay: 0.36 }}
-            className="headline mx-auto max-w-[15ch] text-[clamp(2rem,5.4vw,4.3rem)] leading-[1.04] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]"
+            className="headline mx-auto max-w-[15ch] text-[clamp(2rem,5.4vw,4.3rem)] leading-[1.12] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]"
           >
-            {t.hero.pre.replace(/\s*—\s*$/, '')}
+            {(() => {
+              const raw = t.hero.pre.replace(/\s*—\s*$/, '');
+              const parts = raw.split('OnlyFans');
+              if (parts.length === 1) return raw;
+              return (
+                <>
+                  {parts[0]}
+                  <img
+                    src="/onlyfans-logo.png"
+                    alt="OnlyFans"
+                    className="inline-block h-[0.82em] w-auto translate-y-[0.1em] drop-shadow-[0_2px_20px_rgba(0,175,240,0.35)]"
+                    draggable={false}
+                  />
+                  {parts.slice(1).join('OnlyFans')}
+                </>
+              );
+            })()}
           </motion.h1>
 
           {/* Value proposition — three-beat rhythm, cleanly measured */}
@@ -111,23 +127,6 @@ export default function CinematicHero() {
             </a>
           </motion.div>
 
-          {/* Platform badge — built for OnlyFans creators */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease, delay: 0.9 }}
-            className="mt-7 flex items-center justify-center gap-2.5"
-          >
-            {t.hero.platformsLabel && (
-              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white/60">{t.hero.platformsLabel}</span>
-            )}
-            <img
-              src="/onlyfans-logo.png"
-              alt="OnlyFans"
-              className="h-6 w-auto drop-shadow-[0_0_18px_rgba(0,175,240,0.45)] sm:h-7"
-              draggable={false}
-            />
-          </motion.div>
         </motion.div>
 
         {/* Scroll cue */}
