@@ -113,7 +113,7 @@ export default function CinematicHero() {
             className="mt-9 flex flex-wrap items-center justify-center gap-3"
           >
             <a
-              href="#pricing"
+              href="#por-que"
               className="group inline-flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.04]"
             >
               {t.hero.ctaPrimary}

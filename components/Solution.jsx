@@ -11,7 +11,7 @@ const T = {
     label: 'THE GAP', titleA: 'More content,', highlight: 'without more production',
     sub: 'We make the content you need to sell more on OnlyFans.',
     p1: 'Traditional shoots are expensive and slow. A single content day can mean a photographer, location, makeup, lighting, transportation, food, editing and hours of coordination.',
-    p2: 'On OnlyFans your fans don’t wait. You have to keep them hooked every day — teasers, previews and constant variety. Making that content by hand takes days… and a lot of it never gets produced at all.',
+    p2: 'On OnlyFans the money is made in the chat — and there the fan wants content right now. Most creators don’t have it on hand: they can’t reply fast, they can’t hook the fan, the conversation cools off and the sale is lost.',
     p3: 'When a fan asks for custom content that you, your team or your agency don’t have on hand, that’s where we come in: we produce that sales content so you cash in on every request and monetize far more.',
     p4: 'Let’s Shoot fills that gap: curated, ready-to-sell content for chats, PPV drops and custom fan requests — no photographer, location or production cost.',
     diffTitle: 'No revenue share. Ever.',
@@ -22,7 +22,7 @@ const T = {
     label: 'EL HUECO', titleA: 'Más contenido,', highlight: 'sin más producción',
     sub: 'Hacemos el contenido que necesitas para vender más en OnlyFans.',
     p1: 'Las sesiones tradicionales son caras y lentas. Un solo día de contenido puede significar fotógrafo, locación, maquillaje, luces, transporte, comida, edición y horas de coordinación.',
-    p2: 'En OnlyFans tus fans no esperan. Hay que mantenerlos enganchados día a día — teasers, adelantos y variedad constante. Hacer ese contenido a mano toma días… y mucho ni se llega a producir.',
+    p2: 'En OnlyFans el dinero se hace en el chat — y ahí el fan quiere contenido al instante. La mayoría de creadoras no lo tiene a la mano: no responden rápido, no enganchan, la conversación se enfría y se pierde la venta.',
     p3: 'Cuando un fan pide un contenido personalizado que tú, tu equipo o tu agencia no tienen a la mano, ahí entramos nosotros: producimos ese contenido de venta para que aproveches cada pedido y monetices mucho más.',
     p4: 'Let’s Shoot llena ese hueco: contenido de venta curado y listo para chats, PPV y pedidos personalizados — sin fotógrafo, locación ni costo de producción.',
     diffTitle: 'Sin porcentaje. Nunca.',
@@ -36,7 +36,7 @@ export default function Solution() {
   const t = T[lang] || T.en;
 
   return (
-    <section className="relative bg-ink py-24 sm:py-28">
+    <section id="por-que" className="relative scroll-mt-24 bg-ink py-24 sm:py-28">
       <div className="mx-auto max-w-3xl px-5">
         <div className="mx-auto max-w-2xl text-center">
           <SectionHeading label={t.label} titleA={t.titleA} highlight={t.highlight} sub={t.sub} align="center" hue="gradient" />
