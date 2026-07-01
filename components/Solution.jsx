@@ -11,7 +11,7 @@ const ease = [0.22, 1, 0.36, 1];
 const T = {
   en: {
     label: 'THE REAL PROBLEM',
-    titleA: 'It’s not creating content.', highlight: 'It’s having it ready, instantly.',
+    titleA: 'It’s not creating content.', highlight: 'We have your content ready at the right moment, for you.',
     sub: 'The money is made in the chat, and the fan won’t wait. When the content isn’t ready, this is what happens:',
     chain: [
       { t: 'The fan asks', d: 'In the chat, they want something right now.' },
@@ -28,7 +28,7 @@ const T = {
   },
   es: {
     label: 'EL PROBLEMA REAL',
-    titleA: 'No es crear contenido.', highlight: 'Es tenerlo listo al instante.',
+    titleA: 'No es crear contenido.', highlight: 'Tenemos tu contenido en el momento indicado para ti.',
     sub: 'El dinero se hace en el chat, y el fan no espera. Cuando el contenido no está listo, pasa esto:',
     chain: [
       { t: 'El fan pide', d: 'En el chat, quiere algo al instante.' },
