@@ -11,7 +11,7 @@ const ease = [0.22, 1, 0.36, 1];
 const T = {
   en: {
     label: 'THE REAL PROBLEM',
-    titleA: 'It’s not producing.', highlight: 'It’s having it ready.',
+    titleA: 'It’s not creating content.', highlight: 'It’s having it ready, instantly.',
     sub: 'The money is made in the chat, and the fan won’t wait. When the content isn’t ready, this is what happens:',
     chain: [
       { t: 'The fan asks', d: 'In the chat, they want something right now.' },
@@ -24,11 +24,11 @@ const T = {
     solve: 'Sales and engagement content ready to drop — so every chat, PPV and custom request turns into a sale, right when it counts.',
     custom: 'A fan asks for something you, your team or your agency don’t have on hand? We produce it — so you cash in on every request.',
     diffTitle: 'No revenue share. Ever.',
-    diff: 'Others sell lower-quality content and still want a cut — as if they were your partners. We produce on another level, and only ask for a solid subscription. What you earn on OnlyFans stays 100% yours.',
+    diff: 'A single image can make you a lot of money — and that’s exactly where others want their cut, as if they were your partners. Not with us: we produce on another level, and it’s part of your subscription, period. Everything you earn with our content, however much, stays 100% yours.',
   },
   es: {
     label: 'EL PROBLEMA REAL',
-    titleA: 'No es producir.', highlight: 'Es tenerlo listo.',
+    titleA: 'No es crear contenido.', highlight: 'Es tenerlo listo al instante.',
     sub: 'El dinero se hace en el chat, y el fan no espera. Cuando el contenido no está listo, pasa esto:',
     chain: [
       { t: 'El fan pide', d: 'En el chat, quiere algo al instante.' },
@@ -41,7 +41,7 @@ const T = {
     solve: 'Contenido de venta y enganche listo para soltar — así cada chat, PPV y pedido se convierte en venta, justo cuando cuenta.',
     custom: '¿Un fan pide algo que tú, tu equipo o tu agencia no tienen a la mano? Nosotros lo producimos — para que aproveches cada pedido.',
     diffTitle: 'Sin porcentaje. Nunca.',
-    diff: 'Otros venden contenido de menor nivel que el nuestro y aun así quieren cobrarte un porcentaje, como si fueran tus socios. Nosotros producimos a otro nivel, y solo buscamos una suscripción sólida. Lo que ganas en OnlyFans es 100% tuyo.',
+    diff: 'Una sola imagen puede generarte muchísimo dinero — y ahí es donde otros quieren su porcentaje, como si fueran tus socios. Con nosotros no: producimos a otro nivel y es parte de tu suscripción, punto. Todo lo que ganes con nuestro contenido, por mucho que sea, es 100% tuyo.',
   },
 };
 
