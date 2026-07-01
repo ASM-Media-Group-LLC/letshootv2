@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Menu, X } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import Logo from './Logo';
 import LangToggle from './LangToggle';
@@ -11,6 +12,7 @@ export default function Nav() {
   const es = lang === 'es';
   // Visible by default so the nav shows during the intro vapor text screens
   const [visible, setVisible] = useState(true);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => {
@@ -41,7 +43,6 @@ export default function Nav() {
     { href: '#delivery', label: es ? 'Cómo funciona' : 'How it works' },
     { href: '#concepts', label: es ? 'Conceptos' : 'Concepts' },
     { href: '#pricing', label: es ? 'Paquetes' : 'Packages' },
-    { href: '#calculadora', label: es ? 'Calculadora' : 'Calculator' },
     { href: '#results', label: t.nav.results },
   ];
 
@@ -78,8 +79,45 @@ export default function Nav() {
           >
             {t.nav.cta}
           </a>
+          {/* Mobile hamburger */}
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-label={open ? (es ? 'Cerrar menú' : 'Close menu') : (es ? 'Abrir menú' : 'Open menu')}
+            aria-expanded={open}
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper transition-colors hover:text-brand md:hidden"
+          >
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
       </nav>
+
+      {/* Mobile dropdown menu */}
+      <div
+        className={`mx-auto mt-2 max-w-6xl overflow-hidden transition-all duration-300 md:hidden ${
+          open ? 'max-h-96 opacity-100' : 'pointer-events-none max-h-0 opacity-0'
+        }`}
+      >
+        <div className="nav-glass flex flex-col gap-1 rounded-2xl p-2">
+          {links.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              onClick={() => setOpen(false)}
+              className="rounded-xl px-4 py-3 text-base font-medium text-paper-mute transition-colors hover:bg-card hover:text-brand"
+            >
+              {l.label}
+            </a>
+          ))}
+          <a
+            href="#pricing"
+            onClick={() => setOpen(false)}
+            className="mt-1 rounded-xl bg-brand px-4 py-3 text-center text-base font-semibold text-on-accent shadow-glow-sm"
+          >
+            {t.nav.cta}
+          </a>
+        </div>
+      </div>
     </header>
   );
 }

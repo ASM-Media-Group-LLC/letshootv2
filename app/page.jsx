@@ -8,7 +8,6 @@ import HowItWorks from '@/components/HowItWorks';
 import Results from '@/components/Results';
 import Pricing from '@/components/Pricing';
 import RevisionPolicy from '@/components/RevisionPolicy';
-import ValueCalculators from '@/components/ValueCalculators';
 import FinalCta from '@/components/FinalCta';
 import Footer from '@/components/Footer';
 
@@ -25,7 +24,6 @@ export default function Page() {
       <Results />
       <Pricing />
       <RevisionPolicy />
-      <ValueCalculators />
       <FinalCta />
       <Footer />
     </main>
