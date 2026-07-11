@@ -2,7 +2,7 @@
 
 import { Fragment } from 'react';
 import { motion } from 'framer-motion';
-import { MessageCircle, Clock, Hourglass, TrendingDown, ArrowRight, ArrowDown, Zap, Check } from 'lucide-react';
+import { MessageCircle, Clock, Hourglass, TrendingDown, ArrowRight, ArrowDown, Zap, Check, Heart } from 'lucide-react';
 import { useLang } from '@/app/providers';
 
 const ease = [0.22, 1, 0.36, 1];
@@ -22,6 +22,9 @@ const T = {
     solveTitle: 'The content is always on hand',
     solve: 'Sales and engagement content ready to drop — so every chat, PPV and custom request turns into a sale, right when it counts.',
     custom: 'A fan asks for something you, your team or your agency don’t have on hand? We produce it — so you cash in on every request.',
+    stratKicker: 'Content with strategy',
+    stratTitle: 'The opener that opens the sale',
+    strat: 'Your best clients — your whales, your “online boyfriends” — want to see your day-to-day. That everyday content is the opener: it lets you paint a story that ends in a sale of your premium content. But your day-to-day is the hardest thing to have ready in the moment. We make it for you — done and on hand — to feed those conversations and convert more.',
     diffTitle: 'No revenue share. Ever.',
     diff: 'A single image can make you a lot of money — and that’s exactly where others want their cut, as if they were your partners. Not with us: we produce on another level, and it’s part of your subscription, period. Everything you earn with our content, however much, stays 100% yours.',
   },
@@ -39,6 +42,9 @@ const T = {
     solveTitle: 'El contenido siempre está a la mano',
     solve: 'Contenido de venta y enganche listo para soltar — así cada chat, PPV y pedido se convierte en venta, justo cuando cuenta.',
     custom: '¿Un fan pide algo que tú, tu equipo o tu agencia no tienen a la mano? Nosotros lo producimos — para que aproveches cada pedido.',
+    stratKicker: 'Contenido con estrategia',
+    stratTitle: 'El opener que abre la venta',
+    strat: 'Tus mejores clientes — tus ballenas, tus “novios online” — quieren ver tu día a día. Ese contenido cotidiano es el opener: con él se pinta una historia que termina en la venta de tu contenido premium. Pero tu día a día es lo más difícil de tener listo al momento. Nosotros te lo hacemos — hecho y a la mano — para alimentar esas conversaciones y convertir más.',
     diffTitle: 'Sin porcentaje. Nunca.',
     diff: 'Una sola imagen puede generarte muchísimo dinero — y ahí es donde otros quieren su porcentaje, como si fueran tus socios. Con nosotros no: producimos a otro nivel y es parte de tu suscripción, punto. Todo lo que ganes con nuestro contenido, por mucho que sea, es 100% tuyo.',
   },
@@ -154,6 +160,24 @@ export default function Solution() {
           <p className="mx-auto mt-5 max-w-xl border-t border-brand/15 pt-5 text-[14px] leading-relaxed text-paper-mute [text-wrap:balance]">
             {t.custom}
           </p>
+        </motion.div>
+
+        {/* ── Strategy / the opener ────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.6, ease }}
+          className="mx-auto mt-6 flex max-w-3xl items-start gap-4 rounded-2xl border border-line bg-gradient-to-b from-card to-ink-2/60 px-6 py-6 text-left"
+        >
+          <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand/12 text-brand ring-1 ring-brand/25">
+            <Heart size={20} aria-hidden strokeWidth={1.9} />
+          </div>
+          <div>
+            <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-brand">{t.stratKicker}</div>
+            <h3 className="mt-1 font-display text-lg font-semibold text-paper sm:text-xl">{t.stratTitle}</h3>
+            <p className="mt-1.5 text-[14px] leading-relaxed text-paper-mute">{t.strat}</p>
+          </div>
         </motion.div>
 
         {/* ── No revenue share ─────────────────────────────────────────────── */}
