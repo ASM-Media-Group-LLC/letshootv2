@@ -129,20 +129,25 @@ export default function LoraPage() {
           <Sparkles size={15} />
           <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em]">Tu clon IA · LoRA</span>
         </div>
-        <h1 className="mt-4 font-display text-3xl font-semibold leading-[1.1] [text-wrap:balance] sm:text-4xl">Sube tus fotos para crear tu clon</h1>
+        <h1 className="mt-4 font-display text-3xl font-semibold leading-[1.1] [text-wrap:balance] sm:text-4xl">
+          Sube tus <span className="text-brand">80 fotos</span> para crear tu clon
+        </h1>
         <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-paper-mute">
-          Necesitamos <strong className="text-paper">{LORA_TARGET} fotos tuyas</strong>, repartidas por tipo. Entre mejor variedad, mejor te clona la IA.
+          Son <strong className="text-paper">80 fotos en total</strong>, repartidas por tipo (mira el objetivo de cada bloque abajo). Entre mejor variedad, mejor te clona la IA.
         </p>
 
         {/* Progress */}
         <div className={`sticky top-[68px] z-20 mt-7 rounded-2xl border p-4 backdrop-blur transition-colors ${
           done ? 'border-brand/45 bg-brand/[0.08] shadow-glow-sm' : 'border-line bg-card/95'
         }`}>
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-medium text-paper">Progreso total</span>
-            <span className={`font-mono text-base ${done ? 'text-brand' : 'text-paper-mute'}`}>{total} <span className="text-paper-dim">/ {LORA_TARGET}</span></span>
+          <div className="flex items-end justify-between">
+            <span className="text-sm font-medium text-paper">Progreso total</span>
+            <span className="font-display leading-none">
+              <span className={`text-3xl font-bold ${done ? 'text-brand' : 'text-paper'}`}>{total}</span>
+              <span className="text-lg text-paper-dim"> / {LORA_TARGET} fotos</span>
+            </span>
           </div>
-          <div className="mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-ink-2">
+          <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-ink-2">
             <div className={`h-full rounded-full transition-all duration-500 ${done ? 'bg-brand shadow-[0_0_16px_rgb(var(--brand,0_177_246))]' : 'bg-brand/70'}`} style={{ width: `${pct}%` }} />
           </div>
           {done && (
