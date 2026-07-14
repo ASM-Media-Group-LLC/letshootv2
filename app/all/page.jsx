@@ -44,8 +44,9 @@ const GROUPS = [
     links: [
       { path: '/mapa', label: 'Mapa del portal', note: 'Índice por secciones', status: 'ok' },
       { path: '/all', label: 'Todos los enlaces (esta página)', note: 'Directorio completo', status: 'ok' },
-      { path: '/contrato', label: 'Contrato / autorización', note: 'Formulario de la modelo', status: 'ok' },
-      { path: '/contract/employees', label: 'NDA de empleados', note: 'Acuerdo de confidencialidad (imprimible)', status: 'ok' },
+      { path: '/contracts', label: 'Contratos (índice)', note: 'Los dos contratos en un solo lugar', status: 'ok' },
+      { path: '/contract/creator', label: 'Contrato de usuaria (creadora)', note: 'Autorización del clon IA + agencia', status: 'ok' },
+      { path: '/contract/employees', label: 'NDA de empleados', note: 'Confidencialidad (Colombia / EE.UU.)', status: 'ok' },
     ],
   },
 ];
