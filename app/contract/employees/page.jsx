@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Printer, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -15,143 +16,183 @@ function Field({ label, wide }) {
   );
 }
 
-const SECTIONS = [
-  {
-    n: '1', title: 'Objeto y aplicabilidad',
-    body: [
-      'El Colaborador prestará servicios para la Empresa y, en ese marco, tendrá acceso a información y contenido altamente confidenciales de la Empresa y de sus creadoras y clientes. Este Acuerdo regula el manejo, la confidencialidad y la protección de dicha información, y protege por igual a la Empresa, a las creadoras y a los clientes.',
-      'Este Acuerdo aplica y obliga al Colaborador cualquiera que sea la naturaleza jurídica de la relación entre las partes —ya sea empleo formal, prestación de servicios, freelance, contratista independiente o cualquier otra figura—. El Acuerdo es válido y exigible en el país o jurisdicción donde el Colaborador sea contratado o preste sus servicios, y la Empresa podrá ejercer allí, o en cualquier jurisdicción competente, todas las acciones legales que correspondan, con independencia de cómo se clasifique la relación laboral o contractual.',
-    ],
+// Jurisdiction-specific clauses (Colombia / United States)
+const JURIS = {
+  CO: {
+    name: 'Colombia',
+    relationship:
+      'contrato de trabajo (Código Sustantivo del Trabajo), contrato de prestación de servicios, freelance, contratista independiente o cualquier otra figura',
+    arbitration:
+      'Toda controversia derivada de este Acuerdo se resolverá de forma definitiva mediante arbitraje conforme a la Ley 1563 de 2012 (Estatuto de Arbitraje Nacional e Internacional), ante el Centro de Arbitraje y Conciliación de la Cámara de Comercio de ____________ (Colombia), con sede en Colombia y en idioma español. El laudo será definitivo, vinculante y ejecutable internacionalmente conforme a la Convención de Nueva York de 1958. Lo anterior no impide a la Empresa acudir a la justicia ordinaria para solicitar medidas cautelares.',
+    governing:
+      'Este Acuerdo se rige e interpreta conforme a las leyes de la República de Colombia, y las partes se someten a los jueces y tribunales de ____________ (Colombia), renunciando a cualquier otro fuero. Son plenamente aplicables, entre otras: la Ley 1581 de 2012 y el Decreto 1377 de 2013 (protección de datos personales — Habeas Data); la Ley 1273 de 2009 (delitos informáticos y protección de la información y los datos); el artículo 58 del Código Sustantivo del Trabajo (deber de reserva del trabajador); la Ley 256 de 1996 (competencia desleal); y los artículos 1592 y siguientes del Código Civil (cláusula penal). La penalidad pactada constituye cláusula penal exigible, y este documento presta mérito ejecutivo conforme al artículo 422 del Código General del Proceso (Ley 1564 de 2012), por lo que la Empresa podrá cobrarla directamente mediante proceso ejecutivo.',
   },
-  {
-    n: '2', title: 'Información Confidencial',
-    body: ['Se considera Información Confidencial, de forma enunciativa y no limitativa:'],
-    list: [
-      'Identidad, datos personales, fotografías y videos de las creadoras y de los clientes.',
-      'Todo el contenido producido, editado o entregado: fotos, videos, sets de entrenamiento (LoRA) y material de cualquier tipo.',
-      'Conversaciones y mensajes con creadoras, con clientes (fans) y entre miembros del equipo.',
-      'Guiones de chat, estrategias de venta y de enganche, y listas de clientes o clientes VIP.',
-      'Precios, procesos, herramientas, modelos de IA, credenciales y cualquier dato del portal o de la operación.',
-      'Cualquier información marcada como confidencial o que, por su naturaleza, deba entenderse como tal.',
-    ],
+  US: {
+    name: 'Estados Unidos',
+    relationship:
+      'empleo “a voluntad” (at-will employment), contratista independiente (independent contractor), freelance o cualquier otra figura',
+    arbitration:
+      'Toda controversia derivada de este Acuerdo se resolverá de forma definitiva mediante arbitraje administrado por la American Arbitration Association (AAA), conforme a sus reglas, con sede en ____________ (Estados Unidos) y en el idioma acordado. El laudo será definitivo, vinculante y ejecutable conforme a la Federal Arbitration Act y a la Convención de Nueva York de 1958. Lo anterior no impide a la Empresa acudir a cualquier tribunal competente para solicitar medidas cautelares.',
+    governing:
+      'Este Acuerdo se rige e interpreta conforme a las leyes del Estado de ____________ (Estados Unidos), sin aplicar sus normas de conflicto de leyes. Las partes se someten a los tribunales estatales y federales ubicados en ____________. Son aplicables, entre otras, la Defend Trade Secrets Act de 2016 (18 U.S.C. § 1836), la Uniform Trade Secrets Act del estado correspondiente, y las leyes de privacidad estatales y federales aplicables.',
   },
-  {
-    n: '3', title: 'Obligaciones del Colaborador',
-    list: [
-      'Mantener estricta y total confidencialidad sobre la Información Confidencial y no divulgarla a ningún tercero.',
-      'Usar la Información Confidencial únicamente para cumplir sus funciones para la Empresa.',
-      'No compartir, publicar, revender ni distribuir el contenido de las creadoras en ningún medio, dentro o fuera de línea.',
-      'No contactar a las creadoras ni a los clientes fuera de los canales oficiales de la Empresa.',
-      'No revelar la identidad real de ninguna creadora bajo ninguna circunstancia.',
-      'Tratar toda comunicación (con creadoras, con clientes y entre el equipo) como estrictamente privada.',
-    ],
-  },
-  {
-    n: '4', title: 'Manejo y almacenamiento del contenido',
-    body: [
-      'Todo el contenido y la Información Confidencial deben permanecer exclusivamente dentro de la plataforma, los sistemas y las carpetas autorizadas de la Empresa. El Colaborador trabajará únicamente a través de dichos sistemas y cuentas autorizadas, y en ningún caso mantendrá contenido en su computadora u otros equipos personales.',
-    ],
-    list: [
-      'El Colaborador NO puede guardar, descargar, respaldar ni conservar contenido en su computadora personal, teléfono, tabletas, discos o memorias externas.',
-      'Queda prohibido almacenar contenido en nubes o cuentas personales (Google Drive, iCloud, Dropbox, correo, WhatsApp, Telegram, etc.).',
-      'Queda prohibido tomar capturas de pantalla, grabaciones de pantalla, fotos o cualquier otra copia del contenido o de las conversaciones.',
-      'Queda prohibido transferir, exportar, imprimir o sacar el contenido fuera de la plataforma o de las carpetas de la Empresa por cualquier medio.',
-      'Cuando se use un dispositivo autorizado, no deberán quedar copias locales: el Colaborador cerrará sesión y eliminará descargas y caché al terminar.',
-      'Si por error algún contenido llega a un dispositivo, nube o cuenta personal, el Colaborador lo eliminará de inmediato y lo notificará a la Empresa sin demora.',
-    ],
-  },
-  {
-    n: '5', title: 'Propiedad Intelectual',
-    body: [
-      'Todo el contenido, material y trabajo producido por el Colaborador en el marco de sus funciones es propiedad exclusiva de la Empresa y/o de la creadora correspondiente. El Colaborador cede a la Empresa cualquier derecho que pudiera corresponderle sobre dicho material y no adquiere ningún derecho de uso personal sobre el mismo.',
-    ],
-  },
-  {
-    n: '6', title: 'Seguridad y credenciales',
-    body: [
-      'El Colaborador usará las credenciales y accesos otorgados exclusivamente para su trabajo, no los compartirá con nadie y notificará de inmediato a la Empresa cualquier pérdida, acceso indebido o brecha de seguridad.',
-    ],
-  },
-  {
-    n: '7', title: 'Conducta profesional',
-    body: [
-      'El Colaborador tratará a las creadoras y a los clientes con respeto y profesionalismo. Queda prohibido cualquier acoso, uso indebido de la información o conducta que perjudique a la Empresa, a las creadoras o a los clientes.',
-    ],
-  },
-  {
-    n: '8', title: 'Devolución y eliminación',
-    body: [
-      'Al terminar la relación laboral o de colaboración, por cualquier causa, el Colaborador devolverá o eliminará de forma permanente toda la Información Confidencial en su poder y no conservará copia alguna.',
-    ],
-  },
-  {
-    n: '9', title: 'Vigencia',
-    body: [
-      'Las obligaciones de confidencialidad de este Acuerdo permanecen vigentes de forma indefinida y continúan aun después de terminada la relación entre las partes.',
-    ],
-  },
-  {
-    n: '10', title: 'Incumplimiento y acciones de la Empresa',
-    body: [
-      'Ante cualquier incumplimiento, la Empresa podrá dar por terminada la relación de forma inmediata y ejercer, en cualquier jurisdicción, todas las acciones civiles, penales y administrativas que correspondan, así como reclamar los daños y perjuicios ocasionados a la Empresa, a las creadoras o a los clientes. Estas acciones son acumulativas y no excluyen ningún otro derecho o remedio.',
-    ],
-  },
-  {
-    n: '11', title: 'Indemnización',
-    body: [
-      'El Colaborador mantendrá indemne y libre de responsabilidad a la Empresa, a las creadoras y a los clientes frente a cualquier reclamo, daño, pérdida, sanción o gasto —incluidos honorarios de abogados y costas— que se derive, directa o indirectamente, del incumplimiento de este Acuerdo por parte del Colaborador.',
-    ],
-  },
-  {
-    n: '12', title: 'Daños liquidados (penalidad)',
-    body: [
-      'Dado que el daño causado por la divulgación o el uso indebido de contenido o Información Confidencial es difícil de cuantificar, las partes acuerdan que el Colaborador pagará a la Empresa, como pena convencional, la cantidad de USD ____________ (o su equivalente en moneda local) por cada incumplimiento, sin perjuicio de los daños adicionales que la Empresa pueda probar y reclamar.',
-    ],
-  },
-  {
-    n: '13', title: 'Medidas cautelares',
-    body: [
-      'El Colaborador reconoce que cualquier incumplimiento de este Acuerdo puede causar un daño irreparable a la Empresa, a las creadoras o a los clientes, y que la Empresa tendrá derecho a solicitar y obtener medidas cautelares o precautorias inmediatas (incluyendo órdenes de cese) ante los tribunales o árbitros competentes, además de cualquier otro remedio disponible, sin necesidad de otorgar fianza.',
-    ],
-  },
-  {
-    n: '14', title: 'No solicitación',
-    body: [
-      'Durante la relación y por un período de doce (12) meses posteriores a su terminación, el Colaborador no desviará, solicitará, contratará ni intentará llevarse a creadoras, clientes, empleados ni colaboradores de la Empresa —directa o indirectamente, por cuenta propia o de terceros— ni los inducirá a dejar la Empresa o a competir con ella. El incumplimiento de esta cláusula da derecho a la Empresa a ejercer las acciones legales y a reclamar los daños que correspondan.',
-    ],
-  },
-  {
-    n: '15', title: 'Resolución de controversias — Arbitraje internacional',
-    body: [
-      'Toda controversia derivada de este Acuerdo se resolverá de forma definitiva mediante arbitraje administrado conforme a las reglas de ____________________, con sede en ____________________ y en idioma ____________. El laudo será definitivo, vinculante y ejecutable internacionalmente conforme a la Convención de Nueva York de 1958 sobre el Reconocimiento y la Ejecución de las Sentencias Arbitrales Extranjeras. Lo anterior no impide a la Empresa acudir a cualquier tribunal competente para solicitar medidas cautelares.',
-    ],
-  },
-  {
-    n: '16', title: 'Divisibilidad y acuerdo íntegro',
-    body: [
-      'Si alguna disposición de este Acuerdo fuera declarada inválida o inejecutable, las demás continuarán en pleno vigor. Este documento constituye el acuerdo íntegro entre las partes sobre la materia y reemplaza cualquier entendimiento previo. Sus obligaciones vinculan a los sucesores y cesionarios del Colaborador.',
-    ],
-  },
-  {
-    n: '17', title: 'Ley aplicable y jurisdicción',
-    body: [
-      'Este Acuerdo se rige e interpreta conforme a las leyes de ____________________. Para todo lo no sometido a arbitraje, las partes se someten a la jurisdicción de los tribunales de ____________________, renunciando a cualquier otro fuero.',
-    ],
-  },
-];
+};
+
+function getSections(J) {
+  return [
+    {
+      n: '1', title: 'Objeto y aplicabilidad',
+      body: [
+        'El Colaborador prestará servicios para la Empresa y, en ese marco, tendrá acceso a información y contenido altamente confidenciales de la Empresa y de sus creadoras y clientes. Este Acuerdo regula el manejo, la confidencialidad y la protección de dicha información, y protege por igual a la Empresa, a las creadoras y a los clientes.',
+        `Este Acuerdo aplica y obliga al Colaborador cualquiera que sea la naturaleza jurídica de la relación entre las partes —ya sea ${J.relationship}—. Es válido y exigible en el país o jurisdicción donde el Colaborador sea contratado o preste sus servicios, y la Empresa podrá ejercer allí, o en cualquier jurisdicción competente, todas las acciones legales que correspondan, con independencia de cómo se clasifique la relación.`,
+      ],
+    },
+    {
+      n: '2', title: 'Información Confidencial',
+      body: ['Se considera Información Confidencial, de forma enunciativa y no limitativa:'],
+      list: [
+        'Identidad, datos personales, fotografías y videos de las creadoras y de los clientes.',
+        'Todo el contenido producido, editado o entregado: fotos, videos, sets de entrenamiento (LoRA) y material de cualquier tipo.',
+        'Conversaciones y mensajes con creadoras, con clientes (fans) y entre miembros del equipo.',
+        'Guiones de chat, estrategias de venta y de enganche, y listas de clientes o clientes VIP.',
+        'Precios, procesos, herramientas, modelos de IA, credenciales y cualquier dato del portal o de la operación.',
+        'Cualquier información marcada como confidencial o que, por su naturaleza, deba entenderse como tal.',
+      ],
+    },
+    {
+      n: '3', title: 'Obligaciones del Colaborador',
+      list: [
+        'Mantener estricta y total confidencialidad sobre la Información Confidencial y no divulgarla a ningún tercero.',
+        'Usar la Información Confidencial únicamente para cumplir sus funciones para la Empresa.',
+        'No compartir, publicar, revender ni distribuir el contenido de las creadoras en ningún medio, dentro o fuera de línea.',
+        'No contactar a las creadoras ni a los clientes fuera de los canales oficiales de la Empresa.',
+        'No revelar la identidad real de ninguna creadora bajo ninguna circunstancia.',
+        'Tratar toda comunicación (con creadoras, con clientes y entre el equipo) como estrictamente privada.',
+      ],
+    },
+    {
+      n: '4', title: 'Manejo y almacenamiento del contenido',
+      body: [
+        'Todo el contenido y la Información Confidencial deben permanecer exclusivamente dentro de la plataforma, los sistemas y las carpetas autorizadas de la Empresa. El Colaborador trabajará únicamente a través de dichos sistemas y cuentas autorizadas, y en ningún caso mantendrá contenido en su computadora u otros equipos personales.',
+      ],
+      list: [
+        'El Colaborador NO puede guardar, descargar, respaldar ni conservar contenido en su computadora personal, teléfono, tabletas, discos o memorias externas.',
+        'Queda prohibido almacenar contenido en nubes o cuentas personales (Google Drive, iCloud, Dropbox, correo, WhatsApp, Telegram, etc.).',
+        'Queda prohibido tomar capturas de pantalla, grabaciones de pantalla, fotos o cualquier otra copia del contenido o de las conversaciones.',
+        'Queda prohibido transferir, exportar, imprimir o sacar el contenido fuera de la plataforma o de las carpetas de la Empresa por cualquier medio.',
+        'Cuando se use un dispositivo autorizado, no deberán quedar copias locales: el Colaborador cerrará sesión y eliminará descargas y caché al terminar.',
+        'Si por error algún contenido llega a un dispositivo, nube o cuenta personal, el Colaborador lo eliminará de inmediato y lo notificará a la Empresa sin demora.',
+      ],
+    },
+    {
+      n: '5', title: 'Propiedad Intelectual',
+      body: [
+        'Todo el contenido, material y trabajo producido por el Colaborador en el marco de sus funciones es propiedad exclusiva de la Empresa y/o de la creadora correspondiente. El Colaborador cede a la Empresa cualquier derecho que pudiera corresponderle sobre dicho material y no adquiere ningún derecho de uso personal sobre el mismo.',
+      ],
+    },
+    {
+      n: '6', title: 'Seguridad y credenciales',
+      body: [
+        'El Colaborador usará las credenciales y accesos otorgados exclusivamente para su trabajo, no los compartirá con nadie y notificará de inmediato a la Empresa cualquier pérdida, acceso indebido o brecha de seguridad.',
+      ],
+    },
+    {
+      n: '7', title: 'Conducta profesional',
+      body: [
+        'El Colaborador tratará a las creadoras y a los clientes con respeto y profesionalismo. Queda prohibido cualquier acoso, uso indebido de la información o conducta que perjudique a la Empresa, a las creadoras o a los clientes.',
+      ],
+    },
+    {
+      n: '8', title: 'Devolución y eliminación',
+      body: [
+        'Al terminar la relación laboral o de colaboración, por cualquier causa, el Colaborador devolverá o eliminará de forma permanente toda la Información Confidencial en su poder y no conservará copia alguna.',
+      ],
+    },
+    {
+      n: '9', title: 'Vigencia',
+      body: [
+        'Las obligaciones de confidencialidad de este Acuerdo permanecen vigentes de forma indefinida y continúan aun después de terminada la relación entre las partes.',
+      ],
+    },
+    {
+      n: '10', title: 'Incumplimiento y acciones de la Empresa',
+      body: [
+        'Ante cualquier incumplimiento, la Empresa podrá dar por terminada la relación de forma inmediata y ejercer, en cualquier jurisdicción, todas las acciones civiles, penales y administrativas que correspondan, así como reclamar los daños y perjuicios ocasionados a la Empresa, a las creadoras o a los clientes. Estas acciones son acumulativas y no excluyen ningún otro derecho o remedio.',
+      ],
+    },
+    {
+      n: '11', title: 'Indemnización',
+      body: [
+        'El Colaborador mantendrá indemne y libre de responsabilidad a la Empresa, a las creadoras y a los clientes frente a cualquier reclamo, daño, pérdida, sanción o gasto —incluidos honorarios de abogados y costas— que se derive, directa o indirectamente, del incumplimiento de este Acuerdo por parte del Colaborador.',
+      ],
+    },
+    {
+      n: '12', title: 'Daños liquidados (penalidad)',
+      body: [
+        'Dado que el daño causado por la divulgación o el uso indebido de contenido o Información Confidencial es difícil de cuantificar, las partes acuerdan que el Colaborador pagará a la Empresa, como pena convencional, la cantidad de USD ____________ (o su equivalente en moneda local) por cada incumplimiento, sin perjuicio de los daños adicionales que la Empresa pueda probar y reclamar.',
+      ],
+    },
+    {
+      n: '13', title: 'Medidas cautelares',
+      body: [
+        'El Colaborador reconoce que cualquier incumplimiento de este Acuerdo puede causar un daño irreparable a la Empresa, a las creadoras o a los clientes, y que la Empresa tendrá derecho a solicitar y obtener medidas cautelares o precautorias inmediatas (incluyendo órdenes de cese) ante los tribunales o árbitros competentes, además de cualquier otro remedio disponible, sin necesidad de otorgar fianza.',
+      ],
+    },
+    {
+      n: '14', title: 'No solicitación',
+      body: [
+        'Durante la relación y por un período de doce (12) meses posteriores a su terminación, el Colaborador no desviará, solicitará, contratará ni intentará llevarse a creadoras, clientes, empleados ni colaboradores de la Empresa —directa o indirectamente, por cuenta propia o de terceros— ni los inducirá a dejar la Empresa o a competir con ella. El incumplimiento de esta cláusula da derecho a la Empresa a ejercer las acciones legales y a reclamar los daños que correspondan.',
+      ],
+    },
+    {
+      n: '15', title: 'Resolución de controversias — Arbitraje internacional',
+      body: [J.arbitration],
+    },
+    {
+      n: '16', title: 'Divisibilidad y acuerdo íntegro',
+      body: [
+        'Si alguna disposición de este Acuerdo fuera declarada inválida o inejecutable, las demás continuarán en pleno vigor. Este documento constituye el acuerdo íntegro entre las partes sobre la materia y reemplaza cualquier entendimiento previo. Sus obligaciones vinculan a los sucesores y cesionarios del Colaborador.',
+      ],
+    },
+    {
+      n: '17', title: 'Ley aplicable y jurisdicción',
+      body: [J.governing],
+    },
+  ];
+}
 
 export default function ContractPdfPage() {
   const router = useRouter();
+  const [juris, setJuris] = useState('CO');
+  const J = JURIS[juris];
+  const SECTIONS = getSections(J);
+
   return (
     <div className="min-h-[100svh] bg-neutral-800 py-8 print:bg-white print:py-0">
       {/* Toolbar (screen only) */}
-      <div className="mx-auto mb-6 flex max-w-[820px] items-center justify-between px-5 print:hidden">
+      <div className="mx-auto mb-6 flex max-w-[820px] flex-wrap items-center justify-between gap-3 px-5 print:hidden">
         <button onClick={() => router.back()} className="inline-flex items-center gap-2 rounded-full border border-neutral-600 px-4 py-2 text-sm text-neutral-200 transition-colors hover:bg-neutral-700">
           <ArrowLeft size={16} /> Volver
         </button>
-        <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
-          <Printer size={16} /> Imprimir / Guardar PDF
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Jurisdiction toggle */}
+          <div className="flex rounded-full border border-neutral-600 p-0.5">
+            {Object.entries(JURIS).map(([key, val]) => (
+              <button
+                key={key}
+                onClick={() => setJuris(key)}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  juris === key ? 'bg-brand text-on-accent' : 'text-neutral-300 hover:text-white'
+                }`}
+              >
+                {val.name}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
+            <Printer size={16} /> Imprimir / Guardar PDF
+          </button>
+        </div>
       </div>
 
       {/* Document */}
@@ -162,6 +203,9 @@ export default function ContractPdfPage() {
             Acuerdo de Confidencialidad y Protección de Información
           </h1>
           <p className="mt-1 text-sm text-neutral-500">Empleados y colaboradores</p>
+          <p className="mt-2 inline-block rounded-full border border-neutral-300 px-3 py-0.5 text-[11px] font-medium text-neutral-600">
+            Versión: {J.name}
+          </p>
         </header>
 
         {/* Parties */}
@@ -231,15 +275,15 @@ export default function ContractPdfPage() {
             <div className="pt-2 text-center text-sm text-neutral-400">Sello notarial</div>
           </div>
           <p className="mt-5 text-[11px] leading-relaxed text-neutral-500">
-            Para uso internacional, este documento puede legalizarse mediante apostilla conforme a la Convención de La Haya
-            de 1961, o mediante legalización consular cuando el país no sea parte de dicha Convención.
+            Tanto Colombia como Estados Unidos son parte de la Convención de La Haya de 1961, por lo que este documento
+            puede legalizarse mediante apostilla para su reconocimiento internacional.
           </p>
         </section>
 
         {/* Disclaimer */}
         <p className="mt-10 rounded border border-neutral-300 bg-neutral-50 p-3 text-[11px] leading-relaxed text-neutral-500 print:bg-white">
-          Documento modelo con fines informativos. No constituye asesoría legal. Recomendamos que un abogado lo revise y lo
-          adapte a la jurisdicción correspondiente antes de su uso.
+          Documento modelo con fines informativos, preparado para su uso en Colombia o Estados Unidos. No constituye
+          asesoría legal. Recomendamos que un abogado de la jurisdicción correspondiente lo revise y lo adapte antes de su uso.
         </p>
       </article>
 
