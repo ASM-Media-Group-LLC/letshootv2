@@ -14,12 +14,13 @@ const T = {
     sub: 'The money is made in the chat, and the fan won’t wait. When the content isn’t ready, this is what happens:',
     chain: [
       { t: 'The fan asks', d: 'In the chat, they want something right now.' },
-      { t: 'You’re busy', d: 'Good content takes time to shoot and edit.' },
-      { t: 'You’re late', d: 'The fan cools off and moves on.' },
+      { t: 'Busy or no material', d: 'You’re busy — or you just don’t have that content on hand.' },
+      { t: 'It arrives late', d: 'The content isn’t there in time and the fan cools off.' },
       { t: 'Sale lost', d: 'You don’t sell — or you sell less.', loss: true },
     ],
     solveKicker: 'With Let’s Shoot',
     solveTitle: 'The right content, at the exact moment',
+    creatorNote: 'If you create content, you already know the value of having it ready in every form, instantly — it’s the hardest part, and it’s exactly what sells the most.',
     solve: 'Picture never running out of something to say. You always have sales and engagement content ready to drop the second it matters — so every conversation becomes a chance to sell.',
     examplesLabel: 'How it plays out in the chat',
     examples: [
@@ -40,12 +41,13 @@ const T = {
     sub: 'El dinero se hace en el chat, y el fan no espera. Cuando el contenido no está listo, pasa esto:',
     chain: [
       { t: 'El fan pide', d: 'En el chat, quiere algo al instante.' },
-      { t: 'Estás ocupada', d: 'El buen contenido toma tiempo en hacerse.' },
-      { t: 'Llegas tarde', d: 'El fan se enfría y sigue de largo.' },
+      { t: 'Ocupada o sin material', d: 'Estás ocupada — o no tienes ese contenido a la mano.' },
+      { t: 'Llega tarde', d: 'El contenido no llega a tiempo y el fan se enfría.' },
       { t: 'Venta perdida', d: 'No vendes — o vendes menos.', loss: true },
     ],
     solveKicker: 'Con Let’s Shoot',
     solveTitle: 'El contenido justo, en el momento justo',
+    creatorNote: 'Si creas contenido, ya sabes lo que vale tenerlo listo en todas sus formas y al instante — es lo más difícil, y es justo lo que más vende.',
     solve: 'Imagina nunca quedarte sin qué decir. Siempre tienes contenido de venta y de enganche listo para soltar en el segundo que importa — y cada conversación se vuelve una oportunidad de venta.',
     examplesLabel: 'Así se ve en el chat',
     examples: [
@@ -153,39 +155,50 @@ export default function Solution() {
           })}
         </div>
 
-        {/* ── Resolution ───────────────────────────────────────────────────── */}
+        {/* ── Resolution — the "wow, I need this" moment ───────────────────── */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-40px' }}
-          transition={{ duration: 0.6, ease }}
-          className="relative mx-auto mt-10 max-w-3xl overflow-hidden rounded-3xl border border-brand/40 bg-gradient-to-b from-brand/[0.1] to-brand/[0.02] p-8 text-center shadow-glow sm:p-10"
+          transition={{ duration: 0.65, ease }}
+          className="relative mx-auto mt-12 max-w-4xl overflow-hidden rounded-[2rem] border border-brand/45 bg-gradient-to-b from-brand/[0.14] via-brand/[0.05] to-transparent p-8 text-center shadow-glow sm:p-14"
         >
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/15 text-brand ring-1 ring-brand/30">
-            <Zap size={26} aria-hidden strokeWidth={1.75} />
-          </div>
-          <div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-brand">{t.solveKicker}</div>
-          <h3 className="mx-auto mt-2 max-w-md font-display text-2xl font-semibold text-paper [text-wrap:balance] sm:text-[1.75rem]">
-            {t.solveTitle}
-          </h3>
-          <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-paper [text-wrap:balance]">{t.solve}</p>
+          <div className="pointer-events-none absolute left-1/2 top-0 h-52 w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand/20 blur-3xl" aria-hidden />
 
-          {/* Real chat scenarios — emotive examples */}
-          <div className="mx-auto mt-6 max-w-xl border-t border-brand/15 pt-6">
-            <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">{t.examplesLabel}</div>
-            <div className="space-y-2.5">
-              {t.examples.map((ex, i) => (
-                <div key={i} className="flex items-start gap-3 rounded-2xl border border-line bg-ink-2/60 px-4 py-3 text-left">
-                  <MessageCircle size={17} className="mt-0.5 shrink-0 text-brand" aria-hidden />
-                  <p className="text-[14px] leading-snug text-paper">{ex}</p>
-                </div>
-              ))}
+          <div className="relative">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/20 text-brand ring-1 ring-brand/40 shadow-glow-sm">
+              <Zap size={32} aria-hidden strokeWidth={1.75} />
             </div>
-          </div>
+            <div className="font-mono text-xs font-semibold uppercase tracking-[0.24em] text-brand">{t.solveKicker}</div>
+            <h3 className="mx-auto mt-3 max-w-2xl font-display text-3xl font-bold leading-[1.05] text-paper [text-wrap:balance] sm:text-5xl">
+              {t.solveTitle}
+            </h3>
 
-          <p className="mx-auto mt-5 max-w-xl text-[14px] leading-relaxed text-paper-mute [text-wrap:balance]">
-            {t.custom}
-          </p>
+            {/* creator validation — prominent lead */}
+            <p className="mx-auto mt-6 max-w-2xl text-lg font-medium leading-relaxed text-paper [text-wrap:balance] sm:text-xl">
+              {t.creatorNote}
+            </p>
+            <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-paper-mute [text-wrap:balance]">{t.solve}</p>
+
+            {/* Real chat scenarios — emotive examples */}
+            <div className="mx-auto mt-9 max-w-2xl">
+              <div className="mb-4 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-brand">{t.examplesLabel}</div>
+              <div className="space-y-3">
+                {t.examples.map((ex, i) => (
+                  <div key={i} className="flex items-start gap-3.5 rounded-2xl border border-line bg-ink-2/70 px-5 py-4 text-left transition-colors hover:border-brand/40">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand ring-1 ring-brand/25">
+                      <MessageCircle size={16} aria-hidden />
+                    </span>
+                    <p className="text-[15px] leading-snug text-paper">{ex}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="mx-auto mt-7 max-w-xl border-t border-brand/15 pt-6 text-[14px] leading-relaxed text-paper-mute [text-wrap:balance]">
+              {t.custom}
+            </p>
+          </div>
         </motion.div>
 
         {/* ── Strategy / the opener ────────────────────────────────────────── */}
