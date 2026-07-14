@@ -2,7 +2,7 @@ import Nav from '@/components/Nav';
 import CinematicHero from '@/components/CinematicHero';
 import Comparison from '@/components/Comparison';
 import Solution from '@/components/Solution';
-import Concepts from '@/components/Concepts';
+import ContentLibraries from '@/components/ContentLibraries';
 import Showcase from '@/components/Showcase';
 import HowItWorks from '@/components/HowItWorks';
 import Results from '@/components/Results';
@@ -18,7 +18,7 @@ export default function Page() {
       <CinematicHero />
       <Comparison />
       <Solution />
-      <Concepts />
+      <ContentLibraries />
       <Showcase />
       <HowItWorks />
       <Results />
