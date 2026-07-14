@@ -68,7 +68,7 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 26, filter: 'blur(10px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.95, ease, delay: 0.36 }}
-            className="headline mx-auto max-w-[15ch] text-[clamp(2rem,5.4vw,4.3rem)] leading-[1.12] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]"
+            className="headline mx-auto max-w-[17ch] text-balance text-[clamp(1.85rem,4.8vw,3.9rem)] leading-[1.1] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]"
           >
             {(() => {
               const raw = t.hero.pre.replace(/\s*—\s*$/, '');
