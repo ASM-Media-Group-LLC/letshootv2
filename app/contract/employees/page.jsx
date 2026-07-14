@@ -39,7 +39,6 @@ const SECTIONS = [
     list: [
       'Mantener estricta y total confidencialidad sobre la Información Confidencial y no divulgarla a ningún tercero.',
       'Usar la Información Confidencial únicamente para cumplir sus funciones para la Empresa.',
-      'No copiar, descargar, almacenar ni conservar contenido en dispositivos, nubes o cuentas personales.',
       'No compartir, publicar, revender ni distribuir el contenido de las creadoras en ningún medio, dentro o fuera de línea.',
       'No contactar a las creadoras ni a los clientes fuera de los canales oficiales de la Empresa.',
       'No revelar la identidad real de ninguna creadora bajo ninguna circunstancia.',
@@ -47,79 +46,93 @@ const SECTIONS = [
     ],
   },
   {
-    n: '4', title: 'Propiedad Intelectual',
+    n: '4', title: 'Manejo y almacenamiento del contenido',
+    body: [
+      'Todo el contenido y la Información Confidencial deben permanecer exclusivamente dentro de la plataforma, los sistemas y las carpetas autorizadas de la Empresa. El Colaborador trabajará únicamente a través de dichos sistemas y cuentas autorizadas, y en ningún caso mantendrá contenido en su computadora u otros equipos personales.',
+    ],
+    list: [
+      'El Colaborador NO puede guardar, descargar, respaldar ni conservar contenido en su computadora personal, teléfono, tabletas, discos o memorias externas.',
+      'Queda prohibido almacenar contenido en nubes o cuentas personales (Google Drive, iCloud, Dropbox, correo, WhatsApp, Telegram, etc.).',
+      'Queda prohibido tomar capturas de pantalla, grabaciones de pantalla, fotos o cualquier otra copia del contenido o de las conversaciones.',
+      'Queda prohibido transferir, exportar, imprimir o sacar el contenido fuera de la plataforma o de las carpetas de la Empresa por cualquier medio.',
+      'Cuando se use un dispositivo autorizado, no deberán quedar copias locales: el Colaborador cerrará sesión y eliminará descargas y caché al terminar.',
+      'Si por error algún contenido llega a un dispositivo, nube o cuenta personal, el Colaborador lo eliminará de inmediato y lo notificará a la Empresa sin demora.',
+    ],
+  },
+  {
+    n: '5', title: 'Propiedad Intelectual',
     body: [
       'Todo el contenido, material y trabajo producido por el Colaborador en el marco de sus funciones es propiedad exclusiva de la Empresa y/o de la creadora correspondiente. El Colaborador cede a la Empresa cualquier derecho que pudiera corresponderle sobre dicho material y no adquiere ningún derecho de uso personal sobre el mismo.',
     ],
   },
   {
-    n: '5', title: 'Seguridad y credenciales',
+    n: '6', title: 'Seguridad y credenciales',
     body: [
       'El Colaborador usará las credenciales y accesos otorgados exclusivamente para su trabajo, no los compartirá con nadie y notificará de inmediato a la Empresa cualquier pérdida, acceso indebido o brecha de seguridad.',
     ],
   },
   {
-    n: '6', title: 'Conducta profesional',
+    n: '7', title: 'Conducta profesional',
     body: [
       'El Colaborador tratará a las creadoras y a los clientes con respeto y profesionalismo. Queda prohibido cualquier acoso, uso indebido de la información o conducta que perjudique a la Empresa, a las creadoras o a los clientes.',
     ],
   },
   {
-    n: '7', title: 'Devolución y eliminación',
+    n: '8', title: 'Devolución y eliminación',
     body: [
       'Al terminar la relación laboral o de colaboración, por cualquier causa, el Colaborador devolverá o eliminará de forma permanente toda la Información Confidencial en su poder y no conservará copia alguna.',
     ],
   },
   {
-    n: '8', title: 'Vigencia',
+    n: '9', title: 'Vigencia',
     body: [
       'Las obligaciones de confidencialidad de este Acuerdo permanecen vigentes de forma indefinida y continúan aun después de terminada la relación entre las partes.',
     ],
   },
   {
-    n: '9', title: 'Incumplimiento y acciones de la Empresa',
+    n: '10', title: 'Incumplimiento y acciones de la Empresa',
     body: [
       'Ante cualquier incumplimiento, la Empresa podrá dar por terminada la relación de forma inmediata y ejercer, en cualquier jurisdicción, todas las acciones civiles, penales y administrativas que correspondan, así como reclamar los daños y perjuicios ocasionados a la Empresa, a las creadoras o a los clientes. Estas acciones son acumulativas y no excluyen ningún otro derecho o remedio.',
     ],
   },
   {
-    n: '10', title: 'Indemnización',
+    n: '11', title: 'Indemnización',
     body: [
       'El Colaborador mantendrá indemne y libre de responsabilidad a la Empresa, a las creadoras y a los clientes frente a cualquier reclamo, daño, pérdida, sanción o gasto —incluidos honorarios de abogados y costas— que se derive, directa o indirectamente, del incumplimiento de este Acuerdo por parte del Colaborador.',
     ],
   },
   {
-    n: '11', title: 'Daños liquidados (penalidad)',
+    n: '12', title: 'Daños liquidados (penalidad)',
     body: [
       'Dado que el daño causado por la divulgación o el uso indebido de contenido o Información Confidencial es difícil de cuantificar, las partes acuerdan que el Colaborador pagará a la Empresa, como pena convencional, la cantidad de USD ____________ (o su equivalente en moneda local) por cada incumplimiento, sin perjuicio de los daños adicionales que la Empresa pueda probar y reclamar.',
     ],
   },
   {
-    n: '12', title: 'Medidas cautelares',
+    n: '13', title: 'Medidas cautelares',
     body: [
       'El Colaborador reconoce que cualquier incumplimiento de este Acuerdo puede causar un daño irreparable a la Empresa, a las creadoras o a los clientes, y que la Empresa tendrá derecho a solicitar y obtener medidas cautelares o precautorias inmediatas (incluyendo órdenes de cese) ante los tribunales o árbitros competentes, además de cualquier otro remedio disponible, sin necesidad de otorgar fianza.',
     ],
   },
   {
-    n: '13', title: 'No solicitación',
+    n: '14', title: 'No solicitación',
     body: [
       'Durante la relación y por un período de doce (12) meses posteriores a su terminación, el Colaborador no desviará, solicitará ni intentará llevarse a creadoras o clientes de la Empresa para beneficio propio o de terceros.',
     ],
   },
   {
-    n: '14', title: 'Resolución de controversias — Arbitraje internacional',
+    n: '15', title: 'Resolución de controversias — Arbitraje internacional',
     body: [
       'Toda controversia derivada de este Acuerdo se resolverá de forma definitiva mediante arbitraje administrado conforme a las reglas de ____________________, con sede en ____________________ y en idioma ____________. El laudo será definitivo, vinculante y ejecutable internacionalmente conforme a la Convención de Nueva York de 1958 sobre el Reconocimiento y la Ejecución de las Sentencias Arbitrales Extranjeras. Lo anterior no impide a la Empresa acudir a cualquier tribunal competente para solicitar medidas cautelares.',
     ],
   },
   {
-    n: '15', title: 'Divisibilidad y acuerdo íntegro',
+    n: '16', title: 'Divisibilidad y acuerdo íntegro',
     body: [
       'Si alguna disposición de este Acuerdo fuera declarada inválida o inejecutable, las demás continuarán en pleno vigor. Este documento constituye el acuerdo íntegro entre las partes sobre la materia y reemplaza cualquier entendimiento previo. Sus obligaciones vinculan a los sucesores y cesionarios del Colaborador.',
     ],
   },
   {
-    n: '16', title: 'Ley aplicable y jurisdicción',
+    n: '17', title: 'Ley aplicable y jurisdicción',
     body: [
       'Este Acuerdo se rige e interpreta conforme a las leyes de ____________________. Para todo lo no sometido a arbitraje, las partes se someten a la jurisdicción de los tribunales de ____________________, renunciando a cualquier otro fuero.',
     ],
@@ -180,7 +193,7 @@ export default function ContractPdfPage() {
 
         {/* Acceptance */}
         <section className="mt-8 break-inside-avoid border-t border-neutral-300 pt-6">
-          <h2 className="mb-4 text-[15px] font-bold text-neutral-900">17. Aceptación y firma</h2>
+          <h2 className="mb-4 text-[15px] font-bold text-neutral-900">18. Aceptación y firma</h2>
           <p className="mb-8 text-neutral-800">
             El Colaborador declara haber leído y comprendido este Acuerdo, y lo acepta y firma de forma libre y voluntaria.
           </p>
@@ -201,7 +214,7 @@ export default function ContractPdfPage() {
 
         {/* Notarization */}
         <section className="mt-8 break-inside-avoid rounded-md border-2 border-neutral-400 p-5">
-          <h2 className="mb-3 text-[15px] font-bold text-neutral-900">18. Reconocimiento ante notario</h2>
+          <h2 className="mb-3 text-[15px] font-bold text-neutral-900">19. Reconocimiento ante notario</h2>
           <p className="mb-4 text-neutral-800">
             Ante mí, Notario(a) Público(a), comparecieron las partes identificadas en este documento, acreditaron su
             identidad con documento oficial, y ratificaron y firmaron el presente Acuerdo de forma libre y voluntaria.
