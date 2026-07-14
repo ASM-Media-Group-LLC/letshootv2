@@ -46,7 +46,7 @@ const T = {
       { t: 'Venta perdida', d: 'No vendes — o vendes menos.', loss: true },
     ],
     solveKicker: 'Con Let’s Shoot',
-    solveTitle: 'El contenido justo, en el momento justo',
+    solveTitle: 'El contenido justo, en el momento indicado',
     creatorNote: 'Si creas contenido, ya sabes lo que vale tenerlo listo en todas sus formas y al instante — es lo más difícil, y es justo lo que más vende.',
     solve: 'Imagina nunca quedarte sin qué decir. Siempre tienes contenido de venta y de enganche listo para soltar en el segundo que importa — y cada conversación se vuelve una oportunidad de venta.',
     examplesLabel: 'Así se ve en el chat',
