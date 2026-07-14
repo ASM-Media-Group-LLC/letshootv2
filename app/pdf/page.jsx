@@ -77,21 +77,51 @@ const SECTIONS = [
     ],
   },
   {
-    n: '9', title: 'Incumplimiento',
+    n: '9', title: 'Incumplimiento y acciones de la Empresa',
     body: [
-      'El incumplimiento de este Acuerdo podrá dar lugar a la terminación inmediata de la relación, al ejercicio de las acciones legales que correspondan y a la responsabilidad del Colaborador por los daños y perjuicios ocasionados a la Empresa, a las creadoras o a los clientes.',
+      'Ante cualquier incumplimiento, la Empresa podrá dar por terminada la relación de forma inmediata y ejercer, en cualquier jurisdicción, todas las acciones civiles, penales y administrativas que correspondan, así como reclamar los daños y perjuicios ocasionados a la Empresa, a las creadoras o a los clientes. Estas acciones son acumulativas y no excluyen ningún otro derecho o remedio.',
     ],
   },
   {
-    n: '10', title: 'No solicitación',
+    n: '10', title: 'Indemnización',
+    body: [
+      'El Colaborador mantendrá indemne y libre de responsabilidad a la Empresa, a las creadoras y a los clientes frente a cualquier reclamo, daño, pérdida, sanción o gasto —incluidos honorarios de abogados y costas— que se derive, directa o indirectamente, del incumplimiento de este Acuerdo por parte del Colaborador.',
+    ],
+  },
+  {
+    n: '11', title: 'Daños liquidados (penalidad)',
+    body: [
+      'Dado que el daño causado por la divulgación o el uso indebido de contenido o Información Confidencial es difícil de cuantificar, las partes acuerdan que el Colaborador pagará a la Empresa, como pena convencional, la cantidad de USD ____________ (o su equivalente en moneda local) por cada incumplimiento, sin perjuicio de los daños adicionales que la Empresa pueda probar y reclamar.',
+    ],
+  },
+  {
+    n: '12', title: 'Medidas cautelares',
+    body: [
+      'El Colaborador reconoce que cualquier incumplimiento de este Acuerdo puede causar un daño irreparable a la Empresa, a las creadoras o a los clientes, y que la Empresa tendrá derecho a solicitar y obtener medidas cautelares o precautorias inmediatas (incluyendo órdenes de cese) ante los tribunales o árbitros competentes, además de cualquier otro remedio disponible, sin necesidad de otorgar fianza.',
+    ],
+  },
+  {
+    n: '13', title: 'No solicitación',
     body: [
       'Durante la relación y por un período de doce (12) meses posteriores a su terminación, el Colaborador no desviará, solicitará ni intentará llevarse a creadoras o clientes de la Empresa para beneficio propio o de terceros.',
     ],
   },
   {
-    n: '11', title: 'Ley aplicable',
+    n: '14', title: 'Resolución de controversias — Arbitraje internacional',
     body: [
-      'Este Acuerdo se rige e interpreta conforme a las leyes aplicables en la jurisdicción acordada por las partes, la cual se indica en la firma.',
+      'Toda controversia derivada de este Acuerdo se resolverá de forma definitiva mediante arbitraje administrado conforme a las reglas de ____________________, con sede en ____________________ y en idioma ____________. El laudo será definitivo, vinculante y ejecutable internacionalmente conforme a la Convención de Nueva York de 1958 sobre el Reconocimiento y la Ejecución de las Sentencias Arbitrales Extranjeras. Lo anterior no impide a la Empresa acudir a cualquier tribunal competente para solicitar medidas cautelares.',
+    ],
+  },
+  {
+    n: '15', title: 'Divisibilidad y acuerdo íntegro',
+    body: [
+      'Si alguna disposición de este Acuerdo fuera declarada inválida o inejecutable, las demás continuarán en pleno vigor. Este documento constituye el acuerdo íntegro entre las partes sobre la materia y reemplaza cualquier entendimiento previo. Sus obligaciones vinculan a los sucesores y cesionarios del Colaborador.',
+    ],
+  },
+  {
+    n: '16', title: 'Ley aplicable y jurisdicción',
+    body: [
+      'Este Acuerdo se rige e interpreta conforme a las leyes de ____________________. Para todo lo no sometido a arbitraje, las partes se someten a la jurisdicción de los tribunales de ____________________, renunciando a cualquier otro fuero.',
     ],
   },
 ];
@@ -150,22 +180,52 @@ export default function ContractPdfPage() {
 
         {/* Acceptance */}
         <section className="mt-8 break-inside-avoid border-t border-neutral-300 pt-6">
-          <h2 className="mb-4 text-[15px] font-bold text-neutral-900">12. Aceptación y firma</h2>
+          <h2 className="mb-4 text-[15px] font-bold text-neutral-900">17. Aceptación y firma</h2>
           <p className="mb-8 text-neutral-800">
-            El Colaborador declara haber leído y comprendido este Acuerdo y lo acepta en su totalidad.
+            El Colaborador declara haber leído y comprendido este Acuerdo, y lo acepta y firma de forma libre y voluntaria.
           </p>
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-3">
             <Field label="Lugar:" /> <Field label="Fecha:" />
           </div>
           <div className="mt-12 grid grid-cols-2 gap-10">
-            <div className="border-t border-neutral-500 pt-2 text-center text-sm text-neutral-600">Firma del Colaborador</div>
-            <div className="border-t border-neutral-500 pt-2 text-center text-sm text-neutral-600">Por la Empresa</div>
+            <div className="border-t border-neutral-500 pt-2 text-center text-sm text-neutral-600">
+              Firma del Colaborador
+              <div className="mt-1 text-[11px] text-neutral-400">Nombre y documento</div>
+            </div>
+            <div className="border-t border-neutral-500 pt-2 text-center text-sm text-neutral-600">
+              Por la Empresa
+              <div className="mt-1 text-[11px] text-neutral-400">Nombre y cargo</div>
+            </div>
           </div>
+        </section>
+
+        {/* Notarization */}
+        <section className="mt-8 break-inside-avoid rounded-md border-2 border-neutral-400 p-5">
+          <h2 className="mb-3 text-[15px] font-bold text-neutral-900">18. Reconocimiento ante notario</h2>
+          <p className="mb-4 text-neutral-800">
+            Ante mí, Notario(a) Público(a), comparecieron las partes identificadas en este documento, acreditaron su
+            identidad con documento oficial, y ratificaron y firmaron el presente Acuerdo de forma libre y voluntaria.
+            Doy fe.
+          </p>
+          <div className="space-y-3">
+            <p className="flex flex-wrap items-baseline gap-x-2 gap-y-3"><Field label="Notario(a) Público(a):" wide /></p>
+            <p className="flex flex-wrap items-baseline gap-x-2 gap-y-3"><Field label="Notaría N.º:" /> <Field label="Ciudad / País:" /></p>
+            <p className="flex flex-wrap items-baseline gap-x-2 gap-y-3"><Field label="Fecha:" /> <Field label="N.º de acta / protocolo:" /></p>
+          </div>
+          <div className="mt-12 grid grid-cols-2 gap-10">
+            <div className="border-t border-neutral-500 pt-2 text-center text-sm text-neutral-600">Firma del Notario</div>
+            <div className="pt-2 text-center text-sm text-neutral-400">Sello notarial</div>
+          </div>
+          <p className="mt-5 text-[11px] leading-relaxed text-neutral-500">
+            Para uso internacional, este documento puede legalizarse mediante apostilla conforme a la Convención de La Haya
+            de 1961, o mediante legalización consular cuando el país no sea parte de dicha Convención.
+          </p>
         </section>
 
         {/* Disclaimer */}
         <p className="mt-10 rounded border border-neutral-300 bg-neutral-50 p-3 text-[11px] leading-relaxed text-neutral-500 print:bg-white">
-          Documento modelo con fines informativos. No constituye asesoría legal. Recomendamos que un abogado lo revise y lo adapte a la jurisdicción correspondiente antes de su uso.
+          Documento modelo con fines informativos. No constituye asesoría legal. Recomendamos que un abogado lo revise y lo
+          adapte a la jurisdicción correspondiente antes de su uso.
         </p>
       </article>
 
