@@ -45,6 +45,7 @@ const GROUPS = [
       { path: '/mapa', label: 'Mapa del portal', note: 'Índice por secciones', status: 'ok' },
       { path: '/all', label: 'Todos los enlaces (esta página)', note: 'Directorio completo', status: 'ok' },
       { path: '/contrato', label: 'Contrato / autorización', note: 'Formulario de la modelo', status: 'ok' },
+      { path: '/pdf', label: 'NDA de empleados', note: 'Acuerdo de confidencialidad (imprimible)', status: 'ok' },
     ],
   },
 ];
