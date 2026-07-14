@@ -24,10 +24,11 @@ const T = {
     solve: 'Picture never running out of something to say. You always have sales and engagement content ready to drop the second it matters — so every conversation becomes a chance to sell.',
     examplesLabel: 'How it plays out in the chat',
     examples: [
-      'You’ve been texting for days and now he wants to see, not just read. You send exactly what he was after — and he buys.',
+      'You talk to him, show him how your day is going and build a story. That hooks him — and you sell him more content.',
       'Your VIP wants something just for him tonight. Instead of losing him, you send the perfect photo and close the sale.',
       '“What are you up to?” — you send a beach photo, like you’re sharing your day, and it turns into a PPV.',
     ],
+    thesis: 'This fixes the real problem in the industry: a creator’s time and availability. We create the product — and the product is what sells.',
     custom: 'And if a fan asks for something you, your team or your agency don’t have on hand? We produce it — so you never leave a sale on the table.',
     stratKicker: 'Sales + engagement',
     stratTitle: 'Stories that sell',
@@ -51,10 +52,11 @@ const T = {
     solve: 'Imagina nunca quedarte sin qué decir. Siempre tienes contenido de venta y de enganche listo para soltar en el segundo que importa — y cada conversación se vuelve una oportunidad de venta.',
     examplesLabel: 'Así se ve en el chat',
     examples: [
-      'Llevan días solo escribiéndose y él ya quiere ver, no solo leer. Le sueltas justo el contenido que pedía — y compra.',
+      'Le hablas, le muestras cómo va tu día a día y le armas una historia. Eso lo engancha — y le vendes más contenido.',
       'Tu cliente VIP quiere algo solo para él esta noche. En vez de perderlo, le mandas la foto perfecta y cierras la venta.',
       '“¿Qué haces?” — le mandas una foto en la playa, como contándole tu día, y termina en un PPV.',
     ],
+    thesis: 'Esto arregla el problema real de la industria: el tiempo y la disponibilidad de la creadora. Nosotros creamos el producto — y el producto es lo que vende.',
     custom: '¿Y si un fan pide algo que tú, tu equipo o tu agencia no tienen a la mano? Nosotros lo producimos — para que nunca dejes una venta sobre la mesa.',
     stratKicker: 'Venta + enganche',
     stratTitle: 'Historias que venden',
@@ -195,7 +197,10 @@ export default function Solution() {
               </div>
             </div>
 
-            <p className="mx-auto mt-7 max-w-xl border-t border-brand/15 pt-6 text-[14px] leading-relaxed text-paper-mute [text-wrap:balance]">
+            <p className="mx-auto mt-8 max-w-2xl border-t border-brand/15 pt-7 font-display text-xl font-semibold leading-snug text-paper [text-wrap:balance] sm:text-2xl">
+              {t.thesis}
+            </p>
+            <p className="mx-auto mt-4 max-w-xl text-[14px] leading-relaxed text-paper-mute [text-wrap:balance]">
               {t.custom}
             </p>
           </div>
