@@ -19,9 +19,15 @@ const T = {
       { t: 'Sale lost', d: 'You don’t sell — or you sell less.', loss: true },
     ],
     solveKicker: 'With Let’s Shoot',
-    solveTitle: 'The content is always on hand',
-    solve: 'Sales and engagement content ready to drop — so every chat, PPV and custom request turns into a sale, right when it counts.',
-    custom: 'A fan asks for something you, your team or your agency don’t have on hand? We produce it — so you cash in on every request.',
+    solveTitle: 'The right content, at the exact moment',
+    solve: 'Picture never running out of something to say. You always have sales and engagement content ready to drop the second it matters — so every conversation becomes a chance to sell.',
+    examplesLabel: 'How it plays out in the chat',
+    examples: [
+      'He’s gone quiet for days. You drop a “good morning” from bed — and he buys again.',
+      'Your VIP wants something just for him tonight. Instead of losing him, you send the perfect video and close the sale.',
+      '“What are you up to?” — you send a beach photo, like you’re sharing your day, and it turns into a PPV.',
+    ],
+    custom: 'And if a fan asks for something you, your team or your agency don’t have on hand? We produce it — so you never leave a sale on the table.',
     stratKicker: 'Sales + engagement',
     stratTitle: 'Stories that sell',
     strat: 'You almost always have sales content — what’s missing is the engagement kind. Engagement tells a story: a situation, a moment. It’s the content that shows the fan you’re always there, and it’s often what actually converts. That’s what we do: give you the content at the right moment, in the right situation, for the right person — your whales, your VIPs.',
@@ -39,9 +45,15 @@ const T = {
       { t: 'Venta perdida', d: 'No vendes — o vendes menos.', loss: true },
     ],
     solveKicker: 'Con Let’s Shoot',
-    solveTitle: 'El contenido siempre está a la mano',
-    solve: 'Contenido de venta y enganche listo para soltar — así cada chat, PPV y pedido se convierte en venta, justo cuando cuenta.',
-    custom: '¿Un fan pide algo que tú, tu equipo o tu agencia no tienen a la mano? Nosotros lo producimos — para que aproveches cada pedido.',
+    solveTitle: 'El contenido justo, en el momento justo',
+    solve: 'Imagina nunca quedarte sin qué decir. Siempre tienes contenido de venta y de enganche listo para soltar en el segundo que importa — y cada conversación se vuelve una oportunidad de venta.',
+    examplesLabel: 'Así se ve en el chat',
+    examples: [
+      'Lleva días sin escribir. Le sueltas un “buenos días” tuyo desde la cama — y vuelve a comprar.',
+      'Tu cliente VIP quiere algo solo para él esta noche. En vez de perderlo, mandas el video perfecto y cierras la venta.',
+      '“¿Qué haces?” — le mandas una foto en la playa, como contándole tu día, y termina en un PPV.',
+    ],
+    custom: '¿Y si un fan pide algo que tú, tu equipo o tu agencia no tienen a la mano? Nosotros lo producimos — para que nunca dejes una venta sobre la mesa.',
     stratKicker: 'Venta + enganche',
     stratTitle: 'Historias que venden',
     strat: 'Casi siempre tienes contenido de venta — lo que te falta es el de enganche. El enganche cuenta una historia: una situación, un momento. Es el contenido que le demuestra al fan que siempre estás atenta, y muchas veces es el que de verdad convierte. Eso hacemos: darte el contenido en el momento indicado, en la situación indicada y para la persona indicada — tus ballenas, tus clientes VIP.',
@@ -157,7 +169,21 @@ export default function Solution() {
             {t.solveTitle}
           </h3>
           <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-paper [text-wrap:balance]">{t.solve}</p>
-          <p className="mx-auto mt-5 max-w-xl border-t border-brand/15 pt-5 text-[14px] leading-relaxed text-paper-mute [text-wrap:balance]">
+
+          {/* Real chat scenarios — emotive examples */}
+          <div className="mx-auto mt-6 max-w-xl border-t border-brand/15 pt-6">
+            <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-brand">{t.examplesLabel}</div>
+            <div className="space-y-2.5">
+              {t.examples.map((ex, i) => (
+                <div key={i} className="flex items-start gap-3 rounded-2xl border border-line bg-ink-2/60 px-4 py-3 text-left">
+                  <MessageCircle size={17} className="mt-0.5 shrink-0 text-brand" aria-hidden />
+                  <p className="text-[14px] leading-snug text-paper">{ex}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="mx-auto mt-5 max-w-xl text-[14px] leading-relaxed text-paper-mute [text-wrap:balance]">
             {t.custom}
           </p>
         </motion.div>
