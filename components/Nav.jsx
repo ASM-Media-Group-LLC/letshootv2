@@ -39,8 +39,8 @@ export default function Nav() {
     };
   }, []);
 
+  const biblioteca = { href: '#concepts', label: es ? 'Biblioteca' : 'Library' };
   const links = [
-    { href: '#concepts', label: es ? 'Biblioteca' : 'Library' },
     { href: '#delivery', label: es ? 'Cómo funciona' : 'How it works' },
     { href: '#pricing', label: es ? 'Paquetes' : 'Packages' },
     { href: '#results', label: t.nav.results },
@@ -71,6 +71,12 @@ export default function Nav() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <a
+            href={biblioteca.href}
+            className="hidden rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 md:inline-block"
+          >
+            {biblioteca.label}
+          </a>
           <ThemeToggle />
           <LangToggle />
           <a
@@ -99,6 +105,13 @@ export default function Nav() {
         }`}
       >
         <div className="nav-glass flex flex-col gap-1 rounded-2xl p-2">
+          <a
+            href={biblioteca.href}
+            onClick={() => setOpen(false)}
+            className="rounded-xl bg-brand/10 px-4 py-3 text-base font-semibold text-brand transition-colors hover:bg-brand/20"
+          >
+            {biblioteca.label}
+          </a>
           {links.map((l) => (
             <a
               key={l.href}
