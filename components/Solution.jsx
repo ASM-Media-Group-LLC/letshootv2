@@ -24,8 +24,8 @@ const T = {
     solve: 'Picture never running out of something to say. You always have sales and engagement content ready to drop the second it matters — so every conversation becomes a chance to sell.',
     examplesLabel: 'How it plays out in the chat',
     examples: [
-      'He’s gone quiet for days. You drop a “good morning” from bed — and he buys again.',
-      'Your VIP wants something just for him tonight. Instead of losing him, you send the perfect video and close the sale.',
+      'You’ve been texting for days and now he wants to see, not just read. You send exactly what he was after — and he buys.',
+      'Your VIP wants something just for him tonight. Instead of losing him, you send the perfect photo and close the sale.',
       '“What are you up to?” — you send a beach photo, like you’re sharing your day, and it turns into a PPV.',
     ],
     custom: 'And if a fan asks for something you, your team or your agency don’t have on hand? We produce it — so you never leave a sale on the table.',
@@ -51,8 +51,8 @@ const T = {
     solve: 'Imagina nunca quedarte sin qué decir. Siempre tienes contenido de venta y de enganche listo para soltar en el segundo que importa — y cada conversación se vuelve una oportunidad de venta.',
     examplesLabel: 'Así se ve en el chat',
     examples: [
-      'Lleva días sin escribir. Le sueltas un “buenos días” tuyo desde la cama — y vuelve a comprar.',
-      'Tu cliente VIP quiere algo solo para él esta noche. En vez de perderlo, mandas el video perfecto y cierras la venta.',
+      'Llevan días solo escribiéndose y él ya quiere ver, no solo leer. Le sueltas justo el contenido que pedía — y compra.',
+      'Tu cliente VIP quiere algo solo para él esta noche. En vez de perderlo, le mandas la foto perfecta y cierras la venta.',
       '“¿Qué haces?” — le mandas una foto en la playa, como contándole tu día, y termina en un PPV.',
     ],
     custom: '¿Y si un fan pide algo que tú, tu equipo o tu agencia no tienen a la mano? Nosotros lo producimos — para que nunca dejes una venta sobre la mesa.',
