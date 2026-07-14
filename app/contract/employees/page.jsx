@@ -17,9 +17,10 @@ function Field({ label, wide }) {
 
 const SECTIONS = [
   {
-    n: '1', title: 'Objeto',
+    n: '1', title: 'Objeto y aplicabilidad',
     body: [
       'El Colaborador prestará servicios para la Empresa y, en ese marco, tendrá acceso a información y contenido altamente confidenciales de la Empresa y de sus creadoras y clientes. Este Acuerdo regula el manejo, la confidencialidad y la protección de dicha información, y protege por igual a la Empresa, a las creadoras y a los clientes.',
+      'Este Acuerdo aplica y obliga al Colaborador cualquiera que sea la naturaleza jurídica de la relación entre las partes —ya sea empleo formal, prestación de servicios, freelance, contratista independiente o cualquier otra figura—. El Acuerdo es válido y exigible en el país o jurisdicción donde el Colaborador sea contratado o preste sus servicios, y la Empresa podrá ejercer allí, o en cualquier jurisdicción competente, todas las acciones legales que correspondan, con independencia de cómo se clasifique la relación laboral o contractual.',
     ],
   },
   {
@@ -116,7 +117,7 @@ const SECTIONS = [
   {
     n: '14', title: 'No solicitación',
     body: [
-      'Durante la relación y por un período de doce (12) meses posteriores a su terminación, el Colaborador no desviará, solicitará ni intentará llevarse a creadoras o clientes de la Empresa para beneficio propio o de terceros.',
+      'Durante la relación y por un período de doce (12) meses posteriores a su terminación, el Colaborador no desviará, solicitará, contratará ni intentará llevarse a creadoras, clientes, empleados ni colaboradores de la Empresa —directa o indirectamente, por cuenta propia o de terceros— ni los inducirá a dejar la Empresa o a competir con ella. El incumplimiento de esta cláusula da derecho a la Empresa a ejercer las acciones legales y a reclamar los daños que correspondan.',
     ],
   },
   {
