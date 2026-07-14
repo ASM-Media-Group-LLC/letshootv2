@@ -9,10 +9,10 @@ const ease = [0.22, 1, 0.36, 1];
 const T = {
   es: {
     label: 'El sistema de enganche',
-    titleA: '12 bibliotecas de',
+    libWord: 'bibliotecas de',
     highlight: 'contenido estratégico',
     sub: 'Cada una con escenas que cuentan una historia y mantienen al fan enganchado día a día. No son ideas sueltas — es un sistema.',
-    stat: '60 escenas listas para vender',
+    statTail: 'listas para vender y enganchar',
     scenesWord: 'escenas',
     libraries: [
       { emoji: '🏋️', name: 'Gimnasio', scenes: ['Camino al gimnasio', 'Llegando al gimnasio', 'Terminando el entrenamiento', 'Descansando entre series', 'Comprando un batido', 'Regresando a casa'] },
@@ -27,14 +27,22 @@ const T = {
       { emoji: '❤️', name: 'Emociones', scenes: ['Hoy me siento enferma', 'Hoy estoy feliz', 'Tuve un día difícil', 'Estoy emocionada por algo', 'Necesitaba hablar con alguien'] },
       { emoji: '📅', name: 'Fechas especiales', scenes: ['Cumpleaños', 'Navidad', 'San Valentín', 'Halloween', 'Año Nuevo'] },
       { emoji: '☀️', name: 'Lifestyle', scenes: ['Día de piscina', 'Día de playa', 'Caminando con mi mascota', 'Leyendo un libro', 'Escuchando música'] },
+      { emoji: '💌', name: 'Novia virtual (GFE)', scenes: ['Buenos días desde la cama', 'Antes de dormir', 'Te extrañé hoy', 'Pensando en ti', 'Ojalá estuvieras aquí', 'Nuestra cita de esta noche'] },
+      { emoji: '🔥', name: 'Provocación', scenes: ['Nueva lencería', '¿Adivina qué llevo?', 'Cambio de outfit', 'Casi se me cae la toalla', 'Debajo del vestido', 'Justo antes de la ducha'] },
+      { emoji: '🎭', name: 'POV / Fantasía', scenes: ['POV: llegaste a casa', 'POV: primera cita', 'POV: te desperté', 'Tu vecina traviesa', 'Rol de secretaria'] },
+      { emoji: '🎲', name: 'Tú decides', scenes: ['Elige mi outfit', 'Verdad o reto', 'Rueda de la suerte', 'Encuesta picante', 'Tú mandas hoy'] },
+      { emoji: '🔒', name: 'Solo para ti (VIP)', scenes: ['Esto no va a mi feed', 'Contenido exclusivo', 'Un secreto entre los dos', 'Regalo personalizado', 'Tu nombre en mi piel'] },
+      { emoji: '⏳', name: 'Ofertas y urgencia', scenes: ['Drop de medianoche', 'Solo por hoy', 'Últimas horas', 'Combo especial', 'Descuento sorpresa'] },
+      { emoji: '🛁', name: 'Rutina íntima', scenes: ['Saliendo de la ducha', 'Probándome ropa', 'En la cama', 'Bañera de burbujas', 'Relajándome'] },
+      { emoji: '😏', name: 'Coqueteo', scenes: ['Mordiéndome el labio', 'Guiño para ti', 'Bailando para ti', 'Selfie al espejo', 'Nota de voz coqueta'] },
     ],
   },
   en: {
     label: 'The engagement system',
-    titleA: '12 libraries of',
+    libWord: 'libraries of',
     highlight: 'strategic content',
     sub: 'Each one packed with scenes that tell a story and keep the fan hooked, day after day. Not loose ideas — a system.',
-    stat: '60 scenes ready to sell',
+    statTail: 'ready to sell and hook',
     scenesWord: 'scenes',
     libraries: [
       { emoji: '🏋️', name: 'Gym', scenes: ['On my way to the gym', 'Arriving at the gym', 'Finishing the workout', 'Resting between sets', 'Grabbing a shake', 'Heading back home'] },
@@ -49,6 +57,14 @@ const T = {
       { emoji: '❤️', name: 'Emotions', scenes: ['Feeling sick today', 'Feeling happy today', 'Had a rough day', 'Excited about something', 'Needed to talk to someone'] },
       { emoji: '📅', name: 'Special dates', scenes: ['Birthday', 'Christmas', "Valentine's Day", 'Halloween', 'New Year'] },
       { emoji: '☀️', name: 'Lifestyle', scenes: ['Pool day', 'Beach day', 'Walking my pet', 'Reading a book', 'Listening to music'] },
+      { emoji: '💌', name: 'Virtual girlfriend (GFE)', scenes: ['Good morning from bed', 'Before bed', 'Missed you today', 'Thinking of you', 'Wish you were here', 'Our date tonight'] },
+      { emoji: '🔥', name: 'Teasing', scenes: ['New lingerie', 'Guess what I’m wearing', 'Outfit change', 'Towel almost slipped', 'Under the dress', 'Right before the shower'] },
+      { emoji: '🎭', name: 'POV / Fantasy', scenes: ['POV: you got home', 'POV: first date', 'POV: I woke you up', 'Your naughty neighbor', 'Secretary roleplay'] },
+      { emoji: '🎲', name: 'You decide', scenes: ['Pick my outfit', 'Truth or dare', 'Spin the wheel', 'Spicy poll', 'You’re in charge today'] },
+      { emoji: '🔒', name: 'Just for you (VIP)', scenes: ['Not on my feed', 'Exclusive content', 'A secret between us', 'Personalized gift', 'Your name on my skin'] },
+      { emoji: '⏳', name: 'Offers & urgency', scenes: ['Midnight drop', 'Today only', 'Final hours', 'Special combo', 'Surprise discount'] },
+      { emoji: '🛁', name: 'Intimate routine', scenes: ['Fresh out of the shower', 'Trying on clothes', 'In bed', 'Bubble bath', 'Winding down'] },
+      { emoji: '😏', name: 'Flirting', scenes: ['Biting my lip', 'A wink for you', 'Dancing for you', 'Mirror selfie', 'Flirty voice note'] },
     ],
   },
 };
@@ -57,14 +73,19 @@ export default function ContentLibraries() {
   const { lang } = useLang();
   const t = T[lang] || T.en;
 
+  const libCount = t.libraries.length;
+  const totalScenes = t.libraries.reduce((n, l) => n + l.scenes.length, 0);
+  const titleA = `${libCount} ${t.libWord}`;
+  const stat = `${totalScenes} ${t.scenesWord} ${t.statTail}`;
+
   return (
     <section id="concepts" className="relative scroll-mt-24 overflow-hidden bg-ink-2 py-24 sm:py-28">
       <div className="blob left-1/2 top-10 h-[380px] w-[560px] -translate-x-1/2 bg-brand/10" aria-hidden />
       <div className="relative mx-auto max-w-6xl px-5">
         <div className="mx-auto max-w-2xl text-center">
-          <SectionHeading label={t.label} titleA={t.titleA} highlight={t.highlight} sub={t.sub} align="center" hue="gradient" />
+          <SectionHeading label={t.label} titleA={titleA} highlight={t.highlight} sub={t.sub} align="center" hue="gradient" />
           <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 font-mono text-xs font-semibold text-brand">
-            {t.stat}
+            {stat}
           </div>
         </div>
 

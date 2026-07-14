@@ -3,8 +3,15 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
-import { login, DEMO_ACCOUNTS } from '@/lib/portalAuth';
+import { signIn, homeForRole } from '@/lib/supabase/session';
 import Logo from '@/components/Logo';
+
+const ACCOUNTS = [
+  { role: 'Admin (equipo)', email: 'admin@letshoot.ai', password: 'LetShoot!admin' },
+  { role: 'Chatter (pide)', email: 'chatter@letshoot.ai', password: 'LetShoot!chatter' },
+  { role: 'Productor (sube)', email: 'productor@letshoot.ai', password: 'LetShoot!productor' },
+  { role: 'Creadora (usuaria)', email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' },
+];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,17 +21,17 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  function onSubmit(e) {
+  async function onSubmit(e) {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const session = login(email, password);
-    if (!session) {
-      setError('Correo o contraseña incorrectos.');
+    const res = await signIn(email, password);
+    if (res.error || !res.profile) {
+      setError(res.error === 'Invalid login credentials' ? 'Correo o contraseña incorrectos.' : (res.error || 'No se pudo entrar.'));
       setLoading(false);
       return;
     }
-    router.push(session.role === 'admin' ? '/admin' : '/panel');
+    router.push(homeForRole(res.profile.role));
   }
 
   function fill(acct) {
@@ -44,44 +51,30 @@ export default function LoginPage() {
           <p className="mt-1.5 text-sm text-paper-mute">Tu contenido, listo cuando lo necesitas.</p>
         </div>
 
-        <form
-          onSubmit={onSubmit}
-          className="rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-7"
-        >
-          {/* Email */}
+        <form onSubmit={onSubmit} className="rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-7">
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-paper-mute">Correo</span>
             <div className="relative">
               <Mail size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" aria-hidden />
               <input
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tucorreo@ejemplo.com"
+                type="email" autoComplete="email" required value={email}
+                onChange={(e) => setEmail(e.target.value)} placeholder="tucorreo@ejemplo.com"
                 className="w-full rounded-xl border border-line bg-ink-2 py-3 pl-11 pr-3 text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60"
               />
             </div>
           </label>
 
-          {/* Password with show/hide */}
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-paper-mute">Contraseña</span>
             <div className="relative">
               <Lock size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" aria-hidden />
               <input
-                type={show ? 'text' : 'password'}
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                type={show ? 'text' : 'password'} autoComplete="current-password" required value={password}
+                onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
                 className="w-full rounded-xl border border-line bg-ink-2 py-3 pl-11 pr-11 text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60"
               />
               <button
-                type="button"
-                onClick={() => setShow((s) => !s)}
+                type="button" onClick={() => setShow((s) => !s)}
                 aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                 className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-paper-dim transition-colors hover:bg-hair/10 hover:text-paper"
               >
@@ -91,14 +84,11 @@ export default function LoginPage() {
           </label>
 
           {error && (
-            <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
-              {error}
-            </p>
+            <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>
           )}
 
           <button
-            type="submit"
-            disabled={loading}
+            type="submit" disabled={loading}
             className="group mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60"
           >
             {loading ? 'Entrando…' : 'Entrar'}
@@ -106,22 +96,19 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Demo accounts helper */}
         <div className="mt-5 rounded-2xl border border-line bg-ink-2/60 p-4">
           <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
-            <ShieldCheck size={14} className="text-brand" /> Cuentas de prueba
+            <ShieldCheck size={14} className="text-brand" /> Cuentas
           </div>
           <div className="grid gap-2">
-            {DEMO_ACCOUNTS.map((a) => (
+            {ACCOUNTS.map((a) => (
               <button
-                key={a.email}
-                type="button"
-                onClick={() => fill(a)}
+                key={a.email} type="button" onClick={() => fill(a)}
                 className="flex items-center justify-between rounded-lg border border-line bg-card px-3 py-2 text-left text-xs transition-colors hover:border-brand/40"
               >
                 <span>
-                  <span className="block font-medium text-paper">{a.role === 'admin' ? 'Admin (equipo)' : 'Usuaria (creadora)'}</span>
-                  <span className="text-paper-dim">{a.email} · {a.password}</span>
+                  <span className="block font-medium text-paper">{a.role}</span>
+                  <span className="text-paper-dim">{a.email}</span>
                 </span>
                 <span className="font-mono text-[10px] text-brand">usar →</span>
               </button>

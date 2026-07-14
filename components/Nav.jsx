@@ -40,8 +40,8 @@ export default function Nav() {
   }, []);
 
   const links = [
+    { href: '#concepts', label: es ? 'Biblioteca' : 'Library' },
     { href: '#delivery', label: es ? 'Cómo funciona' : 'How it works' },
-    { href: '#concepts', label: es ? 'Conceptos' : 'Concepts' },
     { href: '#pricing', label: es ? 'Paquetes' : 'Packages' },
     { href: '#results', label: t.nav.results },
   ];
