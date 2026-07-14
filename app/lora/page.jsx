@@ -6,7 +6,7 @@ import {
   UploadCloud, X, Check, Sparkles, ArrowLeft,
   ScanFace, Camera, PersonStanding, RotateCcw, Smile, Sun, Shirt,
 } from 'lucide-react';
-import { getSession, logout } from '@/lib/portalAuth';
+import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { LORA_TARGET, LORA_CATEGORIES, LORA_DOS, LORA_DONTS } from '@/lib/loraSpec';
 import Logo from '@/components/Logo';
 
@@ -114,9 +114,11 @@ export default function LoraPage() {
   const [byCat, setByCat] = useState({});
 
   useEffect(() => {
-    const s = getSession();
-    if (!s) { router.replace('/login'); return; }
-    setSession(s);
+    (async () => {
+      const up = await getUserProfile();
+      if (!up) { router.replace('/login'); return; }
+      setSession(up.profile);
+    })();
   }, [router]);
 
   if (session === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
@@ -147,7 +149,7 @@ export default function LoraPage() {
             <span className={`hidden rounded-full border px-3 py-1 font-mono text-xs sm:inline ${done ? 'border-brand/40 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute'}`}>
               {total}/{LORA_TARGET} fotos
             </span>
-            <button onClick={() => { logout(); router.replace('/login'); }} className="rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">Salir</button>
+            <button onClick={async () => { await signOut(); router.replace('/login'); }} className="rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">Salir</button>
           </div>
         </div>
       </header>

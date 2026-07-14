@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LogOut, UploadCloud, X, Check, ImagePlus, Film, Sparkles, ChevronDown } from 'lucide-react';
-import { getSession, logout } from '@/lib/portalAuth';
+import { getUserProfile, signOut } from '@/lib/supabase/session';
 import Logo from '@/components/Logo';
 
 const CREATORS = [
@@ -88,10 +88,12 @@ export default function AdminPage() {
   const deliver = useUploads();
 
   useEffect(() => {
-    const s = getSession();
-    if (!s) { router.replace('/login'); return; }
-    if (s.role !== 'admin') { router.replace('/panel'); return; }
-    setSession(s);
+    (async () => {
+      const up = await getUserProfile();
+      if (!up) { router.replace('/login'); return; }
+      if (!['admin', 'chatter', 'producer'].includes(up.profile?.role)) { router.replace('/panel'); return; }
+      setSession(up.profile);
+    })();
   }, [router]);
 
   if (session === undefined) {
@@ -112,9 +114,9 @@ export default function AdminPage() {
             <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-brand">Admin</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-paper-mute sm:inline">{session.name}</span>
+            <span className="hidden text-sm text-paper-mute sm:inline">{session.full_name}</span>
             <button
-              onClick={() => { logout(); router.replace('/login'); }}
+              onClick={async () => { await signOut(); router.replace('/login'); }}
               className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"
             >
               <LogOut size={15} /> Salir
