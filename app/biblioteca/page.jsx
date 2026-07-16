@@ -2,88 +2,115 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X } from 'lucide-react';
+import {
+  ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X,
+  Dumbbell, UtensilsCrossed, ShoppingBag, Brush, Car, Home, Briefcase, PawPrint, CloudRain, CalendarDays,
+  Heart, Smile, Moon, PartyPopper, Quote, BedDouble, HeartHandshake, Clapperboard, Gift,
+  Drama, Shirt, Ghost, Film, Gamepad2, GraduationCap, Route, Dices, Target, Music,
+  Timer, Lock, Trophy, Flame, Package, BellRing, Eye, BarChart3, MessageCircle, Ticket,
+  Plane, Hotel, Sun, Bath, Droplets, Gem, Building2, Martini, Users, Flower2,
+  Mic, AudioLines, Headphones, Volume2,
+} from 'lucide-react';
 import { useLang } from '@/app/providers';
-import { LIBRARIES, GROUPS } from '@/lib/libraries';
+import { LIBRARIES, GROUPS, AUDIO } from '@/lib/libraries';
 import Logo from '@/components/Logo';
+
+const ICONS = {
+  Dumbbell, UtensilsCrossed, ShoppingBag, Brush, Car, Home, Briefcase, PawPrint, CloudRain, CalendarDays,
+  Heart, Smile, Moon, PartyPopper, Quote, Sparkles, BedDouble, HeartHandshake, Clapperboard, Gift,
+  Drama, Shirt, Ghost, Film, Gamepad2, GraduationCap, Route, Dices, Target, Music,
+  Timer, Lock, Trophy, Flame, Package, BellRing, Eye, BarChart3, MessageCircle, Ticket,
+  Plane, Hotel, Sun, Bath, Droplets, Gem, Building2, Martini, Users, Flower2,
+  Mic, AudioLines, Headphones, Volume2,
+};
+const iconFor = (name) => ICONS[name] || Sparkles;
 
 const T = {
   es: {
     kicker: 'La biblioteca',
-    titleA: 'situaciones listas para',
+    titleA: 'estrategias listas para',
     titleB: 'enganchar y vender',
-    sub: 'No son ideas sueltas: es el sistema de contenido que alimenta tus chats todos los días. Cada situación cuenta una historia — y cada historia termina en una venta.',
-    statsSituations: 'situaciones',
+    sub: 'No son ideas sueltas: es el sistema que alimenta tus chats todos los días. Cada estrategia cuenta una historia — y cada historia termina en una venta.',
+    statsStrategies: 'estrategias',
     statsScenes: 'escenas',
     statsFamilies: 'familias',
     scenesWord: 'escenas',
     all: 'Todas',
-    searchPh: 'Buscar situación o escena…',
+    searchPh: 'Buscar estrategia o escena…',
     noResults: 'No encontramos nada con esa búsqueda.',
-    soon: 'Próximamente',
     ctaTitle: '¿Te imaginas tener todo esto listo, sin producirlo tú?',
     ctaSub: 'Eso es exactamente lo que hacemos. Tú vendes; nosotros creamos el producto.',
     ctaBtn: 'Ver paquetes',
   },
   en: {
     kicker: 'The library',
-    titleA: 'situations ready to',
+    titleA: 'strategies ready to',
     titleB: 'hook and sell',
-    sub: 'Not loose ideas: this is the content system that feeds your chats every day. Each situation tells a story — and each story ends in a sale.',
-    statsSituations: 'situations',
+    sub: 'Not loose ideas: this is the system that feeds your chats every day. Each strategy tells a story — and each story ends in a sale.',
+    statsStrategies: 'strategies',
     statsScenes: 'scenes',
     statsFamilies: 'families',
     scenesWord: 'scenes',
     all: 'All',
-    searchPh: 'Search a situation or scene…',
+    searchPh: 'Search a strategy or scene…',
     noResults: 'Nothing matched that search.',
-    soon: 'Coming soon',
     ctaTitle: 'Imagine having all of this ready — without producing it yourself.',
     ctaSub: 'That is exactly what we do. You sell; we create the product.',
     ctaBtn: 'View packages',
   },
 };
 
-function LibraryCard({ lib, t, defaultOpen }) {
+function StrategyCard({ lib, t, defaultOpen, muted, onOpen }) {
   const [open, setOpen] = useState(!!defaultOpen);
+  const Icon = iconFor(lib.icon);
+  const shot = lib.imgs?.find(Boolean);
   return (
     <div
       className={`rounded-2xl border transition-all duration-300 ${
-        lib.soon
-          ? 'border-line bg-card/60 opacity-70'
-          : 'border-line bg-gradient-to-b from-card to-ink-2/50 hover:border-brand/40'
+        muted ? 'border-line bg-card/60' : 'border-line bg-gradient-to-b from-card to-ink-2/50 hover:border-brand/40'
       }`}
     >
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-3 p-4 text-left"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-hair/5 text-2xl ring-1 ring-line" aria-hidden>
-          {lib.emoji}
-        </span>
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-3 p-4 text-left">
+        {shot ? (
+          <span className="h-11 w-11 shrink-0 overflow-hidden rounded-2xl ring-1 ring-brand/25">
+            <img src={shot} alt="" className="h-full w-full object-cover" loading="lazy" />
+          </span>
+        ) : (
+          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ${
+            muted ? 'bg-hair/5 text-paper-dim ring-line' : 'bg-brand/12 text-brand ring-brand/25'
+          }`}>
+            <Icon size={19} strokeWidth={1.75} />
+          </span>
+        )}
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="truncate font-display text-base font-semibold text-paper">{lib.name}</span>
-            {lib.soon && (
-              <span className="shrink-0 rounded-full border border-line bg-hair/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">
-                {t.soon}
-              </span>
-            )}
-          </span>
-          <span className="mt-0.5 block font-mono text-[11px] text-paper-dim">
-            {lib.scenes.length} {t.scenesWord}
-          </span>
+          <span className="truncate font-display text-base font-semibold text-paper">{lib.name}</span>
+          <span className="mt-0.5 block font-mono text-[11px] text-paper-dim">{lib.scenes.length} {t.scenesWord}</span>
         </span>
         <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
       </button>
 
       <div className={`grid transition-all duration-300 ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
         <div className="overflow-hidden">
-          <div className="flex flex-wrap gap-1.5 px-4 pb-4">
-            {lib.scenes.map((s) => (
-              <span key={s} className="rounded-full border border-line bg-ink-2/70 px-2.5 py-1 text-xs text-paper-mute">{s}</span>
-            ))}
+          <div className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4">
+            {lib.scenes.map((s, i) => {
+              const img = lib.imgs?.[i];
+              return img ? (
+                <button
+                  key={s}
+                  onClick={() => onOpen?.({ src: img, title: s, lib: lib.name })}
+                  className="group/scene relative overflow-hidden rounded-lg border border-line"
+                >
+                  <img src={img} alt={s} loading="lazy" className="aspect-[9/16] w-full object-cover transition-transform duration-300 group-hover/scene:scale-105" />
+                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2 pt-6 text-left text-[11px] font-medium leading-tight text-paper">
+                    {s}
+                  </span>
+                </button>
+              ) : (
+                <div key={s} className="relative flex aspect-[9/16] items-end rounded-lg border border-dashed border-line bg-ink-2/40 p-2">
+                  <span className="text-[11px] leading-tight text-paper-dim">{s}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -96,9 +123,11 @@ export default function BibliotecaPage() {
   const t = T[lang] || T.en;
   const libs = LIBRARIES[lang] || LIBRARIES.en;
   const groups = GROUPS[lang] || GROUPS.en;
+  const audio = AUDIO[lang] || AUDIO.en;
 
   const [family, setFamily] = useState('all');
   const [q, setQ] = useState('');
+  const [shot, setShot] = useState(null);
 
   const totalScenes = libs.reduce((n, l) => n + l.scenes.length, 0);
 
@@ -107,10 +136,7 @@ export default function BibliotecaPage() {
     return libs.filter((l) => {
       if (family !== 'all' && l.g !== family) return false;
       if (!needle) return true;
-      return (
-        l.name.toLowerCase().includes(needle) ||
-        l.scenes.some((s) => s.toLowerCase().includes(needle))
-      );
+      return l.name.toLowerCase().includes(needle) || l.scenes.some((s) => s.toLowerCase().includes(needle));
     });
   }, [libs, family, q]);
 
@@ -147,7 +173,7 @@ export default function BibliotecaPage() {
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             {[
-              { n: libs.length, l: t.statsSituations },
+              { n: libs.length, l: t.statsStrategies },
               { n: totalScenes, l: t.statsScenes },
               { n: groups.length, l: t.statsFamilies },
             ].map((s) => (
@@ -159,15 +185,13 @@ export default function BibliotecaPage() {
           </div>
         </div>
 
-        {/* Sticky controls: search + family filter */}
+        {/* Sticky controls */}
         <div className="sticky top-[61px] z-20 -mx-5 mt-12 border-y border-line bg-ink/90 px-5 py-3 backdrop-blur">
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
             <div className="relative md:w-72">
               <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
               <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder={t.searchPh}
+                value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.searchPh}
                 className="w-full rounded-full border border-line bg-ink-2 py-2 pl-10 pr-9 text-sm text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60"
               />
               {q && (
@@ -178,13 +202,10 @@ export default function BibliotecaPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               {[{ id: 'all', name: t.all }, ...groups].map((g) => (
-                <button
-                  key={g.id}
-                  onClick={() => setFamily(g.id)}
+                <button key={g.id} onClick={() => setFamily(g.id)}
                   className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
                     family === g.id ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'
-                  }`}
-                >
+                  }`}>
                   {g.name}
                 </button>
               ))}
@@ -197,7 +218,7 @@ export default function BibliotecaPage() {
           <p className="mt-14 text-center text-paper-dim">{t.noResults}</p>
         ) : searching ? (
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((lib) => <LibraryCard key={lib.name} lib={lib} t={t} defaultOpen />)}
+            {filtered.map((lib) => <StrategyCard key={lib.name} lib={lib} t={t} defaultOpen onOpen={setShot} />)}
           </div>
         ) : (
           <div className="mt-10 space-y-12">
@@ -208,15 +229,31 @@ export default function BibliotecaPage() {
                 <section key={g.id}>
                   <div className="mb-5 flex items-baseline gap-3 border-b border-line pb-3">
                     <h2 className="font-display text-xl font-semibold text-paper">{g.name}</h2>
-                    <span className="font-mono text-xs text-paper-dim">{items.length} {t.statsSituations}</span>
+                    <span className="font-mono text-xs text-paper-dim">{items.length} {t.statsStrategies}</span>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {items.map((lib) => <LibraryCard key={lib.name} lib={lib} t={t} />)}
+                    {items.map((lib) => <StrategyCard key={lib.name} lib={lib} t={t} onOpen={setShot} />)}
                   </div>
                 </section>
               );
             })}
           </div>
+        )}
+
+        {/* ── Audio — separate, coming soon ── */}
+        {!searching && family === 'all' && (
+          <section className="mt-16 rounded-3xl border border-dashed border-line bg-card/40 p-6 sm:p-8">
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+              <h2 className="font-display text-xl font-semibold text-paper">{audio.title}</h2>
+              <span className="rounded-full border border-brand/40 bg-brand/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand">
+                {audio.badge}
+              </span>
+            </div>
+            <p className="mb-6 max-w-2xl text-sm leading-relaxed text-paper-mute">{audio.intro}</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {audio.ideas.map((idea) => <StrategyCard key={idea.name} lib={idea} t={t} muted />)}
+            </div>
+          </section>
         )}
 
         {/* Closing CTA */}
@@ -232,6 +269,25 @@ export default function BibliotecaPage() {
           </div>
         </div>
       </main>
+
+      {/* Lightbox */}
+      {shot && (
+        <div
+          onClick={() => setShot(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/90 p-5 backdrop-blur"
+        >
+          <button onClick={() => setShot(null)} aria-label="Cerrar" className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full border border-line text-paper transition-colors hover:bg-hair/10">
+            <X size={18} />
+          </button>
+          <figure onClick={(e) => e.stopPropagation()} className="max-h-full overflow-hidden rounded-2xl border border-line bg-card">
+            <img src={shot.src} alt={shot.title} className="max-h-[78svh] w-auto object-contain" />
+            <figcaption className="flex items-baseline gap-2 px-4 py-3">
+              <span className="font-display font-semibold text-paper">{shot.title}</span>
+              <span className="font-mono text-[11px] text-paper-dim">· {shot.lib}</span>
+            </figcaption>
+          </figure>
+        </div>
+      )}
     </div>
   );
 }
