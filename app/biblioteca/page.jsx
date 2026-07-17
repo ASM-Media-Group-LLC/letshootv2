@@ -28,9 +28,10 @@ const iconFor = (name) => ICONS[name] || Sparkles;
 const T = {
   es: {
     kicker: 'La biblioteca',
-    titleA: 'estrategias listas para',
-    titleB: 'enganchar y vender',
-    sub: 'No son ideas sueltas: es el sistema que alimenta tus chats todos los días. Cada estrategia cuenta una historia — y cada historia termina en una venta.',
+    titleA: 'Contenido de',
+    titleB: 'enganche y venta',
+    titleC: 'en el momento indicado',
+    sub: 'El contenido del día a día que tus fans de OnlyFans esperan de ti — historia, enganche y venta, listo justo cuando lo necesitas en el chat.',
     statsStrategies: 'estrategias',
     statsScenes: 'escenas',
     statsFamilies: 'familias',
@@ -44,9 +45,10 @@ const T = {
   },
   en: {
     kicker: 'The library',
-    titleA: 'strategies ready to',
-    titleB: 'hook and sell',
-    sub: 'Not loose ideas: this is the system that feeds your chats every day. Each strategy tells a story — and each story ends in a sale.',
+    titleA: 'Content for',
+    titleB: 'engagement and sales',
+    titleC: 'at the right moment',
+    sub: 'The day-to-day content your OnlyFans fans expect from you — story, hook and sale, ready exactly when you need it in the chat.',
     statsStrategies: 'strategies',
     statsScenes: 'scenes',
     statsFamilies: 'families',
@@ -166,8 +168,9 @@ export default function BibliotecaPage() {
             <Sparkles size={14} /> {t.kicker}
           </span>
           <h1 className="headline mt-5 text-balance text-[clamp(2rem,5vw,3.6rem)] leading-[1.08]">
-            <span className="text-brand">{libs.length}</span> {t.titleA}{' '}
-            <span className="text-rainbow">{t.titleB}</span>
+            {t.titleA}{' '}
+            <span className="text-rainbow">{t.titleB}</span>{' '}
+            {t.titleC}
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-paper-mute [text-wrap:balance]">{t.sub}</p>
 
