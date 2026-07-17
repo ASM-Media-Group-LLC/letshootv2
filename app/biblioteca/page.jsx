@@ -217,7 +217,7 @@ export default function BibliotecaPage() {
         {filtered.length === 0 ? (
           <p className="mt-14 text-center text-paper-dim">{t.noResults}</p>
         ) : searching ? (
-          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-8 grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((lib) => <StrategyCard key={lib.name} lib={lib} t={t} defaultOpen onOpen={setShot} />)}
           </div>
         ) : (
@@ -231,7 +231,7 @@ export default function BibliotecaPage() {
                     <h2 className="font-display text-xl font-semibold text-paper">{g.name}</h2>
                     <span className="font-mono text-xs text-paper-dim">{items.length} {t.statsStrategies}</span>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {items.map((lib) => <StrategyCard key={lib.name} lib={lib} t={t} onOpen={setShot} />)}
                   </div>
                 </section>
@@ -250,7 +250,7 @@ export default function BibliotecaPage() {
               </span>
             </div>
             <p className="mb-6 max-w-2xl text-sm leading-relaxed text-paper-mute">{audio.intro}</p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {audio.ideas.map((idea) => <StrategyCard key={idea.name} lib={idea} t={t} muted />)}
             </div>
           </section>
