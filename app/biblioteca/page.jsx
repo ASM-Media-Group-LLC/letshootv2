@@ -28,9 +28,9 @@ const iconFor = (name) => ICONS[name] || Sparkles;
 const T = {
   es: {
     kicker: 'La biblioteca',
-    titleA: 'Contenido de',
+    titleA: 'Contenido estratégico de',
     titleB: 'enganche y venta',
-    titleC: 'en el momento indicado',
+    titleC: 'para OnlyFans',
     sub: 'El contenido del día a día que tus fans de OnlyFans esperan de ti — historia, enganche y venta, listo justo cuando lo necesitas en el chat.',
     statsStrategies: 'estrategias',
     statsScenes: 'escenas',
@@ -45,9 +45,9 @@ const T = {
   },
   en: {
     kicker: 'The library',
-    titleA: 'Content for',
+    titleA: 'Strategic content for',
     titleB: 'engagement and sales',
-    titleC: 'at the right moment',
+    titleC: 'on OnlyFans',
     sub: 'The day-to-day content your OnlyFans fans expect from you — story, hook and sale, ready exactly when you need it in the chat.',
     statsStrategies: 'strategies',
     statsScenes: 'scenes',
