@@ -42,7 +42,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="es" data-theme="dark" className={`${inter.variable} ${poppins.variable} ${mono.variable}`}>
+    <html lang="en" data-theme="dark" className={`${inter.variable} ${poppins.variable} ${mono.variable}`}>
       <head>
         {/* Anti-FOUC: apply stored theme before first paint */}
         <script

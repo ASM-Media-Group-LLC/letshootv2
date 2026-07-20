@@ -5,7 +5,7 @@ import { MotionConfig } from 'framer-motion';
 import { dict, SUPPORTED_LANGS } from '@/lib/i18n';
 
 /* ─── LANGUAGE ─── */
-const LangContext = createContext({ lang: 'es', setLang: () => {}, t: dict.es });
+const LangContext = createContext({ lang: 'en', setLang: () => {}, t: dict.en });
 
 // US/Canada timezones → English; Brazil → Portuguese; rest of the Americas → Spanish.
 const US_CA_TZ = new Set([
@@ -28,7 +28,7 @@ function detectLang() {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
       if (tz.startsWith('US/') || tz.startsWith('Canada/') || US_CA_TZ.has(tz)) return 'en';
-      if (BRAZIL_TZ.has(tz)) return SUPPORTED_LANGS.includes('pt') ? 'pt' : 'es';
+      if (BRAZIL_TZ.has(tz)) return SUPPORTED_LANGS.includes('pt') ? 'pt' : 'en';
       if (tz.startsWith('America/')) return 'es'; // rest of the Americas = Latin America
     } catch (e) { /* ignore */ }
   }
@@ -45,8 +45,12 @@ function detectLang() {
 }
 
 export function LangProvider({ children }) {
-  const [lang, setLang] = useState('es');
-  // Skip the very first write so the initial 'es' never overwrites the stored
+  // Default to English (international). Spanish/other languages are only chosen
+  // on a positive signal — a Latin-American timezone or a matching browser
+  // language. An unsupported locale (e.g. Hungary) must fall back to English,
+  // never Spanish.
+  const [lang, setLang] = useState('en');
+  // Skip the very first write so the initial 'en' never overwrites the stored
   // value before the read effect applies it (otherwise lang resets on reload,
   // especially under React StrictMode's double-mount in dev).
   const firstWrite = useRef(true);
@@ -70,7 +74,7 @@ export function LangProvider({ children }) {
   }, [lang]);
 
   return (
-    <LangContext.Provider value={{ lang, setLang, t: dict[lang] || dict.es }}>
+    <LangContext.Provider value={{ lang, setLang, t: dict[lang] || dict.en }}>
       {children}
     </LangContext.Provider>
   );
