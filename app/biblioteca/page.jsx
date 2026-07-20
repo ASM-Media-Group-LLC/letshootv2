@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X,
+  ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X, Instagram,
   Dumbbell, UtensilsCrossed, ShoppingBag, Brush, Car, Home, Briefcase, PawPrint, CloudRain, CalendarDays,
   Heart, Smile, Moon, PartyPopper, Quote, BedDouble, HeartHandshake, Clapperboard, Gift,
   Drama, Shirt, Ghost, Film, Gamepad2, GraduationCap, Route, Dices, Target, Music,
@@ -28,39 +28,64 @@ const iconFor = (name) => ICONS[name] || Sparkles;
 const T = {
   es: {
     kicker: 'La biblioteca',
-    titleA: 'Contenido estratégico de',
-    titleB: 'enganche y venta',
-    titleC: 'para OnlyFans',
-    sub: 'El contenido del día a día que tus fans de OnlyFans esperan de ti — historia, enganche y venta, listo justo cuando lo necesitas en el chat.',
+    titleA: 'Contenido estratégico y de enganche para maximizar tus',
+    titleB: 'ventas en OnlyFans',
+    sub: 'Estas son solo algunas de las infinitas estrategias que creamos para ti — historia, enganche y venta, listas justo cuando las necesitas en el chat.',
     statsStrategies: 'estrategias',
-    statsScenes: 'escenas',
-    statsFamilies: 'familias',
+    statsScenes: 'escenas listas',
+    statsPossibilities: 'posibilidades',
+    statsHint: 'Y esto es solo una muestra — las ideas son infinitas.',
     scenesWord: 'escenas',
     all: 'Todas',
     searchPh: 'Buscar estrategia o escena…',
     noResults: 'No encontramos nada con esa búsqueda.',
+    creatorKicker: 'La creadora',
+    creatorTag: 'Creadora',
+    creatorBio: 'Cada foto de esta biblioteca es de Julia. Un Instagram real, un estilo consistente y más de 200 piezas de contenido — todo producido por nosotros, de cero. Esto es exactamente lo que crearemos para tu creadora.',
+    creatorCta: 'Ver su Instagram',
+    creatorStatPieces: 'piezas',
+    creatorStatStrategies: 'estrategias',
+    creatorStatLangs: 'idiomas',
+    creatorFeed: 'Su feed',
     ctaTitle: '¿Te imaginas tener todo esto listo, sin producirlo tú?',
     ctaSub: 'Eso es exactamente lo que hacemos. Tú vendes; nosotros creamos el producto.',
     ctaBtn: 'Ver paquetes',
   },
   en: {
     kicker: 'The library',
-    titleA: 'Strategic content for',
-    titleB: 'engagement and sales',
-    titleC: 'on OnlyFans',
-    sub: 'The day-to-day content your OnlyFans fans expect from you — story, hook and sale, ready exactly when you need it in the chat.',
+    titleA: 'Strategic, engaging content to maximize your',
+    titleB: 'sales on OnlyFans',
+    sub: 'These are just a few of the infinite strategies we create for you — story, hook and sale, ready right when you need them in the chat.',
     statsStrategies: 'strategies',
-    statsScenes: 'scenes',
-    statsFamilies: 'families',
+    statsScenes: 'ready scenes',
+    statsPossibilities: 'possibilities',
+    statsHint: 'And this is only a sample — the ideas are endless.',
     scenesWord: 'scenes',
     all: 'All',
     searchPh: 'Search a strategy or scene…',
     noResults: 'Nothing matched that search.',
+    creatorKicker: 'The creator',
+    creatorTag: 'Creator',
+    creatorBio: 'Every photo in this library is Julia. A real Instagram, a consistent style and 200+ pieces of content — all produced by us, from scratch. This is exactly what we’ll create for your creator.',
+    creatorCta: 'View her Instagram',
+    creatorStatPieces: 'pieces',
+    creatorStatStrategies: 'strategies',
+    creatorStatLangs: 'languages',
+    creatorFeed: 'Her feed',
     ctaTitle: 'Imagine having all of this ready — without producing it yourself.',
     ctaSub: 'That is exactly what we do. You sell; we create the product.',
     ctaBtn: 'View packages',
   },
 };
+
+const IG_URL = 'https://www.instagram.com/its.juliaparker/';
+const CREATOR_AVATAR = '/lib/venta-solo-hoy.jpg';
+const CREATOR_FEED = [
+  '/lib/musica-carro.jpg', '/lib/spa-jacuzzi-noche.jpg', '/lib/musica-playlist.jpg',
+  '/lib/venta-reto-semana.jpg', '/lib/venta-nueva-lenceria.jpg', '/lib/musica-baile.jpg',
+  '/lib/venta-drop-medianoche.jpg', '/lib/musica-audifonos.jpg', '/lib/venta-si-llegamos.jpg',
+  '/lib/pedidos-custom.jpg', '/lib/venta-recompensa.jpg', '/lib/venta-descuento-sorpresa.jpg',
+];
 
 function StrategyCard({ lib, t, defaultOpen, muted, onOpen }) {
   const [open, setOpen] = useState(!!defaultOpen);
@@ -169,16 +194,15 @@ export default function BibliotecaPage() {
           </span>
           <h1 className="headline mt-5 text-balance text-[clamp(2rem,5vw,3.6rem)] leading-[1.08]">
             {t.titleA}{' '}
-            <span className="text-rainbow">{t.titleB}</span>{' '}
-            {t.titleC}
+            <span className="text-rainbow">{t.titleB}</span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-paper-mute [text-wrap:balance]">{t.sub}</p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             {[
-              { n: libs.length, l: t.statsStrategies },
-              { n: totalScenes, l: t.statsScenes },
-              { n: groups.length, l: t.statsFamilies },
+              { n: `${libs.length}+`, l: t.statsStrategies },
+              { n: `${totalScenes}+`, l: t.statsScenes },
+              { n: '∞', l: t.statsPossibilities },
             ].map((s) => (
               <div key={s.l} className="rounded-2xl border border-line bg-card px-6 py-3">
                 <div className="font-display text-2xl font-bold text-brand">{s.n}</div>
@@ -186,7 +210,86 @@ export default function BibliotecaPage() {
               </div>
             ))}
           </div>
+          <p className="mx-auto mt-4 max-w-md font-mono text-[11px] uppercase tracking-[0.15em] text-paper-dim">{t.statsHint}</p>
         </div>
+
+        {/* ── Meet the creator — real Instagram showcase ── */}
+        <section id="creator" className="mx-auto mt-16 max-w-5xl">
+          <div className="overflow-hidden rounded-[2rem] border border-line bg-gradient-to-b from-card to-ink-2/40 shadow-glow-sm">
+            {/* Profile header */}
+            <div className="flex flex-col items-center gap-6 border-b border-line p-6 text-center sm:flex-row sm:items-start sm:gap-8 sm:p-8 sm:text-left">
+              <div className="shrink-0 rounded-full bg-gradient-to-tr from-brand via-sky-400 to-fuchsia-500 p-[3px]">
+                <img
+                  src={CREATOR_AVATAR}
+                  alt="Julia Parker"
+                  className="h-24 w-24 rounded-full object-cover object-top ring-4 ring-ink sm:h-28 sm:w-28"
+                  loading="lazy"
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-center gap-2.5 sm:justify-start">
+                  <h2 className="font-display text-2xl font-bold text-paper">Julia Parker</h2>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-brand">
+                    <Sparkles size={11} /> {t.creatorTag}
+                  </span>
+                </div>
+                <a
+                  href={IG_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-0.5 inline-flex items-center gap-1.5 text-sm font-medium text-paper-mute transition-colors hover:text-brand"
+                >
+                  <Instagram size={15} /> @its.juliaparker
+                </a>
+
+                <div className="mt-4 flex items-center justify-center gap-7 sm:justify-start">
+                  {[
+                    { n: '200+', l: t.creatorStatPieces },
+                    { n: '50+', l: t.creatorStatStrategies },
+                    { n: '7', l: t.creatorStatLangs },
+                  ].map((s) => (
+                    <div key={s.l} className="text-center sm:text-left">
+                      <div className="font-display text-lg font-bold text-paper">{s.n}</div>
+                      <div className="font-mono text-[10px] uppercase tracking-wider text-paper-dim">{s.l}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="mx-auto mt-4 max-w-xl text-[13.5px] leading-relaxed text-paper-mute sm:mx-0">{t.creatorBio}</p>
+
+                <a
+                  href={IG_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-5 inline-flex items-center gap-2 rounded-full border border-brand/50 bg-brand/12 px-5 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20"
+                >
+                  <Instagram size={16} /> {t.creatorCta}
+                  <ArrowRight size={15} />
+                </a>
+              </div>
+            </div>
+
+            {/* Feed grid — Instagram-style */}
+            <div className="grid grid-cols-3 gap-1 p-1 sm:grid-cols-6 sm:gap-1.5 sm:p-1.5">
+              {CREATOR_FEED.map((src, i) => (
+                <button
+                  key={src}
+                  onClick={() => setShot({ src, title: 'Julia Parker', lib: '@its.juliaparker' })}
+                  className={`group/feed relative overflow-hidden ${i === 0 ? 'rounded-tl-[1.4rem]' : ''}`}
+                >
+                  <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    className="aspect-square w-full object-cover object-top transition-transform duration-500 group-hover/feed:scale-110"
+                  />
+                  <span className="absolute inset-0 bg-brand/0 transition-colors duration-300 group-hover/feed:bg-brand/10" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
 
         {/* Sticky controls */}
         <div className="sticky top-[61px] z-20 -mx-5 mt-12 border-y border-line bg-ink/90 px-5 py-3 backdrop-blur">
