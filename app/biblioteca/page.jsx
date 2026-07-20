@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X, Instagram,
+  ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X, Instagram, Check,
   Dumbbell, UtensilsCrossed, ShoppingBag, Brush, Car, Home, Briefcase, PawPrint, CloudRain, CalendarDays,
   Heart, Smile, Moon, PartyPopper, Quote, BedDouble, HeartHandshake, Clapperboard, Gift,
   Drama, Shirt, Ghost, Film, Gamepad2, GraduationCap, Route, Dices, Target, Music,
@@ -41,11 +41,11 @@ const T = {
     noResults: 'No encontramos nada con esa búsqueda.',
     creatorKicker: 'La creadora',
     creatorTag: 'Creadora',
-    creatorBio: 'Cada foto de esta biblioteca es de Julia. Un Instagram real, un estilo consistente y más de 200 piezas de contenido — todo producido por nosotros, de cero. Esto es exactamente lo que crearemos para tu creadora.',
+    creatorBio: 'Julia es una creadora muy solicitada: gran engagement y ventas de contenido exclusivo que vuelan. ¿El secreto? Le producimos todo su contenido — el mensaje indicado, en el momento justo, para la persona correcta. Y ella es solo un ejemplo de lo que hacemos por ti.',
     creatorCta: 'Ver su Instagram',
-    creatorStatPieces: 'piezas',
-    creatorStatStrategies: 'estrategias',
-    creatorStatLangs: 'idiomas',
+    creatorPoint1: 'El momento indicado',
+    creatorPoint2: 'La forma indicada',
+    creatorPoint3: 'La persona correcta',
     creatorFeed: 'Su feed',
     ctaTitle: '¿Te imaginas tener todo esto listo, sin producirlo tú?',
     ctaSub: 'Eso es exactamente lo que hacemos. Tú vendes; nosotros creamos el producto.',
@@ -66,11 +66,11 @@ const T = {
     noResults: 'Nothing matched that search.',
     creatorKicker: 'The creator',
     creatorTag: 'Creator',
-    creatorBio: 'Every photo in this library is Julia. A real Instagram, a consistent style and 200+ pieces of content — all produced by us, from scratch. This is exactly what we’ll create for your creator.',
+    creatorBio: 'Julia is an in-demand creator: huge engagement and exclusive content that sells out fast. The secret? We produce all of her content for her — the right message, at the right moment, for the right person. And she’s just one example of what we do for you.',
     creatorCta: 'View her Instagram',
-    creatorStatPieces: 'pieces',
-    creatorStatStrategies: 'strategies',
-    creatorStatLangs: 'languages',
+    creatorPoint1: 'The right moment',
+    creatorPoint2: 'The right way',
+    creatorPoint3: 'The right person',
     creatorFeed: 'Her feed',
     ctaTitle: 'Imagine having all of this ready — without producing it yourself.',
     ctaSub: 'That is exactly what we do. You sell; we create the product.',
@@ -198,19 +198,18 @@ export default function BibliotecaPage() {
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-paper-mute [text-wrap:balance]">{t.sub}</p>
 
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <div className="mx-auto mt-9 flex max-w-lg items-stretch justify-center divide-x divide-line overflow-hidden rounded-2xl border border-line bg-card/60 backdrop-blur">
             {[
               { n: `${libs.length}+`, l: t.statsStrategies },
               { n: `${totalScenes}+`, l: t.statsScenes },
               { n: '∞', l: t.statsPossibilities },
             ].map((s) => (
-              <div key={s.l} className="rounded-2xl border border-line bg-card px-6 py-3">
-                <div className="font-display text-2xl font-bold text-brand">{s.n}</div>
-                <div className="font-mono text-[10px] uppercase tracking-wider text-paper-dim">{s.l}</div>
+              <div key={s.l} className="flex flex-1 flex-col items-center justify-center px-4 py-4 sm:px-7">
+                <div className="font-display text-3xl font-bold leading-none text-brand">{s.n}</div>
+                <div className="mt-1.5 font-mono text-[10px] uppercase tracking-wider text-paper-dim">{s.l}</div>
               </div>
             ))}
           </div>
-          <p className="mx-auto mt-4 max-w-md font-mono text-[11px] uppercase tracking-[0.15em] text-paper-dim">{t.statsHint}</p>
         </div>
 
         {/* ── Meet the creator — real Instagram showcase ── */}
@@ -243,20 +242,15 @@ export default function BibliotecaPage() {
                   <Instagram size={15} /> @its.juliaparker
                 </a>
 
-                <div className="mt-4 flex items-center justify-center gap-7 sm:justify-start">
-                  {[
-                    { n: '200+', l: t.creatorStatPieces },
-                    { n: '50+', l: t.creatorStatStrategies },
-                    { n: '7', l: t.creatorStatLangs },
-                  ].map((s) => (
-                    <div key={s.l} className="text-center sm:text-left">
-                      <div className="font-display text-lg font-bold text-paper">{s.n}</div>
-                      <div className="font-mono text-[10px] uppercase tracking-wider text-paper-dim">{s.l}</div>
-                    </div>
+                <p className="mx-auto mt-3 max-w-xl text-[13.5px] leading-relaxed text-paper-mute sm:mx-0">{t.creatorBio}</p>
+
+                <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
+                  {[t.creatorPoint1, t.creatorPoint2, t.creatorPoint3].map((p) => (
+                    <span key={p} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-hair/5 px-3 py-1.5 text-[12px] font-medium text-paper-mute">
+                      <Check size={13} className="text-brand" /> {p}
+                    </span>
                   ))}
                 </div>
-
-                <p className="mx-auto mt-4 max-w-xl text-[13.5px] leading-relaxed text-paper-mute sm:mx-0">{t.creatorBio}</p>
 
                 <a
                   href={IG_URL}
