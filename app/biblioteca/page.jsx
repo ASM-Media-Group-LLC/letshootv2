@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X, Instagram, Check,
   Dumbbell, UtensilsCrossed, ShoppingBag, Brush, Car, Home, Briefcase, PawPrint, CloudRain, CalendarDays,
@@ -87,20 +88,60 @@ const CREATOR_FEED = [
   '/lib/pedidos-custom.jpg', '/lib/venta-recompensa.jpg', '/lib/venta-descuento-sorpresa.jpg',
 ];
 
+function SceneThumb({ img, label, onOpen, lib }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <button
+      onClick={() => onOpen?.({ src: img, title: label, lib })}
+      className="group/scene relative aspect-[9/16] overflow-hidden rounded-lg border border-line bg-ink-2/60 transition-transform duration-200 active:scale-[0.97]"
+    >
+      {!loaded && <span className="absolute inset-0 animate-pulse bg-hair/5" aria-hidden />}
+      <Image
+        src={img}
+        alt={label}
+        fill
+        sizes="(min-width: 640px) 12vw, 45vw"
+        loading="eager"
+        onLoad={() => setLoaded(true)}
+        className={`object-cover transition-all duration-500 group-hover/scene:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+      />
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2 pt-6 text-left text-[11px] font-medium leading-tight text-paper">
+        {label}
+      </span>
+    </button>
+  );
+}
+
 function StrategyCard({ lib, t, defaultOpen, muted, onOpen }) {
   const [open, setOpen] = useState(!!defaultOpen);
+  // Once a card has been opened we keep its scenes mounted so the close/open
+  // animation stays smooth. Collapsed-and-never-opened cards render no <img>
+  // at all — that both saves loading ~200 images up front and fixes the bug
+  // where lazy images inside a 0-height container never painted until a tap.
+  const [hasOpened, setHasOpened] = useState(!!defaultOpen);
   const Icon = iconFor(lib.icon);
   const shot = lib.imgs?.find(Boolean);
+
+  const toggle = () =>
+    setOpen((v) => {
+      if (!v) setHasOpened(true);
+      return !v;
+    });
+
   return (
     <div
-      className={`rounded-2xl border transition-all duration-300 ${
+      className={`overflow-hidden rounded-2xl border transition-colors duration-300 ${
         muted ? 'border-line bg-card/60' : 'border-line bg-gradient-to-b from-card to-ink-2/50 hover:border-brand/40'
       }`}
     >
-      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-3 p-4 text-left">
+      <button
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 p-4 text-left transition-colors active:bg-hair/5"
+      >
         {shot ? (
-          <span className="h-11 w-11 shrink-0 overflow-hidden rounded-2xl ring-1 ring-brand/25">
-            <img src={shot} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl ring-1 ring-brand/25">
+            <Image src={shot} alt="" fill sizes="48px" className="object-cover" />
           </span>
         ) : (
           <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ${
@@ -110,35 +151,28 @@ function StrategyCard({ lib, t, defaultOpen, muted, onOpen }) {
           </span>
         )}
         <span className="min-w-0 flex-1">
-          <span className="truncate font-display text-base font-semibold text-paper">{lib.name}</span>
+          <span className="block truncate font-display text-base font-semibold text-paper">{lib.name}</span>
           <span className="mt-0.5 block font-mono text-[11px] text-paper-dim">{lib.scenes.length} {t.scenesWord}</span>
         </span>
         <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      <div className={`grid transition-all duration-300 ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
         <div className="overflow-hidden">
-          <div className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4">
-            {lib.scenes.map((s, i) => {
-              const img = lib.imgs?.[i];
-              return img ? (
-                <button
-                  key={s}
-                  onClick={() => onOpen?.({ src: img, title: s, lib: lib.name })}
-                  className="group/scene relative overflow-hidden rounded-lg border border-line"
-                >
-                  <img src={img} alt={s} loading="lazy" className="aspect-[9/16] w-full object-cover transition-transform duration-300 group-hover/scene:scale-105" />
-                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2 pt-6 text-left text-[11px] font-medium leading-tight text-paper">
-                    {s}
-                  </span>
-                </button>
-              ) : (
-                <div key={s} className="relative flex aspect-[9/16] items-end rounded-lg border border-dashed border-line bg-ink-2/40 p-2">
-                  <span className="text-[11px] leading-tight text-paper-dim">{s}</span>
-                </div>
-              );
-            })}
-          </div>
+          {hasOpened && (
+            <div className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4">
+              {lib.scenes.map((s, i) => {
+                const img = lib.imgs?.[i];
+                return img ? (
+                  <SceneThumb key={s} img={img} label={s} lib={lib.name} onOpen={onOpen} />
+                ) : (
+                  <div key={s} className="relative flex aspect-[9/16] items-end rounded-lg border border-dashed border-line bg-ink-2/40 p-2">
+                    <span className="text-[11px] leading-tight text-paper-dim">{s}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -157,6 +191,13 @@ export default function BibliotecaPage() {
   const [shot, setShot] = useState(null);
 
   const totalScenes = libs.reduce((n, l) => n + l.scenes.length, 0);
+
+  // Lock background scroll while the lightbox is open (mobile UX).
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    document.body.style.overflow = shot ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [shot]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -218,11 +259,13 @@ export default function BibliotecaPage() {
             {/* Profile header */}
             <div className="flex flex-col items-center gap-6 border-b border-line p-6 text-center sm:flex-row sm:items-start sm:gap-8 sm:p-8 sm:text-left">
               <div className="shrink-0 rounded-full bg-gradient-to-tr from-brand via-sky-400 to-fuchsia-500 p-[3px]">
-                <img
+                <Image
                   src={CREATOR_AVATAR}
                   alt="Julia Parker"
+                  width={112}
+                  height={112}
+                  sizes="112px"
                   className="h-24 w-24 rounded-full object-cover object-top ring-4 ring-ink sm:h-28 sm:w-28"
-                  loading="lazy"
                 />
               </div>
 
@@ -270,13 +313,14 @@ export default function BibliotecaPage() {
                 <button
                   key={src}
                   onClick={() => setShot({ src, title: 'Julia Parker', lib: '@its.juliaparker' })}
-                  className={`group/feed relative overflow-hidden ${i === 0 ? 'rounded-tl-[1.4rem]' : ''}`}
+                  className={`group/feed relative aspect-square touch-manipulation overflow-hidden bg-ink-2/60 transition active:opacity-80 ${i === 0 ? 'rounded-tl-[1.4rem]' : ''}`}
                 >
-                  <img
+                  <Image
                     src={src}
                     alt=""
-                    loading="lazy"
-                    className="aspect-square w-full object-cover object-top transition-transform duration-500 group-hover/feed:scale-110"
+                    fill
+                    sizes="(min-width: 640px) 16vw, 33vw"
+                    className="object-cover object-top transition-transform duration-500 group-hover/feed:scale-110"
                   />
                   <span className="absolute inset-0 bg-brand/0 transition-colors duration-300 group-hover/feed:bg-brand/10" />
                 </button>
@@ -303,7 +347,7 @@ export default function BibliotecaPage() {
             <div className="flex flex-wrap gap-2">
               {[{ id: 'all', name: t.all }, ...groups].map((g) => (
                 <button key={g.id} onClick={() => setFamily(g.id)}
-                  className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  className={`touch-manipulation rounded-full border px-3.5 py-1.5 text-sm font-medium transition active:scale-95 ${
                     family === g.id ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'
                   }`}>
                   {g.name}
@@ -374,12 +418,12 @@ export default function BibliotecaPage() {
       {shot && (
         <div
           onClick={() => setShot(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/90 p-5 backdrop-blur"
+          className="lb-fade fixed inset-0 z-50 flex items-center justify-center bg-ink/90 p-5 backdrop-blur"
         >
-          <button onClick={() => setShot(null)} aria-label="Cerrar" className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full border border-line text-paper transition-colors hover:bg-hair/10">
+          <button onClick={() => setShot(null)} aria-label="Cerrar" className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full border border-line text-paper transition-colors hover:bg-hair/10 active:scale-95">
             <X size={18} />
           </button>
-          <figure onClick={(e) => e.stopPropagation()} className="max-h-full overflow-hidden rounded-2xl border border-line bg-card">
+          <figure onClick={(e) => e.stopPropagation()} className="lb-pop max-h-full overflow-hidden rounded-2xl border border-line bg-card">
             <img src={shot.src} alt={shot.title} className="max-h-[78svh] w-auto object-contain" />
             <figcaption className="flex items-baseline gap-2 px-4 py-3">
               <span className="font-display font-semibold text-paper">{shot.title}</span>
