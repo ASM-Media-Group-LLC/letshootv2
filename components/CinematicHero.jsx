@@ -53,7 +53,7 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease, delay: 0.25 }}
-            className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/80 backdrop-blur sm:text-[11px]"
+            className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-white/85 shadow-[0_2px_20px_rgba(0,0,0,0.3)] backdrop-blur-md sm:text-[11px]"
           >
             {t.hero.eyebrowPre ? (
               <>
@@ -68,7 +68,7 @@ export default function CinematicHero() {
             initial={{ opacity: 0, y: 26, filter: 'blur(10px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.95, ease, delay: 0.36 }}
-            className="headline mx-auto max-w-[17ch] text-balance text-[clamp(1.85rem,4.8vw,3.9rem)] leading-[1.1] text-white drop-shadow-[0_2px_30px_rgba(0,0,0,0.7)]"
+            className="headline mx-auto max-w-[19ch] text-balance text-[clamp(2rem,5vw,4.05rem)] font-bold leading-[1.05] tracking-[-0.02em] text-white drop-shadow-[0_2px_34px_rgba(0,0,0,0.75)]"
           >
             {(() => {
               const raw = t.hero.pre.replace(/\s*—\s*$/, '');
@@ -80,7 +80,7 @@ export default function CinematicHero() {
                   <img
                     src="/onlyfans-logo.png"
                     alt="OnlyFans"
-                    className="inline-block h-[0.82em] w-auto translate-y-[0.1em] drop-shadow-[0_2px_20px_rgba(0,175,240,0.35)]"
+                    className="inline-block h-[0.8em] w-auto translate-y-[0.1em] drop-shadow-[0_2px_20px_rgba(0,175,240,0.4)]"
                     draggable={false}
                   />
                   {parts.slice(1).join('OnlyFans')}
@@ -89,18 +89,27 @@ export default function CinematicHero() {
             })()}
           </motion.h1>
 
+          {/* Slim divider for structure */}
+          <motion.div
+            initial={{ opacity: 0, scaleX: 0 }}
+            animate={{ opacity: 1, scaleX: 1 }}
+            transition={{ duration: 0.7, ease, delay: 0.5 }}
+            className="mt-7 h-px w-20 bg-gradient-to-r from-transparent via-brand/70 to-transparent"
+            aria-hidden
+          />
+
           {/* Value proposition — three-beat rhythm, cleanly measured */}
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.85, ease, delay: 0.5 }}
-            className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 font-display text-[clamp(1.1rem,3vw,1.9rem)] font-semibold tracking-tight"
+            transition={{ duration: 0.85, ease, delay: 0.58 }}
+            className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 font-display text-[clamp(1rem,2.6vw,1.6rem)] font-semibold tracking-tight"
           >
             {t.hero.highlight.split(',').map((seg, i, arr) => (
-              <span key={i} className="inline-flex items-center gap-3">
+              <span key={i} className="inline-flex items-center gap-4">
                 <span className="text-rainbow">{seg.trim()}</span>
                 {i < arr.length - 1 && (
-                  <span className="text-white/25" aria-hidden>·</span>
+                  <span className="text-brand/50" aria-hidden>•</span>
                 )}
               </span>
             ))}
@@ -109,8 +118,8 @@ export default function CinematicHero() {
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.75, ease, delay: 0.66 }}
-            className="mt-9 flex flex-wrap items-center justify-center gap-3"
+            transition={{ duration: 0.75, ease, delay: 0.72 }}
+            className="mt-11 flex flex-wrap items-center justify-center gap-3.5"
           >
             <a
               href="#por-que"
