@@ -353,25 +353,27 @@ export default function BibliotecaPage() {
         </section>
 
         {/* Sticky controls */}
-        <div className="sticky top-[61px] z-20 -mx-5 mt-6 border-y border-line bg-ink/90 px-5 py-3 backdrop-blur">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <div className="relative md:w-72">
-              <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+        <div className="sticky top-[61px] z-20 -mx-5 mt-6 border-y border-line bg-ink/80 px-5 py-3.5 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-6xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full shrink-0 lg:w-72">
+              <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-paper-dim" />
               <input
                 value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.searchPh}
-                className="w-full rounded-full border border-line bg-ink-2 py-2 pl-10 pr-9 text-sm text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60"
+                className="w-full rounded-full border border-line bg-ink-2/70 py-2.5 pl-11 pr-9 text-sm text-paper outline-none transition focus:border-brand/60 focus:bg-ink-2 focus:ring-2 focus:ring-brand/20"
               />
               {q && (
-                <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim hover:text-paper" aria-label="Limpiar">
-                  <X size={14} />
+                <button onClick={() => setQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-paper-dim transition-colors hover:text-paper" aria-label="Limpiar">
+                  <X size={15} />
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="-mx-5 flex flex-nowrap gap-2 overflow-x-auto px-5 pb-0.5 lg:mx-0 lg:flex-wrap lg:justify-end lg:overflow-visible lg:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {[{ id: 'all', name: t.all }, ...groups].map((g) => (
                 <button key={g.id} onClick={() => setFamily(g.id)}
-                  className={`touch-manipulation rounded-full border px-3.5 py-1.5 text-sm font-medium transition active:scale-95 ${
-                    family === g.id ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'
+                  className={`shrink-0 touch-manipulation rounded-full border px-4 py-2 text-[13px] font-semibold transition active:scale-95 ${
+                    family === g.id
+                      ? 'border-transparent bg-brand text-on-accent shadow-glow-sm'
+                      : 'border-line bg-card/60 text-paper-mute hover:border-brand/40 hover:text-paper'
                   }`}>
                   {g.name}
                 </button>
