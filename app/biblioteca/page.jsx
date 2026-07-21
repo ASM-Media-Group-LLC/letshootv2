@@ -43,7 +43,11 @@ const T = {
     noResults: 'No encontramos nada con esa búsqueda.',
     creatorKicker: 'La creadora',
     creatorTag: 'Creadora',
-    creatorBio: 'Julia vive en Miami — pero no siempre le fue tan fácil. Antes le costaba producir contenido: entender qué quería cada cliente, el tiempo, el maquillaje, la ropa… y la frustración de nunca dar abasto. Desde que trabaja con nosotros es un antes y un después: le producimos todo su contenido con inteligencia artificial, listo justo cuando lo necesita y para quien lo necesita — redes, venta y engagement. El resultado: un caso de éxito real, con muchísimas más ventas y ganancias. Y ella es solo un ejemplo de lo que hacemos por ti.',
+    creatorBio: [
+      'Julia es una modelo americana que vive en Miami. Como muchas, tiene su vida fitness y de influencer, y desde siempre vende contenido exclusivo. Pero había algo que le costaba muchísimo producir: el contenido del día a día y el de situaciones específicas — y en OnlyFans ese es justo el que más vende, porque primero engancha la historia y después se vende el contenido.',
+      'Le pasaba algo real —un mal día, un momento cualquiera— y de ahí nacía el contenido de esa situación: el fan lo vivía con ella, la apoyaba, la ayudaba… y terminaba comprando su contenido de venta. Pero armar todo eso eran horas, ropa, maquillaje, locaciones y muchísimo dinero.',
+      'Con nosotros eso cambió: ahora responde al instante con el contenido ideal para cada situación, sin días de producción y sin gastar de más. Y ella es solo un ejemplo de lo que hacemos por ti.',
+    ],
     creatorCta: 'Ver su Instagram',
     creatorLocation: 'Miami, FL',
     creatorPoint1: 'Redes sociales',
@@ -70,7 +74,11 @@ const T = {
     noResults: 'Nothing matched that search.',
     creatorKicker: 'The creator',
     creatorTag: 'Creator',
-    creatorBio: 'Julia lives in Miami — but it wasn’t always this easy. She used to struggle to produce content: figuring out what each subscriber wanted, the time, the makeup, the wardrobe… and the frustration of never keeping up. Since working with us it’s been night and day: we produce all her content with AI, ready right when she needs it and for whoever she needs it — social, sales and engagement. The result: a real success story, with far more sales and earnings. And she’s just one example of what we do for you.',
+    creatorBio: [
+      'Julia is an American model living in Miami. Like many creators, she has her fitness and influencer life and has always sold exclusive content. But there was one thing that was really hard to produce: her day-to-day and situational content — and on OnlyFans that’s exactly what sells, because first the story hooks them and then the content sells.',
+      'Something real would happen — a bad day, an ordinary moment — and it became content for that situation: her fans lived it with her, supported her, helped her… and ended up buying her sales content. But putting all that together meant hours, wardrobe, makeup, locations and a lot of money.',
+      'With us that changed: now she responds instantly with the perfect content for every situation — no production days, no overspending. And she’s just one example of what we do for you.',
+    ],
     creatorCta: 'View her Instagram',
     creatorLocation: 'Miami, FL',
     creatorPoint1: 'Social media',
@@ -287,7 +295,11 @@ export default function BibliotecaPage() {
                   </span>
                 </div>
 
-                <p className="mx-auto mt-3 max-w-xl text-[13.5px] leading-relaxed text-paper-mute sm:mx-0">{t.creatorBio}</p>
+                <div className="mx-auto mt-3 max-w-2xl space-y-2.5 sm:mx-0">
+                  {t.creatorBio.map((para, i) => (
+                    <p key={i} className="text-[13.5px] leading-relaxed text-paper-mute">{para}</p>
+                  ))}
+                </div>
 
                 <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
                   {[t.creatorPoint1, t.creatorPoint2, t.creatorPoint3].map((p) => (
