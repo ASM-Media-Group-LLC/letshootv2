@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
-  ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X, Instagram, Check,
+  ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X, Instagram, Check, MapPin,
   Dumbbell, UtensilsCrossed, ShoppingBag, Brush, Car, Home, Briefcase, PawPrint, CloudRain, CalendarDays,
   Heart, Smile, Moon, PartyPopper, Quote, BedDouble, HeartHandshake, Clapperboard, Gift,
   Drama, Shirt, Ghost, Film, Gamepad2, GraduationCap, Route, Dices, Target, Music,
@@ -29,8 +29,8 @@ const iconFor = (name) => ICONS[name] || Sparkles;
 const T = {
   es: {
     kicker: 'La biblioteca',
-    titleA: 'Contenido estratégico y de enganche para maximizar tus',
-    titleB: 'ventas en OnlyFans',
+    titleA: 'Contenido estratégico y de enganche en el momento indicado para',
+    titleB: 'OnlyFans',
     sub: 'Estas son solo algunas de las infinitas estrategias que creamos para ti — historia, enganche y venta, listas justo cuando las necesitas en el chat.',
     statsStrategies: 'estrategias',
     statsScenes: 'escenas listas',
@@ -42,11 +42,12 @@ const T = {
     noResults: 'No encontramos nada con esa búsqueda.',
     creatorKicker: 'La creadora',
     creatorTag: 'Creadora',
-    creatorBio: 'Julia es una creadora muy solicitada: gran engagement y ventas de contenido exclusivo que vuelan. ¿El secreto? Le producimos todo su contenido — el mensaje indicado, en el momento justo, para la persona correcta. Y ella es solo un ejemplo de lo que hacemos por ti.',
+    creatorBio: 'Julia vive en Miami y es una de nuestras modelos estrella. Con el tiempo le hemos creado muchísimo contenido — para redes, venta y engagement — todo producido con inteligencia artificial. Es un caso de éxito real: ese contenido se ha convertido en muchísimas ventas y ganancias. Y ella es solo un ejemplo de lo que hacemos por ti.',
     creatorCta: 'Ver su Instagram',
-    creatorPoint1: 'El momento indicado',
-    creatorPoint2: 'La forma indicada',
-    creatorPoint3: 'La persona correcta',
+    creatorLocation: 'Miami, FL',
+    creatorPoint1: 'Redes sociales',
+    creatorPoint2: 'Venta',
+    creatorPoint3: 'Engagement',
     creatorFeed: 'Su feed',
     ctaTitle: '¿Te imaginas tener todo esto listo, sin producirlo tú?',
     ctaSub: 'Eso es exactamente lo que hacemos. Tú vendes; nosotros creamos el producto.',
@@ -54,8 +55,8 @@ const T = {
   },
   en: {
     kicker: 'The library',
-    titleA: 'Strategic, engaging content to maximize your',
-    titleB: 'sales on OnlyFans',
+    titleA: 'Strategic, engaging content at the right moment for',
+    titleB: 'OnlyFans',
     sub: 'These are just a few of the infinite strategies we create for you — story, hook and sale, ready right when you need them in the chat.',
     statsStrategies: 'strategies',
     statsScenes: 'ready scenes',
@@ -67,11 +68,12 @@ const T = {
     noResults: 'Nothing matched that search.',
     creatorKicker: 'The creator',
     creatorTag: 'Creator',
-    creatorBio: 'Julia is an in-demand creator: huge engagement and exclusive content that sells out fast. The secret? We produce all of her content for her — the right message, at the right moment, for the right person. And she’s just one example of what we do for you.',
+    creatorBio: 'Julia lives in Miami and is one of our star models. Over time we’ve created a huge amount of content for her — for social, sales and engagement — all produced with AI. She’s a real success story: that content has turned into serious sales and earnings. And she’s just one example of what we do for you.',
     creatorCta: 'View her Instagram',
-    creatorPoint1: 'The right moment',
-    creatorPoint2: 'The right way',
-    creatorPoint3: 'The right person',
+    creatorLocation: 'Miami, FL',
+    creatorPoint1: 'Social media',
+    creatorPoint2: 'Sales',
+    creatorPoint3: 'Engagement',
     creatorFeed: 'Her feed',
     ctaTitle: 'Imagine having all of this ready — without producing it yourself.',
     ctaSub: 'That is exactly what we do. You sell; we create the product.',
@@ -238,19 +240,6 @@ export default function BibliotecaPage() {
             <span className="text-rainbow">{t.titleB}</span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-paper-mute [text-wrap:balance]">{t.sub}</p>
-
-          <div className="mx-auto mt-9 flex max-w-lg items-stretch justify-center divide-x divide-line overflow-hidden rounded-2xl border border-line bg-card/60 backdrop-blur">
-            {[
-              { n: `${libs.length}+`, l: t.statsStrategies },
-              { n: `${totalScenes}+`, l: t.statsScenes },
-              { n: '∞', l: t.statsPossibilities },
-            ].map((s) => (
-              <div key={s.l} className="flex flex-1 flex-col items-center justify-center px-4 py-4 sm:px-7">
-                <div className="font-display text-3xl font-bold leading-none text-brand">{s.n}</div>
-                <div className="mt-1.5 font-mono text-[10px] uppercase tracking-wider text-paper-dim">{s.l}</div>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* ── Meet the creator — real Instagram showcase ── */}
@@ -276,14 +265,19 @@ export default function BibliotecaPage() {
                     <Sparkles size={11} /> {t.creatorTag}
                   </span>
                 </div>
-                <a
-                  href={IG_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-0.5 inline-flex items-center gap-1.5 text-sm font-medium text-paper-mute transition-colors hover:text-brand"
-                >
-                  <Instagram size={15} /> @its.juliaparker
-                </a>
+                <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm font-medium text-paper-mute sm:justify-start">
+                  <a
+                    href={IG_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-brand"
+                  >
+                    <Instagram size={15} /> @its.juliaparker
+                  </a>
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin size={14} className="text-brand" /> {t.creatorLocation}
+                  </span>
+                </div>
 
                 <p className="mx-auto mt-3 max-w-xl text-[13.5px] leading-relaxed text-paper-mute sm:mx-0">{t.creatorBio}</p>
 
