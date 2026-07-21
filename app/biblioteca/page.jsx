@@ -28,7 +28,7 @@ const iconFor = (name) => ICONS[name] || Sparkles;
 
 const T = {
   es: {
-    kicker: 'Caso de éxito',
+    kicker: 'Casos de éxito',
     titleA: 'Contenido estratégico y de enganche para',
     titleB: 'OnlyFans',
     titleC: '',
@@ -54,14 +54,14 @@ const T = {
     creatorPoint2: 'Venta',
     creatorPoint3: 'Engagement',
     creatorFeed: 'Su feed',
-    creatorMore: 'Ver su historia y su feed',
+    creatorMore: 'Ver el caso de éxito',
     creatorLess: 'Ver menos',
     ctaTitle: '¿Te imaginas tener todo esto listo, sin producirlo tú?',
     ctaSub: 'Eso es exactamente lo que hacemos. Tú vendes; nosotros creamos el producto.',
     ctaBtn: 'Ver paquetes',
   },
   en: {
-    kicker: 'Success story',
+    kicker: 'Success stories',
     titleA: 'Strategic, engaging content for',
     titleB: 'OnlyFans',
     titleC: '',
@@ -87,7 +87,7 @@ const T = {
     creatorPoint2: 'Sales',
     creatorPoint3: 'Engagement',
     creatorFeed: 'Her feed',
-    creatorMore: 'See her story and feed',
+    creatorMore: 'See the case study',
     creatorLess: 'Show less',
     ctaTitle: 'Imagine having all of this ready — without producing it yourself.',
     ctaSub: 'That is exactly what we do. You sell; we create the product.',
@@ -264,97 +264,91 @@ export default function BibliotecaPage() {
         </div>
 
         {/* ── Meet the creator — real Instagram showcase ── */}
-        <section id="creator" className="mx-auto mt-10 max-w-5xl">
-          <div className="overflow-hidden rounded-[2rem] border border-line bg-gradient-to-b from-card to-ink-2/40 shadow-glow-sm">
-            {/* Profile header */}
-            <div className="flex flex-col items-center gap-5 p-5 text-center sm:flex-row sm:items-start sm:gap-7 sm:p-6 sm:text-left">
-              <div className="shrink-0 rounded-full bg-gradient-to-tr from-brand via-sky-400 to-fuchsia-500 p-[3px]">
+        <section id="creator" className="mx-auto mt-8 max-w-5xl">
+          <div className="overflow-hidden rounded-3xl border border-line bg-gradient-to-b from-card to-ink-2/40 shadow-glow-sm">
+            {/* Compact clickable header — the whole case study collapses to this bar */}
+            <button
+              onClick={() => setCreatorOpen((v) => !v)}
+              aria-expanded={creatorOpen}
+              className="flex w-full items-center gap-4 p-4 text-left transition-colors hover:bg-hair/5 sm:px-5"
+            >
+              <span className="shrink-0 rounded-full bg-gradient-to-tr from-brand via-sky-400 to-fuchsia-500 p-[2px]">
                 <Image
                   src={CREATOR_AVATAR}
                   alt="Julia Parker"
-                  width={104}
-                  height={104}
-                  sizes="104px"
-                  className="h-20 w-20 rounded-full object-cover object-top ring-4 ring-ink sm:h-24 sm:w-24"
+                  width={56}
+                  height={56}
+                  sizes="56px"
+                  className="h-14 w-14 rounded-full object-cover object-top ring-2 ring-ink"
                 />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center justify-center gap-2.5 sm:justify-start">
-                  <h2 className="font-display text-2xl font-bold text-paper">Julia Parker</h2>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-brand">
-                    <Sparkles size={11} /> {t.creatorTag}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-display text-lg font-bold text-paper">Julia Parker</span>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-brand">
+                    <Sparkles size={10} /> {t.creatorTag}
                   </span>
-                </div>
-                <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm font-medium text-paper-mute sm:justify-start">
+                </span>
+                <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12.5px] text-paper-mute">
+                  <span className="inline-flex items-center gap-1"><Instagram size={13} /> @its.juliaparker</span>
+                  <span className="inline-flex items-center gap-1"><MapPin size={12} className="text-brand" /> {t.creatorLocation}</span>
+                </span>
+              </span>
+              <span className="hidden shrink-0 text-sm font-medium text-paper-mute sm:inline">
+                {creatorOpen ? t.creatorLess : t.creatorMore}
+              </span>
+              <ChevronDown size={20} className={`shrink-0 text-paper-dim transition-transform duration-300 ${creatorOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Expandable body — story + pills + IG + full feed */}
+            {creatorOpen && (
+              <div className="border-t border-line">
+                <div className="px-5 pb-5 pt-4 sm:px-6">
+                  <div className="max-w-2xl space-y-2.5">
+                    {t.creatorBio.map((para, i) => (
+                      <p key={i} className="text-[13.5px] leading-relaxed text-paper-mute">{para}</p>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {[t.creatorPoint1, t.creatorPoint2, t.creatorPoint3].map((p) => (
+                      <span key={p} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-hair/5 px-3 py-1.5 text-[12px] font-medium text-paper-mute">
+                        <Check size={13} className="text-brand" /> {p}
+                      </span>
+                    ))}
+                  </div>
+
                   <a
                     href={IG_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 transition-colors hover:text-brand"
+                    className="mt-5 inline-flex items-center gap-2 rounded-full border border-brand/50 bg-brand/12 px-5 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20"
                   >
-                    <Instagram size={15} /> @its.juliaparker
+                    <Instagram size={16} /> {t.creatorCta}
+                    <ArrowRight size={15} />
                   </a>
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin size={14} className="text-brand" /> {t.creatorLocation}
-                  </span>
                 </div>
 
-                <div className="mx-auto mt-3 max-w-2xl space-y-2.5 sm:mx-0">
-                  {(creatorOpen ? t.creatorBio : t.creatorBio.slice(0, 1)).map((para, i) => (
-                    <p key={i} className="text-[13.5px] leading-relaxed text-paper-mute">{para}</p>
+                <div className="grid grid-cols-3 gap-1 border-t border-line p-1 sm:grid-cols-6 sm:gap-1.5 sm:p-1.5">
+                  {CREATOR_FEED.map((src) => (
+                    <button
+                      key={src}
+                      onClick={() => setShot({ src, title: 'Julia Parker', lib: '@its.juliaparker' })}
+                      className="group/feed relative aspect-square touch-manipulation overflow-hidden rounded-md bg-ink-2/60 transition active:opacity-80"
+                    >
+                      <Image
+                        src={src}
+                        alt=""
+                        fill
+                        sizes="(min-width: 640px) 16vw, 33vw"
+                        className="object-cover object-top transition-transform duration-500 group-hover/feed:scale-110"
+                      />
+                      <span className="absolute inset-0 bg-brand/0 transition-colors duration-300 group-hover/feed:bg-brand/10" />
+                    </button>
                   ))}
                 </div>
-
-                <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
-                  {[t.creatorPoint1, t.creatorPoint2, t.creatorPoint3].map((p) => (
-                    <span key={p} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-hair/5 px-3 py-1.5 text-[12px] font-medium text-paper-mute">
-                      <Check size={13} className="text-brand" /> {p}
-                    </span>
-                  ))}
-                </div>
-
-                <a
-                  href={IG_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-5 inline-flex items-center gap-2 rounded-full border border-brand/50 bg-brand/12 px-5 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20"
-                >
-                  <Instagram size={16} /> {t.creatorCta}
-                  <ArrowRight size={15} />
-                </a>
               </div>
-            </div>
-
-            {/* Feed grid — Instagram-style (6 collapsed, all when open) */}
-            <div className="grid grid-cols-3 gap-1 border-t border-line p-1 sm:grid-cols-6 sm:gap-1.5 sm:p-1.5">
-              {(creatorOpen ? CREATOR_FEED : CREATOR_FEED.slice(0, 6)).map((src) => (
-                <button
-                  key={src}
-                  onClick={() => setShot({ src, title: 'Julia Parker', lib: '@its.juliaparker' })}
-                  className="group/feed relative aspect-square touch-manipulation overflow-hidden rounded-md bg-ink-2/60 transition active:opacity-80"
-                >
-                  <Image
-                    src={src}
-                    alt=""
-                    fill
-                    sizes="(min-width: 640px) 16vw, 33vw"
-                    className="object-cover object-top transition-transform duration-500 group-hover/feed:scale-110"
-                  />
-                  <span className="absolute inset-0 bg-brand/0 transition-colors duration-300 group-hover/feed:bg-brand/10" />
-                </button>
-              ))}
-            </div>
-
-            {/* Expand / collapse the whole story + feed */}
-            <button
-              onClick={() => setCreatorOpen((v) => !v)}
-              aria-expanded={creatorOpen}
-              className="flex w-full items-center justify-center gap-2 border-t border-line py-3 text-sm font-medium text-paper-mute transition-colors hover:text-brand"
-            >
-              {creatorOpen ? t.creatorLess : t.creatorMore}
-              <ChevronDown size={16} className={`transition-transform duration-300 ${creatorOpen ? 'rotate-180' : ''}`} />
-            </button>
+            )}
           </div>
         </section>
 
