@@ -233,7 +233,7 @@ export default function BibliotecaPage() {
 
       <main className="relative mx-auto max-w-6xl px-5 py-14">
         {/* Hero */}
-        <div className="mx-auto max-w-3xl text-center">
+        <div className="mx-auto max-w-4xl text-center">
           <span className="inline-flex items-center gap-2 rounded-full border border-line bg-hair/5 px-3.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">
             <Sparkles size={14} /> {t.kicker}
           </span>
