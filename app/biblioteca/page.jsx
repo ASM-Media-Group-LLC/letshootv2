@@ -54,6 +54,7 @@ const T = {
     creatorPoint2: 'Venta',
     creatorPoint3: 'Engagement',
     creatorFeed: 'Su feed',
+    creatorEyebrow: 'Caso de éxito',
     creatorMore: 'Ver el caso de éxito',
     creatorLess: 'Ver menos',
     ctaTitle: '¿Te imaginas tener todo esto listo, sin producirlo tú?',
@@ -87,6 +88,7 @@ const T = {
     creatorPoint2: 'Sales',
     creatorPoint3: 'Engagement',
     creatorFeed: 'Her feed',
+    creatorEyebrow: 'Success story',
     creatorMore: 'See the case study',
     creatorLess: 'Show less',
     ctaTitle: 'Imagine having all of this ready — without producing it yourself.',
@@ -248,10 +250,7 @@ export default function BibliotecaPage() {
       <main className="relative mx-auto max-w-6xl px-5 py-14">
         {/* Hero */}
         <div className="mx-auto max-w-4xl text-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-hair/5 px-3.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-brand">
-            <Sparkles size={14} /> {t.kicker}
-          </span>
-          <h1 className="headline mt-5 text-balance text-[clamp(2rem,5vw,3.6rem)] leading-[1.08]">
+          <h1 className="headline text-balance text-[clamp(2rem,5vw,3.6rem)] leading-[1.08]">
             {t.titleA}{' '}
             <img
               src="/onlyfans-logo.png"
@@ -266,26 +265,30 @@ export default function BibliotecaPage() {
 
         {/* ── Meet the creator — real Instagram showcase ── */}
         <section id="creator" className="mx-auto mt-8 max-w-5xl">
-          <div className="overflow-hidden rounded-3xl border border-line bg-gradient-to-b from-card to-ink-2/40 shadow-glow-sm">
+          <div className="overflow-hidden rounded-3xl border border-brand/25 bg-gradient-to-br from-brand/[0.10] via-card to-ink-2/40 shadow-glow">
             {/* Compact clickable header — the whole case study collapses to this bar */}
             <button
               onClick={() => setCreatorOpen((v) => !v)}
               aria-expanded={creatorOpen}
-              className="flex w-full items-center gap-4 p-4 text-left transition-colors hover:bg-hair/5 sm:px-5"
+              className="group/creator flex w-full items-center gap-4 p-4 text-left transition-colors hover:bg-brand/[0.05] sm:gap-5 sm:p-5"
             >
-              <span className="shrink-0 rounded-full bg-gradient-to-tr from-brand via-sky-400 to-fuchsia-500 p-[2px]">
-                <Image
-                  src={CREATOR_AVATAR}
-                  alt="Julia Parker"
-                  width={56}
-                  height={56}
-                  sizes="56px"
-                  className="h-14 w-14 rounded-full object-cover object-top ring-2 ring-ink"
-                />
+              <span className="relative shrink-0">
+                <span className="absolute -inset-1.5 rounded-full bg-brand/40 blur-lg" aria-hidden />
+                <span className="relative block rounded-full bg-gradient-to-tr from-brand via-sky-400 to-fuchsia-500 p-[2.5px]">
+                  <Image
+                    src={CREATOR_AVATAR}
+                    alt="Julia Parker"
+                    width={88}
+                    height={88}
+                    sizes="88px"
+                    className="h-16 w-16 rounded-full object-cover object-top ring-2 ring-ink sm:h-20 sm:w-20"
+                  />
+                </span>
               </span>
               <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="font-display text-lg font-bold text-paper">Julia Parker</span>
+                <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-brand">{t.creatorEyebrow}</span>
+                <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-display text-xl font-bold text-paper">Julia Parker</span>
                   <span className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-brand">
                     <Sparkles size={10} /> {t.creatorTag}
                   </span>
@@ -295,10 +298,11 @@ export default function BibliotecaPage() {
                   <span className="inline-flex items-center gap-1"><MapPin size={12} className="text-brand" /> {t.creatorLocation}</span>
                 </span>
               </span>
-              <span className="hidden shrink-0 text-sm font-medium text-paper-mute sm:inline">
+              <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-brand/50 bg-brand/12 px-4 py-2 text-sm font-semibold text-brand transition-colors group-hover/creator:bg-brand/20 sm:inline-flex">
                 {creatorOpen ? t.creatorLess : t.creatorMore}
+                <ChevronDown size={16} className={`transition-transform duration-300 ${creatorOpen ? 'rotate-180' : ''}`} />
               </span>
-              <ChevronDown size={20} className={`shrink-0 text-paper-dim transition-transform duration-300 ${creatorOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown size={22} className={`shrink-0 text-brand transition-transform duration-300 sm:hidden ${creatorOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {/* Expandable body — story + pills + IG + full feed */}
