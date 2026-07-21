@@ -39,7 +39,7 @@ export default function Nav() {
     };
   }, []);
 
-  const biblioteca = { href: '/biblioteca', label: es ? 'Cómo trabajamos' : 'How we work' };
+  const biblioteca = { href: '/success', label: es ? 'Cómo trabajamos' : 'How we work' };
   const links = [
     { href: '#delivery', label: es ? 'Cómo funciona' : 'How it works' },
     { href: '#pricing', label: es ? 'Paquetes' : 'Packages' },
