@@ -28,7 +28,7 @@ const iconFor = (name) => ICONS[name] || Sparkles;
 
 const T = {
   es: {
-    kicker: 'La biblioteca',
+    kicker: 'Caso de éxito',
     titleA: 'Contenido estratégico y de enganche para',
     titleB: 'OnlyFans',
     titleC: '',
@@ -54,12 +54,14 @@ const T = {
     creatorPoint2: 'Venta',
     creatorPoint3: 'Engagement',
     creatorFeed: 'Su feed',
+    creatorMore: 'Ver su historia y su feed',
+    creatorLess: 'Ver menos',
     ctaTitle: '¿Te imaginas tener todo esto listo, sin producirlo tú?',
     ctaSub: 'Eso es exactamente lo que hacemos. Tú vendes; nosotros creamos el producto.',
     ctaBtn: 'Ver paquetes',
   },
   en: {
-    kicker: 'The library',
+    kicker: 'Success story',
     titleA: 'Strategic, engaging content for',
     titleB: 'OnlyFans',
     titleC: '',
@@ -85,6 +87,8 @@ const T = {
     creatorPoint2: 'Sales',
     creatorPoint3: 'Engagement',
     creatorFeed: 'Her feed',
+    creatorMore: 'See her story and feed',
+    creatorLess: 'Show less',
     ctaTitle: 'Imagine having all of this ready — without producing it yourself.',
     ctaSub: 'That is exactly what we do. You sell; we create the product.',
     ctaBtn: 'View packages',
@@ -201,6 +205,7 @@ export default function BibliotecaPage() {
   const [family, setFamily] = useState('all');
   const [q, setQ] = useState('');
   const [shot, setShot] = useState(null);
+  const [creatorOpen, setCreatorOpen] = useState(false);
 
   const totalScenes = libs.reduce((n, l) => n + l.scenes.length, 0);
 
@@ -259,18 +264,18 @@ export default function BibliotecaPage() {
         </div>
 
         {/* ── Meet the creator — real Instagram showcase ── */}
-        <section id="creator" className="mx-auto mt-16 max-w-5xl">
+        <section id="creator" className="mx-auto mt-10 max-w-5xl">
           <div className="overflow-hidden rounded-[2rem] border border-line bg-gradient-to-b from-card to-ink-2/40 shadow-glow-sm">
             {/* Profile header */}
-            <div className="flex flex-col items-center gap-6 border-b border-line p-6 text-center sm:flex-row sm:items-start sm:gap-8 sm:p-8 sm:text-left">
+            <div className="flex flex-col items-center gap-5 p-5 text-center sm:flex-row sm:items-start sm:gap-7 sm:p-6 sm:text-left">
               <div className="shrink-0 rounded-full bg-gradient-to-tr from-brand via-sky-400 to-fuchsia-500 p-[3px]">
                 <Image
                   src={CREATOR_AVATAR}
                   alt="Julia Parker"
-                  width={112}
-                  height={112}
-                  sizes="112px"
-                  className="h-24 w-24 rounded-full object-cover object-top ring-4 ring-ink sm:h-28 sm:w-28"
+                  width={104}
+                  height={104}
+                  sizes="104px"
+                  className="h-20 w-20 rounded-full object-cover object-top ring-4 ring-ink sm:h-24 sm:w-24"
                 />
               </div>
 
@@ -296,7 +301,7 @@ export default function BibliotecaPage() {
                 </div>
 
                 <div className="mx-auto mt-3 max-w-2xl space-y-2.5 sm:mx-0">
-                  {t.creatorBio.map((para, i) => (
+                  {(creatorOpen ? t.creatorBio : t.creatorBio.slice(0, 1)).map((para, i) => (
                     <p key={i} className="text-[13.5px] leading-relaxed text-paper-mute">{para}</p>
                   ))}
                 </div>
@@ -321,13 +326,13 @@ export default function BibliotecaPage() {
               </div>
             </div>
 
-            {/* Feed grid — Instagram-style */}
-            <div className="grid grid-cols-3 gap-1 p-1 sm:grid-cols-6 sm:gap-1.5 sm:p-1.5">
-              {CREATOR_FEED.map((src, i) => (
+            {/* Feed grid — Instagram-style (6 collapsed, all when open) */}
+            <div className="grid grid-cols-3 gap-1 border-t border-line p-1 sm:grid-cols-6 sm:gap-1.5 sm:p-1.5">
+              {(creatorOpen ? CREATOR_FEED : CREATOR_FEED.slice(0, 6)).map((src) => (
                 <button
                   key={src}
                   onClick={() => setShot({ src, title: 'Julia Parker', lib: '@its.juliaparker' })}
-                  className={`group/feed relative aspect-square touch-manipulation overflow-hidden bg-ink-2/60 transition active:opacity-80 ${i === 0 ? 'rounded-tl-[1.4rem]' : ''}`}
+                  className="group/feed relative aspect-square touch-manipulation overflow-hidden rounded-md bg-ink-2/60 transition active:opacity-80"
                 >
                   <Image
                     src={src}
@@ -340,6 +345,16 @@ export default function BibliotecaPage() {
                 </button>
               ))}
             </div>
+
+            {/* Expand / collapse the whole story + feed */}
+            <button
+              onClick={() => setCreatorOpen((v) => !v)}
+              aria-expanded={creatorOpen}
+              className="flex w-full items-center justify-center gap-2 border-t border-line py-3 text-sm font-medium text-paper-mute transition-colors hover:text-brand"
+            >
+              {creatorOpen ? t.creatorLess : t.creatorMore}
+              <ChevronDown size={16} className={`transition-transform duration-300 ${creatorOpen ? 'rotate-180' : ''}`} />
+            </button>
           </div>
         </section>
 
