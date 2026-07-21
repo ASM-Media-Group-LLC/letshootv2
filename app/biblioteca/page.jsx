@@ -419,9 +419,8 @@ export default function BibliotecaPage() {
               if (!items.length) return null;
               return (
                 <section key={g.id}>
-                  <div className="mb-5 flex items-baseline gap-3 border-b border-line pb-3">
+                  <div className="mb-5 border-b border-line pb-3">
                     <h2 className="font-display text-xl font-semibold text-paper">{g.name}</h2>
-                    <span className="font-mono text-xs text-paper-dim">{items.length} {t.statsStrategies}</span>
                   </div>
                   <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {items.map((lib) => <StrategyCard key={lib.name} lib={lib} t={t} onOpen={setShot} />)}
