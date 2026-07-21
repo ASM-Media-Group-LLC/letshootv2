@@ -29,8 +29,9 @@ const iconFor = (name) => ICONS[name] || Sparkles;
 const T = {
   es: {
     kicker: 'La biblioteca',
-    titleA: 'Contenido estratégico y de enganche en el momento indicado para',
+    titleA: 'Contenido estratégico y de enganche para',
     titleB: 'OnlyFans',
+    titleC: ', justo en el momento indicado',
     sub: 'Estas son solo algunas de las infinitas estrategias que creamos para ti — historia, enganche y venta, listas justo cuando las necesitas en el chat.',
     statsStrategies: 'estrategias',
     statsScenes: 'escenas listas',
@@ -42,7 +43,7 @@ const T = {
     noResults: 'No encontramos nada con esa búsqueda.',
     creatorKicker: 'La creadora',
     creatorTag: 'Creadora',
-    creatorBio: 'Julia vive en Miami y es una de nuestras modelos estrella. Con el tiempo le hemos creado muchísimo contenido — para redes, venta y engagement — todo producido con inteligencia artificial. Es un caso de éxito real: ese contenido se ha convertido en muchísimas ventas y ganancias. Y ella es solo un ejemplo de lo que hacemos por ti.',
+    creatorBio: 'Julia vive en Miami — pero no siempre le fue tan fácil. Antes le costaba producir contenido: entender qué quería cada cliente, el tiempo, el maquillaje, la ropa… y la frustración de nunca dar abasto. Desde que trabaja con nosotros es un antes y un después: le producimos todo su contenido con inteligencia artificial, listo justo cuando lo necesita y para quien lo necesita — redes, venta y engagement. El resultado: un caso de éxito real, con muchísimas más ventas y ganancias. Y ella es solo un ejemplo de lo que hacemos por ti.',
     creatorCta: 'Ver su Instagram',
     creatorLocation: 'Miami, FL',
     creatorPoint1: 'Redes sociales',
@@ -55,8 +56,9 @@ const T = {
   },
   en: {
     kicker: 'The library',
-    titleA: 'Strategic, engaging content at the right moment for',
+    titleA: 'Strategic, engaging content for',
     titleB: 'OnlyFans',
+    titleC: ', right at the perfect moment',
     sub: 'These are just a few of the infinite strategies we create for you — story, hook and sale, ready right when you need them in the chat.',
     statsStrategies: 'strategies',
     statsScenes: 'ready scenes',
@@ -68,7 +70,7 @@ const T = {
     noResults: 'Nothing matched that search.',
     creatorKicker: 'The creator',
     creatorTag: 'Creator',
-    creatorBio: 'Julia lives in Miami and is one of our star models. Over time we’ve created a huge amount of content for her — for social, sales and engagement — all produced with AI. She’s a real success story: that content has turned into serious sales and earnings. And she’s just one example of what we do for you.',
+    creatorBio: 'Julia lives in Miami — but it wasn’t always this easy. She used to struggle to produce content: figuring out what each subscriber wanted, the time, the makeup, the wardrobe… and the frustration of never keeping up. Since working with us it’s been night and day: we produce all her content with AI, ready right when she needs it and for whoever she needs it — social, sales and engagement. The result: a real success story, with far more sales and earnings. And she’s just one example of what we do for you.',
     creatorCta: 'View her Instagram',
     creatorLocation: 'Miami, FL',
     creatorPoint1: 'Social media',
@@ -243,6 +245,7 @@ export default function BibliotecaPage() {
               className="inline-block h-[0.72em] w-auto translate-y-[0.06em] drop-shadow-[0_2px_20px_rgba(0,175,240,0.4)]"
               draggable={false}
             />
+            {t.titleC}
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-paper-mute [text-wrap:balance]">{t.sub}</p>
         </div>
