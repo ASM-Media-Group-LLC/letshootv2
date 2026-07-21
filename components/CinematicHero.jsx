@@ -91,11 +91,22 @@ export default function CinematicHero() {
                 })()}
               </motion.h1>
 
+              {t.hero.sub && (
+                <motion.p
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, ease, delay: 0.5 }}
+                  className="mt-5 max-w-[34rem] text-balance text-lg leading-relaxed text-white/85 drop-shadow-[0_2px_20px_rgba(0,0,0,0.6)] sm:text-xl"
+                >
+                  {t.hero.sub}
+                </motion.p>
+              )}
+
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.75, ease, delay: 0.6 }}
-                className="mt-9 flex flex-wrap items-center gap-3.5"
+                transition={{ duration: 0.75, ease, delay: 0.62 }}
+                className="mt-8 flex flex-wrap items-center gap-3.5"
               >
                 <a
                   href="#por-que"
