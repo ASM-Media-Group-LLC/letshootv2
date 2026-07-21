@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
-  ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X, Instagram, Check, MapPin,
+  ArrowLeft, ArrowRight, Sparkles, ChevronDown, Search, X, Instagram, Check, MapPin, SlidersHorizontal,
   Dumbbell, UtensilsCrossed, ShoppingBag, Brush, Car, Home, Briefcase, PawPrint, CloudRain, CalendarDays,
   Heart, Smile, Moon, PartyPopper, Quote, BedDouble, HeartHandshake, Clapperboard, Gift,
   Drama, Shirt, Ghost, Film, Gamepad2, GraduationCap, Route, Dices, Target, Music,
@@ -206,6 +206,7 @@ export default function BibliotecaPage() {
   const [q, setQ] = useState('');
   const [shot, setShot] = useState(null);
   const [creatorOpen, setCreatorOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const totalScenes = libs.reduce((n, l) => n + l.scenes.length, 0);
 
@@ -354,8 +355,8 @@ export default function BibliotecaPage() {
 
         {/* Sticky controls */}
         <div className="sticky top-[61px] z-20 -mx-5 mt-6 border-y border-line bg-ink/80 px-5 py-3.5 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-6xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="relative w-full shrink-0 lg:w-72">
+          <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative w-full min-w-0 flex-1">
               <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-paper-dim" />
               <input
                 value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.searchPh}
@@ -367,17 +368,35 @@ export default function BibliotecaPage() {
                 </button>
               )}
             </div>
-            <div className="-mx-5 flex flex-nowrap gap-2 overflow-x-auto px-5 pb-0.5 lg:mx-0 lg:flex-wrap lg:justify-end lg:overflow-visible lg:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {[{ id: 'all', name: t.all }, ...groups].map((g) => (
-                <button key={g.id} onClick={() => setFamily(g.id)}
-                  className={`shrink-0 touch-manipulation rounded-full border px-4 py-2 text-[13px] font-semibold transition active:scale-95 ${
-                    family === g.id
-                      ? 'border-transparent bg-brand text-on-accent shadow-glow-sm'
-                      : 'border-line bg-card/60 text-paper-mute hover:border-brand/40 hover:text-paper'
-                  }`}>
-                  {g.name}
-                </button>
-              ))}
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setFilterOpen((v) => !v)}
+                aria-expanded={filterOpen}
+                className="flex w-full items-center gap-2 rounded-full border border-line bg-card/60 px-4 py-2.5 text-sm font-semibold text-paper transition-colors hover:border-brand/40 lg:w-auto"
+              >
+                <SlidersHorizontal size={15} className="shrink-0 text-brand" />
+                <span className="flex-1 truncate text-left">{family === 'all' ? t.all : (groups.find((g) => g.id === family)?.name || t.all)}</span>
+                <ChevronDown size={16} className={`shrink-0 text-paper-dim transition-transform duration-200 ${filterOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {filterOpen && (
+                <>
+                  <button aria-hidden tabIndex={-1} onClick={() => setFilterOpen(false)} className="fixed inset-0 z-30 cursor-default" />
+                  <div className="absolute right-0 z-40 mt-2 max-h-[70vh] w-60 overflow-auto rounded-2xl border border-line bg-ink-2 p-1.5 shadow-glow-sm">
+                    {[{ id: 'all', name: t.all }, ...groups].map((g) => (
+                      <button
+                        key={g.id}
+                        onClick={() => { setFamily(g.id); setFilterOpen(false); }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
+                          family === g.id ? 'bg-brand/15 font-semibold text-brand' : 'text-paper-mute hover:bg-hair/5 hover:text-paper'
+                        }`}
+                      >
+                        {g.name}
+                        {family === g.id && <Check size={15} className="shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
