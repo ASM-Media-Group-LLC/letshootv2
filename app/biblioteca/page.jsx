@@ -237,7 +237,12 @@ export default function BibliotecaPage() {
           </span>
           <h1 className="headline mt-5 text-balance text-[clamp(2rem,5vw,3.6rem)] leading-[1.08]">
             {t.titleA}{' '}
-            <span className="text-rainbow">{t.titleB}</span>
+            <img
+              src="/onlyfans-logo.png"
+              alt="OnlyFans"
+              className="inline-block h-[0.72em] w-auto translate-y-[0.06em] drop-shadow-[0_2px_20px_rgba(0,175,240,0.4)]"
+              draggable={false}
+            />
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-paper-mute [text-wrap:balance]">{t.sub}</p>
         </div>
