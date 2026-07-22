@@ -308,30 +308,47 @@ export default function BibliotecaPage() {
             {/* Expandable body — story + pills + IG + full feed */}
             {creatorOpen && (
               <div className="border-t border-line">
-                <div className="px-5 pb-5 pt-4 sm:px-6">
-                  <div className="max-w-2xl space-y-2.5">
-                    {t.creatorBio.map((para, i) => (
-                      <p key={i} className="text-[13.5px] leading-relaxed text-paper-mute">{para}</p>
-                    ))}
+                <div className="px-5 pb-7 pt-6 text-center sm:px-8">
+                  <Sparkles size={18} className="mx-auto mb-3 text-brand/70" aria-hidden />
+                  <div className="mx-auto max-w-2xl space-y-3.5">
+                    {t.creatorBio.map((para, i) => {
+                      const last = i === t.creatorBio.length - 1;
+                      return (
+                        <p
+                          key={i}
+                          className={`leading-relaxed [text-wrap:balance] ${
+                            i === 0
+                              ? 'text-[15px] text-paper'
+                              : last
+                                ? 'text-[14.5px] font-medium text-paper'
+                                : 'text-[14px] text-paper-mute'
+                          }`}
+                        >
+                          {para}
+                        </p>
+                      );
+                    })}
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-6 flex flex-wrap justify-center gap-2">
                     {[t.creatorPoint1, t.creatorPoint2, t.creatorPoint3].map((p) => (
-                      <span key={p} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-hair/5 px-3 py-1.5 text-[12px] font-medium text-paper-mute">
+                      <span key={p} className="inline-flex items-center gap-1.5 rounded-full border border-brand/25 bg-brand/[0.07] px-3.5 py-1.5 text-[12.5px] font-medium text-paper">
                         <Check size={13} className="text-brand" /> {p}
                       </span>
                     ))}
                   </div>
 
-                  <a
-                    href={IG_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-5 inline-flex items-center gap-2 rounded-full border border-brand/50 bg-brand/12 px-5 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20"
-                  >
-                    <Instagram size={16} /> {t.creatorCta}
-                    <ArrowRight size={15} />
-                  </a>
+                  <div className="mt-6 flex justify-center">
+                    <a
+                      href={IG_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full border border-brand/50 bg-brand/12 px-6 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20"
+                    >
+                      <Instagram size={16} /> {t.creatorCta}
+                      <ArrowRight size={15} />
+                    </a>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-1 border-t border-line p-1 sm:grid-cols-6 sm:gap-1.5 sm:p-1.5">
