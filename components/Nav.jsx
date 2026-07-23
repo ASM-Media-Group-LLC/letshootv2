@@ -39,10 +39,10 @@ export default function Nav() {
     };
   }, []);
 
-  const biblioteca = { href: '/success', label: es ? 'Cómo trabajamos' : 'How we work' };
+  const biblioteca = { href: '/success', label: t.nav.howWeWork };
   const links = [
-    { href: '#delivery', label: es ? 'Cómo funciona' : 'How it works' },
-    { href: '#pricing', label: es ? 'Paquetes' : 'Packages' },
+    { href: '#delivery', label: t.nav.delivery },
+    { href: '#pricing', label: t.nav.packages },
     { href: '#results', label: t.nav.results },
   ];
 
