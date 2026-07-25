@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, Link2, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock } from 'lucide-react';
+import { LogOut, Users, Link2, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
@@ -15,16 +15,37 @@ const ROLES = [
 ];
 const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.v, r.l]));
 
+// Creator onboarding status → human label + tone
+const OB = {
+  registered:  { label: 'Solo registrada',       tone: 'zinc' },
+  info:        { label: 'Datos listos · falta ID', tone: 'zinc' },
+  id_pending:  { label: 'Por revisar',            tone: 'amber' },
+  id_rejected: { label: 'ID rechazado',           tone: 'rose' },
+  id_approved: { label: 'Aprobada · falta pago',  tone: 'sky' },
+  paid:        { label: 'Pagó · falta LoRA',      tone: 'sky' },
+  active:      { label: 'Activa',                 tone: 'brand' },
+};
+const TONE = {
+  zinc:  'border-line bg-hair/5 text-paper-mute',
+  amber: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+  rose:  'border-rose-500/40 bg-rose-500/10 text-rose-300',
+  sky:   'border-sky-500/40 bg-sky-500/10 text-sky-300',
+  brand: 'border-brand/40 bg-brand/10 text-brand',
+};
+
 export default function AdminPage() {
   const router = useRouter();
   const [me, setMe] = useState(undefined);
-  const [tab, setTab] = useState('usuarios');
+  const [tab, setTab] = useState('registros');
   const [profiles, setProfiles] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [kyc, setKyc] = useState([]); // pending verifications w/ signed doc urls
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
+  const [nu, setNu] = useState({ full_name: '', email: '', password: '', role: 'admin' });
+  const [creating, setCreating] = useState(false);
+  const [nuError, setNuError] = useState('');
 
   const loadKyc = useCallback(async () => {
     const supabase = getSupabase();
@@ -77,6 +98,26 @@ export default function AdminPage() {
     if (error) { flash('Error: ' + error.message); return; }
     setProfiles((p) => p.map((u) => (u.id === id ? { ...u, role } : u)));
     flash('Rol actualizado');
+  }
+
+  async function createUser(e) {
+    e.preventDefault();
+    setNuError('');
+    if (!nu.email || !nu.password || !nu.role) { setNuError('Completa correo, contraseña y rol.'); return; }
+    if (nu.password.length < 8) { setNuError('La contraseña debe tener al menos 8 caracteres.'); return; }
+    setCreating(true);
+    const { data: { session } } = await getSupabase().auth.getSession();
+    const res = await fetch('/api/admin/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+      body: JSON.stringify(nu),
+    });
+    const out = await res.json().catch(() => ({}));
+    setCreating(false);
+    if (!res.ok) { setNuError(out.error || 'No se pudo crear el usuario.'); return; }
+    setNu({ full_name: '', email: '', password: '', role: 'admin' });
+    flash('Usuario creado');
+    load();
   }
 
   async function reviewKyc(userId, approve) {
@@ -149,10 +190,11 @@ export default function AdminPage() {
           </button>
         </div>
 
-        <div className="mt-8 flex gap-2 border-b border-line">
+        <div className="mt-8 flex flex-wrap gap-2 border-b border-line">
           {[
+            { id: 'registros', label: 'Registros', icon: ClipboardList },
             { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
-            { id: 'usuarios', label: 'Usuarios & roles', icon: Users },
+            { id: 'equipo', label: 'Equipo & roles', icon: Users },
             { id: 'asignaciones', label: 'Asignaciones', icon: Link2 },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
@@ -166,6 +208,53 @@ export default function AdminPage() {
 
         {loading ? (
           <p className="mt-8 text-paper-dim">Cargando datos…</p>
+        ) : tab === 'registros' ? (
+          <div className="mt-6">
+            {(() => {
+              const cr = profiles.filter((p) => p.role === 'creator');
+              const n = (s) => cr.filter((p) => (p.onboarding_status || 'registered') === s).length;
+              const stats = [
+                { label: 'Registradas', value: cr.length, tone: 'zinc' },
+                { label: 'Por revisar', value: n('id_pending'), tone: 'amber' },
+                { label: 'En proceso', value: cr.filter((p) => ['info','id_rejected','id_approved','paid'].includes(p.onboarding_status)).length, tone: 'sky' },
+                { label: 'Activas', value: n('active'), tone: 'brand' },
+              ];
+              return (
+                <>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {stats.map((s) => (
+                      <div key={s.label} className={`rounded-2xl border p-4 ${TONE[s.tone]}`}>
+                        <div className="font-display text-3xl font-bold">{s.value}</div>
+                        <div className="text-xs opacity-80">{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 overflow-hidden rounded-2xl border border-line">
+                    <div className="grid grid-cols-[1.3fr_1.2fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                      <span>Creadora</span><span>Correo</span><span>Estado</span><span></span>
+                    </div>
+                    {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
+                    {cr.map((u) => {
+                      const st = OB[u.onboarding_status] || OB.registered;
+                      return (
+                        <div key={u.id} className="grid grid-cols-[1.3fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-0">
+                          <span className="truncate font-medium text-paper">{u.full_name || '—'}</span>
+                          <span className="truncate text-paper-mute">{u.email}</span>
+                          <span><span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span></span>
+                          <span className="text-right">
+                            {u.onboarding_status === 'id_pending' && (
+                              <button onClick={() => setTab('verificaciones')} className="rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold text-brand hover:bg-brand/25">Revisar →</button>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         ) : tab === 'verificaciones' ? (
           <div className="mt-6 space-y-4">
             {kyc.length === 0 && (
@@ -215,11 +304,38 @@ export default function AdminPage() {
               </div>
             ))}
           </div>
-        ) : tab === 'usuarios' ? (
-          <div className="mt-6 overflow-hidden rounded-2xl border border-line">
-            <div className="grid grid-cols-[1.4fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-              <span>Usuario</span><span>Correo</span><span>Rol</span>
-            </div>
+        ) : tab === 'equipo' ? (
+          <div className="mt-6 space-y-6">
+            <form onSubmit={createUser} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
+              <div className="mb-3 flex items-center gap-2 font-display font-semibold text-paper">
+                <UserPlus size={18} className="text-brand" /> Crear usuario
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <input value={nu.full_name} onChange={(e) => setNu((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre"
+                  className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
+                  className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                <input type="text" value={nu.password} onChange={(e) => setNu((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
+                  className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                <div className="flex gap-2">
+                  <select value={nu.role} onChange={(e) => setNu((v) => ({ ...v, role: e.target.value }))}
+                    className="flex-1 rounded-xl border border-line bg-ink-2 px-2.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
+                    {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
+                  </select>
+                  <button type="submit" disabled={creating}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+                    {creating ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear
+                  </button>
+                </div>
+              </div>
+              {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
+              <p className="mt-3 text-xs text-paper-dim">La cuenta queda lista para entrar (correo confirmado). El equipo (admin/chatter/productor) omite el registro de creadora.</p>
+            </form>
+
+            <div className="overflow-hidden rounded-2xl border border-line">
+              <div className="grid grid-cols-[1.4fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                <span>Usuario</span><span>Correo</span><span>Rol</span>
+              </div>
             {profiles.map((u) => (
               <div key={u.id} className="grid grid-cols-[1.4fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-0">
                 <span className="truncate font-medium text-paper">{u.full_name || '—'}</span>
@@ -233,6 +349,7 @@ export default function AdminPage() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         ) : (
           <div className="mt-6 space-y-4">
