@@ -6,6 +6,7 @@ import { LogOut, Image as ImageIcon, Film, Download, Folder } from 'lucide-react
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
+import LoraUploader from '@/components/LoraUploader';
 
 // storage_path may be a /public path, a full URL, or a storage object path.
 function srcFor(path) {
@@ -117,6 +118,13 @@ export default function PanelPage() {
                 })}
               </div>
             </section>
+          </div>
+        )}
+
+        {/* Clone photos — creators can keep adding at any time */}
+        {state.profile?.id && (
+          <div className="mt-10 max-w-xl">
+            <LoraUploader userId={state.profile.id} compact />
           </div>
         )}
       </main>

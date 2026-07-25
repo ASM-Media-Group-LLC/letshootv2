@@ -1,34 +1,36 @@
 'use client';
 
+// Creator onboarding wizard — FINAL flow (owner's rules):
+//   1) Datos  2) Identidad (ID) + CONSENTIMIENTO  3) Aprobación admin  4) Cobro
+// The charge happens ONLY after consent is signed AND the admin approved —
+// so nothing ever needs refunding. LoRA clone photos are OPTIONAL and can be
+// uploaded at any point (before or after) via the LoraUploader card below.
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  LogOut, Check, ShieldCheck, IdCard, CreditCard, Sparkles, Clock,
-  Upload, User, AlertTriangle, ArrowRight, Loader2, X,
+  LogOut, Check, ShieldCheck, IdCard, CreditCard, Clock,
+  Upload, User, AlertTriangle, ArrowRight, Loader2,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
+import LoraUploader from '@/components/LoraUploader';
 
-// Onboarding status → wizard step index
 const STEPS = [
-  { key: 'info',     label: 'Datos',     icon: User },
-  { key: 'id',       label: 'Identidad', icon: IdCard },
-  { key: 'review',   label: 'Revisión',  icon: Clock },
-  { key: 'pay',      label: 'Pago',      icon: CreditCard },
-  { key: 'lora',     label: 'Tu clon',   icon: Sparkles },
+  { key: 'info',    label: 'Datos',      icon: User },
+  { key: 'id',      label: 'Identidad',  icon: IdCard },
+  { key: 'review',  label: 'Aprobación', icon: Clock },
+  { key: 'pay',     label: 'Pago',       icon: CreditCard },
 ];
 
 function stepFromStatus(s) {
   if (s === 'registered') return 0;
   if (s === 'info' || s === 'id_rejected') return 1;
   if (s === 'id_pending') return 2;
-  if (s === 'id_approved') return 3;
-  if (s === 'paid') return 4;
-  return 5; // active → done
+  if (s === 'id_approved' || s === 'authorized') return 3;
+  return 4; // active (or legacy paid) → done
 }
-
-const LORA_TARGET = 80; // Higgsfield clone set target
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -65,13 +67,15 @@ export default function OnboardingPage() {
 
       <main className="mx-auto max-w-2xl px-5 py-8">
         <Stepper step={step} />
-        <div className="mt-8">
+        <div className="mt-8 space-y-5">
           {step === 0 && <InfoStep me={me} onDone={refresh} />}
-          {step === 1 && <IdStep me={me} onDone={refresh} rejected={status === 'id_rejected'} reason={me.profile?.id_rejection_reason} />}
+          {step === 1 && <IdentityStep me={me} onDone={refresh} rejected={status === 'id_rejected'} reason={me.profile?.id_rejection_reason} />}
           {step === 2 && <ReviewStep />}
           {step === 3 && <PayStep me={me} onDone={refresh} />}
-          {step === 4 && <LoraStep me={me} onDone={refresh} />}
-          {step === 5 && <DoneStep router={router} />}
+          {step === 4 && <DoneStep router={router} />}
+
+          {/* LoRA clone photos — optional, never blocks the flow */}
+          {step >= 1 && <LoraUploader userId={me.user.id} />}
         </div>
       </main>
     </div>
@@ -187,21 +191,29 @@ function Field({ label, type = 'text', value, onChange, placeholder, required })
   );
 }
 
-// ── Step 1: KYC — ID front / back / selfie holding ID ──────────────────────
+// ── Step 1: identity (ID docs) + CONSENT ───────────────────────────────────
 const KYC_SLOTS = [
   { type: 'id_front', label: 'ID — frente', hint: 'Documento oficial por delante, legible.' },
   { type: 'id_back',  label: 'ID — reverso', hint: 'La parte de atrás del documento.' },
   { type: 'selfie_id', label: 'Selfie con tu ID', hint: 'Tu cara junto al documento, ambos visibles.' },
 ];
 
-function IdStep({ me, onDone, rejected, reason }) {
+const CONSENTS = [
+  { k: 'person', text: 'Confirmo que soy la persona del documento y que soy mayor de 18 años.' },
+  { k: 'clone',  text: 'Autorizo a LetShoot a crear y usar mi clon digital (LoRA) para generar contenido para mí.' },
+  { k: 'billing', text: 'Acepto el cobro recurrente de mi suscripción una vez que mi verificación sea aprobada.' },
+];
+
+function IdentityStep({ me, onDone, rejected, reason }) {
   const [files, setFiles] = useState({});
+  const [consents, setConsents] = useState({ person: false, clone: false, billing: false });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   async function submit() {
     setError('');
-    if (KYC_SLOTS.some((s) => !files[s.type])) { setError('Sube las tres imágenes para continuar.'); return; }
+    if (KYC_SLOTS.some((s) => !files[s.type])) { setError('Sube las tres imágenes de tu ID.'); return; }
+    if (!consents.person || !consents.clone || !consents.billing) { setError('Debes aceptar los tres consentimientos para continuar.'); return; }
     setSaving(true);
     const supabase = getSupabase();
     try {
@@ -215,8 +227,13 @@ function IdStep({ me, onDone, rejected, reason }) {
           .upsert({ user_id: me.user.id, doc_type: s.type, storage_path: path }, { onConflict: 'user_id,doc_type' });
         if (dbErr) throw dbErr;
       }
-      const { error: pErr } = await supabase.from('profiles')
-        .update({ onboarding_status: 'id_pending', id_rejection_reason: null }).eq('id', me.user.id);
+      const { error: pErr } = await supabase.from('profiles').update({
+        onboarding_status: 'id_pending',
+        id_rejection_reason: null,
+        consent_clone: true,
+        consent_billing: true,
+        consent_at: new Date().toISOString(),
+      }).eq('id', me.user.id);
       if (pErr) throw pErr;
       onDone();
     } catch (err) {
@@ -227,24 +244,39 @@ function IdStep({ me, onDone, rejected, reason }) {
   }
 
   return (
-    <Card icon={IdCard} title="Verifica tu identidad" desc="Por ley, confirmamos que eres una persona real y mayor de 18 antes de crear tu clon. Tus documentos son privados y solo los ve nuestro equipo de verificación.">
+    <Card icon={IdCard} title="Identidad y consentimiento" desc="Por ley confirmamos que eres una persona real y mayor de 18, y que autorizas la creación de tu clon. Tus documentos son privados — solo los ve nuestro equipo de verificación.">
       {rejected && (
         <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-          <div><span className="font-semibold">Tu verificación fue rechazada.</span> {reason ? <span>Motivo: {reason}</span> : 'Vuelve a subir imágenes claras.'}</div>
+          <div><span className="font-semibold">Tu verificación fue rechazada.</span> {reason ? <span>Motivo: {reason}.</span> : null} Vuelve a subir imágenes claras. No se te ha cobrado nada.</div>
         </div>
       )}
+
       <div className="grid gap-3 sm:grid-cols-3">
         {KYC_SLOTS.map((s) => (
           <UploadSlot key={s.type} label={s.label} hint={s.hint} file={files[s.type]}
             onFile={(f) => setFiles((prev) => ({ ...prev, [s.type]: f }))} />
         ))}
       </div>
+
+      <div className="mt-6 space-y-2.5">
+        {CONSENTS.map((c) => (
+          <label key={c.k} className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-ink-2 px-4 py-3 transition-colors hover:border-brand/30">
+            <input type="checkbox" checked={consents[c.k]} onChange={(e) => setConsents((v) => ({ ...v, [c.k]: e.target.checked }))} className="peer sr-only" />
+            <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${consents[c.k] ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
+              {consents[c.k] && <Check size={13} />}
+            </span>
+            <span className="text-sm leading-relaxed text-paper-mute">{c.text}</span>
+          </label>
+        ))}
+      </div>
+
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={submit} disabled={saving}
         className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-        {saving ? <><Loader2 size={18} className="animate-spin" /> Subiendo…</> : <><ShieldCheck size={18} /> Enviar para verificación</>}
+        {saving ? <><Loader2 size={18} className="animate-spin" /> Subiendo…</> : <><ShieldCheck size={18} /> Firmar y enviar para aprobación</>}
       </button>
+      <p className="mt-3 text-center text-[11px] text-paper-dim">No se te cobra nada todavía. El pago se habilita cuando el equipo apruebe tu verificación.</p>
     </Card>
   );
 }
@@ -277,138 +309,56 @@ function UploadSlot({ label, hint, file, onFile }) {
   );
 }
 
-// ── Step 2: waiting for admin review ───────────────────────────────────────
+// ── Step 2: waiting for admin approval (nothing charged yet) ───────────────
 function ReviewStep() {
   return (
-    <Card icon={Clock} title="Verificación en revisión" desc="Nuestro equipo está revisando tus documentos. Suele tardar poco. Te avisaremos y podrás continuar con el pago apenas se apruebe.">
+    <Card icon={Clock} title="En aprobación" desc="Nuestro equipo está revisando tu identidad. No se te ha cobrado nada — el pago se habilita solo si te aprobamos.">
       <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
         <Loader2 size={20} className="animate-spin text-brand" />
-        Estado: <span className="font-semibold text-brand">en revisión</span> — puedes cerrar y volver más tarde.
+        Estado: <span className="font-semibold text-brand">en revisión</span> — puedes cerrar y volver más tarde. Mientras esperas, puedes ir subiendo las fotos de tu clon abajo.
       </div>
     </Card>
   );
 }
 
-// ── Step 3: payment (stub) ─────────────────────────────────────────────────
+// ── Step 3: payment (only reachable AFTER consent + admin approval) ────────
 function PayStep({ me, onDone }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   async function pay() {
     setSaving(true); setError('');
     const { error: err } = await getSupabase().from('profiles')
-      .update({ payment_status: 'paid', onboarding_status: 'paid' }).eq('id', me.user.id);
+      .update({ payment_status: 'paid', onboarding_status: 'active' }).eq('id', me.user.id);
     setSaving(false);
     if (err) { setError(err.message); return; }
     onDone();
   }
   return (
-    <Card icon={CreditCard} title="Activa tu suscripción" desc="¡Identidad verificada! Elige tu plan para activar la creación de tu clon. El cobro es recurrente y puedes cancelar cuando quieras.">
+    <Card icon={CreditCard} title="¡Aprobada! Activa tu suscripción" desc="Tu identidad fue verificada y tenemos tu consentimiento firmado. Activa tu plan para empezar.">
       <div className="rounded-2xl border border-brand/30 bg-brand/[0.06] p-5">
         <div className="flex items-baseline justify-between">
           <span className="font-display text-lg font-semibold text-paper">Plan Creadora</span>
           <span className="font-display text-2xl font-bold text-brand">$—<span className="text-sm text-paper-dim">/mes</span></span>
         </div>
-        <p className="mt-2 text-sm text-paper-mute">Contenido a demanda, fresco y en abundancia. (Precio y checkout se conectan con el procesador de pago.)</p>
+        <ul className="mt-3 space-y-1.5 text-sm text-paper-mute">
+          <li className="flex items-center gap-2"><Check size={14} className="text-brand" /> Contenido a demanda, fresco y en abundancia</li>
+          <li className="flex items-center gap-2"><Check size={14} className="text-brand" /> Cancela cuando quieras</li>
+        </ul>
       </div>
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={pay} disabled={saving}
         className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-        {saving ? 'Procesando…' : 'Continuar al pago'}
+        {saving ? 'Procesando…' : 'Pagar y activar'}
       </button>
-      <p className="mt-3 text-center text-[11px] text-paper-dim">Integración de pago (Epoch / CCBill) pendiente — este botón simula el pago aprobado.</p>
+      <p className="mt-3 text-center text-[11px] text-paper-dim">Integración de pago (Epoch / CCBill) pendiente — este botón simula el cobro aprobado.</p>
     </Card>
   );
 }
 
-// ── Step 4: LoRA training set ──────────────────────────────────────────────
-function LoraStep({ me, onDone }) {
-  const ref = useRef(null);
-  const [items, setItems] = useState([]); // {file, url}
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [progress, setProgress] = useState(0);
-
-  function addFiles(list) {
-    const arr = Array.from(list).filter((f) => f.type.startsWith('image/'));
-    setItems((prev) => [...prev, ...arr.map((file) => ({ file, url: URL.createObjectURL(file) }))]);
-  }
-  function removeAt(i) { setItems((prev) => prev.filter((_, idx) => idx !== i)); }
-
-  async function submit() {
-    setError('');
-    if (items.length < 10) { setError(`Sube al menos 10 fotos (ideal ${LORA_TARGET}) para un clon de calidad.`); return; }
-    setSaving(true); setProgress(0);
-    const supabase = getSupabase();
-    try {
-      for (let i = 0; i < items.length; i++) {
-        const file = items[i].file;
-        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-        const path = `${me.user.id}/${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('lora').upload(path, file, { contentType: file.type });
-        if (upErr) throw upErr;
-        const { error: dbErr } = await supabase.from('lora_photos').insert({ user_id: me.user.id, storage_path: path });
-        if (dbErr) throw dbErr;
-        setProgress(i + 1);
-      }
-      const { error: pErr } = await supabase.from('profiles')
-        .update({ lora_status: 'training', onboarding_status: 'active' }).eq('id', me.user.id);
-      if (pErr) throw pErr;
-      onDone();
-    } catch (err) {
-      setError(err.message || 'No se pudieron subir las fotos.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const pct = Math.min(100, Math.round((items.length / LORA_TARGET) * 100));
-
-  return (
-    <Card icon={Sparkles} title="Fotos para tu clon" desc={`Sube tu mejor set de fotos: rostro desde varios ángulos, cuerpo completo, distintas luces y expresiones. Mientras más variedad y calidad, mejor el clon. Meta: ${LORA_TARGET} fotos.`}>
-      <button type="button" onClick={() => ref.current?.click()}
-        className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2 py-8 transition-colors hover:border-brand/40">
-        <Upload size={26} className="text-paper-dim" />
-        <span className="text-sm font-medium text-paper">Toca para elegir fotos</span>
-        <span className="text-xs text-paper-dim">JPG o PNG · varias a la vez</span>
-      </button>
-      <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
-
-      <div className="mt-4 flex items-center justify-between text-sm">
-        <span className="text-paper-mute">{items.length} / {LORA_TARGET} fotos</span>
-        <div className="ml-3 h-1.5 flex-1 overflow-hidden rounded-full bg-line">
-          <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-
-      {items.length > 0 && (
-        <div className="mt-4 grid max-h-64 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6">
-          {items.map((it, i) => (
-            <div key={i} className="group relative aspect-square overflow-hidden rounded-lg border border-line">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={it.url} alt="" className="h-full w-full object-cover" />
-              {!saving && (
-                <button onClick={() => removeAt(i)} className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-paper opacity-0 transition-opacity group-hover:opacity-100">
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
-      <button onClick={submit} disabled={saving}
-        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-        {saving ? <><Loader2 size={18} className="animate-spin" /> Subiendo {progress}/{items.length}…</> : <>Enviar mis fotos <ArrowRight size={18} /></>}
-      </button>
-    </Card>
-  );
-}
-
-// ── Step 5: done ───────────────────────────────────────────────────────────
+// ── Step 4: done ───────────────────────────────────────────────────────────
 function DoneStep({ router }) {
   return (
-    <Card icon={Check} title="¡Todo listo!" desc="Recibimos tus fotos y ya estamos preparando tu clon. Te avisaremos cuando tu primer contenido esté disponible en tu panel.">
+    <Card icon={Check} title="¡Todo listo!" desc="Tu cuenta está activa. Si aún no has subido las fotos de tu clon, puedes hacerlo abajo o desde tu panel cuando quieras.">
       <button onClick={() => router.push('/panel')}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01]">
         Ir a mi panel <ArrowRight size={18} />

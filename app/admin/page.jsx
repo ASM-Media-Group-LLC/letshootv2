@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, Link2, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList } from 'lucide-react';
+import { LogOut, Users, Link2, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
@@ -16,14 +16,16 @@ const ROLES = [
 const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.v, r.l]));
 
 // Creator onboarding status → human label + tone
+// Flow: registered → info → id_pending → id_approved → active (pago al final).
 const OB = {
-  registered:  { label: 'Solo registrada',       tone: 'zinc' },
-  info:        { label: 'Datos listos · falta ID', tone: 'zinc' },
-  id_pending:  { label: 'Por revisar',            tone: 'amber' },
-  id_rejected: { label: 'ID rechazado',           tone: 'rose' },
-  id_approved: { label: 'Aprobada · falta pago',  tone: 'sky' },
-  paid:        { label: 'Pagó · falta LoRA',      tone: 'sky' },
-  active:      { label: 'Activa',                 tone: 'brand' },
+  registered:  { label: 'Solo registrada',          tone: 'zinc' },
+  info:        { label: 'Datos listos · falta ID',  tone: 'zinc' },
+  id_pending:  { label: 'Por revisar',              tone: 'amber' },
+  id_rejected: { label: 'ID rechazado',             tone: 'rose' },
+  id_approved: { label: 'Aprobada · falta pago',    tone: 'sky' },
+  authorized:  { label: 'Aprobada · falta pago',    tone: 'sky' }, // legacy
+  paid:        { label: 'Activa',                   tone: 'brand' }, // legacy
+  active:      { label: 'Activa',                   tone: 'brand' },
 };
 const TONE = {
   zinc:  'border-line bg-hair/5 text-paper-mute',
@@ -50,7 +52,7 @@ export default function AdminPage() {
   const loadKyc = useCallback(async () => {
     const supabase = getSupabase();
     const { data: pend } = await supabase.from('profiles')
-      .select('id, full_name, email, legal_first_name, legal_last_name, date_of_birth, country, stage_name, created_at')
+      .select('id, full_name, email, legal_first_name, legal_last_name, date_of_birth, country, stage_name, created_at, consent_at')
       .eq('onboarding_status', 'id_pending')
       .order('created_at');
     const list = [];
@@ -128,6 +130,8 @@ export default function AdminPage() {
       if (reason === null) return; // cancelled
     }
     setSavingId(userId);
+    // Approve → unlocks payment (nothing charged yet). Reject → back to the ID
+    // step with the reason; no refund needed because the charge happens last.
     const { error } = await getSupabase().from('profiles').update({
       onboarding_status: approve ? 'id_approved' : 'id_rejected',
       id_rejection_reason: approve ? null : reason,
@@ -137,7 +141,7 @@ export default function AdminPage() {
     setSavingId(null);
     if (error) { flash('Error: ' + error.message); return; }
     setKyc((k) => k.filter((u) => u.id !== userId));
-    flash(approve ? 'Verificación aprobada' : 'Verificación rechazada');
+    flash(approve ? 'Aprobada — ya puede pagar' : 'Verificación rechazada');
   }
 
   async function toggleAssignment(chatterId, creatorId, on) {
@@ -217,8 +221,8 @@ export default function AdminPage() {
               const stats = [
                 { label: 'Registradas', value: cr.length, tone: 'zinc' },
                 { label: 'Por revisar', value: n('id_pending'), tone: 'amber' },
-                { label: 'En proceso', value: cr.filter((p) => ['info','id_rejected','id_approved','paid'].includes(p.onboarding_status)).length, tone: 'sky' },
-                { label: 'Activas', value: n('active'), tone: 'brand' },
+                { label: 'En proceso', value: cr.filter((p) => ['info','id_rejected','id_approved','authorized'].includes(p.onboarding_status)).length, tone: 'sky' },
+                { label: 'Activas', value: cr.filter((p) => ['active','paid'].includes(p.onboarding_status)).length, tone: 'brand' },
               ];
               return (
                 <>
@@ -275,6 +279,15 @@ export default function AdminPage() {
                     <div className="mt-0.5 text-xs text-paper-dim">
                       {u.email} · {u.country || '—'} · Nac. {u.date_of_birth || '—'}
                     </div>
+                    {u.consent_at ? (
+                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-0.5 text-[11px] font-medium text-brand">
+                        <ShieldCheck size={12} /> Consentimiento firmado · {new Date(u.consent_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </div>
+                    ) : (
+                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-300">
+                        <AlertTriangle size={12} /> Sin consentimiento
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => reviewKyc(u.id, false)} disabled={savingId === u.id}

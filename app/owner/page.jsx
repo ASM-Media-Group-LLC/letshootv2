@@ -42,6 +42,7 @@ export default function OwnerPage() {
       legal_first_name: null, legal_last_name: null, date_of_birth: null,
       country: null, phone: null, stage_name: null, full_name: 'Creadora Prueba',
       id_rejection_reason: null, payment_status: 'unpaid', lora_status: 'none',
+      consent_clone: false, consent_billing: false, consent_at: null,
     }).eq('id', res.user.id);
     if (err) { setError(err.message); setBusy(''); return; }
     router.push('/onboarding');
@@ -80,7 +81,7 @@ export default function OwnerPage() {
             <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-hair/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-paper-mute">
               <User size={14} /> Usuario (creadora)
             </span>
-            <p className="text-sm text-paper-mute">Para probar el registro: info → ID → pago → LoRA → panel.</p>
+            <p className="text-sm text-paper-mute">Para probar el registro: datos → ID + consentimiento → aprobación → pago. Fotos del clon: opcionales, en cualquier momento.</p>
             <div className="mt-3 space-y-1 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
               <div>{USER.email}</div>
               <div>{USER.password}</div>
