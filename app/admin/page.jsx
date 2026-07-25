@@ -106,15 +106,16 @@ export default function AdminPage() {
     if (!nu.email || !nu.password || !nu.role) { setNuError('Completa correo, contraseña y rol.'); return; }
     if (nu.password.length < 8) { setNuError('La contraseña debe tener al menos 8 caracteres.'); return; }
     setCreating(true);
-    const { data: { session } } = await getSupabase().auth.getSession();
-    const res = await fetch('/api/admin/create-user', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-      body: JSON.stringify(nu),
-    });
-    const out = await res.json().catch(() => ({}));
+    // Supabase Edge Function 'create-user' runs with the service role (injected
+    // by Supabase) and verifies the caller is admin. functions.invoke sends the
+    // signed-in user's JWT automatically.
+    const { data, error } = await getSupabase().functions.invoke('create-user', { body: nu });
     setCreating(false);
-    if (!res.ok) { setNuError(out.error || 'No se pudo crear el usuario.'); return; }
+    let out = data;
+    if (error && !out) {
+      try { out = await error.context.json(); } catch { out = { error: error.message }; }
+    }
+    if (!out?.ok) { setNuError(out?.error || 'No se pudo crear el usuario.'); return; }
     setNu({ full_name: '', email: '', password: '', role: 'admin' });
     flash('Usuario creado');
     load();

@@ -55,12 +55,17 @@ export default function CinematicHero() {
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.7, ease, delay: 0.25 }}
-                className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-white/85 shadow-[0_2px_20px_rgba(0,0,0,0.3)] backdrop-blur-md sm:text-[11px]"
+                className="mb-6 inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.07] py-1.5 pl-4 pr-3.5 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-white/85 shadow-[0_2px_20px_rgba(0,0,0,0.3)] backdrop-blur-md sm:text-[12px]"
               >
                 {t.hero.eyebrowPre ? (
                   <>
                     {t.hero.eyebrowPre}
-                    <img src="/onlyfans-logo.png" alt="OnlyFans" className="inline h-3.5 w-auto sm:h-4" draggable={false} />
+                    <img
+                      src="/onlyfans-logo.png"
+                      alt="OnlyFans"
+                      className="inline-block h-[1.35rem] w-auto -my-1 drop-shadow-[0_1px_12px_rgba(0,175,240,0.6)] sm:h-7"
+                      draggable={false}
+                    />
                     {t.hero.eyebrowPost}
                   </>
                 ) : t.hero.eyebrow}
