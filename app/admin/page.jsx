@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, Link2, ShieldCheck, Check, Plus, X, RefreshCw } from 'lucide-react';
+import { LogOut, Users, Link2, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
@@ -21,21 +21,42 @@ export default function AdminPage() {
   const [tab, setTab] = useState('usuarios');
   const [profiles, setProfiles] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [kyc, setKyc] = useState([]); // pending verifications w/ signed doc urls
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
+
+  const loadKyc = useCallback(async () => {
+    const supabase = getSupabase();
+    const { data: pend } = await supabase.from('profiles')
+      .select('id, full_name, email, legal_first_name, legal_last_name, date_of_birth, country, stage_name, created_at')
+      .eq('onboarding_status', 'id_pending')
+      .order('created_at');
+    const list = [];
+    for (const p of pend || []) {
+      const { data: docs } = await supabase.from('kyc_documents').select('doc_type, storage_path').eq('user_id', p.id);
+      const signed = {};
+      for (const d of docs || []) {
+        const { data: s } = await supabase.storage.from('kyc').createSignedUrl(d.storage_path, 600);
+        if (s?.signedUrl) signed[d.doc_type] = s.signedUrl;
+      }
+      list.push({ ...p, docs: signed });
+    }
+    setKyc(list);
+  }, []);
 
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs }, { data: asg }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, email, role, created_at').order('role'),
+      supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at').order('role'),
       supabase.from('chatter_assignments').select('chatter_id, creator_id'),
     ]);
     setProfiles(profs || []);
     setAssignments(asg || []);
+    await loadKyc();
     setLoading(false);
-  }, []);
+  }, [loadKyc]);
 
   useEffect(() => {
     (async () => {
@@ -56,6 +77,25 @@ export default function AdminPage() {
     if (error) { flash('Error: ' + error.message); return; }
     setProfiles((p) => p.map((u) => (u.id === id ? { ...u, role } : u)));
     flash('Rol actualizado');
+  }
+
+  async function reviewKyc(userId, approve) {
+    let reason = null;
+    if (!approve) {
+      reason = window.prompt('Motivo del rechazo (lo verá la creadora):', '');
+      if (reason === null) return; // cancelled
+    }
+    setSavingId(userId);
+    const { error } = await getSupabase().from('profiles').update({
+      onboarding_status: approve ? 'id_approved' : 'id_rejected',
+      id_rejection_reason: approve ? null : reason,
+      id_reviewed_by: me.id,
+      id_reviewed_at: new Date().toISOString(),
+    }).eq('id', userId);
+    setSavingId(null);
+    if (error) { flash('Error: ' + error.message); return; }
+    setKyc((k) => k.filter((u) => u.id !== userId));
+    flash(approve ? 'Verificación aprobada' : 'Verificación rechazada');
   }
 
   async function toggleAssignment(chatterId, creatorId, on) {
@@ -110,10 +150,15 @@ export default function AdminPage() {
         </div>
 
         <div className="mt-8 flex gap-2 border-b border-line">
-          {[{ id: 'usuarios', label: 'Usuarios & roles', icon: Users }, { id: 'asignaciones', label: 'Asignaciones', icon: Link2 }].map((tb) => (
+          {[
+            { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
+            { id: 'usuarios', label: 'Usuarios & roles', icon: Users },
+            { id: 'asignaciones', label: 'Asignaciones', icon: Link2 },
+          ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`relative -mb-px flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${tab === tb.id ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
               <tb.icon size={15} /> {tb.label}
+              {tb.badge ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-on-accent">{tb.badge}</span> : null}
               {tab === tb.id && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand" />}
             </button>
           ))}
@@ -121,6 +166,55 @@ export default function AdminPage() {
 
         {loading ? (
           <p className="mt-8 text-paper-dim">Cargando datos…</p>
+        ) : tab === 'verificaciones' ? (
+          <div className="mt-6 space-y-4">
+            {kyc.length === 0 && (
+              <div className="rounded-2xl border border-line bg-card p-10 text-center">
+                <Clock className="mx-auto mb-3 text-paper-dim" />
+                <p className="text-paper-mute">No hay verificaciones pendientes.</p>
+              </div>
+            )}
+            {kyc.map((u) => (
+              <div key={u.id} className="rounded-2xl border border-line bg-card p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-display font-semibold text-paper">
+                      {u.legal_first_name} {u.legal_last_name}
+                      {u.stage_name && <span className="ml-2 text-xs font-normal text-paper-dim">· "{u.stage_name}"</span>}
+                    </div>
+                    <div className="mt-0.5 text-xs text-paper-dim">
+                      {u.email} · {u.country || '—'} · Nac. {u.date_of_birth || '—'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => reviewKyc(u.id, false)} disabled={savingId === u.id}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-3.5 py-2 text-sm font-medium text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50">
+                      <X size={15} /> Rechazar
+                    </button>
+                    <button onClick={() => reviewKyc(u.id, true)} disabled={savingId === u.id}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-50">
+                      {savingId === u.id ? <RefreshCw size={15} className="animate-spin" /> : <Check size={15} />} Aprobar
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  {[{ k: 'id_front', l: 'ID frente' }, { k: 'id_back', l: 'ID reverso' }, { k: 'selfie_id', l: 'Selfie con ID' }].map((d) => (
+                    <div key={d.k}>
+                      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-paper-dim">{d.l}</p>
+                      {u.docs[d.k] ? (
+                        <a href={u.docs[d.k]} target="_blank" rel="noreferrer" className="block aspect-[3/4] overflow-hidden rounded-xl border border-line">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={u.docs[d.k]} alt={d.l} className="h-full w-full object-cover transition-transform hover:scale-105" />
+                        </a>
+                      ) : (
+                        <div className="grid aspect-[3/4] place-items-center rounded-xl border border-dashed border-line text-xs text-paper-dim">Falta</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : tab === 'usuarios' ? (
           <div className="mt-6 overflow-hidden rounded-2xl border border-line">
             <div className="grid grid-cols-[1.4fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">

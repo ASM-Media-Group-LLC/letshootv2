@@ -24,6 +24,10 @@ export default function PanelPage() {
     (async () => {
       const up = await getUserProfile();
       if (!up) { router.replace('/login'); return; }
+      // Creators still in onboarding are sent back to the wizard.
+      if (up.profile?.role === 'creator' && up.profile?.onboarding_status !== 'active') {
+        router.replace('/onboarding'); return;
+      }
       const supabase = getSupabase();
       const { data: folders } = await supabase
         .from('folders')
