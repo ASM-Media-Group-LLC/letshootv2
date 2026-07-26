@@ -65,6 +65,14 @@ export default function OnboardingPage() {
     : { l: h.badge.pending, tone: 'zinc' };
   const canActivate = idApproved && paid;
 
+  const name = p.stage_name || p.legal_first_name || '';
+  const activateCount = [datosDone, idApproved, paid].filter(Boolean).length;
+  // The one action we gently point to next (still fully optional / any order).
+  const next = !datosDone ? 'datos'
+    : (!idApproved && st !== 'id_pending') ? 'identidad'
+    : !paid ? 'pago'
+    : null;
+
   async function activate() {
     await getSupabase().from('profiles').update({ onboarding_status: 'active' }).eq('id', me.user.id);
     router.replace('/panel');
@@ -91,10 +99,11 @@ export default function OnboardingPage() {
       </header>
 
       <main className="mx-auto max-w-2xl px-5 py-8">
-        <h1 className="font-display text-2xl font-semibold sm:text-3xl">{h.title}</h1>
-        <p className="mt-1.5 text-sm text-paper-mute">{h.sub}</p>
+        {/* Warm, personal welcome */}
+        <h1 className="font-display text-2xl font-semibold sm:text-3xl">{name ? h.greeting(name) : h.greetingNew}</h1>
+        <p className="mt-1.5 text-sm text-paper-mute">{h.welcomeSub}</p>
 
-        {canActivate && (
+        {canActivate ? (
           <div className="mt-6 flex flex-col items-start gap-3 rounded-2xl border border-brand/40 bg-brand/[0.08] p-5 shadow-glow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2 font-display text-lg font-semibold text-paper">
@@ -108,57 +117,76 @@ export default function OnboardingPage() {
               {h.activateBtn} <ArrowRight size={17} />
             </button>
           </div>
+        ) : (
+          /* Activation tracker */
+          <div className="mt-6 rounded-2xl border border-line bg-card p-4">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="font-medium text-paper-mute">{h.groupActivate}</span>
+              <span className="font-mono text-xs text-brand">{h.toActivate(activateCount)}</span>
+            </div>
+            <div className="flex gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i < activateCount ? 'bg-brand' : 'bg-line'}`} />
+              ))}
+            </div>
+          </div>
         )}
 
-        <div className="mt-6 space-y-3">
-          {/* 1 · Datos */}
+        {/* Group: activation */}
+        <div className="mt-5 space-y-3">
           <TaskCard icon={User} title={h.cards.datos.title} desc={h.cards.datos.desc}
             badge={datosDone ? { l: h.badge.done, tone: 'brand' } : { l: h.badge.pending, tone: 'zinc' }}
+            done={datosDone} next={next === 'datos'} nextLabel={h.nextUp}
             open={open === 'datos'} onToggle={() => toggle('datos')}>
             <InfoStep me={me} t={t} onDone={() => { setOpen(null); refresh(); }} />
           </TaskCard>
 
-          {/* 2 · Identidad (needs datos; activates account) */}
           <TaskCard icon={IdCard} title={h.cards.identidad.title} desc={h.cards.identidad.desc}
             badge={idBadge} locked={!datosDone} lockedMsg={h.lockedId}
+            done={idApproved} next={next === 'identidad'} nextLabel={h.nextUp}
             open={open === 'identidad'} onToggle={() => toggle('identidad')}>
             <IdentityStep me={me} t={t} onDone={() => { setOpen(null); refresh(); }}
               rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} />
           </TaskCard>
 
-          {/* 3 · Pago (independent) */}
           <TaskCard icon={CreditCard} title={h.cards.pago.title} desc={h.cards.pago.desc}
             badge={paid ? { l: h.badge.paid, tone: 'brand' } : { l: h.badge.optional, tone: 'zinc' }}
+            done={paid} next={next === 'pago'} nextLabel={h.nextUp}
             open={open === 'pago'} onToggle={() => toggle('pago')}>
             <PayStep me={me} t={t} paid={paid} onDone={() => { setOpen(null); refresh(); }} />
           </TaskCard>
-
-          {/* 4 · Fotos del clon (independent) */}
-          <TaskCard icon={Sparkles} title={h.cards.clon.title} desc={h.cards.clon.desc}
-            badge={loraCount > 0 ? { l: h.photosCount(loraCount), tone: 'brand' } : { l: h.badge.optional, tone: 'zinc' }}
-            open={open === 'clon'} onToggle={() => toggle('clon')}>
-            <CloneSetup userId={me.user.id} embedded />
-          </TaskCard>
         </div>
+
+        {/* Group: clone (optional, anytime) */}
+        <p className="mb-3 mt-7 px-1 text-xs font-semibold uppercase tracking-wider text-paper-dim">{h.groupOptional}</p>
+        <TaskCard icon={Sparkles} title={h.cards.clon.title} desc={h.cards.clon.desc}
+          badge={loraCount > 0 ? { l: h.photosCount(loraCount), tone: 'brand' } : { l: h.badge.optional, tone: 'zinc' }}
+          open={open === 'clon'} onToggle={() => toggle('clon')}>
+          <CloneSetup userId={me.user.id} embedded />
+        </TaskCard>
       </main>
     </div>
   );
 }
 
 /* ── Collapsible task card ──────────────────────────────────────────────── */
-function TaskCard({ icon: Icon, title, desc, badge, locked, lockedMsg, open, onToggle, children }) {
+function TaskCard({ icon: Icon, title, desc, badge, locked, lockedMsg, done, next, nextLabel, open, onToggle, children }) {
   return (
-    <div className={`overflow-hidden rounded-2xl border transition-colors ${open ? 'border-brand/40 bg-card' : 'border-line bg-card'}`}>
+    <div className={`overflow-hidden rounded-2xl border bg-card transition-all ${
+      open ? 'border-brand/40' : next ? 'border-brand/50 shadow-glow-sm ring-1 ring-brand/30' : 'border-line'}`}>
       <button type="button" onClick={locked ? undefined : onToggle} disabled={locked}
         className={`flex w-full items-center gap-3 p-4 text-left ${locked ? 'cursor-not-allowed opacity-60' : 'hover:bg-hair/[0.03]'}`}>
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand/12 text-brand">
-          {locked ? <Lock size={18} /> : <Icon size={18} />}
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${done ? 'bg-brand text-on-accent' : 'bg-brand/12 text-brand'}`}>
+          {locked ? <Lock size={18} /> : done ? <Check size={18} /> : <Icon size={18} />}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="font-display font-semibold text-paper">{title}</div>
+          <div className="flex items-center gap-2">
+            <span className="font-display font-semibold text-paper">{title}</span>
+            {next && <span className="rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-on-accent">{nextLabel}</span>}
+          </div>
           <p className="truncate text-xs text-paper-dim">{locked ? lockedMsg : desc}</p>
         </div>
-        <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${TONE[badge.tone]}`}>{badge.l}</span>
+        <span className={`hidden shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium sm:inline ${TONE[badge.tone]}`}>{badge.l}</span>
         {!locked && <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />}
       </button>
       {open && !locked && <div className="border-t border-line p-5">{children}</div>}
