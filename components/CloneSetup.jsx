@@ -21,7 +21,7 @@ const SHOTS = [
 ];
 const TOTAL_REC = SHOTS.reduce((a, s) => a + s.rec, 0);
 
-export default function CloneSetup({ userId }) {
+export default function CloneSetup({ userId, embedded = false }) {
   const { t } = usePortal();
   const [byCat, setByCat] = useState(null); // { cat: [{id, url}] }
   const [busyCat, setBusyCat] = useState('');
@@ -78,11 +78,13 @@ export default function CloneSetup({ userId }) {
   const pct = Math.min(100, Math.round((total / TOTAL_REC) * 100));
 
   return (
-    <div className="rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-8">
-      <div className="mb-1 flex items-center gap-2.5">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand/12 text-brand"><Sparkles size={18} /></span>
-        <h2 className="font-display text-xl font-semibold text-paper">{t.lora.setupTitle}</h2>
-      </div>
+    <div className={embedded ? '' : 'rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-8'}>
+      {!embedded && (
+        <div className="mb-1 flex items-center gap-2.5">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand/12 text-brand"><Sparkles size={18} /></span>
+          <h2 className="font-display text-xl font-semibold text-paper">{t.lora.setupTitle}</h2>
+        </div>
+      )}
       <p className="mb-5 text-sm text-paper-mute">{t.lora.setupDesc}</p>
 
       {/* Overall progress */}
