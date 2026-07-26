@@ -1,11 +1,20 @@
 'use client';
 
+import Link from 'next/link';
 import { useLang } from '@/app/providers';
 import Logo from './Logo';
 
 export default function Footer() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const f = t.footer;
+  const es = lang === 'es';
+  // Legal pages — payment processors require these publicly linked.
+  const legal = [
+    { href: '/terms', label: es ? 'Términos de servicio' : 'Terms of Service' },
+    { href: '/privacy', label: es ? 'Privacidad' : 'Privacy Policy' },
+    { href: '/usc2257', label: '18 U.S.C. § 2257' },
+    { href: '/contacto', label: es ? 'Contacto' : 'Contact' },
+  ];
 
   return (
     <footer className="border-t border-line bg-ink-2">
@@ -36,8 +45,17 @@ export default function Footer() {
           ))}
         </div>
 
-        <div className="mt-14 border-t border-line pt-6 text-center font-mono text-xs uppercase tracking-wider text-paper-dim">
-          {f.copyright}
+        <div className="mt-14 flex flex-col items-center gap-4 border-t border-line pt-6">
+          <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+            {legal.map((l) => (
+              <Link key={l.href} href={l.href} className="text-xs text-paper-dim transition-colors hover:text-brand">
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="text-center font-mono text-xs uppercase tracking-wider text-paper-dim">
+            {f.copyright} · 18+
+          </div>
         </div>
       </div>
     </footer>
