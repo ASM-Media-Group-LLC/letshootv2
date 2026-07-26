@@ -2,18 +2,21 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, Link2, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle } from 'lucide-react';
+import { LogOut, Users, Link2, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
+import { sendEmail } from '@/lib/notify';
 import Logo from '@/components/Logo';
 
+// Owner's structure: admin = dueño · supervisor = manager · chatter = servicio
+// al cliente (solo pide). 'producer' is legacy (mapped to Supervisor label).
 const ROLES = [
-  { v: 'admin', l: 'Admin' },
-  { v: 'chatter', l: 'Chatter' },
-  { v: 'producer', l: 'Productor' },
+  { v: 'admin', l: 'Admin (dueño)' },
+  { v: 'supervisor', l: 'Supervisor' },
+  { v: 'chatter', l: 'Chatter (SAC)' },
   { v: 'creator', l: 'Creadora' },
 ];
-const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.v, r.l]));
+const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), producer: 'Supervisor' };
 
 // Creator onboarding status → human label + tone
 // Flow: registered → info → id_pending → id_approved → active (pago al final).
@@ -46,6 +49,7 @@ export default function AdminPage() {
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
   const [nu, setNu] = useState({ full_name: '', email: '', password: '', role: 'admin' });
+  const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
   const [creating, setCreating] = useState(false);
   const [nuError, setNuError] = useState('');
 
@@ -71,12 +75,15 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs }, { data: asg }] = await Promise.all([
+    const [{ data: profs }, { data: asg }, { data: reqs }, { count: loraCount }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at').order('role'),
       supabase.from('chatter_assignments').select('chatter_id, creator_id'),
+      supabase.from('requests').select('id, status, created_at'),
+      supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
     ]);
     setProfiles(profs || []);
     setAssignments(asg || []);
+    setMetrics({ requests: reqs || [], lora: loraCount || 0 });
     await loadKyc();
     setLoading(false);
   }, [loadKyc]);
@@ -141,6 +148,7 @@ export default function AdminPage() {
     setSavingId(null);
     if (error) { flash('Error: ' + error.message); return; }
     setKyc((k) => k.filter((u) => u.id !== userId));
+    sendEmail(approve ? 'approved' : 'rejected', userId, approve ? '' : (reason || ''));
     flash(approve ? 'Aprobada — ya puede pagar' : 'Verificación rechazada');
   }
 
@@ -160,21 +168,8 @@ export default function AdminPage() {
 
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
-  // Non-admin staff (chatter/producer) — limited placeholder
-  if (me?.role !== 'admin') {
-    return (
-      <div className="min-h-[100svh] bg-ink text-paper">
-        <Header me={me} router={router} />
-        <main className="mx-auto max-w-3xl px-5 py-16 text-center">
-          <div className="rounded-2xl border border-line bg-card p-10">
-            <ShieldCheck className="mx-auto mb-3 text-brand" />
-            <h1 className="font-display text-xl font-semibold">Panel de {ROLE_LABEL[me?.role] || 'equipo'}</h1>
-            <p className="mt-2 text-paper-mute">Tu área de trabajo (pedidos y producción) está en construcción. Muy pronto.</p>
-          </div>
-        </main>
-      </div>
-    );
-  }
+  // Non-admin staff work in /trabajo.
+  if (me?.role !== 'admin') { router.replace('/trabajo'); return null; }
 
   const creators = profiles.filter((p) => p.role === 'creator');
   const chatters = profiles.filter((p) => p.role === 'chatter');
@@ -198,6 +193,7 @@ export default function AdminPage() {
         <div className="mt-8 flex flex-wrap gap-2 border-b border-line">
           {[
             { id: 'registros', label: 'Registros', icon: ClipboardList },
+            { id: 'metricas', label: 'Métricas', icon: BarChart3 },
             { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
             { id: 'equipo', label: 'Equipo & roles', icon: Users },
             { id: 'asignaciones', label: 'Asignaciones', icon: Link2 },
@@ -257,6 +253,73 @@ export default function AdminPage() {
                     })}
                   </div>
                 </>
+              );
+            })()}
+          </div>
+        ) : tab === 'metricas' ? (
+          <div className="mt-6">
+            {(() => {
+              const cr = profiles.filter((p) => p.role === 'creator');
+              // Funnel: how far creators get through onboarding.
+              const FUNNEL = [
+                { l: 'Registradas', f: () => cr.length },
+                { l: 'Datos completos', f: () => cr.filter((p) => p.onboarding_status !== 'registered').length },
+                { l: 'ID enviado', f: () => cr.filter((p) => ['id_pending', 'id_approved', 'authorized', 'paid', 'active'].includes(p.onboarding_status)).length },
+                { l: 'Aprobadas', f: () => cr.filter((p) => ['id_approved', 'authorized', 'paid', 'active'].includes(p.onboarding_status)).length },
+                { l: 'Activas (pagando)', f: () => cr.filter((p) => ['active', 'paid'].includes(p.onboarding_status)).length },
+              ].map((x) => ({ l: x.l, v: x.f() }));
+              const max = Math.max(1, ...FUNNEL.map((x) => x.v));
+              // Weekly signups, last 6 weeks.
+              const now = Date.now();
+              const weeks = Array.from({ length: 6 }, (_, i) => {
+                const from = now - (6 - i) * 7 * 864e5;
+                const to = now - (5 - i) * 7 * 864e5;
+                const v = cr.filter((p) => { const d = new Date(p.created_at).getTime(); return d >= from && d < to; }).length;
+                return { label: i === 5 ? 'Esta sem.' : `-${5 - i} sem`, v };
+              });
+              const wmax = Math.max(1, ...weeks.map((w) => w.v));
+              const reqPending = metrics.requests.filter((r) => r.status === 'pending').length;
+              const reqDelivered = metrics.requests.filter((r) => r.status === 'delivered').length;
+              return (
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-line bg-card p-5">
+                    <h3 className="mb-4 font-display font-semibold text-paper">Funnel de registro</h3>
+                    <div className="space-y-3">
+                      {FUNNEL.map((x) => (
+                        <div key={x.l}>
+                          <div className="mb-1 flex justify-between text-xs text-paper-mute"><span>{x.l}</span><span className="font-mono text-paper">{x.v}</span></div>
+                          <div className="h-2.5 overflow-hidden rounded-full bg-line">
+                            <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${(x.v / max) * 100}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-line bg-card p-5">
+                    <h3 className="mb-4 font-display font-semibold text-paper">Registros por semana</h3>
+                    <div className="flex h-36 items-end gap-2">
+                      {weeks.map((w, i) => (
+                        <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                          <span className="font-mono text-[11px] text-paper-mute">{w.v}</span>
+                          <div className="w-full rounded-t-lg bg-brand/70" style={{ height: `${Math.max(4, (w.v / wmax) * 100)}%` }} />
+                          <span className="text-[10px] text-paper-dim">{w.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 lg:col-span-2">
+                    {[
+                      { l: 'Pedidos pendientes', v: reqPending, tone: 'amber' },
+                      { l: 'Pedidos entregados', v: reqDelivered, tone: 'brand' },
+                      { l: 'Fotos LoRA subidas', v: metrics.lora, tone: 'sky' },
+                    ].map((x) => (
+                      <div key={x.l} className={`rounded-2xl border p-4 ${TONE[x.tone]}`}>
+                        <div className="font-display text-3xl font-bold">{x.v}</div>
+                        <div className="text-xs opacity-80">{x.l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               );
             })()}
           </div>
@@ -409,6 +472,7 @@ function Header({ me, router }) {
         </div>
         <div className="flex items-center gap-3">
           <span className="hidden text-sm text-paper-mute sm:inline">{me?.full_name}</span>
+          <a href="/trabajo" className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">Trabajo</a>
           <button onClick={async () => { await signOut(); router.replace('/login'); }}
             className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
             <LogOut size={15} /> Salir

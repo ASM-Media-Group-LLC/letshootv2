@@ -13,15 +13,16 @@ import {
   Upload, User, AlertTriangle, ArrowRight, Loader2,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
+import { usePortal } from '@/lib/portal-i18n';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
 import LoraUploader from '@/components/LoraUploader';
 
 const STEPS = [
-  { key: 'info',    label: 'Datos',      icon: User },
-  { key: 'id',      label: 'Identidad',  icon: IdCard },
-  { key: 'review',  label: 'Aprobación', icon: Clock },
-  { key: 'pay',     label: 'Pago',       icon: CreditCard },
+  { key: 'info',   icon: User },
+  { key: 'id',     icon: IdCard },
+  { key: 'review', icon: Clock },
+  { key: 'pay',    icon: CreditCard },
 ];
 
 function stepFromStatus(s) {
@@ -33,6 +34,7 @@ function stepFromStatus(s) {
 }
 
 export default function OnboardingPage() {
+  const { t } = usePortal();
   const router = useRouter();
   const [me, setMe] = useState(undefined);
 
@@ -45,7 +47,7 @@ export default function OnboardingPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
+  if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">{t.common.loading}</div>;
 
   const status = me.profile?.onboarding_status || 'registered';
   const step = stepFromStatus(status);
@@ -56,23 +58,23 @@ export default function OnboardingPage() {
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3.5">
           <div className="flex items-center gap-3">
             <Logo size="sm" />
-            <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-brand">Registro</span>
+            <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-brand">{t.common.registro}</span>
           </div>
           <button onClick={async () => { await signOut(); router.replace('/login'); }}
             className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-            <LogOut size={15} /> Salir
+            <LogOut size={15} /> {t.common.exit}
           </button>
         </div>
       </header>
 
       <main className="mx-auto max-w-2xl px-5 py-8">
-        <Stepper step={step} />
+        <Stepper step={step} t={t} />
         <div className="mt-8 space-y-5">
-          {step === 0 && <InfoStep me={me} onDone={refresh} />}
-          {step === 1 && <IdentityStep me={me} onDone={refresh} rejected={status === 'id_rejected'} reason={me.profile?.id_rejection_reason} />}
-          {step === 2 && <ReviewStep />}
-          {step === 3 && <PayStep me={me} onDone={refresh} />}
-          {step === 4 && <DoneStep router={router} />}
+          {step === 0 && <InfoStep me={me} onDone={refresh} t={t} />}
+          {step === 1 && <IdentityStep me={me} onDone={refresh} t={t} rejected={status === 'id_rejected'} reason={me.profile?.id_rejection_reason} />}
+          {step === 2 && <ReviewStep t={t} />}
+          {step === 3 && <PayStep me={me} onDone={refresh} t={t} />}
+          {step === 4 && <DoneStep router={router} t={t} />}
 
           {/* LoRA clone photos — optional, never blocks the flow */}
           {step >= 1 && <LoraUploader userId={me.user.id} />}
@@ -82,7 +84,7 @@ export default function OnboardingPage() {
   );
 }
 
-function Stepper({ step }) {
+function Stepper({ step, t }) {
   return (
     <div className="flex items-center">
       {STEPS.map((s, i) => {
@@ -95,7 +97,7 @@ function Stepper({ step }) {
                 done ? 'border-brand bg-brand text-on-accent' : active ? 'border-brand bg-brand/15 text-brand' : 'border-line bg-card text-paper-dim'}`}>
                 {done ? <Check size={16} /> : <s.icon size={16} />}
               </div>
-              <span className={`text-[11px] font-medium ${active || done ? 'text-paper' : 'text-paper-dim'}`}>{s.label}</span>
+              <span className={`text-[11px] font-medium ${active || done ? 'text-paper' : 'text-paper-dim'}`}>{t.onboarding.steps[s.key]}</span>
             </div>
             {i < STEPS.length - 1 && <div className={`mx-1 h-0.5 flex-1 rounded-full ${i < step ? 'bg-brand' : 'bg-line'}`} />}
           </div>
@@ -119,7 +121,7 @@ function Card({ icon: Icon, title, desc, children }) {
 }
 
 // ── Step 0: personal / legal info ──────────────────────────────────────────
-function InfoStep({ me, onDone }) {
+function InfoStep({ me, onDone, t }) {
   const p = me.profile || {};
   const [form, setForm] = useState({
     legal_first_name: p.legal_first_name || '', legal_last_name: p.legal_last_name || '',
@@ -142,9 +144,9 @@ function InfoStep({ me, onDone }) {
     e.preventDefault();
     setError('');
     if (!form.legal_first_name || !form.legal_last_name || !form.date_of_birth || !form.country) {
-      setError('Completa tu nombre legal, fecha de nacimiento y país.'); return;
+      setError(t.onboarding.info.missing); return;
     }
-    if (ageFrom(form.date_of_birth) < 18) { setError('Debes ser mayor de 18 años para usar el servicio.'); return; }
+    if (ageFrom(form.date_of_birth) < 18) { setError(t.onboarding.info.underage); return; }
     setSaving(true);
     const { error: err } = await getSupabase().from('profiles').update({
       ...form,
@@ -157,24 +159,24 @@ function InfoStep({ me, onDone }) {
   }
 
   return (
-    <Card icon={User} title="Tus datos" desc="Usamos tu nombre legal solo para verificar tu identidad. Tu nombre artístico es el que verá el equipo.">
+    <Card icon={User} title={t.onboarding.info.title} desc={t.onboarding.info.desc}>
       <form onSubmit={save} className="grid gap-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Nombre legal" value={form.legal_first_name} onChange={set('legal_first_name')} required />
-          <Field label="Apellido legal" value={form.legal_last_name} onChange={set('legal_last_name')} required />
+          <Field label={t.onboarding.info.firstName} value={form.legal_first_name} onChange={set('legal_first_name')} required />
+          <Field label={t.onboarding.info.lastName} value={form.legal_last_name} onChange={set('legal_last_name')} required />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Fecha de nacimiento" type="date" value={form.date_of_birth} onChange={set('date_of_birth')} required />
-          <Field label="País" value={form.country} onChange={set('country')} placeholder="Ej. Estados Unidos" required />
+          <Field label={t.onboarding.info.dob} type="date" value={form.date_of_birth} onChange={set('date_of_birth')} required />
+          <Field label={t.onboarding.info.country} value={form.country} onChange={set('country')} placeholder={t.onboarding.info.countryPh} required />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Teléfono (opcional)" value={form.phone} onChange={set('phone')} placeholder="+1 …" />
-          <Field label="Nombre artístico (opcional)" value={form.stage_name} onChange={set('stage_name')} placeholder="Cómo te conocen" />
+          <Field label={t.onboarding.info.phone} value={form.phone} onChange={set('phone')} placeholder={t.onboarding.info.phonePh} />
+          <Field label={t.onboarding.info.stage} value={form.stage_name} onChange={set('stage_name')} placeholder={t.onboarding.info.stagePh} />
         </div>
         {error && <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
         <button type="submit" disabled={saving}
           className="group mt-1 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-          {saving ? 'Guardando…' : 'Continuar'} {!saving && <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />}
+          {saving ? t.common.saving : t.common.continue} {!saving && <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />}
         </button>
       </form>
     </Card>
@@ -192,19 +194,10 @@ function Field({ label, type = 'text', value, onChange, placeholder, required })
 }
 
 // ── Step 1: identity (ID docs) + CONSENT ───────────────────────────────────
-const KYC_SLOTS = [
-  { type: 'id_front', label: 'ID — frente', hint: 'Documento oficial por delante, legible.' },
-  { type: 'id_back',  label: 'ID — reverso', hint: 'La parte de atrás del documento.' },
-  { type: 'selfie_id', label: 'Selfie con tu ID', hint: 'Tu cara junto al documento, ambos visibles.' },
-];
+const KYC_SLOTS = ['id_front', 'id_back', 'selfie_id'];
+const CONSENT_KEYS = ['person', 'clone', 'billing'];
 
-const CONSENTS = [
-  { k: 'person', text: 'Confirmo que soy la persona del documento y que soy mayor de 18 años.' },
-  { k: 'clone',  text: 'Autorizo a LetShoot a crear y usar mi clon digital (LoRA) para generar contenido para mí.' },
-  { k: 'billing', text: 'Acepto el cobro recurrente de mi suscripción una vez que mi verificación sea aprobada.' },
-];
-
-function IdentityStep({ me, onDone, rejected, reason }) {
+function IdentityStep({ me, onDone, t, rejected, reason }) {
   const [files, setFiles] = useState({});
   const [consents, setConsents] = useState({ person: false, clone: false, billing: false });
   const [error, setError] = useState('');
@@ -212,19 +205,19 @@ function IdentityStep({ me, onDone, rejected, reason }) {
 
   async function submit() {
     setError('');
-    if (KYC_SLOTS.some((s) => !files[s.type])) { setError('Sube las tres imágenes de tu ID.'); return; }
-    if (!consents.person || !consents.clone || !consents.billing) { setError('Debes aceptar los tres consentimientos para continuar.'); return; }
+    if (KYC_SLOTS.some((k) => !files[k])) { setError(t.onboarding.id.missingDocs); return; }
+    if (!consents.person || !consents.clone || !consents.billing) { setError(t.onboarding.id.missingConsent); return; }
     setSaving(true);
     const supabase = getSupabase();
     try {
-      for (const s of KYC_SLOTS) {
-        const file = files[s.type];
+      for (const k of KYC_SLOTS) {
+        const file = files[k];
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-        const path = `${me.user.id}/${s.type}.${ext}`;
+        const path = `${me.user.id}/${k}.${ext}`;
         const { error: upErr } = await supabase.storage.from('kyc').upload(path, file, { upsert: true, contentType: file.type });
         if (upErr) throw upErr;
         const { error: dbErr } = await supabase.from('kyc_documents')
-          .upsert({ user_id: me.user.id, doc_type: s.type, storage_path: path }, { onConflict: 'user_id,doc_type' });
+          .upsert({ user_id: me.user.id, doc_type: k, storage_path: path }, { onConflict: 'user_id,doc_type' });
         if (dbErr) throw dbErr;
       }
       const { error: pErr } = await supabase.from('profiles').update({
@@ -237,36 +230,36 @@ function IdentityStep({ me, onDone, rejected, reason }) {
       if (pErr) throw pErr;
       onDone();
     } catch (err) {
-      setError(err.message || 'No se pudo subir. Intenta de nuevo.');
+      setError(err.message || t.common.error);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Card icon={IdCard} title="Identidad y consentimiento" desc="Por ley confirmamos que eres una persona real y mayor de 18, y que autorizas la creación de tu clon. Tus documentos son privados — solo los ve nuestro equipo de verificación.">
+    <Card icon={IdCard} title={t.onboarding.id.title} desc={t.onboarding.id.desc}>
       {rejected && (
         <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-          <div><span className="font-semibold">Tu verificación fue rechazada.</span> {reason ? <span>Motivo: {reason}.</span> : null} Vuelve a subir imágenes claras. No se te ha cobrado nada.</div>
+          <div><span className="font-semibold">{t.onboarding.id.rejectedTitle}</span> {reason ? <span>{t.onboarding.id.rejectedReason} {reason}.</span> : null} {t.onboarding.id.rejectedRetry}</div>
         </div>
       )}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        {KYC_SLOTS.map((s) => (
-          <UploadSlot key={s.type} label={s.label} hint={s.hint} file={files[s.type]}
-            onFile={(f) => setFiles((prev) => ({ ...prev, [s.type]: f }))} />
+        {KYC_SLOTS.map((k) => (
+          <UploadSlot key={k} label={t.onboarding.id.slots[k].label} hint={t.onboarding.id.slots[k].hint} tap={t.onboarding.id.tap} file={files[k]}
+            onFile={(f) => setFiles((prev) => ({ ...prev, [k]: f }))} />
         ))}
       </div>
 
       <div className="mt-6 space-y-2.5">
-        {CONSENTS.map((c) => (
-          <label key={c.k} className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-ink-2 px-4 py-3 transition-colors hover:border-brand/30">
-            <input type="checkbox" checked={consents[c.k]} onChange={(e) => setConsents((v) => ({ ...v, [c.k]: e.target.checked }))} className="peer sr-only" />
-            <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${consents[c.k] ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
-              {consents[c.k] && <Check size={13} />}
+        {CONSENT_KEYS.map((k) => (
+          <label key={k} className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-ink-2 px-4 py-3 transition-colors hover:border-brand/30">
+            <input type="checkbox" checked={consents[k]} onChange={(e) => setConsents((v) => ({ ...v, [k]: e.target.checked }))} className="peer sr-only" />
+            <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${consents[k] ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
+              {consents[k] && <Check size={13} />}
             </span>
-            <span className="text-sm leading-relaxed text-paper-mute">{c.text}</span>
+            <span className="text-sm leading-relaxed text-paper-mute">{t.onboarding.id.consents[k]}</span>
           </label>
         ))}
       </div>
@@ -274,14 +267,14 @@ function IdentityStep({ me, onDone, rejected, reason }) {
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={submit} disabled={saving}
         className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-        {saving ? <><Loader2 size={18} className="animate-spin" /> Subiendo…</> : <><ShieldCheck size={18} /> Firmar y enviar para aprobación</>}
+        {saving ? <><Loader2 size={18} className="animate-spin" /> {t.onboarding.id.uploading}</> : <><ShieldCheck size={18} /> {t.onboarding.id.submit}</>}
       </button>
-      <p className="mt-3 text-center text-[11px] text-paper-dim">No se te cobra nada todavía. El pago se habilita cuando el equipo apruebe tu verificación.</p>
+      <p className="mt-3 text-center text-[11px] text-paper-dim">{t.onboarding.id.note}</p>
     </Card>
   );
 }
 
-function UploadSlot({ label, hint, file, onFile }) {
+function UploadSlot({ label, hint, tap, file, onFile }) {
   const ref = useRef(null);
   const preview = file ? URL.createObjectURL(file) : null;
   return (
@@ -294,7 +287,7 @@ function UploadSlot({ label, hint, file, onFile }) {
         ) : (
           <>
             <Upload size={22} className="text-paper-dim" />
-            <span className="text-xs text-paper-dim">Toca para subir</span>
+            <span className="text-xs text-paper-dim">{tap}</span>
           </>
         )}
         {file && <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-brand text-on-accent"><Check size={14} /></span>}
@@ -310,19 +303,19 @@ function UploadSlot({ label, hint, file, onFile }) {
 }
 
 // ── Step 2: waiting for admin approval (nothing charged yet) ───────────────
-function ReviewStep() {
+function ReviewStep({ t }) {
   return (
-    <Card icon={Clock} title="En aprobación" desc="Nuestro equipo está revisando tu identidad. No se te ha cobrado nada — el pago se habilita solo si te aprobamos.">
+    <Card icon={Clock} title={t.onboarding.review.title} desc={t.onboarding.review.desc}>
       <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
         <Loader2 size={20} className="animate-spin text-brand" />
-        Estado: <span className="font-semibold text-brand">en revisión</span> — puedes cerrar y volver más tarde. Mientras esperas, puedes ir subiendo las fotos de tu clon abajo.
+        {t.onboarding.review.state} <span className="font-semibold text-brand">{t.onboarding.review.stateValue}</span> {t.onboarding.review.note}
       </div>
     </Card>
   );
 }
 
 // ── Step 3: payment (only reachable AFTER consent + admin approval) ────────
-function PayStep({ me, onDone }) {
+function PayStep({ me, onDone, t }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   async function pay() {
@@ -334,34 +327,34 @@ function PayStep({ me, onDone }) {
     onDone();
   }
   return (
-    <Card icon={CreditCard} title="¡Aprobada! Activa tu suscripción" desc="Tu identidad fue verificada y tenemos tu consentimiento firmado. Activa tu plan para empezar.">
+    <Card icon={CreditCard} title={t.onboarding.pay.title} desc={t.onboarding.pay.desc}>
       <div className="rounded-2xl border border-brand/30 bg-brand/[0.06] p-5">
         <div className="flex items-baseline justify-between">
-          <span className="font-display text-lg font-semibold text-paper">Plan Creadora</span>
-          <span className="font-display text-2xl font-bold text-brand">$—<span className="text-sm text-paper-dim">/mes</span></span>
+          <span className="font-display text-lg font-semibold text-paper">{t.onboarding.pay.plan}</span>
+          <span className="font-display text-2xl font-bold text-brand">$—<span className="text-sm text-paper-dim">{t.onboarding.pay.perMonth}</span></span>
         </div>
         <ul className="mt-3 space-y-1.5 text-sm text-paper-mute">
-          <li className="flex items-center gap-2"><Check size={14} className="text-brand" /> Contenido a demanda, fresco y en abundancia</li>
-          <li className="flex items-center gap-2"><Check size={14} className="text-brand" /> Cancela cuando quieras</li>
+          <li className="flex items-center gap-2"><Check size={14} className="text-brand" /> {t.onboarding.pay.f1}</li>
+          <li className="flex items-center gap-2"><Check size={14} className="text-brand" /> {t.onboarding.pay.f2}</li>
         </ul>
       </div>
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={pay} disabled={saving}
         className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-        {saving ? 'Procesando…' : 'Pagar y activar'}
+        {saving ? t.onboarding.pay.submitting : t.onboarding.pay.submit}
       </button>
-      <p className="mt-3 text-center text-[11px] text-paper-dim">Integración de pago (Epoch / CCBill) pendiente — este botón simula el cobro aprobado.</p>
+      <p className="mt-3 text-center text-[11px] text-paper-dim">{t.onboarding.pay.stub}</p>
     </Card>
   );
 }
 
 // ── Step 4: done ───────────────────────────────────────────────────────────
-function DoneStep({ router }) {
+function DoneStep({ router, t }) {
   return (
-    <Card icon={Check} title="¡Todo listo!" desc="Tu cuenta está activa. Si aún no has subido las fotos de tu clon, puedes hacerlo abajo o desde tu panel cuando quieras.">
+    <Card icon={Check} title={t.onboarding.done.title} desc={t.onboarding.done.desc}>
       <button onClick={() => router.push('/panel')}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01]">
-        Ir a mi panel <ArrowRight size={18} />
+        {t.onboarding.done.goPanel} <ArrowRight size={18} />
       </button>
     </Card>
   );

@@ -8,10 +8,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, Sparkles, Loader2, Check } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
+import { usePortal } from '@/lib/portal-i18n';
 
 const LORA_TARGET = 80; // Higgsfield clone-set goal
 
 export default function LoraUploader({ userId, compact = false }) {
+  const { t } = usePortal();
   const ref = useRef(null);
   const [count, setCount] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -50,7 +52,7 @@ export default function LoraUploader({ userId, compact = false }) {
       setJustDone(true);
       await loadCount();
     } catch (err) {
-      setError(err.message || 'No se pudieron subir las fotos.');
+      setError(err.message || t.lora.failed);
     } finally {
       setBusy(false); setProgress('');
       if (ref.current) ref.current.value = '';
@@ -64,8 +66,8 @@ export default function LoraUploader({ userId, compact = false }) {
     <div className={`rounded-2xl border border-line bg-card ${compact ? 'p-4' : 'p-5'}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 font-display font-semibold text-paper">
-          <Sparkles size={17} className="text-brand" /> Fotos para tu clon
-          <span className="rounded-full bg-hair/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Opcional · cuando quieras</span>
+          <Sparkles size={17} className="text-brand" /> {t.lora.title}
+          <span className="rounded-full bg-hair/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim">{t.lora.optional}</span>
         </div>
         <span className="text-sm text-paper-mute">{count === null ? '…' : `${n} / ${LORA_TARGET}`}</span>
       </div>
@@ -74,14 +76,14 @@ export default function LoraUploader({ userId, compact = false }) {
       </div>
       {!compact && (
         <p className="mt-2 text-xs text-paper-dim">
-          Rostro desde varios ángulos, cuerpo completo, distintas luces y expresiones. Puedes subirlas ahora o después — no detiene tu registro.
+          {t.lora.desc}
         </p>
       )}
       <button type="button" onClick={() => ref.current?.click()} disabled={busy}
         className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-brand/40 bg-brand/10 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
-        {busy ? <><Loader2 size={16} className="animate-spin" /> Subiendo {progress}…</>
-          : justDone ? <><Check size={16} /> ¡Fotos guardadas! Agregar más</>
-          : <><Upload size={16} /> Subir fotos</>}
+        {busy ? <><Loader2 size={16} className="animate-spin" /> {t.lora.uploading} {progress}…</>
+          : justDone ? <><Check size={16} /> {t.lora.added}</>
+          : <><Upload size={16} /> {t.lora.upload}</>}
       </button>
       {error && <p className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{error}</p>}
       <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
