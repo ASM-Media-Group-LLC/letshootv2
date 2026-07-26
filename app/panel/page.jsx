@@ -252,24 +252,24 @@ export default function PanelPage() {
           </div>
         ) : (
           <div className="mt-8 grid gap-6 md:grid-cols-[240px_1fr]">
-            <aside className="flex gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible">
+            <aside className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:gap-0.5 md:overflow-visible">
               {state.folders.map((f) => (
                 <button
                   key={f.id} onClick={() => setActive(f.id)}
-                  className={`flex shrink-0 items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors md:shrink ${
-                    active === f.id ? 'border-brand/50 bg-brand/10 text-paper' : 'border-line bg-card text-paper-mute hover:text-paper'
+                  className={`flex shrink-0 items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors md:shrink ${
+                    active === f.id ? 'bg-brand/12 font-medium text-brand' : 'text-paper-mute hover:bg-hair/5 hover:text-paper'
                   }`}
                 >
-                  <span className="flex items-center gap-2.5">
-                    <Folder size={16} className={active === f.id ? 'text-brand' : 'text-paper-dim'} />
-                    {f.name}
+                  <span className="flex items-center gap-2 truncate">
+                    <Folder size={14} className={active === f.id ? 'text-brand' : 'text-paper-dim'} />
+                    <span className="truncate">{f.name}</span>
                   </span>
                   <span className="font-mono text-[11px] text-paper-dim">{f.assets?.length || 0}</span>
                 </button>
               ))}
               <button onClick={createFolder}
-                className="flex shrink-0 items-center gap-2 rounded-xl border border-dashed border-line px-4 py-3 text-left text-sm text-paper-dim transition-colors hover:border-brand/40 hover:text-brand md:shrink">
-                <FolderPlus size={16} /> {t.panel.newFolder}
+                className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-paper-dim transition-colors hover:bg-hair/5 hover:text-brand md:shrink">
+                <FolderPlus size={14} /> {t.panel.newFolder}
               </button>
             </aside>
 
