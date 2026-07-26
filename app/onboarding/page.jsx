@@ -16,7 +16,7 @@ import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { usePortal } from '@/lib/portal-i18n';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
-import LoraUploader from '@/components/LoraUploader';
+import CloneSetup from '@/components/CloneSetup';
 
 const STEPS = [
   { key: 'info',   icon: User },
@@ -76,8 +76,8 @@ export default function OnboardingPage() {
           {step === 3 && <PayStep me={me} onDone={refresh} t={t} />}
           {step === 4 && <DoneStep router={router} t={t} />}
 
-          {/* LoRA clone photos — optional, never blocks the flow */}
-          {step >= 1 && <LoraUploader userId={me.user.id} />}
+          {/* Guided clone-photo setup — optional, never blocks the flow */}
+          {step >= 1 && step < 4 && <CloneSetup userId={me.user.id} />}
         </div>
       </main>
     </div>
