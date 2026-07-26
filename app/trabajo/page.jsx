@@ -205,6 +205,7 @@ function CreatorDetail({ creator, me, flash }) {
       }
       const folderName = (folders || []).find((f) => f.id === folderSel)?.name || '';
       sendEmail('delivery', creator.id, folderName);
+      await supabase.from('notifications').insert({ user_id: creator.id, kind: 'delivery', meta: { folder: folderName } });
       flash('Entrega subida');
       load();
     } catch (err) {
@@ -437,8 +438,12 @@ function FeedbackTab({ creators, flash }) {
   useEffect(() => { load(); }, [load]);
 
   async function toggle(f) {
-    const { error } = await getSupabase().from('feedback').update({ resolved: !f.resolved }).eq('id', f.id);
+    const supabase = getSupabase();
+    const { error } = await supabase.from('feedback').update({ resolved: !f.resolved }).eq('id', f.id);
     if (error) { flash('Error: ' + error.message); return; }
+    if (!f.resolved) {
+      await supabase.from('notifications').insert({ user_id: f.creator_id, kind: 'feedback_resolved', meta: {} });
+    }
     load();
   }
 

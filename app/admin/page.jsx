@@ -149,6 +149,9 @@ export default function AdminPage() {
     if (error) { flash('Error: ' + error.message); return; }
     setKyc((k) => k.filter((u) => u.id !== userId));
     sendEmail(approve ? 'approved' : 'rejected', userId, approve ? '' : (reason || ''));
+    await getSupabase().from('notifications').insert({
+      user_id: userId, kind: approve ? 'approved' : 'rejected', meta: approve ? {} : { reason: reason || '' },
+    });
     flash(approve ? 'Aprobada — ya puede pagar' : 'Verificación rechazada');
   }
 
