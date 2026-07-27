@@ -1,7 +1,7 @@
 'use client';
 
-// Guided clone-photo setup. A visual shot list — each shot type has its own
-// line-art diagram showing exactly what to capture (front, sides, expressions,
+// Guided clone-photo setup. A visual shot list — each shot type shows a real
+// reference photo of the exact framing to capture (front, sides, expressions,
 // half & full body) so the creator builds a high-quality LoRA. Each shot
 // uploads immediately to the private 'lora' bucket, tagged with its category.
 
@@ -9,7 +9,29 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, Loader2, Check, Lightbulb } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
-import ShotArt from '@/components/ShotArt';
+
+// Real reference photo per shot type (premium examples from the library, not
+// childish diagrams). 'right' reuses the turned-head shot mirrored, to show the
+// opposite side without a second near-identical asset.
+const EXAMPLE = {
+  front: '/lib/belleza-salon.jpg',
+  left: '/lib/ducha-pelo.jpg',
+  right: '/lib/ducha-pelo.jpg',
+  expression: '/lib/emociones-feliz.jpg',
+  half: '/lib/bar-coctel.jpg',
+  body: '/lib/playa-playa.jpg',
+};
+
+// object-position per shot so the reference photo frames the face/body, not the
+// top of the head (these are tall portraits).
+const POS = {
+  front: '50% 30%',
+  left: '50% 34%',
+  right: '50% 34%',
+  expression: '50% 34%',
+  half: '50% 26%',
+  body: '50% 30%',
+};
 
 // Recommended count per shot type — sums to the LoRA target (Higgsfield needs
 // a varied set; ~50 is the sweet spot, more is better).
@@ -98,6 +120,7 @@ export default function CloneSetup({ userId, embedded = false }) {
           const complete = photos.length >= s.rec;
           return (
             <ShotCard key={s.key} kind={s.key} label={shot.label} hint={shot.hint} rec={s.rec}
+              example={EXAMPLE[s.key]} pos={POS[s.key]} exampleLabel={t.lora.example} mirror={s.key === 'right'}
               photos={photos} complete={complete} busy={busyCat === s.key} progress={progress}
               addLabel={t.lora.addPhotos} onFiles={(fl) => addToCategory(s.key, fl)} />
           );
@@ -120,14 +143,19 @@ export default function CloneSetup({ userId, embedded = false }) {
   );
 }
 
-function ShotCard({ kind, label, hint, rec, photos, complete, busy, progress, addLabel, onFiles }) {
+function ShotCard({ label, hint, rec, example, pos, exampleLabel, mirror, photos, complete, busy, progress, addLabel, onFiles }) {
   const ref = useRef(null);
   return (
     <div className={`overflow-hidden rounded-2xl border transition-colors ${complete ? 'border-brand/40 bg-brand/[0.04]' : 'border-line bg-ink-2'}`}>
-      {/* Diagram */}
-      <div className="relative flex h-28 items-center justify-center border-b border-line bg-hair/[0.03]">
-        <ShotArt kind={kind} className={`block h-16 w-16 ${complete ? 'text-brand' : 'text-paper-mute'}`} />
-        <span className={`absolute right-2 top-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${complete ? 'border-brand/40 text-brand' : 'border-line text-paper-dim'}`}>
+      {/* Reference photo */}
+      <div className="relative h-36 overflow-hidden border-b border-line">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={example} alt="" style={{ objectPosition: pos }} className={`h-full w-full object-cover ${mirror ? '-scale-x-100' : ''}`} />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink/70 via-ink/10 to-transparent" />
+        <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-paper backdrop-blur-sm">
+          {exampleLabel}
+        </span>
+        <span className={`absolute right-2 top-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold backdrop-blur-sm ${complete ? 'border-brand/50 bg-brand/20 text-paper' : 'border-white/20 bg-ink/60 text-paper'}`}>
           {photos.length}/{rec}
         </span>
         {photos.length > 0 && (

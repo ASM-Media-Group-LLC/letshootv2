@@ -314,7 +314,7 @@ function UploadSlot({ kind, label, hint, tap, file, onFile }) {
           <img src={preview} alt={label} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <>
-            <ShotArt kind={kind} className="block h-14 w-14 text-paper-mute" />
+            <ShotArt kind={kind} className="block h-20 w-20 text-brand/80" />
             <span className="mt-1 inline-flex items-center gap-1 text-xs text-paper-dim"><Upload size={13} /> {tap}</span>
           </>
         )}
