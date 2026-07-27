@@ -1,49 +1,17 @@
 'use client';
 
-// Guided clone-photo setup. A visual shot list — each shot type shows a real
-// reference photo of the exact framing to capture (front, sides, expressions,
-// half & full body) so the creator builds a high-quality LoRA. Each shot
-// uploads immediately to the private 'lora' bucket, tagged with its category.
+// Guided clone-photo setup. A full VISUAL shot list: every one of the 60 shots
+// shows a real, distinct reference photo of the model (grouped by category) so
+// the creator sees exactly the photo to replicate — then uploads her own per
+// category. Uploads go to the private 'lora' bucket, tagged with the category.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, Loader2, Check, Lightbulb } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
+import { CLONE_EXAMPLES, CLONE_POS, CLONE_TOTAL } from '@/lib/clone-shots';
 
-// Real, DISTINCT reference photo per shot type (premium examples from the
-// library — no mirrored/duplicate assets). left = a 3/4 angle, right = the most
-// side-angled shot available, body = the fullest standing shot available.
-const EXAMPLE = {
-  front: '/lib/viajes-ciudad.jpg',
-  left: '/lib/coqueteo-labio.jpg',
-  right: '/lib/ducha-pelo.jpg',
-  expression: '/lib/emociones-feliz.jpg',
-  half: '/lib/bar-coctel.jpg',
-  body: '/lib/coqueteo-espejo.jpg',
-};
-
-// object-position per shot so the reference photo frames the face/body, not the
-// top of the head (these are tall portraits).
-const POS = {
-  front: '50% 28%',
-  left: '50% 30%',
-  right: '50% 34%',
-  expression: '50% 34%',
-  half: '50% 26%',
-  body: '50% 18%',
-};
-
-// Recommended count per shot type — sums to the LoRA target (Higgsfield needs
-// a varied set; ~50 is the sweet spot, more is better).
-const SHOTS = [
-  { key: 'front', rec: 12 },
-  { key: 'left', rec: 10 },
-  { key: 'right', rec: 8 },
-  { key: 'expression', rec: 10 },
-  { key: 'half', rec: 10 },
-  { key: 'body', rec: 10 },
-];
-const TOTAL_REC = SHOTS.reduce((a, s) => a + s.rec, 0); // 60
+const SHOTS = Object.entries(CLONE_EXAMPLES).map(([key, imgs]) => ({ key, rec: imgs.length }));
 
 export default function CloneSetup({ userId, embedded = false }) {
   const { t } = usePortal();
@@ -99,7 +67,7 @@ export default function CloneSetup({ userId, embedded = false }) {
   }
 
   const total = byCat ? Object.values(byCat).reduce((a, arr) => a + arr.length, 0) : 0;
-  const pct = Math.min(100, Math.round((total / TOTAL_REC) * 100));
+  const pct = Math.min(100, Math.round((total / CLONE_TOTAL) * 100));
 
   return (
     <div className={embedded ? '' : 'rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-8'}>
@@ -110,19 +78,18 @@ export default function CloneSetup({ userId, embedded = false }) {
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
           <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${pct}%` }} />
         </div>
-        <span className="shrink-0 text-sm font-medium text-paper-mute">{total}/{TOTAL_REC} {t.lora.progress}</span>
+        <span className="shrink-0 text-sm font-medium text-paper-mute">{total}/{CLONE_TOTAL} {t.lora.progress}</span>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="space-y-4">
         {SHOTS.map((s) => {
           const shot = t.lora.shots[s.key];
           const photos = byCat?.[s.key] || [];
-          const complete = photos.length >= s.rec;
           return (
-            <ShotCard key={s.key} kind={s.key} label={shot.label} hint={shot.hint} rec={s.rec}
-              example={EXAMPLE[s.key]} pos={POS[s.key]} exampleLabel={t.lora.example}
-              photos={photos} complete={complete} busy={busyCat === s.key} progress={progress}
-              addLabel={t.lora.addPhotos} onFiles={(fl) => addToCategory(s.key, fl)} />
+            <CategoryBlock key={s.key} kind={s.key} label={shot.label} hint={shot.hint} rec={s.rec}
+              examples={CLONE_EXAMPLES[s.key]} pos={CLONE_POS[s.key]} photos={photos}
+              busy={busyCat === s.key} progress={progress} t={t}
+              onFiles={(fl) => addToCategory(s.key, fl)} />
           );
         })}
       </div>
@@ -143,44 +110,54 @@ export default function CloneSetup({ userId, embedded = false }) {
   );
 }
 
-function ShotCard({ label, hint, rec, example, pos, exampleLabel, photos, complete, busy, progress, addLabel, onFiles }) {
+function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress, t, onFiles }) {
   const ref = useRef(null);
+  const complete = photos.length >= rec;
   return (
-    <div className={`overflow-hidden rounded-2xl border transition-colors ${complete ? 'border-brand/40 bg-brand/[0.04]' : 'border-line bg-ink-2'}`}>
-      {/* Reference photo */}
-      <div className="relative h-36 overflow-hidden border-b border-line">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={example} alt="" style={{ objectPosition: pos }} className="h-full w-full object-cover" />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink/70 via-ink/10 to-transparent" />
-        <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-paper backdrop-blur-sm">
-          {exampleLabel}
-        </span>
-        <span className={`absolute right-2 top-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold backdrop-blur-sm ${complete ? 'border-brand/50 bg-brand/20 text-paper' : 'border-white/20 bg-ink/60 text-paper'}`}>
-          {photos.length}/{rec}
-        </span>
-        {photos.length > 0 && (
-          <div className="absolute bottom-2 left-2 flex -space-x-2">
-            {photos.slice(0, 4).map((p) => (
-              <span key={p.id} className="h-6 w-6 overflow-hidden rounded-full border border-ink-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.url} alt="" className="h-full w-full object-cover" />
-              </span>
-            ))}
+    <div className={`rounded-2xl border p-4 transition-colors sm:p-5 ${complete ? 'border-brand/40 bg-brand/[0.04]' : 'border-line bg-ink-2'}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 font-semibold text-paper">
+            {complete && <Check size={15} className="text-brand" />}
+            {label}
+            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${complete ? 'border-brand/50 text-brand' : 'border-line text-paper-dim'}`}>
+              {photos.length}/{rec}
+            </span>
           </div>
-        )}
-      </div>
-      {/* Info + add */}
-      <div className="p-3.5">
-        <div className="flex items-center gap-1.5 font-medium text-paper">
-          {complete && <Check size={14} className="text-brand" />} {label}
+          <p className="mt-1 text-xs leading-relaxed text-paper-dim">{hint}</p>
         </div>
-        <p className="mt-0.5 text-xs leading-relaxed text-paper-dim">{hint}</p>
         <button type="button" onClick={() => ref.current?.click()} disabled={busy}
-          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
-          {busy ? <><Loader2 size={14} className="animate-spin" /> {progress}</> : <><Upload size={14} /> {addLabel}</>}
+          className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+          {busy ? <><Loader2 size={14} className="animate-spin" /> {progress}</> : <><Upload size={14} /> {t.lora.addPhotos}</>}
         </button>
         <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && onFiles(e.target.files)} />
       </div>
+
+      {/* Reference examples — one real photo per shot to replicate */}
+      <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{t.lora.examples}</p>
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+        {examples.map((img) => (
+          <div key={img} className="relative aspect-[3/4] overflow-hidden rounded-md border border-line bg-hair/[0.04]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/lib/${img}.jpg`} alt="" loading="lazy" style={{ objectPosition: pos }} className="h-full w-full object-cover" />
+          </div>
+        ))}
+      </div>
+
+      {/* Creator's own uploads for this category */}
+      {photos.length > 0 && (
+        <>
+          <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wide text-brand">{t.lora.yours} · {photos.length}</p>
+          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+            {photos.map((p) => (
+              <div key={p.id} className="relative aspect-[3/4] overflow-hidden rounded-md border border-brand/30">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
