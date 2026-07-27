@@ -1,20 +1,15 @@
 'use client';
 
-// Creator onboarding HUB (not a forced wizard). The creator picks what to do,
-// in any order:
-//   · Datos        — profile info
-//   · Identidad    — ID + consent → this is what activates the account
-//   · Pago         — subscription (independent)
-//   · Fotos clon   — guided LoRA shot list (independent)
-// Identity requires Datos first (it needs your legal name). Payment and clone
-// photos are fully independent. Account goes "active" when identity is approved
-// AND payment is done.
+// Creator onboarding — horizontal tabs at the top; clicking a tab opens its
+// full section below. No forced order, no "pending" locks: the creator can
+// fill data, subscribe and upload clone photos in parallel to get ahead.
+// Identity verification + payment are what activate the account.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  LogOut, Check, ShieldCheck, IdCard, CreditCard, Clock, Upload, User,
-  AlertTriangle, ArrowRight, Loader2, ChevronDown, Lock, Sparkles,
+  LogOut, Check, ShieldCheck, IdCard, CreditCard, Upload, User,
+  AlertTriangle, ArrowRight, Loader2, Sparkles, Clock,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -23,19 +18,11 @@ import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
 import CloneSetup from '@/components/CloneSetup';
 
-// Restrained, outline-style status labels (no color fills) — reads professional.
-const TONE = {
-  zinc: 'border-line text-paper-dim',
-  brand: 'border-brand/40 text-brand',
-  amber: 'border-amber-500/40 text-amber-300',
-  rose: 'border-rose-500/40 text-rose-300',
-};
-
 export default function OnboardingPage() {
   const { t } = usePortal();
   const router = useRouter();
   const [me, setMe] = useState(undefined);
-  const [open, setOpen] = useState(null);
+  const [tab, setTab] = useState('datos');
   const [loraCount, setLoraCount] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -60,25 +47,21 @@ export default function OnboardingPage() {
   const datosDone = !!(p.legal_first_name && p.legal_last_name && p.date_of_birth && p.country);
   const idApproved = ['id_approved', 'active', 'paid'].includes(st);
   const paid = p.payment_status === 'paid';
-  const idBadge = idApproved ? { l: h.badge.approved, tone: 'brand' }
-    : st === 'id_pending' ? { l: h.badge.review, tone: 'amber' }
-    : st === 'id_rejected' ? { l: h.badge.rejected, tone: 'rose' }
-    : { l: h.badge.pending, tone: 'zinc' };
   const canActivate = idApproved && paid;
 
-  const activateCount = [datosDone, idApproved, paid].filter(Boolean).length;
-  // The one action we gently point to next (still fully optional / any order).
-  const next = !datosDone ? 'datos'
-    : (!idApproved && st !== 'id_pending') ? 'identidad'
-    : !paid ? 'pago'
-    : null;
+  const TABS = [
+    { key: 'datos', label: h.tabs.datos, icon: User, done: datosDone },
+    { key: 'identidad', label: h.tabs.identidad, icon: IdCard, done: idApproved },
+    { key: 'pago', label: h.tabs.pago, icon: CreditCard, done: paid },
+    { key: 'clon', label: h.tabs.clon, icon: Sparkles, done: loraCount > 0 },
+  ];
 
   async function activate() {
     await getSupabase().from('profiles').update({ onboarding_status: 'active' }).eq('id', me.user.id);
     router.replace('/panel');
   }
 
-  const toggle = (k) => setOpen((o) => (o === k ? null : k));
+  const done = () => refresh();
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
@@ -98,12 +81,12 @@ export default function OnboardingPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-2xl px-5 py-10">
+      <main className="mx-auto max-w-3xl px-5 py-10">
         <h1 className="font-display text-2xl font-semibold sm:text-[1.75rem]">{h.title}</h1>
         <p className="mt-2 text-sm leading-relaxed text-paper-mute">{h.sub}</p>
 
-        {canActivate ? (
-          <div className="mt-7 flex flex-col items-start gap-3 rounded-xl border border-brand/40 bg-brand/[0.05] p-5 sm:flex-row sm:items-center sm:justify-between">
+        {canActivate && (
+          <div className="mt-6 flex flex-col items-start gap-3 rounded-xl border border-brand/40 bg-brand/[0.05] p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="font-display text-base font-semibold text-paper">{h.activateTitle}</div>
               <p className="mt-1 text-sm text-paper-mute">{h.activateDesc}</p>
@@ -113,72 +96,30 @@ export default function OnboardingPage() {
               {h.activateBtn} <ArrowRight size={16} />
             </button>
           </div>
-        ) : (
-          <div className="mt-6 flex items-center gap-3">
-            <div className="h-1 flex-1 overflow-hidden rounded-full bg-line">
-              <div className="h-full rounded-full bg-brand/70 transition-all" style={{ width: `${(activateCount / 3) * 100}%` }} />
-            </div>
-            <span className="text-xs text-paper-dim">{h.toActivate(activateCount)}</span>
-          </div>
         )}
 
-        {/* Required — numbered */}
-        <p className="mb-3 mt-8 text-xs font-semibold uppercase tracking-wider text-paper-dim">{h.groupActivate}</p>
-        <div className="space-y-2.5">
-          <TaskCard step={1} icon={User} title={h.cards.datos.title} desc={h.cards.datos.desc}
-            badge={datosDone ? { l: h.badge.done, tone: 'brand' } : { l: h.badge.pending, tone: 'zinc' }}
-            done={datosDone} next={next === 'datos'}
-            open={open === 'datos'} onToggle={() => toggle('datos')}>
-            <InfoStep me={me} t={t} onDone={() => { setOpen(null); refresh(); }} />
-          </TaskCard>
-
-          <TaskCard step={2} icon={IdCard} title={h.cards.identidad.title} desc={h.cards.identidad.desc}
-            badge={idBadge} locked={!datosDone} lockedMsg={h.lockedId}
-            done={idApproved} next={next === 'identidad'}
-            open={open === 'identidad'} onToggle={() => toggle('identidad')}>
-            <IdentityStep me={me} t={t} onDone={() => { setOpen(null); refresh(); }}
-              rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} />
-          </TaskCard>
-
-          <TaskCard step={3} icon={CreditCard} title={h.cards.pago.title} desc={h.cards.pago.desc}
-            badge={paid ? { l: h.badge.paid, tone: 'brand' } : { l: h.badge.optional, tone: 'zinc' }}
-            done={paid} next={next === 'pago'}
-            open={open === 'pago'} onToggle={() => toggle('pago')}>
-            <PayStep me={me} t={t} paid={paid} onDone={() => { setOpen(null); refresh(); }} />
-          </TaskCard>
+        {/* Horizontal tabs */}
+        <div className="mt-7 flex gap-1 overflow-x-auto border-b border-line">
+          {TABS.map((tb) => (
+            <button key={tb.key} onClick={() => setTab(tb.key)}
+              className={`relative -mb-px flex shrink-0 items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                tab === tb.key ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
+              {tb.done ? <Check size={15} className="text-brand" /> : <tb.icon size={15} />}
+              {tb.label}
+              {tab === tb.key && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand" />}
+            </button>
+          ))}
         </div>
 
-        {/* Optional — clone */}
-        <p className="mb-3 mt-8 text-xs font-semibold uppercase tracking-wider text-paper-dim">{h.groupOptional}</p>
-        <TaskCard icon={Sparkles} title={h.cards.clon.title} desc={h.cards.clon.desc}
-          badge={loraCount > 0 ? { l: h.photosCount(loraCount), tone: 'brand' } : { l: h.badge.optional, tone: 'zinc' }}
-          open={open === 'clon'} onToggle={() => toggle('clon')}>
-          <CloneSetup userId={me.user.id} embedded />
-        </TaskCard>
+        {/* Panel */}
+        <div className="mt-6">
+          {tab === 'datos' && <InfoStep me={me} t={t} onDone={done} />}
+          {tab === 'identidad' && <IdentityStep me={me} t={t} onDone={done}
+            rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} pending={st === 'id_pending'} />}
+          {tab === 'pago' && <PayStep me={me} t={t} paid={paid} plan={p.plan} onDone={done} />}
+          {tab === 'clon' && <CloneSetup userId={me.user.id} embedded />}
+        </div>
       </main>
-    </div>
-  );
-}
-
-/* ── Collapsible task row (numbered, understated) ───────────────────────── */
-function TaskCard({ icon: Icon, step, title, desc, badge, locked, lockedMsg, done, next, open, onToggle, children }) {
-  return (
-    <div className={`overflow-hidden rounded-xl border bg-card transition-colors ${
-      open || next ? 'border-brand/40' : 'border-line'}`}>
-      <button type="button" onClick={locked ? undefined : onToggle} disabled={locked}
-        className={`flex w-full items-center gap-3.5 p-4 text-left ${locked ? 'cursor-not-allowed opacity-55' : 'hover:bg-hair/[0.03]'}`}>
-        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border text-[13px] font-semibold ${
-          done ? 'border-brand bg-brand text-on-accent' : locked ? 'border-line text-paper-dim' : 'border-line text-paper-mute'}`}>
-          {locked ? <Lock size={13} /> : done ? <Check size={15} /> : (step != null ? step : <Icon size={15} />)}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="font-medium text-paper">{title}</div>
-          <p className="truncate text-xs text-paper-dim">{locked ? lockedMsg : desc}</p>
-        </div>
-        <span className={`hidden shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium sm:inline ${TONE[badge.tone]}`}>{badge.l}</span>
-        {!locked && <ChevronDown size={17} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />}
-      </button>
-      {open && !locked && <div className="border-t border-line p-5">{children}</div>}
     </div>
   );
 }
@@ -193,6 +134,7 @@ function InfoStep({ me, onDone, t }) {
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   function ageFrom(dob) {
@@ -216,30 +158,41 @@ function InfoStep({ me, onDone, t }) {
     const { error: err } = await getSupabase().from('profiles').update(patch).eq('id', me.user.id);
     setSaving(false);
     if (err) { setError(err.message); return; }
-    onDone();
+    setSaved(true); onDone();
   }
 
   return (
-    <form onSubmit={save} className="grid gap-4">
-      <p className="text-sm text-paper-mute">{t.onboarding.info.desc}</p>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t.onboarding.info.firstName} value={form.legal_first_name} onChange={set('legal_first_name')} required />
-        <Field label={t.onboarding.info.lastName} value={form.legal_last_name} onChange={set('legal_last_name')} required />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t.onboarding.info.dob} type="date" value={form.date_of_birth} onChange={set('date_of_birth')} required />
-        <Field label={t.onboarding.info.country} value={form.country} onChange={set('country')} placeholder={t.onboarding.info.countryPh} required />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t.onboarding.info.phone} value={form.phone} onChange={set('phone')} placeholder={t.onboarding.info.phonePh} />
-        <Field label={t.onboarding.info.stage} value={form.stage_name} onChange={set('stage_name')} placeholder={t.onboarding.info.stagePh} />
-      </div>
-      {error && <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
-      <button type="submit" disabled={saving}
-        className="group mt-1 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-        {saving ? t.common.saving : t.common.save} {!saving && <Check size={18} />}
-      </button>
-    </form>
+    <Panel title={t.onboarding.info.title} desc={t.onboarding.info.desc}>
+      <form onSubmit={save} className="grid gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={t.onboarding.info.firstName} value={form.legal_first_name} onChange={set('legal_first_name')} required />
+          <Field label={t.onboarding.info.lastName} value={form.legal_last_name} onChange={set('legal_last_name')} required />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={t.onboarding.info.dob} type="date" value={form.date_of_birth} onChange={set('date_of_birth')} required />
+          <Field label={t.onboarding.info.country} value={form.country} onChange={set('country')} placeholder={t.onboarding.info.countryPh} required />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={t.onboarding.info.phone} value={form.phone} onChange={set('phone')} placeholder={t.onboarding.info.phonePh} />
+          <Field label={t.onboarding.info.stage} value={form.stage_name} onChange={set('stage_name')} placeholder={t.onboarding.info.stagePh} />
+        </div>
+        {error && <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
+        <button type="submit" disabled={saving}
+          className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-brand py-3 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
+          {saving ? t.common.saving : saved ? <><Check size={17} /> {t.common.save}</> : t.common.save}
+        </button>
+      </form>
+    </Panel>
+  );
+}
+
+function Panel({ title, desc, children }) {
+  return (
+    <div className="rounded-xl border border-line bg-card p-5 sm:p-6">
+      <h2 className="font-display text-lg font-semibold text-paper">{title}</h2>
+      {desc && <p className="mb-5 mt-1 text-sm leading-relaxed text-paper-mute">{desc}</p>}
+      {children}
+    </div>
   );
 }
 
@@ -257,26 +210,29 @@ function Field({ label, type = 'text', value, onChange, placeholder, required })
 const KYC_SLOTS = ['id_front', 'id_back', 'selfie_id'];
 const CONSENT_KEYS = ['person', 'clone', 'billing'];
 
-function IdentityStep({ me, onDone, t, rejected, reason, approved }) {
+function IdentityStep({ me, onDone, t, rejected, reason, approved, pending }) {
   const [files, setFiles] = useState({});
   const [consents, setConsents] = useState({ person: false, clone: false, billing: false });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const st = me.profile?.onboarding_status;
 
   if (approved) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
-        <ShieldCheck size={20} className="text-brand" /> {t.onboarding.review.title} — {t.cuenta.states.id_approved}
-      </div>
+      <Panel title={t.onboarding.id.title}>
+        <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
+          <ShieldCheck size={20} className="text-brand" /> {t.cuenta.states.id_approved}
+        </div>
+      </Panel>
     );
   }
-  if (st === 'id_pending') {
+  if (pending) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
-        <Loader2 size={20} className="animate-spin text-brand" />
-        {t.onboarding.review.state} <span className="font-semibold text-brand">{t.onboarding.review.stateValue}</span> — {t.onboarding.id.note}
-      </div>
+      <Panel title={t.onboarding.id.title}>
+        <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
+          <Clock size={20} className="text-brand" />
+          {t.onboarding.review.state} <span className="font-semibold text-brand">{t.onboarding.review.stateValue}</span> — {t.onboarding.id.note}
+        </div>
+      </Panel>
     );
   }
 
@@ -311,8 +267,7 @@ function IdentityStep({ me, onDone, t, rejected, reason, approved }) {
   }
 
   return (
-    <div>
-      <p className="mb-4 text-sm text-paper-mute">{t.onboarding.id.desc}</p>
+    <Panel title={t.onboarding.id.title} desc={t.onboarding.id.desc}>
       {rejected && (
         <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
@@ -338,11 +293,11 @@ function IdentityStep({ me, onDone, t, rejected, reason, approved }) {
       </div>
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={submit} disabled={saving}
-        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-brand py-3 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
         {saving ? <><Loader2 size={18} className="animate-spin" /> {t.onboarding.id.uploading}</> : <><ShieldCheck size={18} /> {t.onboarding.id.submit}</>}
       </button>
       <p className="mt-3 text-center text-[11px] text-paper-dim">{t.onboarding.id.note}</p>
-    </div>
+    </Panel>
   );
 }
 
@@ -374,43 +329,59 @@ function UploadSlot({ label, hint, tap, file, onFile }) {
   );
 }
 
-/* ── Pago (independent) ─────────────────────────────────────────────────── */
-function PayStep({ me, onDone, t, paid }) {
+/* ── Suscripción — real plans ───────────────────────────────────────────── */
+function PayStep({ me, onDone, t, paid, plan }) {
+  const plans = t.onboarding.pay.plans;
+  const [sel, setSel] = useState(plan || plans.find((p) => p.popular)?.key || plans[0].key);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
   if (paid) {
+    const cur = plans.find((p) => p.key === plan) || plans.find((p) => p.key === sel);
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
-        <Check size={18} className="text-brand" /> {t.onboarding.pay.plan} — {t.onboarding.hub.badge.paid}
-      </div>
+      <Panel title={t.onboarding.pay.title}>
+        <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
+          <Check size={18} className="text-brand" /> {cur ? `${cur.name} · $${cur.price}${t.onboarding.pay.perMonth}` : t.onboarding.hub.badge.paid} — {t.onboarding.hub.badge.paid}
+        </div>
+      </Panel>
     );
   }
+
+  const current = plans.find((p) => p.key === sel) || plans[0];
+
   async function pay() {
     setSaving(true); setError('');
-    const { error: err } = await getSupabase().from('profiles').update({ payment_status: 'paid' }).eq('id', me.user.id);
+    const { error: err } = await getSupabase().from('profiles').update({ payment_status: 'paid', plan: sel }).eq('id', me.user.id);
     setSaving(false);
     if (err) { setError(err.message); return; }
     onDone();
   }
+
   return (
-    <div>
-      <p className="mb-4 text-sm text-paper-mute">{t.onboarding.pay.desc}</p>
-      <div className="rounded-2xl border border-brand/30 bg-brand/[0.06] p-5">
-        <div className="flex items-baseline justify-between">
-          <span className="font-display text-lg font-semibold text-paper">{t.onboarding.pay.plan}</span>
-          <span className="font-display text-2xl font-bold text-brand">$—<span className="text-sm text-paper-dim">{t.onboarding.pay.perMonth}</span></span>
-        </div>
-        <ul className="mt-3 space-y-1.5 text-sm text-paper-mute">
-          <li className="flex items-center gap-2"><Check size={14} className="text-brand" /> {t.onboarding.pay.f1}</li>
-          <li className="flex items-center gap-2"><Check size={14} className="text-brand" /> {t.onboarding.pay.f2}</li>
-        </ul>
+    <Panel title={t.onboarding.pay.title} desc={t.onboarding.pay.desc}>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {plans.map((pl) => {
+          const active = sel === pl.key;
+          return (
+            <button key={pl.key} type="button" onClick={() => setSel(pl.key)}
+              className={`relative rounded-xl border p-4 text-left transition-colors ${active ? 'border-brand bg-brand/[0.06]' : 'border-line bg-ink-2 hover:border-brand/40'}`}>
+              {pl.popular && <span className="absolute -top-2 left-4 rounded-full bg-brand px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-accent">{t.onboarding.pay.popular}</span>}
+              <div className="font-display font-semibold text-paper">{pl.name}</div>
+              <div className="mt-1 font-display text-2xl font-bold text-brand">${pl.price}<span className="text-sm font-normal text-paper-dim">{t.onboarding.pay.perMonth}</span></div>
+              <p className="mt-2 text-xs leading-relaxed text-paper-mute">{pl.feat}</p>
+              <span className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold ${active ? 'text-brand' : 'text-paper-dim'}`}>
+                {active ? <><Check size={13} /> {t.onboarding.pay.chosen}</> : t.onboarding.pay.choose}
+              </span>
+            </button>
+          );
+        })}
       </div>
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={pay} disabled={saving}
-        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-        {saving ? t.onboarding.pay.submitting : t.onboarding.pay.submit}
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-brand py-3 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
+        {saving ? t.onboarding.pay.submitting : t.onboarding.pay.payBtn(current.name, current.price)}
       </button>
       <p className="mt-3 text-center text-[11px] text-paper-dim">{t.onboarding.pay.stub}</p>
-    </div>
+    </Panel>
   );
 }
