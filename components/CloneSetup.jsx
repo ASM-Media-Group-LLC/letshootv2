@@ -6,10 +6,20 @@
 // category. Uploads go to the private 'lora' bucket, tagged with the category.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, Loader2, Check, Lightbulb } from 'lucide-react';
+import { Upload, Loader2, Check, Lightbulb, Camera } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
 import { CLONE_EXAMPLES, CLONE_POS, CLONE_TOTAL } from '@/lib/clone-shots';
+
+// Full-body "digitals" — real Julia example per pose. Drop these files in
+// public/lib (generated with the Julia Parker LoRA in Higgsfield) and they show
+// automatically; until then each slot shows a neutral "in production" tile
+// (never a drawing).
+const BODY_POSES = [
+  { key: 'front', img: 'julia-cuerpo-frente' },
+  { key: 'back', img: 'julia-cuerpo-espalda' },
+  { key: 'side', img: 'julia-cuerpo-lado' },
+];
 
 const SHOTS = Object.entries(CLONE_EXAMPLES).map(([key, imgs]) => ({ key, rec: imgs.length }));
 
@@ -88,7 +98,7 @@ export default function CloneSetup({ userId, embedded = false }) {
           return (
             <CategoryBlock key={s.key} kind={s.key} label={shot.label} hint={shot.hint} rec={s.rec}
               examples={CLONE_EXAMPLES[s.key]} pos={CLONE_POS[s.key]} photos={photos}
-              busy={busyCat === s.key} progress={progress} t={t}
+              busy={busyCat === s.key} progress={progress} t={t} isBody={s.key === 'body'}
               onFiles={(fl) => addToCategory(s.key, fl)} />
           );
         })}
@@ -110,7 +120,7 @@ export default function CloneSetup({ userId, embedded = false }) {
   );
 }
 
-function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress, t, onFiles }) {
+function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress, t, isBody, onFiles }) {
   const ref = useRef(null);
   const complete = photos.length >= rec;
   return (
@@ -133,16 +143,24 @@ function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress
         <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && onFiles(e.target.files)} />
       </div>
 
-      {/* Reference examples — one real photo per shot to replicate */}
+      {/* Reference examples — real photo per shot, or pose diagrams for full body */}
       <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{t.lora.examples}</p>
-      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-        {examples.map((img) => (
-          <div key={img} className="relative aspect-[3/4] overflow-hidden rounded-md border border-line bg-hair/[0.04]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/lib/${img}.jpg`} alt="" loading="lazy" style={{ objectPosition: pos }} className="h-full w-full object-cover" />
-          </div>
-        ))}
-      </div>
+      {isBody ? (
+        <div className="grid max-w-md grid-cols-3 gap-2">
+          {BODY_POSES.map((p) => (
+            <BodyPose key={p.key} label={t.lora.poses[p.key]} img={p.img} pendingLabel={t.lora.pending} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+          {examples.map((img) => (
+            <div key={img} className="relative aspect-[3/4] overflow-hidden rounded-md border border-line bg-hair/[0.04]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/lib/${img}.jpg`} alt="" loading="lazy" style={{ objectPosition: pos }} className="h-full w-full object-cover" />
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Creator's own uploads for this category */}
       {photos.length > 0 && (
@@ -158,6 +176,28 @@ function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// Full-body pose slot: shows the real Julia example if the file exists, else a
+// neutral "in production" tile (no drawings).
+function BodyPose({ label, img, pendingLabel }) {
+  const [ok, setOk] = useState(true);
+  return (
+    <div className="overflow-hidden rounded-lg border border-line bg-hair/[0.03]">
+      <div className="relative flex aspect-[3/4] items-center justify-center">
+        {ok ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`/lib/${img}.jpg`} alt="" loading="lazy" onError={() => setOk(false)} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex flex-col items-center gap-1.5 px-2 text-center">
+            <Camera size={18} className="text-paper-dim" />
+            <span className="text-[10px] leading-tight text-paper-dim">{pendingLabel}</span>
+          </div>
+        )}
+      </div>
+      <p className="py-1.5 text-center text-[11px] font-medium text-paper-mute">{label}</p>
     </div>
   );
 }

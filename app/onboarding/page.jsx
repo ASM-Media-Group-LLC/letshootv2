@@ -23,7 +23,7 @@ export default function OnboardingPage() {
   const { t } = usePortal();
   const router = useRouter();
   const [me, setMe] = useState(undefined);
-  const [tab, setTab] = useState('datos');
+  const [tab, setTab] = useState('pago');
   const [loraCount, setLoraCount] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -51,11 +51,12 @@ export default function OnboardingPage() {
   const canActivate = idApproved && paid;
 
   const TABS = [
-    { key: 'datos', label: h.tabs.datos, icon: User, done: datosDone },
-    { key: 'identidad', label: h.tabs.identidad, icon: IdCard, done: idApproved },
     { key: 'pago', label: h.tabs.pago, icon: CreditCard, done: paid },
     { key: 'clon', label: h.tabs.clon, icon: Sparkles, done: loraCount > 0 },
+    { key: 'datos', label: h.tabs.datos, icon: User, done: datosDone },
+    { key: 'identidad', label: h.tabs.identidad, icon: IdCard, done: idApproved },
   ];
+  const doneCount = TABS.filter((tb) => tb.done).length;
 
   async function activate() {
     await getSupabase().from('profiles').update({ onboarding_status: 'active' }).eq('id', me.user.id);
@@ -83,8 +84,24 @@ export default function OnboardingPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-5 py-10">
-        <h1 className="font-display text-2xl font-semibold sm:text-[1.75rem]">{h.title}</h1>
-        <p className="mt-2 text-sm leading-relaxed text-paper-mute">{h.sub}</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-xl">
+            <h1 className="font-display text-2xl font-semibold sm:text-[1.75rem]">{h.title}</h1>
+            <p className="mt-2 text-sm leading-relaxed text-paper-mute">{h.sub}</p>
+          </div>
+          <div className="flex items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3">
+            <div className="relative grid h-11 w-11 place-items-center">
+              <svg className="h-11 w-11 -rotate-90" viewBox="0 0 44 44">
+                <circle cx="22" cy="22" r="18" fill="none" stroke="currentColor" strokeWidth="4" className="text-line" />
+                <circle cx="22" cy="22" r="18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
+                  className="text-brand" strokeDasharray={2 * Math.PI * 18}
+                  strokeDashoffset={2 * Math.PI * 18 * (1 - doneCount / 4)} />
+              </svg>
+              <span className="absolute text-xs font-semibold text-paper">{doneCount}/4</span>
+            </div>
+            <div className="whitespace-pre-line text-xs leading-tight text-paper-mute">{h.stepsDone}</div>
+          </div>
+        </div>
 
         {canActivate && (
           <div className="mt-6 flex flex-col items-start gap-3 rounded-xl border border-brand/40 bg-brand/[0.05] p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -99,17 +116,31 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Horizontal tabs */}
-        <div className="mt-7 flex gap-1 overflow-x-auto border-b border-line">
-          {TABS.map((tb) => (
-            <button key={tb.key} onClick={() => setTab(tb.key)}
-              className={`relative -mb-px flex shrink-0 items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
-                tab === tb.key ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
-              {tb.done ? <Check size={15} className="text-brand" /> : <tb.icon size={15} />}
-              {tb.label}
-              {tab === tb.key && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand" />}
-            </button>
-          ))}
+        {/* Premium stepper tabs */}
+        <div className="mt-7 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          {TABS.map((tb) => {
+            const active = tab === tb.key;
+            return (
+              <button key={tb.key} onClick={() => setTab(tb.key)}
+                className={`group flex flex-col gap-3 rounded-2xl border p-4 text-left transition-all ${
+                  active ? 'border-brand/60 bg-brand/[0.07] shadow-glow-sm' : 'border-line bg-card hover:border-brand/30'}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`grid h-9 w-9 place-items-center rounded-xl transition-colors ${
+                    active ? 'bg-brand/20 text-brand' : 'bg-hair/[0.06] text-paper-mute group-hover:text-paper'}`}>
+                    <tb.icon size={17} />
+                  </span>
+                  {tb.done ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-semibold text-brand">
+                      <Check size={11} /> {h.doneShort}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">{h.incomplete}</span>
+                  )}
+                </div>
+                <span className={`text-sm font-semibold ${active ? 'text-paper' : 'text-paper-mute group-hover:text-paper'}`}>{tb.label}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Panel */}
