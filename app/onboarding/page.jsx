@@ -17,6 +17,7 @@ import { usePortal } from '@/lib/portal-i18n';
 import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
 import CloneSetup from '@/components/CloneSetup';
+import ShotArt from '@/components/ShotArt';
 
 export default function OnboardingPage() {
   const { t } = usePortal();
@@ -276,7 +277,7 @@ function IdentityStep({ me, onDone, t, rejected, reason, approved, pending }) {
       )}
       <div className="grid gap-3 sm:grid-cols-3">
         {KYC_SLOTS.map((k) => (
-          <UploadSlot key={k} label={t.onboarding.id.slots[k].label} hint={t.onboarding.id.slots[k].hint} tap={t.onboarding.id.tap} file={files[k]}
+          <UploadSlot key={k} kind={k} label={t.onboarding.id.slots[k].label} hint={t.onboarding.id.slots[k].hint} tap={t.onboarding.id.tap} file={files[k]}
             onFile={(f) => setFiles((prev) => ({ ...prev, [k]: f }))} />
         ))}
       </div>
@@ -301,7 +302,7 @@ function IdentityStep({ me, onDone, t, rejected, reason, approved, pending }) {
   );
 }
 
-function UploadSlot({ label, hint, tap, file, onFile }) {
+function UploadSlot({ kind, label, hint, tap, file, onFile }) {
   const ref = useRef(null);
   const preview = file ? URL.createObjectURL(file) : null;
   return (
@@ -313,8 +314,8 @@ function UploadSlot({ label, hint, tap, file, onFile }) {
           <img src={preview} alt={label} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <>
-            <Upload size={22} className="text-paper-dim" />
-            <span className="text-xs text-paper-dim">{tap}</span>
+            <ShotArt kind={kind} className="block h-14 w-14 text-paper-mute" />
+            <span className="mt-1 inline-flex items-center gap-1 text-xs text-paper-dim"><Upload size={13} /> {tap}</span>
           </>
         )}
         {file && <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-brand text-on-accent"><Check size={14} /></span>}
@@ -366,8 +367,14 @@ function PayStep({ me, onDone, t, paid, plan }) {
             <button key={pl.key} type="button" onClick={() => setSel(pl.key)}
               className={`relative rounded-xl border p-4 text-left transition-colors ${active ? 'border-brand bg-brand/[0.06]' : 'border-line bg-ink-2 hover:border-brand/40'}`}>
               {pl.popular && <span className="absolute -top-2 left-4 rounded-full bg-brand px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-accent">{t.onboarding.pay.popular}</span>}
-              <div className="font-display font-semibold text-paper">{pl.name}</div>
-              <div className="mt-1 font-display text-2xl font-bold text-brand">${pl.price}<span className="text-sm font-normal text-paper-dim">{t.onboarding.pay.perMonth}</span></div>
+              <div className="flex items-center justify-between">
+                <div className="font-display font-semibold text-paper">{pl.name}</div>
+                {pl.was && <span className="rounded-full border border-brand/40 px-1.5 py-0.5 text-[10px] font-bold text-brand">{t.onboarding.pay.off}</span>}
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="font-display text-2xl font-bold text-brand">${pl.price}<span className="text-sm font-normal text-paper-dim">{t.onboarding.pay.perMonth}</span></span>
+                {pl.was && <span className="text-sm text-paper-dim line-through">${pl.was}</span>}
+              </div>
               <p className="mt-2 text-xs leading-relaxed text-paper-mute">{pl.feat}</p>
               <span className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold ${active ? 'text-brand' : 'text-paper-dim'}`}>
                 {active ? <><Check size={13} /> {t.onboarding.pay.chosen}</> : t.onboarding.pay.choose}
@@ -376,9 +383,10 @@ function PayStep({ me, onDone, t, paid, plan }) {
           );
         })}
       </div>
-      {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
+      <p className="mt-4 text-center text-xs font-medium text-brand">{t.onboarding.pay.launch}</p>
+      {error && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={pay} disabled={saving}
-        className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-brand py-3 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-brand py-3 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
         {saving ? t.onboarding.pay.submitting : t.onboarding.pay.payBtn(current.name, current.price)}
       </button>
       <p className="mt-3 text-center text-[11px] text-paper-dim">{t.onboarding.pay.stub}</p>

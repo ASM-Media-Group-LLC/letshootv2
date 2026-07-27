@@ -1,29 +1,31 @@
 'use client';
 
-// Guided clone-photo setup. Instead of a vague "0/80" blob, this walks the
-// creator through a shot list (front, sides, expressions, half & full body)
-// so she knows exactly what to upload for a high-quality LoRA. Each shot type
+// Guided clone-photo setup. A visual shot list — each shot type has its own
+// line-art diagram showing exactly what to capture (front, sides, expressions,
+// half & full body) so the creator builds a high-quality LoRA. Each shot
 // uploads immediately to the private 'lora' bucket, tagged with its category.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, Loader2, Check, Sparkles, User, Users, Smile, PersonStanding, Camera, Lightbulb } from 'lucide-react';
+import { Upload, Loader2, Check, Lightbulb } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
+import ShotArt from '@/components/ShotArt';
 
-// Recommended count per shot type (a good minimum — more is better).
+// Recommended count per shot type — sums to the LoRA target (Higgsfield needs
+// a varied set; ~50 is the sweet spot, more is better).
 const SHOTS = [
-  { key: 'front', icon: User, rec: 5 },
-  { key: 'left', icon: Camera, rec: 3 },
-  { key: 'right', icon: Camera, rec: 3 },
-  { key: 'expression', icon: Smile, rec: 5 },
-  { key: 'half', icon: Users, rec: 6 },
-  { key: 'body', icon: PersonStanding, rec: 8 },
+  { key: 'front', rec: 10 },
+  { key: 'left', rec: 6 },
+  { key: 'right', rec: 6 },
+  { key: 'expression', rec: 8 },
+  { key: 'half', rec: 8 },
+  { key: 'body', rec: 12 },
 ];
-const TOTAL_REC = SHOTS.reduce((a, s) => a + s.rec, 0);
+const TOTAL_REC = SHOTS.reduce((a, s) => a + s.rec, 0); // 50
 
 export default function CloneSetup({ userId, embedded = false }) {
   const { t } = usePortal();
-  const [byCat, setByCat] = useState(null); // { cat: [{id, url}] }
+  const [byCat, setByCat] = useState(null);
   const [busyCat, setBusyCat] = useState('');
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
@@ -35,7 +37,7 @@ export default function CloneSetup({ userId, embedded = false }) {
     const cats = {};
     SHOTS.forEach((s) => { cats[s.key] = []; });
     const paths = (rows || []).map((r) => r.storage_path);
-    let urls = {};
+    const urls = {};
     if (paths.length) {
       const { data: signed } = await supabase.storage.from('lora').createSignedUrls(paths, 3600);
       (signed || []).forEach((s, i) => { if (s?.signedUrl) urls[paths[i]] = s.signedUrl; });
@@ -79,38 +81,31 @@ export default function CloneSetup({ userId, embedded = false }) {
 
   return (
     <div className={embedded ? '' : 'rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-8'}>
-      {!embedded && (
-        <div className="mb-1 flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand/12 text-brand"><Sparkles size={18} /></span>
-          <h2 className="font-display text-xl font-semibold text-paper">{t.lora.setupTitle}</h2>
-        </div>
-      )}
-      <p className="mb-5 text-sm text-paper-mute">{t.lora.setupDesc}</p>
+      {!embedded && <h2 className="mb-1 font-display text-xl font-semibold text-paper">{t.lora.setupTitle}</h2>}
+      <p className="mb-5 text-sm leading-relaxed text-paper-mute">{t.lora.setupDesc}</p>
 
-      {/* Overall progress */}
-      <div className="mb-5 flex items-center gap-3">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-line">
+      <div className="mb-6 flex items-center gap-3">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
           <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${pct}%` }} />
         </div>
-        <span className="shrink-0 text-sm font-medium text-paper-mute">{total}/{TOTAL_REC}+ {t.lora.progress}</span>
+        <span className="shrink-0 text-sm font-medium text-paper-mute">{total}/{TOTAL_REC} {t.lora.progress}</span>
       </div>
 
-      {/* Shot-list */}
-      <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {SHOTS.map((s) => {
           const shot = t.lora.shots[s.key];
           const photos = byCat?.[s.key] || [];
           const complete = photos.length >= s.rec;
-          return <ShotRow key={s.key} icon={s.icon} label={shot.label} hint={shot.hint} rec={s.rec}
-            photos={photos} complete={complete} busy={busyCat === s.key} progress={progress}
-            addLabel={t.lora.addPhotos} recLabel={t.lora.recommended} doneLabel={t.lora.done}
-            onFiles={(fl) => addToCategory(s.key, fl)} />;
+          return (
+            <ShotCard key={s.key} kind={s.key} label={shot.label} hint={shot.hint} rec={s.rec}
+              photos={photos} complete={complete} busy={busyCat === s.key} progress={progress}
+              addLabel={t.lora.addPhotos} onFiles={(fl) => addToCategory(s.key, fl)} />
+          );
         })}
       </div>
 
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
 
-      {/* Tips */}
       <div className="mt-6 rounded-2xl border border-line bg-ink-2 p-4">
         <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-paper">
           <Lightbulb size={15} className="text-brand" /> {t.lora.tips}
@@ -125,40 +120,39 @@ export default function CloneSetup({ userId, embedded = false }) {
   );
 }
 
-function ShotRow({ icon: Icon, label, hint, rec, photos, complete, busy, progress, addLabel, recLabel, doneLabel, onFiles }) {
+function ShotCard({ kind, label, hint, rec, photos, complete, busy, progress, addLabel, onFiles }) {
   const ref = useRef(null);
   return (
-    <div className={`rounded-2xl border p-3.5 transition-colors ${complete ? 'border-brand/40 bg-brand/[0.05]' : 'border-line bg-ink-2'}`}>
-      <div className="flex items-center gap-3">
-        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${complete ? 'bg-brand text-on-accent' : 'bg-hair/10 text-paper-dim'}`}>
-          {complete ? <Check size={17} /> : <Icon size={17} />}
+    <div className={`overflow-hidden rounded-2xl border transition-colors ${complete ? 'border-brand/40 bg-brand/[0.04]' : 'border-line bg-ink-2'}`}>
+      {/* Diagram */}
+      <div className="relative flex h-28 items-center justify-center border-b border-line bg-hair/[0.03]">
+        <ShotArt kind={kind} className={`block h-16 w-16 ${complete ? 'text-brand' : 'text-paper-mute'}`} />
+        <span className={`absolute right-2 top-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${complete ? 'border-brand/40 text-brand' : 'border-line text-paper-dim'}`}>
+          {photos.length}/{rec}
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-paper">{label}</span>
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${complete ? 'bg-brand/15 text-brand' : 'bg-hair/10 text-paper-dim'}`}>
-              {photos.length}/{rec} {complete ? doneLabel : recLabel}
-            </span>
+        {photos.length > 0 && (
+          <div className="absolute bottom-2 left-2 flex -space-x-2">
+            {photos.slice(0, 4).map((p) => (
+              <span key={p.id} className="h-6 w-6 overflow-hidden rounded-full border border-ink-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt="" className="h-full w-full object-cover" />
+              </span>
+            ))}
           </div>
-          <p className="truncate text-xs text-paper-dim">{hint}</p>
+        )}
+      </div>
+      {/* Info + add */}
+      <div className="p-3.5">
+        <div className="flex items-center gap-1.5 font-medium text-paper">
+          {complete && <Check size={14} className="text-brand" />} {label}
         </div>
+        <p className="mt-0.5 text-xs leading-relaxed text-paper-dim">{hint}</p>
         <button type="button" onClick={() => ref.current?.click()} disabled={busy}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
           {busy ? <><Loader2 size={14} className="animate-spin" /> {progress}</> : <><Upload size={14} /> {addLabel}</>}
         </button>
         <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && onFiles(e.target.files)} />
       </div>
-
-      {photos.length > 0 && (
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {photos.map((p) => (
-            <div key={p.id} className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-line">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.url} alt="" className="h-full w-full object-cover" />
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
