@@ -1,27 +1,19 @@
 'use client';
 
-// Guided clone-photo setup. A full VISUAL shot list: every one of the 60 shots
-// shows a real, distinct reference photo of the model (grouped by category) so
-// the creator sees exactly the photo to replicate — then uploads her own per
-// category. Uploads go to the private 'lora' bucket, tagged with the category.
+// Guided clone-photo setup. A full VISUAL shot list: each category shows real,
+// distinct reference photos of Julia (from the library) so the creator sees
+// exactly what to replicate, then uploads her own. Full body is shown clothed
+// and in bikini; a separate "nude" category is upload-only (no examples).
+// Uploads go to the private 'lora' bucket, tagged with the category.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, Loader2, Check, Lightbulb } from 'lucide-react';
+import { Upload, Loader2, Check, Lightbulb, Lock } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
-import { CLONE_EXAMPLES, CLONE_POS, CLONE_TOTAL } from '@/lib/clone-shots';
-
-// Full-body "digitals" — real Julia example per pose. `img` is the ideal
-// generated shot (drop it in public/lib and it shows automatically); until then
-// `fallback` shows the fullest real photo we already have, so the slot is never
-// empty. Never a drawing.
-const BODY_POSES = [
-  { key: 'front', img: 'julia-cuerpo-frente', fallback: 'coqueteo-espejo' },
-  { key: 'back', img: 'julia-cuerpo-espalda', fallback: 'musica-baile' },
-  { key: 'side', img: 'julia-cuerpo-lado', fallback: 'coqueteo-bailando' },
-];
+import { CLONE_EXAMPLES, CLONE_POS, CLONE_TOTAL, NUDE_CATEGORY } from '@/lib/clone-shots';
 
 const SHOTS = Object.entries(CLONE_EXAMPLES).map(([key, imgs]) => ({ key, rec: imgs.length }));
+const ALL_CATS = [...SHOTS.map((s) => s.key), NUDE_CATEGORY];
 
 export default function CloneSetup({ userId, embedded = false }) {
   const { t } = usePortal();
@@ -35,7 +27,7 @@ export default function CloneSetup({ userId, embedded = false }) {
     const { data: rows } = await supabase.from('lora_photos')
       .select('id, storage_path, category').eq('user_id', userId).order('created_at');
     const cats = {};
-    SHOTS.forEach((s) => { cats[s.key] = []; });
+    ALL_CATS.forEach((k) => { cats[k] = []; });
     const paths = (rows || []).map((r) => r.storage_path);
     const urls = {};
     if (paths.length) {
@@ -76,8 +68,10 @@ export default function CloneSetup({ userId, embedded = false }) {
     }
   }
 
-  const total = byCat ? Object.values(byCat).reduce((a, arr) => a + arr.length, 0) : 0;
+  // Progress counts only the guided categories (nude is optional/uncounted).
+  const total = byCat ? SHOTS.reduce((a, s) => a + (byCat[s.key]?.length || 0), 0) : 0;
   const pct = Math.min(100, Math.round((total / CLONE_TOTAL) * 100));
+  const nudePhotos = byCat?.[NUDE_CATEGORY] || [];
 
   return (
     <div className={embedded ? '' : 'rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-8'}>
@@ -96,12 +90,16 @@ export default function CloneSetup({ userId, embedded = false }) {
           const shot = t.lora.shots[s.key];
           const photos = byCat?.[s.key] || [];
           return (
-            <CategoryBlock key={s.key} kind={s.key} label={shot.label} hint={shot.hint} rec={s.rec}
+            <CategoryBlock key={s.key} label={shot.label} hint={shot.hint} rec={s.rec}
               examples={CLONE_EXAMPLES[s.key]} pos={CLONE_POS[s.key]} photos={photos}
-              busy={busyCat === s.key} progress={progress} t={t} isBody={s.key === 'body'}
+              busy={busyCat === s.key} progress={progress} t={t}
               onFiles={(fl) => addToCategory(s.key, fl)} />
           );
         })}
+
+        {/* Optional nude category — upload only, no example photos */}
+        <NudeBlock photos={nudePhotos} busy={busyCat === NUDE_CATEGORY} progress={progress} t={t}
+          onFiles={(fl) => addToCategory(NUDE_CATEGORY, fl)} />
       </div>
 
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
@@ -120,8 +118,40 @@ export default function CloneSetup({ userId, embedded = false }) {
   );
 }
 
-function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress, t, isBody, onFiles }) {
+function AddButton({ busy, progress, label, onFiles }) {
   const ref = useRef(null);
+  return (
+    <>
+      <button type="button" onClick={() => ref.current?.click()} disabled={busy}
+        className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+        {busy ? <><Loader2 size={14} className="animate-spin" /> {progress}</> : <><Upload size={14} /> {label}</>}
+      </button>
+      <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && onFiles(e.target.files)} />
+    </>
+  );
+}
+
+// Grid of the creator's own uploads — subtle brand frame, hover to remove later.
+function Uploads({ photos, label }) {
+  if (!photos.length) return null;
+  return (
+    <>
+      <p className="mb-2 mt-4 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand">
+        <Check size={12} /> {label} · {photos.length}
+      </p>
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+        {photos.map((p) => (
+          <div key={p.id} className="relative aspect-[3/4] overflow-hidden rounded-md ring-1 ring-brand/40">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress, t, onFiles }) {
   const complete = photos.length >= rec;
   return (
     <div className={`rounded-2xl border p-4 transition-colors sm:p-5 ${complete ? 'border-brand/40 bg-brand/[0.04]' : 'border-line bg-ink-2'}`}>
@@ -136,67 +166,45 @@ function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress
           </div>
           <p className="mt-1 text-xs leading-relaxed text-paper-dim">{hint}</p>
         </div>
-        <button type="button" onClick={() => ref.current?.click()} disabled={busy}
-          className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
-          {busy ? <><Loader2 size={14} className="animate-spin" /> {progress}</> : <><Upload size={14} /> {t.lora.addPhotos}</>}
-        </button>
-        <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && onFiles(e.target.files)} />
+        <AddButton busy={busy} progress={progress} label={t.lora.addPhotos} onFiles={onFiles} />
       </div>
 
-      {/* Reference examples — real photo per shot, or pose diagrams for full body */}
+      {/* Reference examples — real Julia photo per shot */}
       <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{t.lora.examples}</p>
-      {isBody ? (
-        <div className="grid max-w-md grid-cols-3 gap-2">
-          {BODY_POSES.map((p) => (
-            <BodyPose key={p.key} label={t.lora.poses[p.key]} img={p.img} fallback={p.fallback} />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-          {examples.map((img) => (
-            <div key={img} className="relative aspect-[3/4] overflow-hidden rounded-md border border-line bg-hair/[0.04]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`/lib/${img}.jpg`} alt="" loading="lazy" style={{ objectPosition: pos }} className="h-full w-full object-cover" />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Creator's own uploads for this category */}
-      {photos.length > 0 && (
-        <>
-          <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wide text-brand">{t.lora.yours} · {photos.length}</p>
-          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-            {photos.map((p) => (
-              <div key={p.id} className="relative aspect-[3/4] overflow-hidden rounded-md border border-brand/30">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.url} alt="" loading="lazy" className="h-full w-full object-cover" />
-              </div>
-            ))}
+      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+        {examples.map((img) => (
+          <div key={img} className="relative aspect-[3/4] overflow-hidden rounded-md border border-line bg-hair/[0.04]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/lib/${img}.jpg`} alt="" loading="lazy" style={{ objectPosition: pos }} className="h-full w-full object-cover" />
           </div>
-        </>
-      )}
+        ))}
+      </div>
+
+      <Uploads photos={photos} label={t.lora.yours} />
     </div>
   );
 }
 
-// Full-body pose slot: shows the fullest real photo we have right away (never
-// empty, never a drawing), then upgrades to the ideal generated Julia shot the
-// moment that file exists in public/lib.
-function BodyPose({ label, img, fallback }) {
-  const [src, setSrc] = useState(`/lib/${fallback}.jpg`);
-  useEffect(() => {
-    const ideal = new window.Image();
-    ideal.onload = () => setSrc(`/lib/${img}.jpg`);
-    ideal.src = `/lib/${img}.jpg`;
-  }, [img]);
+// Optional, private nude category — no examples, upload only.
+function NudeBlock({ photos, busy, progress, t, onFiles }) {
+  const n = t.lora.nude;
   return (
-    <div className="overflow-hidden rounded-lg border border-line bg-hair/[0.03]">
-      <div className="relative aspect-[3/4]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt="" loading="lazy" className="h-full w-full object-cover object-top" />
+    <div className="rounded-2xl border border-dashed border-line bg-ink-2 p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 font-semibold text-paper">
+            {photos.length > 0 && <Check size={15} className="text-brand" />}
+            {n.label}
+            <span className="rounded-full border border-line px-2 py-0.5 text-[11px] font-semibold text-paper-dim">{n.optional}</span>
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-paper-dim">{n.hint}</p>
+        </div>
+        <AddButton busy={busy} progress={progress} label={t.lora.addPhotos} onFiles={onFiles} />
       </div>
-      <p className="py-1.5 text-center text-[11px] font-medium text-paper-mute">{label}</p>
+      <p className="mt-4 flex items-center gap-1.5 text-[11px] text-paper-dim">
+        <Lock size={12} className="shrink-0" /> {n.note}
+      </p>
+      <Uploads photos={photos} label={t.lora.yours} />
     </div>
   );
 }

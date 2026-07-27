@@ -18,9 +18,10 @@ import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
 import CloneSetup from '@/components/CloneSetup';
 import ShotArt from '@/components/ShotArt';
+import { PACKS, PERIODS, PRICING_COPY } from '@/components/Pricing';
 
 export default function OnboardingPage() {
-  const { t } = usePortal();
+  const { t, lang } = usePortal();
   const router = useRouter();
   const [me, setMe] = useState(undefined);
   const [tab, setTab] = useState('pago');
@@ -155,7 +156,7 @@ export default function OnboardingPage() {
           {tab === 'datos' && <InfoStep me={me} t={t} onDone={done} />}
           {tab === 'identidad' && <IdentityStep me={me} t={t} onDone={done}
             rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} pending={st === 'id_pending'} />}
-          {tab === 'pago' && <PayStep me={me} t={t} paid={paid} plan={p.plan} onDone={done} />}
+          {tab === 'pago' && <PayStep me={me} t={t} lang={lang} paid={paid} plan={p.plan} onDone={done} />}
           {tab === 'clon' && <CloneSetup userId={me.user.id} embedded />}
         </div>
       </main>
@@ -368,25 +369,26 @@ function UploadSlot({ kind, label, hint, tap, file, onFile }) {
   );
 }
 
-/* ── Suscripción — real plans ───────────────────────────────────────────── */
-function PayStep({ me, onDone, t, paid, plan }) {
-  const plans = t.onboarding.pay.plans;
-  const [sel, setSel] = useState(plan || plans.find((p) => p.popular)?.key || plans[0].key);
+/* ── Suscripción — identical cards to the public /pricing, just selectable ─ */
+function PayStep({ me, onDone, t, lang, paid, plan }) {
+  const c = PRICING_COPY[lang] || PRICING_COPY.en;
+  const [period, setPeriod] = useState('m');
+  const [sel, setSel] = useState(plan || PACKS.find((p) => p.popular)?.key || PACKS[0].key);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const current = PACKS.find((p) => p.key === sel) || PACKS[0];
+  const curPrice = current[period];
+
   if (paid) {
-    const cur = plans.find((p) => p.key === plan) || plans.find((p) => p.key === sel);
     return (
       <Panel title={t.onboarding.pay.title}>
         <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
-          <Check size={18} className="text-brand" /> {cur ? `${cur.name} · $${cur.price}${t.onboarding.pay.perMonth}` : t.onboarding.hub.badge.paid} — {t.onboarding.hub.badge.paid}
+          <Check size={18} className="text-brand" /> {current.name} · ${current.m}{c.perMo} — {t.onboarding.hub.badge.paid}
         </div>
       </Panel>
     );
   }
-
-  const current = plans.find((p) => p.key === sel) || plans[0];
 
   async function pay() {
     setSaving(true); setError('');
@@ -398,34 +400,73 @@ function PayStep({ me, onDone, t, paid, plan }) {
 
   return (
     <Panel title={t.onboarding.pay.title} desc={t.onboarding.pay.desc}>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {plans.map((pl) => {
-          const active = sel === pl.key;
+      {/* Billing period toggle — identical to /pricing */}
+      <div className="mx-auto mb-6 flex w-full max-w-md items-stretch gap-1 rounded-full border border-line bg-card p-1.5">
+        {PERIODS.map((per) => {
+          const active = period === per.key;
           return (
-            <button key={pl.key} type="button" onClick={() => setSel(pl.key)}
-              className={`relative rounded-xl border p-4 text-left transition-colors ${active ? 'border-brand bg-brand/[0.06]' : 'border-line bg-ink-2 hover:border-brand/40'}`}>
-              {pl.popular && <span className="absolute -top-2 left-4 rounded-full bg-brand px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-accent">{t.onboarding.pay.popular}</span>}
-              <div className="flex items-center justify-between">
-                <div className="font-display font-semibold text-paper">{pl.name}</div>
-                {pl.was && <span className="rounded-full border border-brand/40 px-1.5 py-0.5 text-[10px] font-bold text-brand">{t.onboarding.pay.off}</span>}
+            <button key={per.key} type="button" onClick={() => setPeriod(per.key)}
+              className={`relative flex flex-1 flex-col items-center justify-center rounded-full px-3 py-2 text-sm font-bold transition-all duration-200 ${active ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'}`}>
+              <span>{c.periods[per.key]}</span>
+              {per.off > 0 && (
+                <span className={`mt-0.5 rounded-full px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide ${active ? 'bg-on-accent/20 text-on-accent' : 'bg-brand/15 text-brand'}`}>{c.save} {per.off}%</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 3 packs — same card language as /pricing */}
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {PACKS.map((pack) => {
+          const pc = c.packs[pack.key];
+          const price = pack[period];
+          const active = sel === pack.key;
+          const months = PERIODS.find((p) => p.key === period).months;
+          const billedTotal = price * months;
+          return (
+            <button key={pack.key} type="button" onClick={() => setSel(pack.key)}
+              className={`group relative flex flex-col rounded-3xl border p-6 text-left transition-all ${
+                active ? 'border-brand bg-brand/[0.07] shadow-glow-sm ring-1 ring-brand' : pack.popular ? 'border-brand/50 bg-brand/[0.04]' : 'border-line bg-card hover:border-paper/20'}`}>
+              {pack.popular && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-brand px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-on-accent shadow-glow-sm">{c.popular}</div>
+              )}
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-widest text-paper-mute">{pack.name}</span>
+              <div className="mt-3">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="font-mono text-sm text-paper-dim line-through decoration-paper-dim/60">${pack.was.toLocaleString('en-US')}</span>
+                  <span className="rounded bg-brand/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand">-{Math.round((1 - price / pack.was) * 100)}%</span>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className={`font-display text-[2.8rem] leading-none ${pack.popular || active ? 'text-brand' : 'text-paper'}`}>${price}</span>
+                  <span className="font-mono text-[11px] text-paper-dim">{c.perMo}</span>
+                </div>
+                <div className="mt-1 font-mono text-[11px] text-paper-dim">
+                  {period === 'm' ? c.billed.m : `$${billedTotal.toLocaleString('en-US')} ${c.billed[period]}`}
+                </div>
               </div>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="font-display text-2xl font-bold text-brand">${pl.price}<span className="text-sm font-normal text-paper-dim">{t.onboarding.pay.perMonth}</span></span>
-                {pl.was && <span className="text-sm text-paper-dim line-through">${pl.was}</span>}
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-paper-mute">{pl.feat}</p>
-              <span className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold ${active ? 'text-brand' : 'text-paper-dim'}`}>
-                {active ? <><Check size={13} /> {t.onboarding.pay.chosen}</> : t.onboarding.pay.choose}
+              <p className="mt-4 min-h-[2.5rem] text-[13px] leading-relaxed text-paper-mute">{pc.desc}</p>
+              <div className="my-4 h-px bg-line/70" />
+              <ul className="flex-1 space-y-2.5">
+                {pc.features.map((f, fi) => (
+                  <li key={fi} className="flex items-start gap-2 text-[13px] text-paper-mute">
+                    <Check size={15} className="mt-0.5 shrink-0 text-brand" /><span className="flex-1">{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <span className={`mt-6 inline-flex items-center justify-center gap-1 rounded-full px-4 py-2.5 text-sm font-bold ${active ? 'bg-brand text-on-accent shadow-glow-sm' : 'border border-line text-paper'}`}>
+                {active ? <><Check size={15} /> {t.onboarding.pay.chosen}</> : t.onboarding.pay.choose}
               </span>
             </button>
           );
         })}
       </div>
-      <p className="mt-4 text-center text-xs font-medium text-brand">{t.onboarding.pay.launch}</p>
+
+      <p className="mt-5 text-center text-xs font-medium text-brand">{t.onboarding.pay.launch}</p>
       {error && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={pay} disabled={saving}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-brand py-3 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
-        {saving ? t.onboarding.pay.submitting : t.onboarding.pay.payBtn(current.name, current.price)}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3.5 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
+        {saving ? t.onboarding.pay.submitting : t.onboarding.pay.payBtn(current.name, curPrice)}
       </button>
       <p className="mt-3 text-center text-[11px] text-paper-dim">{t.onboarding.pay.stub}</p>
     </Panel>
