@@ -10,40 +10,40 @@ import { Upload, Loader2, Check, Lightbulb } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
 
-// Real reference photo per shot type (premium examples from the library, not
-// childish diagrams). 'right' reuses the turned-head shot mirrored, to show the
-// opposite side without a second near-identical asset.
+// Real, DISTINCT reference photo per shot type (premium examples from the
+// library — no mirrored/duplicate assets). left = a 3/4 angle, right = the most
+// side-angled shot available, body = the fullest standing shot available.
 const EXAMPLE = {
-  front: '/lib/belleza-salon.jpg',
-  left: '/lib/ducha-pelo.jpg',
+  front: '/lib/viajes-ciudad.jpg',
+  left: '/lib/coqueteo-labio.jpg',
   right: '/lib/ducha-pelo.jpg',
   expression: '/lib/emociones-feliz.jpg',
   half: '/lib/bar-coctel.jpg',
-  body: '/lib/playa-playa.jpg',
+  body: '/lib/coqueteo-espejo.jpg',
 };
 
 // object-position per shot so the reference photo frames the face/body, not the
 // top of the head (these are tall portraits).
 const POS = {
-  front: '50% 30%',
-  left: '50% 34%',
+  front: '50% 28%',
+  left: '50% 30%',
   right: '50% 34%',
   expression: '50% 34%',
   half: '50% 26%',
-  body: '50% 30%',
+  body: '50% 18%',
 };
 
 // Recommended count per shot type — sums to the LoRA target (Higgsfield needs
 // a varied set; ~50 is the sweet spot, more is better).
 const SHOTS = [
-  { key: 'front', rec: 10 },
-  { key: 'left', rec: 6 },
-  { key: 'right', rec: 6 },
-  { key: 'expression', rec: 8 },
-  { key: 'half', rec: 8 },
-  { key: 'body', rec: 12 },
+  { key: 'front', rec: 12 },
+  { key: 'left', rec: 10 },
+  { key: 'right', rec: 8 },
+  { key: 'expression', rec: 10 },
+  { key: 'half', rec: 10 },
+  { key: 'body', rec: 10 },
 ];
-const TOTAL_REC = SHOTS.reduce((a, s) => a + s.rec, 0); // 50
+const TOTAL_REC = SHOTS.reduce((a, s) => a + s.rec, 0); // 60
 
 export default function CloneSetup({ userId, embedded = false }) {
   const { t } = usePortal();
@@ -120,7 +120,7 @@ export default function CloneSetup({ userId, embedded = false }) {
           const complete = photos.length >= s.rec;
           return (
             <ShotCard key={s.key} kind={s.key} label={shot.label} hint={shot.hint} rec={s.rec}
-              example={EXAMPLE[s.key]} pos={POS[s.key]} exampleLabel={t.lora.example} mirror={s.key === 'right'}
+              example={EXAMPLE[s.key]} pos={POS[s.key]} exampleLabel={t.lora.example}
               photos={photos} complete={complete} busy={busyCat === s.key} progress={progress}
               addLabel={t.lora.addPhotos} onFiles={(fl) => addToCategory(s.key, fl)} />
           );
@@ -143,14 +143,14 @@ export default function CloneSetup({ userId, embedded = false }) {
   );
 }
 
-function ShotCard({ label, hint, rec, example, pos, exampleLabel, mirror, photos, complete, busy, progress, addLabel, onFiles }) {
+function ShotCard({ label, hint, rec, example, pos, exampleLabel, photos, complete, busy, progress, addLabel, onFiles }) {
   const ref = useRef(null);
   return (
     <div className={`overflow-hidden rounded-2xl border transition-colors ${complete ? 'border-brand/40 bg-brand/[0.04]' : 'border-line bg-ink-2'}`}>
       {/* Reference photo */}
       <div className="relative h-36 overflow-hidden border-b border-line">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={example} alt="" style={{ objectPosition: pos }} className={`h-full w-full object-cover ${mirror ? '-scale-x-100' : ''}`} />
+        <img src={example} alt="" style={{ objectPosition: pos }} className="h-full w-full object-cover" />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink/70 via-ink/10 to-transparent" />
         <span className="absolute left-2 top-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-paper backdrop-blur-sm">
           {exampleLabel}
