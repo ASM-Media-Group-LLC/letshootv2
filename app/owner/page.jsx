@@ -108,7 +108,7 @@ export default function OwnerPage() {
         </div>
 
         <p className="mx-auto mt-6 max-w-md text-center text-[11px] leading-relaxed text-paper-dim">
-          ⚠️ Página privada de pruebas: muestra credenciales reales. No la enlaces en ningún lado y quítala (o protégela) antes del lanzamiento público.
+          Página privada de pruebas: muestra credenciales reales. No la enlaces en ningún lado y quítala (o protégela) antes del lanzamiento público.
         </p>
       </div>
     </main>

@@ -457,7 +457,7 @@ function FeedbackTab({ creators, flash }) {
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-medium text-paper">{nameOf(f.creator_id)}</span>
               {f.kind === 'love' ? (
-                <span className="rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] text-brand">Le encantó ♥</span>
+                <span className="rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] text-brand">Le encantó</span>
               ) : (
                 <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">Pide cambio</span>
               )}
