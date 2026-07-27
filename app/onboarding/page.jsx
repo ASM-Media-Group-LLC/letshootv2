@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   LogOut, Check, ShieldCheck, IdCard, CreditCard, Upload, User,
-  AlertTriangle, ArrowRight, Loader2, Sparkles, Clock,
+  AlertTriangle, ArrowRight, Loader2, Sparkles, Clock, CheckCircle2, Circle,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -51,10 +51,10 @@ export default function OnboardingPage() {
   const canActivate = idApproved && paid;
 
   const TABS = [
-    { key: 'pago', label: h.tabs.pago, icon: CreditCard, done: paid },
-    { key: 'clon', label: h.tabs.clon, icon: Sparkles, done: loraCount > 0 },
-    { key: 'datos', label: h.tabs.datos, icon: User, done: datosDone },
-    { key: 'identidad', label: h.tabs.identidad, icon: IdCard, done: idApproved },
+    { key: 'pago', label: h.tabs.pago, desc: h.tabDesc.pago, icon: CreditCard, done: paid },
+    { key: 'clon', label: h.tabs.clon, desc: h.tabDesc.clon, icon: Sparkles, done: loraCount > 0 },
+    { key: 'datos', label: h.tabs.datos, desc: h.tabDesc.datos, icon: User, done: datosDone },
+    { key: 'identidad', label: h.tabs.identidad, desc: h.tabDesc.identidad, icon: IdCard, done: idApproved },
   ];
   const doneCount = TABS.filter((tb) => tb.done).length;
 
@@ -116,28 +116,35 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Premium stepper tabs */}
-        <div className="mt-7 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {/* Premium stepper tabs — same card language as the plan cards */}
+        <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {TABS.map((tb) => {
             const active = tab === tb.key;
             return (
               <button key={tb.key} onClick={() => setTab(tb.key)}
-                className={`group flex flex-col gap-3 rounded-2xl border p-4 text-left transition-all ${
-                  active ? 'border-brand/60 bg-brand/[0.07] shadow-glow-sm' : 'border-line bg-card hover:border-brand/30'}`}>
-                <div className="flex items-center justify-between">
-                  <span className={`grid h-9 w-9 place-items-center rounded-xl transition-colors ${
-                    active ? 'bg-brand/20 text-brand' : 'bg-hair/[0.06] text-paper-mute group-hover:text-paper'}`}>
-                    <tb.icon size={17} />
+                className={`group relative flex flex-col gap-4 rounded-2xl border p-5 text-left transition-all ${
+                  active
+                    ? 'border-brand bg-brand/[0.06] shadow-glow-sm'
+                    : 'border-line bg-card hover:border-hair hover:bg-ink-2'}`}>
+                <div className="flex items-start justify-between">
+                  <span className={`grid h-11 w-11 place-items-center rounded-xl transition-colors ${
+                    active ? 'bg-brand text-on-accent' : 'bg-hair/[0.07] text-paper-mute group-hover:text-paper'}`}>
+                    <tb.icon size={19} />
                   </span>
                   {tb.done ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-semibold text-brand">
-                      <Check size={11} /> {h.doneShort}
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-brand">
+                      <CheckCircle2 size={15} /> {h.doneShort}
                     </span>
                   ) : (
-                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">{h.incomplete}</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-paper-dim">
+                      <Circle size={13} /> {h.incomplete}
+                    </span>
                   )}
                 </div>
-                <span className={`text-sm font-semibold ${active ? 'text-paper' : 'text-paper-mute group-hover:text-paper'}`}>{tb.label}</span>
+                <div>
+                  <div className="font-display text-base font-semibold text-paper">{tb.label}</div>
+                  <div className="mt-0.5 text-xs text-paper-dim">{tb.desc}</div>
+                </div>
               </button>
             );
           })}

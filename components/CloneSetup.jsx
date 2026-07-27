@@ -6,19 +6,19 @@
 // category. Uploads go to the private 'lora' bucket, tagged with the category.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, Loader2, Check, Lightbulb, Camera } from 'lucide-react';
+import { Upload, Loader2, Check, Lightbulb } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
 import { CLONE_EXAMPLES, CLONE_POS, CLONE_TOTAL } from '@/lib/clone-shots';
 
-// Full-body "digitals" — real Julia example per pose. Drop these files in
-// public/lib (generated with the Julia Parker LoRA in Higgsfield) and they show
-// automatically; until then each slot shows a neutral "in production" tile
-// (never a drawing).
+// Full-body "digitals" — real Julia example per pose. `img` is the ideal
+// generated shot (drop it in public/lib and it shows automatically); until then
+// `fallback` shows the fullest real photo we already have, so the slot is never
+// empty. Never a drawing.
 const BODY_POSES = [
-  { key: 'front', img: 'julia-cuerpo-frente' },
-  { key: 'back', img: 'julia-cuerpo-espalda' },
-  { key: 'side', img: 'julia-cuerpo-lado' },
+  { key: 'front', img: 'julia-cuerpo-frente', fallback: 'coqueteo-espejo' },
+  { key: 'back', img: 'julia-cuerpo-espalda', fallback: 'musica-baile' },
+  { key: 'side', img: 'julia-cuerpo-lado', fallback: 'coqueteo-bailando' },
 ];
 
 const SHOTS = Object.entries(CLONE_EXAMPLES).map(([key, imgs]) => ({ key, rec: imgs.length }));
@@ -148,7 +148,7 @@ function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress
       {isBody ? (
         <div className="grid max-w-md grid-cols-3 gap-2">
           {BODY_POSES.map((p) => (
-            <BodyPose key={p.key} label={t.lora.poses[p.key]} img={p.img} pendingLabel={t.lora.pending} />
+            <BodyPose key={p.key} label={t.lora.poses[p.key]} img={p.img} fallback={p.fallback} />
           ))}
         </div>
       ) : (
@@ -180,22 +180,21 @@ function CategoryBlock({ label, hint, rec, examples, pos, photos, busy, progress
   );
 }
 
-// Full-body pose slot: shows the real Julia example if the file exists, else a
-// neutral "in production" tile (no drawings).
-function BodyPose({ label, img, pendingLabel }) {
-  const [ok, setOk] = useState(true);
+// Full-body pose slot: shows the fullest real photo we have right away (never
+// empty, never a drawing), then upgrades to the ideal generated Julia shot the
+// moment that file exists in public/lib.
+function BodyPose({ label, img, fallback }) {
+  const [src, setSrc] = useState(`/lib/${fallback}.jpg`);
+  useEffect(() => {
+    const ideal = new window.Image();
+    ideal.onload = () => setSrc(`/lib/${img}.jpg`);
+    ideal.src = `/lib/${img}.jpg`;
+  }, [img]);
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-hair/[0.03]">
-      <div className="relative flex aspect-[3/4] items-center justify-center">
-        {ok ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/lib/${img}.jpg`} alt="" loading="lazy" onError={() => setOk(false)} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex flex-col items-center gap-1.5 px-2 text-center">
-            <Camera size={18} className="text-paper-dim" />
-            <span className="text-[10px] leading-tight text-paper-dim">{pendingLabel}</span>
-          </div>
-        )}
+      <div className="relative aspect-[3/4]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="" loading="lazy" className="h-full w-full object-cover object-top" />
       </div>
       <p className="py-1.5 text-center text-[11px] font-medium text-paper-mute">{label}</p>
     </div>
