@@ -7,9 +7,19 @@ import Logo from './Logo';
 import LangToggle from './LangToggle';
 import ThemeToggle from './ThemeToggle';
 
+// Hamburger button aria-labels — all 7 public site languages, fallback en.
+const MENU_ARIA = {
+  es: { open: 'Abrir menú', close: 'Cerrar menú' },
+  en: { open: 'Open menu', close: 'Close menu' },
+  pt: { open: 'Abrir menu', close: 'Fechar menu' },
+  fr: { open: 'Ouvrir le menu', close: 'Fermer le menu' },
+  de: { open: 'Menü öffnen', close: 'Menü schließen' },
+  it: { open: 'Apri il menu', close: 'Chiudi il menu' },
+  zh: { open: '打开菜单', close: '关闭菜单' },
+};
+
 export default function Nav() {
   const { t, lang } = useLang();
-  const es = lang === 'es';
   // Visible by default so the nav shows during the intro vapor text screens
   const [visible, setVisible] = useState(true);
   const [open, setOpen] = useState(false);
@@ -89,7 +99,7 @@ export default function Nav() {
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            aria-label={open ? (es ? 'Cerrar menú' : 'Close menu') : (es ? 'Abrir menú' : 'Open menu')}
+            aria-label={(MENU_ARIA[lang] || MENU_ARIA.en)[open ? 'close' : 'open']}
             aria-expanded={open}
             className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper transition-colors hover:text-brand md:hidden"
           >

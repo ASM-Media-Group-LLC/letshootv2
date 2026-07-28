@@ -22,7 +22,7 @@ export default function ForgotPage() {
       { redirectTo: `${window.location.origin}/reset` }
     );
     setLoading(false);
-    if (err) { setError(err.message); return; }
+    if (err) { console.error(err); setError(t.common.error); return; }
     setSent(true);
   }
 

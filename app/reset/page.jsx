@@ -43,7 +43,7 @@ export default function ResetPage() {
     setSaving(true);
     const { error: err } = await getSupabase().auth.updateUser({ password: pw1 });
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (err) { console.error(err); setError(t.common.error); return; }
     setPhase('done');
   }
 

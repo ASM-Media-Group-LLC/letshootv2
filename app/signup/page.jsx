@@ -27,7 +27,8 @@ export default function SignupPage() {
     const res = await signUp(email, password);
     setLoading(false);
     if (res.error) {
-      setError(/already registered|exists/i.test(res.error) ? t.signup.exists : res.error);
+      console.error(res.error);
+      setError(/already registered|exists/i.test(res.error) ? t.signup.exists : t.common.error);
       return;
     }
     if (res.needsConfirm) { setSent(true); return; }

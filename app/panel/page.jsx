@@ -131,7 +131,7 @@ export default function PanelPage() {
     const { data, error } = await getSupabase().from('folders')
       .insert({ creator_id: state.profile.id, name: name.trim(), kind: 'photo' })
       .select('id').single();
-    if (error) { flash('Error: ' + error.message); return; }
+    if (error) { console.error(error); flash(t.common.error); return; }
     await refreshFolders();
     if (data?.id) setActive(data.id);
     flash(t.panel.folderCreated);
@@ -142,7 +142,7 @@ export default function PanelPage() {
     const name = window.prompt(t.panel.renamePrompt, folder.name);
     if (!name || !name.trim() || name.trim() === folder.name) return;
     const { error } = await getSupabase().from('folders').update({ name: name.trim() }).eq('id', folder.id);
-    if (error) { flash('Error: ' + error.message); return; }
+    if (error) { console.error(error); flash(t.common.error); return; }
     await refreshFolders();
     flash(t.panel.folderRenamed);
   }
@@ -151,7 +151,7 @@ export default function PanelPage() {
     if (!folder) return;
     if ((folder.assets || []).length > 0) { flash(t.panel.folderNotEmpty); return; }
     const { error } = await getSupabase().rpc('delete_own_folder', { fid: folder.id });
-    if (error) { flash('Error: ' + error.message); return; }
+    if (error) { console.error(error); flash(t.common.error); return; }
     const list = await refreshFolders();
     setActive(list?.[0]?.id || null);
     flash(t.panel.folderDeleted);
@@ -160,7 +160,7 @@ export default function PanelPage() {
   async function moveAsset(assetId, folderId) {
     setMoveFor(null);
     const { error } = await getSupabase().rpc('move_own_asset', { aid: assetId, fid: folderId });
-    if (error) { flash('Error: ' + error.message); return; }
+    if (error) { console.error(error); flash(t.common.error); return; }
     await refreshFolders();
     flash(t.panel.moved);
   }

@@ -4,16 +4,28 @@ import Link from 'next/link';
 import { useLang } from '@/app/providers';
 import Logo from './Logo';
 
+// Legal link labels — all 7 public site languages, fallback en.
+// (18 U.S.C. § 2257 is a statute citation and stays identical everywhere.)
+const LEGAL_LABELS = {
+  es: { terms: 'Términos de servicio', privacy: 'Privacidad', usc2257: '18 U.S.C. § 2257', contact: 'Contacto' },
+  en: { terms: 'Terms of Service', privacy: 'Privacy Policy', usc2257: '18 U.S.C. § 2257', contact: 'Contact' },
+  pt: { terms: 'Termos de serviço', privacy: 'Privacidade', usc2257: '18 U.S.C. § 2257', contact: 'Contato' },
+  fr: { terms: 'Conditions d’utilisation', privacy: 'Confidentialité', usc2257: '18 U.S.C. § 2257', contact: 'Contact' },
+  de: { terms: 'Nutzungsbedingungen', privacy: 'Datenschutz', usc2257: '18 U.S.C. § 2257', contact: 'Kontakt' },
+  it: { terms: 'Termini di servizio', privacy: 'Privacy', usc2257: '18 U.S.C. § 2257', contact: 'Contatti' },
+  zh: { terms: '服务条款', privacy: '隐私政策', usc2257: '18 U.S.C. § 2257', contact: '联系我们' },
+};
+
 export default function Footer() {
   const { t, lang } = useLang();
   const f = t.footer;
-  const es = lang === 'es';
+  const L = LEGAL_LABELS[lang] || LEGAL_LABELS.en;
   // Legal pages — payment processors require these publicly linked.
   const legal = [
-    { href: '/terms', label: es ? 'Términos de servicio' : 'Terms of Service' },
-    { href: '/privacy', label: es ? 'Privacidad' : 'Privacy Policy' },
-    { href: '/usc2257', label: '18 U.S.C. § 2257' },
-    { href: '/contacto', label: es ? 'Contacto' : 'Contact' },
+    { href: '/terms', label: L.terms },
+    { href: '/privacy', label: L.privacy },
+    { href: '/usc2257', label: L.usc2257 },
+    { href: '/contacto', label: L.contact },
   ];
 
   return (

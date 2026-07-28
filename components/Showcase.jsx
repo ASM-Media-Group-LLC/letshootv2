@@ -24,6 +24,31 @@ const T = {
     sub: 'Contenido curado y listo para vender — del que tus fans realmente compran en chats, PPV y pedidos.',
     photos: 'Fotos', videos: 'Videos',
   },
+  pt: {
+    label: 'O TRABALHO', titleA: 'Fotos e vídeos', highlight: 'que vendem',
+    sub: 'Conteúdo curado e pronto para vender — daquele que os teus fãs realmente compram em chats, PPV e pedidos.',
+    photos: 'Fotos', videos: 'Vídeos',
+  },
+  fr: {
+    label: 'LE TRAVAIL', titleA: 'Photos et vidéos', highlight: 'qui vendent',
+    sub: 'Du contenu sélectionné et prêt à vendre — celui que tes fans achètent vraiment en chat, en PPV et sur commande.',
+    photos: 'Photos', videos: 'Vidéos',
+  },
+  de: {
+    label: 'DIE ARBEIT', titleA: 'Fotos & Videos,', highlight: 'die verkaufen',
+    sub: 'Kuratierter, verkaufsfertiger Content — genau der, den deine Fans wirklich in Chats, PPV und Custom-Anfragen kaufen.',
+    photos: 'Fotos', videos: 'Videos',
+  },
+  it: {
+    label: 'IL LAVORO', titleA: 'Foto e video', highlight: 'che vendono',
+    sub: 'Contenuti curati e pronti da vendere — quelli che i tuoi fan comprano davvero in chat, PPV e ordini personalizzati.',
+    photos: 'Foto', videos: 'Video',
+  },
+  zh: {
+    label: '作品展示', titleA: '照片和视频', highlight: '真的能卖',
+    sub: '精心筛选、随时可卖的内容 — 粉丝真的会在聊天、PPV 和定制内容里买单的那种。',
+    photos: '照片', videos: '视频',
+  },
 };
 
 export default function Showcase() {

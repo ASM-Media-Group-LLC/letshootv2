@@ -12,9 +12,11 @@ const HUE = {
   violet: 'glass-ios text-sky',
   coral:  'glass-ios text-paper',
 };
+// "AI" badge text — all 7 public site languages, fallback en.
+const AI_BADGE = { es: 'IA', en: 'AI', pt: 'IA', fr: 'IA', de: 'KI', it: 'IA', zh: 'AI' };
 
 export default function Results() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const r = t.results;
 
   return (
@@ -42,7 +44,7 @@ export default function Results() {
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink via-ink/20 to-transparent" />
 
             <span className={`absolute right-4 top-4 rotate-3 rounded-xl px-3 py-1 font-display text-sm uppercase shadow-lg ${HUE[card.hue] || HUE.accent}`}>
-              IA
+              {AI_BADGE[lang] || AI_BADGE.en}
             </span>
 
             <div className="absolute inset-x-0 bottom-0 p-5">

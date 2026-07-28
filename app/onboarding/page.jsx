@@ -47,7 +47,7 @@ export default function OnboardingPage() {
   const h = t.onboarding.hub;
 
   const datosDone = !!(p.legal_first_name && p.legal_last_name && p.date_of_birth && p.country);
-  const idApproved = ['id_approved', 'active', 'paid'].includes(st);
+  const idApproved = ['id_approved', 'active', 'paid', 'authorized'].includes(st);
   const paid = p.payment_status === 'paid';
   const canActivate = idApproved && paid;
 
@@ -197,7 +197,7 @@ function InfoStep({ me, onDone, t }) {
     if (me.profile.onboarding_status === 'registered') patch.onboarding_status = 'info';
     const { error: err } = await getSupabase().from('profiles').update(patch).eq('id', me.user.id);
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (err) { console.error(err); setError(t.common.error); return; }
     setSaved(true); onDone();
   }
 
@@ -300,7 +300,8 @@ function IdentityStep({ me, onDone, t, rejected, reason, approved, pending }) {
       if (pErr) throw pErr;
       onDone();
     } catch (err) {
-      setError(err.message || t.common.error);
+      console.error(err);
+      setError(t.common.error);
     } finally {
       setSaving(false);
     }
@@ -394,7 +395,7 @@ function PayStep({ me, onDone, t, lang, paid, plan }) {
     setSaving(true); setError('');
     const { error: err } = await getSupabase().from('profiles').update({ payment_status: 'paid', plan: sel }).eq('id', me.user.id);
     setSaving(false);
-    if (err) { setError(err.message); return; }
+    if (err) { console.error(err); setError(t.common.error); return; }
     onDone();
   }
 

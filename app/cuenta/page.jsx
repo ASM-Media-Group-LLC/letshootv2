@@ -40,7 +40,7 @@ export default function CuentaPage() {
     if (form.stage_name) patch.full_name = form.stage_name;
     const { error } = await getSupabase().from('profiles').update(patch).eq('id', me.user.id);
     setSaving('');
-    if (error) { setErr(error.message); return; }
+    if (error) { console.error(error); setErr(t.common.error); return; }
     flash(t.cuenta.saved);
   }
 
@@ -52,7 +52,7 @@ export default function CuentaPage() {
     setSaving('pw');
     const { error } = await getSupabase().auth.updateUser({ password: pw.a });
     setSaving('');
-    if (error) { setErr(error.message); return; }
+    if (error) { console.error(error); setErr(t.common.error); return; }
     setPw({ a: '', b: '' });
     flash(t.cuenta.passwordChanged);
   }

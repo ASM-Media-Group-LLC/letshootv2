@@ -52,7 +52,8 @@ export default function LoraUploader({ userId, compact = false }) {
       setJustDone(true);
       await loadCount();
     } catch (err) {
-      setError(err.message || t.lora.failed);
+      console.error(err);
+      setError(t.lora.failed);
     } finally {
       setBusy(false); setProgress('');
       if (ref.current) ref.current.value = '';

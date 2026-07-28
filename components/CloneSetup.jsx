@@ -64,7 +64,8 @@ export default function CloneSetup({ userId, embedded = false }) {
       await supabase.from('profiles').update({ lora_status: 'pending' }).eq('id', userId).eq('lora_status', 'none');
       await loadPhotos();
     } catch (err) {
-      setError(err.message || t.lora.failed);
+      console.error(err);
+      setError(t.lora.failed);
     } finally {
       setBusyCat(''); setProgress('');
     }
@@ -184,18 +185,31 @@ function Uploads({ photos, label, onView }) {
   );
 }
 
-// Collapsible reference-examples section — a compact button that expands into
-// the labelled grid, so the guide isn't a wall of photos.
+// Collapsible reference-examples section — closed by default; the expand
+// button previews the first photos as a stacked peek so it invites the tap.
 function Examples({ examples, pos, contain, t, onView }) {
   const [open, setOpen] = useState(false);
   if (!examples?.length) return null;
   return (
     <div className="mt-4">
       <button type="button" onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-          open ? 'border-brand/40 bg-brand/10 text-brand' : 'border-line text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
-        <Images size={13} /> {open ? t.lora.hideExamples : t.lora.seeExamples} ({examples.length})
-        <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        className={`flex items-center gap-3 rounded-xl border py-1.5 pl-1.5 pr-3.5 text-xs font-semibold transition-all ${
+          open
+            ? 'border-brand/50 bg-brand/10 text-brand'
+            : 'border-line bg-ink text-paper-mute hover:border-brand/40 hover:bg-brand/[0.04] hover:text-paper'}`}>
+        <span className="flex -space-x-2.5">
+          {examples.slice(0, 3).map((img) => (
+            <span key={img} className="h-8 w-8 overflow-hidden rounded-full border-2 border-ink-2 shadow-sm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/lib/${img}.jpg`} alt="" loading="lazy" style={{ objectPosition: pos }} className="h-full w-full object-cover" />
+            </span>
+          ))}
+        </span>
+        <span className="flex items-center gap-1.5">
+          {open ? t.lora.hideExamples : t.lora.seeExamples}
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${open ? 'bg-brand/20 text-brand' : 'bg-hair/[0.08] text-paper-dim'}`}>{examples.length}</span>
+          <ChevronDown size={14} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        </span>
       </button>
       {open && (
         <>

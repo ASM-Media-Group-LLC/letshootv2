@@ -41,6 +41,8 @@ const T = {
     all: 'Todas',
     searchPh: 'Buscar estrategia o escena…',
     noResults: 'No encontramos nada con esa búsqueda.',
+    clear: 'Limpiar',
+    close: 'Cerrar',
     creatorKicker: 'La creadora',
     creatorTag: 'Creadora',
     creatorBio: [
@@ -75,6 +77,8 @@ const T = {
     all: 'All',
     searchPh: 'Search a strategy or scene…',
     noResults: 'Nothing matched that search.',
+    clear: 'Clear',
+    close: 'Close',
     creatorKicker: 'The creator',
     creatorTag: 'Creator',
     creatorBio: [
@@ -104,6 +108,7 @@ const T = {
     statsHint: 'E isto é só uma amostra — as ideias são infinitas.',
     scenesWord: 'cenas', all: 'Todas',
     searchPh: 'Busca uma estratégia ou cena…', noResults: 'Não encontramos nada com essa busca.',
+    clear: 'Limpar', close: 'Fechar',
     creatorKicker: 'A criadora', creatorTag: 'Criadora',
     creatorBio: [
       'Julia é uma modelo americana que vive em Miami. Como muitas, tem sua vida fitness e de influencer, e desde sempre vende conteúdo exclusivo. Mas havia algo muito difícil de produzir: o conteúdo do dia a dia e o de situações específicas — e no OnlyFans é justamente esse que mais vende, porque primeiro a história engaja e depois o conteúdo se vende.',
@@ -127,6 +132,7 @@ const T = {
     statsHint: 'Et ce n’est qu’un échantillon — les idées sont infinies.',
     scenesWord: 'scènes', all: 'Toutes',
     searchPh: 'Cherche une stratégie ou une scène…', noResults: 'Rien ne correspond à cette recherche.',
+    clear: 'Effacer', close: 'Fermer',
     creatorKicker: 'La créatrice', creatorTag: 'Créatrice',
     creatorBio: [
       'Julia est une mannequin américaine qui vit à Miami. Comme beaucoup, elle a sa vie fitness et d’influenceuse, et vend depuis toujours du contenu exclusif. Mais une chose lui coûtait énormément à produire : le contenu du quotidien et des situations précises — et sur OnlyFans c’est justement celui qui vend le plus, car l’histoire accroche d’abord, puis le contenu se vend.',
@@ -150,6 +156,7 @@ const T = {
     statsHint: 'Und das ist nur eine Kostprobe — die Ideen sind endlos.',
     scenesWord: 'Szenen', all: 'Alle',
     searchPh: 'Strategie oder Szene suchen…', noResults: 'Nichts gefunden für diese Suche.',
+    clear: 'Löschen', close: 'Schließen',
     creatorKicker: 'Die Creatorin', creatorTag: 'Creatorin',
     creatorBio: [
       'Julia ist ein amerikanisches Model und lebt in Miami. Wie viele hat sie ihr Fitness- und Influencer-Leben und verkauft seit jeher exklusiven Content. Aber eines war extrem aufwendig zu produzieren: Alltags-Content und Content für konkrete Situationen — und genau der verkauft auf OnlyFans am besten, denn erst fesselt die Story, dann verkauft sich der Content.',
@@ -173,6 +180,7 @@ const T = {
     statsHint: 'E questo è solo un assaggio — le idee sono infinite.',
     scenesWord: 'scene', all: 'Tutte',
     searchPh: 'Cerca una strategia o una scena…', noResults: 'Nessun risultato per questa ricerca.',
+    clear: 'Cancella', close: 'Chiudi',
     creatorKicker: 'La creator', creatorTag: 'Creator',
     creatorBio: [
       'Julia è una modella americana che vive a Miami. Come tante, ha la sua vita fitness e da influencer, e da sempre vende contenuti esclusivi. Ma c’era una cosa difficilissima da produrre: i contenuti del quotidiano e delle situazioni specifiche — e su OnlyFans sono proprio quelli che vendono di più, perché prima la storia aggancia e poi il contenuto si vende.',
@@ -195,6 +203,7 @@ const T = {
     statsHint: '这只是一小部分——创意是无限的。',
     scenesWord: '场景', all: '全部',
     searchPh: '搜索策略或场景…', noResults: '没有找到相关内容。',
+    clear: '清除', close: '关闭',
     creatorKicker: '创作者', creatorTag: '创作者',
     creatorBio: [
       'Julia 是一位住在迈阿密的美国模特。和许多创作者一样，她过着健身与网红的生活，一直在售卖独家内容。但有一类内容制作起来特别费劲：日常和特定情境的内容——而在 OnlyFans 上，恰恰是这类内容最能变现，因为先用故事抓住人心，内容自然就卖出去了。',
@@ -498,7 +507,7 @@ export default function BibliotecaPage() {
                 className="w-full rounded-full border border-line bg-ink-2/70 py-2.5 pl-11 pr-9 text-sm text-paper outline-none transition focus:border-brand/60 focus:bg-ink-2 focus:ring-2 focus:ring-brand/20"
               />
               {q && (
-                <button onClick={() => setQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-paper-dim transition-colors hover:text-paper" aria-label="Limpiar">
+                <button onClick={() => setQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-paper-dim transition-colors hover:text-paper" aria-label={t.clear}>
                   <X size={15} />
                 </button>
               )}
@@ -598,7 +607,7 @@ export default function BibliotecaPage() {
           onClick={() => setShot(null)}
           className="lb-fade fixed inset-0 z-50 flex items-center justify-center bg-ink/90 p-5 backdrop-blur"
         >
-          <button onClick={() => setShot(null)} aria-label="Cerrar" className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full border border-line text-paper transition-colors hover:bg-hair/10 active:scale-95">
+          <button onClick={() => setShot(null)} aria-label={t.close} className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full border border-line text-paper transition-colors hover:bg-hair/10 active:scale-95">
             <X size={18} />
           </button>
           <figure onClick={(e) => e.stopPropagation()} className="lb-pop max-h-full overflow-hidden rounded-2xl border border-line bg-card">

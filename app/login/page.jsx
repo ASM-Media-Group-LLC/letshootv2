@@ -23,7 +23,8 @@ export default function LoginPage() {
     setLoading(true);
     const res = await signIn(email, password);
     if (res.error || !res.profile) {
-      setError(res.error === 'Invalid login credentials' ? t.login.badCreds : (res.error || t.login.generic));
+      if (res.error) console.error(res.error);
+      setError(res.error === 'Invalid login credentials' ? t.login.badCreds : t.login.generic);
       setLoading(false);
       return;
     }
