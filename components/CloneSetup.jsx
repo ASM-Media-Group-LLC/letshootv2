@@ -94,8 +94,8 @@ export default function CloneSetup({ userId, embedded = false }) {
             onView={setLightbox} onFiles={(fl) => addToCategory(s.key, fl)} />
         ))}
 
-        {/* Tattoos / distinctive marks — upload only, instructional */}
-        <UploadOnlyBlock info={t.lora.marks} photos={byCat?.[MARKS_CATEGORY] || []}
+        {/* Tattoos / distinctive marks — instructional, with a close-up example */}
+        <UploadOnlyBlock info={t.lora.marks} examples={['julia-marca-1']} photos={byCat?.[MARKS_CATEGORY] || []}
           busy={busyCat === MARKS_CATEGORY} progress={progress} t={t} onView={setLightbox}
           onFiles={(fl) => addToCategory(MARKS_CATEGORY, fl)} />
 
@@ -203,8 +203,9 @@ function CategoryBlock({ label, hint, rec, examples, pos, contain, photos, busy,
   );
 }
 
-// Upload-only category (no example photos): tattoos/marks, or private nude.
-function UploadOnlyBlock({ info, priv, photos, busy, progress, t, onView, onFiles }) {
+// Upload category with no full example grid: tattoos/marks (optional close-up
+// example) or private nude (no example).
+function UploadOnlyBlock({ info, examples, priv, photos, busy, progress, t, onView, onFiles }) {
   return (
     <div className="rounded-2xl border border-dashed border-line bg-ink-2 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -218,6 +219,16 @@ function UploadOnlyBlock({ info, priv, photos, busy, progress, t, onView, onFile
         </div>
         <AddButton busy={busy} progress={progress} label={t.lora.addPhotos} onFiles={onFiles} />
       </div>
+
+      {examples?.length > 0 && (
+        <>
+          <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{t.lora.examples}</p>
+          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+            {examples.map((img) => <Thumb key={img} src={`/lib/${img}.jpg`} pos="50% 40%" onView={onView} />)}
+          </div>
+        </>
+      )}
+
       {info.note && (
         <p className="mt-4 flex items-center gap-1.5 text-[11px] text-paper-dim">
           {priv && <Lock size={12} className="shrink-0" />} {info.note}
