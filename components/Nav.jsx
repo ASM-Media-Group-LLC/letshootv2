@@ -101,7 +101,7 @@ export default function Nav() {
             onClick={() => setOpen((v) => !v)}
             aria-label={(MENU_ARIA[lang] || MENU_ARIA.en)[open ? 'close' : 'open']}
             aria-expanded={open}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper transition-colors hover:text-brand md:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-line text-paper transition-colors hover:text-brand md:hidden"
           >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>

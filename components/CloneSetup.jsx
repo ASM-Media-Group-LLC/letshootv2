@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, Loader2, Check, Lightbulb, Lock, X, Expand, ChevronDown, Images } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
-import { CLONE_EXAMPLES, CLONE_RECS, CLONE_POS, FULLBODY_CATS, MARKS_CATEGORY, NUDE_CATEGORY, LORA_MIN, LORA_MAX } from '@/lib/clone-shots';
+import { CLONE_EXAMPLES, CLONE_RECS, CLONE_POS, FULLBODY_CATS, MARKS_CATEGORY, MARKS_EXAMPLES, MARKS_REC, NUDE_CATEGORY, LORA_MIN, LORA_MAX } from '@/lib/clone-shots';
 
 const SHOTS = Object.keys(CLONE_EXAMPLES).map((key) => ({ key, rec: CLONE_RECS[key] || CLONE_EXAMPLES[key].length }));
 const ALL_CATS = [...SHOTS.map((s) => s.key), MARKS_CATEGORY, NUDE_CATEGORY];
@@ -106,8 +106,9 @@ export default function CloneSetup({ userId, embedded = false }) {
             onView={setLightbox} onFiles={(fl) => addToCategory(s.key, fl)} />
         ))}
 
-        {/* Tattoos / distinctive marks — instructional, with a close-up example */}
-        <UploadOnlyBlock info={t.lora.marks} examples={['julia-marca-1']} photos={byCat?.[MARKS_CATEGORY] || []}
+        {/* Tattoos / distinctive marks — 10 real close-up examples, rec 10 */}
+        <UploadOnlyBlock info={t.lora.marks} examples={MARKS_EXAMPLES} rec={MARKS_REC}
+          photos={byCat?.[MARKS_CATEGORY] || []}
           busy={busyCat === MARKS_CATEGORY} progress={progress} t={t} onView={setLightbox}
           onFiles={(fl) => addToCategory(MARKS_CATEGORY, fl)} />
 
@@ -148,7 +149,7 @@ function AddButton({ busy, progress, label, onFiles }) {
   return (
     <>
       <button type="button" onClick={() => ref.current?.click()} disabled={busy}
-        className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+        className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
         {busy ? <><Loader2 size={14} className="animate-spin" /> {progress}</> : <><Upload size={14} /> {label}</>}
       </button>
       <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && onFiles(e.target.files)} />
@@ -178,7 +179,7 @@ function Uploads({ photos, label, onView }) {
       <p className="mb-2 mt-4 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand">
         <Check size={12} /> {label} · {photos.length}
       </p>
-      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
         {photos.map((p) => <Thumb key={p.id} src={p.url} contain brand onView={onView} />)}
       </div>
     </>
@@ -214,7 +215,7 @@ function Examples({ examples, pos, contain, t, onView }) {
       {open && (
         <>
           <p className="mb-2 mt-3 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{t.lora.examples}</p>
-          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
             {examples.map((img) => (
               <Thumb key={img} src={`/lib/${img}.jpg`} pos={pos} contain={contain} onView={onView} />
             ))}
@@ -250,9 +251,9 @@ function CategoryBlock({ label, hint, rec, examples, pos, contain, photos, busy,
   );
 }
 
-// Upload category with no full example grid: tattoos/marks (optional close-up
-// example) or private nude (no example).
-function UploadOnlyBlock({ info, examples, priv, photos, busy, progress, t, onView, onFiles }) {
+// Upload category with an optional example grid + optional target count:
+// tattoos/marks (10 close-up examples, rec 10) or private nude (no examples).
+function UploadOnlyBlock({ info, examples, rec, priv, photos, busy, progress, t, onView, onFiles }) {
   return (
     <div className="rounded-2xl border border-dashed border-line bg-ink-2 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -260,6 +261,11 @@ function UploadOnlyBlock({ info, examples, priv, photos, busy, progress, t, onVi
           <div className="flex items-center gap-2 font-semibold text-paper">
             {photos.length > 0 && <Check size={15} className="text-brand" />}
             {info.label}
+            {rec ? (
+              <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${photos.length >= rec ? 'border-brand/50 text-brand' : 'border-line text-paper-dim'}`}>
+                {photos.length}/{rec}
+              </span>
+            ) : null}
             <span className="rounded-full border border-line px-2 py-0.5 text-[11px] font-semibold text-paper-dim">{info.optional}</span>
           </div>
           <p className="mt-1 text-xs leading-relaxed text-paper-dim">{info.hint}</p>

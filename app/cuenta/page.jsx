@@ -96,7 +96,7 @@ export default function CuentaPage() {
             </label>
           </div>
           <div className="mt-4 grid gap-2 text-sm text-paper-mute sm:grid-cols-2">
-            <div><span className="text-paper-dim">{t.cuenta.emailLabel}:</span> {me.profile?.email}</div>
+            <div className="break-all"><span className="text-paper-dim">{t.cuenta.emailLabel}:</span> {me.profile?.email}</div>
             <div><span className="text-paper-dim">{t.cuenta.statusLabel}:</span> <span className="text-brand">{status}</span></div>
           </div>
           <button type="submit" disabled={saving === 'profile'}

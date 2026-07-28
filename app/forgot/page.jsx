@@ -37,7 +37,7 @@ export default function ForgotPage() {
               <MailCheck className="mt-8 mb-2 text-brand" size={40} />
               <h1 className="font-display text-2xl font-semibold text-paper">{t.forgot.sentTitle}</h1>
               <p className="mt-2 text-sm text-paper-mute">
-                {t.forgot.sentBody1} <span className="text-paper">{email}</span> {t.forgot.sentBody2}
+                {t.forgot.sentBody1} <span className="break-all text-paper">{email}</span> {t.forgot.sentBody2}
               </p>
               <Link href="/login" className="mt-6 text-sm font-semibold text-brand hover:underline">{t.forgot.backLogin}</Link>
             </>

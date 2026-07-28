@@ -34,7 +34,7 @@ export default function LangToggle() {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Idioma / Language"
-        className="inline-flex items-center gap-1 rounded-full border border-line bg-hair/5 px-2.5 py-1.5 font-mono text-[11px] tracking-wider text-paper transition-colors hover:border-brand/60 hover:text-brand"
+        className="inline-flex items-center gap-1 rounded-full border border-line bg-hair/5 px-3 py-2.5 font-mono text-[11px] tracking-wider text-paper transition-colors hover:border-brand/60 hover:text-brand"
       >
         {LANG_SHORT[lang]}
         <ChevronDown

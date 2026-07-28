@@ -195,7 +195,7 @@ export default function PanelPage() {
                 className="relative flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
                 <Bell size={16} />
                 {unread > 0 && (
-                  <span className="absolute -right-1 -top-1 grid h-4.5 min-w-[18px] place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent">
+                  <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent">
                     {unread}
                   </span>
                 )}
@@ -203,7 +203,7 @@ export default function PanelPage() {
               {bellOpen && (
                 <>
                   <button className="fixed inset-0 z-40 cursor-default" onClick={() => setBellOpen(false)} aria-hidden />
-                  <div className="absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-line bg-card shadow-glow-sm">
+                  <div className="fixed inset-x-4 top-16 z-50 overflow-hidden rounded-2xl border border-line bg-card shadow-glow-sm sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 sm:max-w-[calc(100vw-2rem)]">
                     <div className="border-b border-line px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-paper-dim">
                       {t.panel.notifications}
                     </div>
@@ -256,8 +256,8 @@ export default function PanelPage() {
               {state.folders.map((f) => (
                 <button
                   key={f.id} onClick={() => setActive(f.id)}
-                  className={`flex shrink-0 items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors md:shrink ${
-                    active === f.id ? 'bg-brand/12 font-medium text-brand' : 'text-paper-mute hover:bg-hair/5 hover:text-paper'
+                  className={`flex shrink-0 max-w-[70vw] md:max-w-none items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors md:shrink ${
+                    active === f.id ? 'bg-brand/10 font-medium text-brand' : 'text-paper-mute hover:bg-hair/5 hover:text-paper'
                   }`}
                 >
                   <span className="flex items-center gap-2 truncate">
@@ -275,9 +275,9 @@ export default function PanelPage() {
 
             <section>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-sm text-paper-mute">
+                <div className="flex min-w-0 items-center gap-2 text-sm text-paper-mute">
                   {folder?.kind === 'video' ? <Film size={16} className="text-brand" /> : <ImageIcon size={16} className="text-brand" />}
-                  {folder?.name} · {items.length} {folder?.kind === 'video' ? t.panel.videos : t.panel.photos}
+                  <span className="truncate">{folder?.name}</span> · {items.length} {folder?.kind === 'video' ? t.panel.videos : t.panel.photos}
                 </div>
                 <div className="flex items-center gap-1.5">
                   {items.length > 0 && (
@@ -286,11 +286,11 @@ export default function PanelPage() {
                     </button>
                   )}
                   <button onClick={renameFolder} title={t.panel.renameFolder}
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-paper-dim transition-colors hover:border-brand/40 hover:text-paper">
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-line text-paper-dim transition-colors hover:border-brand/40 hover:text-paper">
                     <Pencil size={13} />
                   </button>
                   <button onClick={deleteFolder} title={t.panel.deleteFolder}
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-paper-dim transition-colors hover:border-rose-500/50 hover:text-rose-300">
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-line text-paper-dim transition-colors hover:border-rose-500/50 hover:text-rose-300">
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -302,35 +302,36 @@ export default function PanelPage() {
                   return (
                     <div key={a.id} className="group relative overflow-hidden rounded-xl border border-line bg-card">
                       {a.type === 'video' ? (
-                        <video src={src} className="aspect-[3/4] w-full object-cover" muted loop playsInline
-                          onMouseEnter={(e) => e.currentTarget.play()} onMouseLeave={(e) => e.currentTarget.pause()} />
+                        <video src={src} className="aspect-[3/4] w-full object-cover" muted loop playsInline preload="metadata"
+                          onMouseEnter={(e) => e.currentTarget.play()} onMouseLeave={(e) => e.currentTarget.pause()}
+                          onClick={(e) => (e.currentTarget.paused ? e.currentTarget.play() : e.currentTarget.pause())} />
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={src} alt="" className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                       )}
-                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-ink/90 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-ink/90 to-transparent p-2 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
                         <div className="flex gap-1">
                           <button onClick={() => sendFeedback(a, 'love')} title={t.panel.love}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur transition-colors hover:text-brand">
+                            className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur transition-colors hover:text-brand">
                             <Heart size={15} />
                           </button>
                           <button onClick={() => sendFeedback(a, 'change')} title={t.panel.change}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur transition-colors hover:text-brand">
+                            className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur transition-colors hover:text-brand">
                             <MessageSquarePlus size={15} />
                           </button>
                           <button onClick={() => setMoveFor(moveFor === a.id ? null : a.id)} title={t.panel.moveTo}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur transition-colors hover:text-brand">
+                            className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur transition-colors hover:text-brand">
                             <FolderInput size={15} />
                           </button>
                         </div>
-                        <a href={src} download className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur" aria-label={t.panel.download}>
+                        <a href={src} download className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur" aria-label={t.panel.download}>
                           <Download size={15} />
                         </a>
                       </div>
                       {moveFor === a.id && (
                         <>
                         <button className="fixed inset-0 z-20 cursor-default" onClick={() => setMoveFor(null)} aria-hidden />
-                        <div className="absolute inset-x-2 bottom-12 z-30 overflow-hidden rounded-xl border border-line bg-ink/95 backdrop-blur">
+                        <div className="absolute inset-x-2 bottom-12 z-30 max-h-[calc(100%-3.5rem)] overflow-y-auto overflow-x-hidden rounded-xl border border-line bg-ink/95 backdrop-blur">
                           <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim">{t.panel.moveTo}</div>
                           {state.folders.filter((f) => f.id !== folder?.id).map((f) => (
                             <button key={f.id} onClick={() => moveAsset(a.id, f.id)}

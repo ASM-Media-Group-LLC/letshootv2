@@ -193,7 +193,7 @@ export default function AdminPage() {
           </button>
         </div>
 
-        <div className="mt-8 flex flex-wrap gap-2 border-b border-line">
+        <div className="mt-8 flex gap-1 overflow-x-auto border-b border-line">
           {[
             { id: 'registros', label: 'Registros', icon: ClipboardList },
             { id: 'metricas', label: 'Métricas', icon: BarChart3 },
@@ -202,7 +202,7 @@ export default function AdminPage() {
             { id: 'asignaciones', label: 'Asignaciones', icon: Link2 },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
-              className={`relative -mb-px flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${tab === tb.id ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
+              className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${tab === tb.id ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
               <tb.icon size={15} /> {tb.label}
               {tb.badge ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-on-accent">{tb.badge}</span> : null}
               {tab === tb.id && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand" />}
@@ -234,21 +234,21 @@ export default function AdminPage() {
                     ))}
                   </div>
 
-                  <div className="mt-6 overflow-hidden rounded-2xl border border-line">
-                    <div className="grid grid-cols-[1.3fr_1.2fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                  <div className="mt-6 overflow-x-auto rounded-2xl border border-line">
+                    <div className="grid min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
                       <span>Creadora</span><span>Correo</span><span>Estado</span><span></span>
                     </div>
                     {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
                     {cr.map((u) => {
                       const st = OB[u.onboarding_status] || OB.registered;
                       return (
-                        <div key={u.id} className="grid grid-cols-[1.3fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-0">
+                        <div key={u.id} className="grid min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-0">
                           <span className="truncate font-medium text-paper">{u.full_name || '—'}</span>
                           <span className="truncate text-paper-mute">{u.email}</span>
                           <span><span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span></span>
                           <span className="text-right">
                             {u.onboarding_status === 'id_pending' && (
-                              <button onClick={() => setTab('verificaciones')} className="rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold text-brand hover:bg-brand/25">Revisar →</button>
+                              <button onClick={() => setTab('verificaciones')} className="rounded-full bg-brand/15 px-3.5 py-2 text-xs font-semibold text-brand hover:bg-brand/25">Revisar →</button>
                             )}
                           </span>
                         </div>
@@ -310,7 +310,7 @@ export default function AdminPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 lg:col-span-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-2">
                     {[
                       { l: 'Pedidos pendientes', v: reqPending, tone: 'amber' },
                       { l: 'Pedidos entregados', v: reqDelivered, tone: 'brand' },
@@ -357,16 +357,16 @@ export default function AdminPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => reviewKyc(u.id, false)} disabled={savingId === u.id}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-3.5 py-2 text-sm font-medium text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50">
+                      className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm font-medium text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50">
                       <X size={15} /> Rechazar
                     </button>
                     <button onClick={() => reviewKyc(u.id, true)} disabled={savingId === u.id}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-50">
+                      className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-50">
                       {savingId === u.id ? <RefreshCw size={15} className="animate-spin" /> : <Check size={15} />} Aprobar
                     </button>
                   </div>
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {[{ k: 'id_front', l: 'ID frente' }, { k: 'id_back', l: 'ID reverso' }, { k: 'selfie_id', l: 'Selfie con ID' }].map((d) => (
                     <div key={d.k}>
                       <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-paper-dim">{d.l}</p>
@@ -413,13 +413,13 @@ export default function AdminPage() {
             </form>
 
             <div className="overflow-hidden rounded-2xl border border-line">
-              <div className="grid grid-cols-[1.4fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+              <div className="hidden gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim sm:grid sm:grid-cols-[1.4fr_1fr_auto]">
                 <span>Usuario</span><span>Correo</span><span>Rol</span>
               </div>
             {profiles.map((u) => (
-              <div key={u.id} className="grid grid-cols-[1.4fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-0">
+              <div key={u.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-5 py-3 text-sm last:border-0 sm:grid sm:grid-cols-[1.4fr_1fr_auto]">
                 <span className="truncate font-medium text-paper">{u.full_name || '—'}</span>
-                <span className="truncate text-paper-mute">{u.email}</span>
+                <span className="w-full truncate text-paper-mute sm:w-auto">{u.email}</span>
                 <div className="flex items-center gap-2">
                   <select value={u.role} onChange={(e) => changeRole(u.id, e.target.value)} disabled={u.id === me.id}
                     className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
@@ -457,7 +457,7 @@ export default function AdminPage() {
       </main>
 
       {toast && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-sm font-medium text-brand backdrop-blur">
+        <div className="fixed bottom-5 left-1/2 w-max max-w-[calc(100vw-2.5rem)] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-center text-sm font-medium text-brand backdrop-blur">
           {toast}
         </div>
       )}
@@ -478,7 +478,7 @@ function Header({ me, router }) {
           <a href="/trabajo" className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">Trabajo</a>
           <button onClick={async () => { await signOut(); router.replace('/login'); }}
             className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-            <LogOut size={15} /> Salir
+            <LogOut size={15} /> <span className="hidden sm:inline">Salir</span>
           </button>
         </div>
       </div>

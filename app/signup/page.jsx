@@ -44,7 +44,7 @@ export default function SignupPage() {
           <Logo size="lg" />
           <MailCheck className="mx-auto mt-8 mb-3 text-brand" size={40} />
           <h1 className="font-display text-2xl font-semibold text-paper">{t.signup.checkTitle}</h1>
-          <p className="mt-2 text-sm text-paper-mute">{t.signup.checkBody1} <span className="text-paper">{email}</span> {t.signup.checkBody2}</p>
+          <p className="mt-2 text-sm text-paper-mute">{t.signup.checkBody1} <span className="break-all text-paper">{email}</span> {t.signup.checkBody2}</p>
           <Link href="/login" className="mt-6 inline-block text-sm font-semibold text-brand hover:underline">{t.signup.goLogin}</Link>
         </div>
       </main>

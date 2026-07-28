@@ -117,7 +117,7 @@ export default function TrabajoPage() {
           {isManager ? 'Sube entregas, gestiona pedidos y responde feedback.' : 'Pide el contenido que tus creadoras necesitan.'}
         </p>
 
-        <div className="mt-6 flex gap-2 border-b border-line">
+        <div className="mt-6 flex flex-wrap gap-2 border-b border-line">
           {TABS.map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`relative -mb-px flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${tab === tb.id ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
@@ -133,7 +133,7 @@ export default function TrabajoPage() {
       </main>
 
       {toast && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-sm font-medium text-brand backdrop-blur">
+        <div className="fixed bottom-5 left-1/2 w-max max-w-[calc(100vw-2.5rem)] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-center text-sm font-medium text-brand backdrop-blur">
           {toast}
         </div>
       )}
@@ -480,12 +480,12 @@ function PedidosTab({ creators, staff, me, flash, isManager }) {
                   <div className="flex shrink-0 gap-2">
                     {r.status === 'pending' && (
                       <button onClick={() => setStatus(r, 'in_progress')}
-                        className="rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-300 hover:bg-sky-500/20">
+                        className="rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-2.5 text-xs font-semibold text-sky-300 hover:bg-sky-500/20">
                         Tomar pedido
                       </button>
                     )}
                     <button onClick={() => setStatus(r, 'delivered')}
-                      className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-on-accent shadow-glow-sm hover:scale-[1.03]">
+                      className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-2.5 text-xs font-semibold text-on-accent shadow-glow-sm hover:scale-[1.03]">
                       <Check size={13} /> Entregado
                     </button>
                   </div>
@@ -541,7 +541,7 @@ function FeedbackTab({ creators, flash }) {
             {f.message && <p className="mt-1.5 text-sm text-paper-mute">{f.message}</p>}
           </div>
           <button onClick={() => toggle(f)}
-            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+            className={`shrink-0 rounded-full border px-3 py-2.5 text-xs font-semibold transition-colors ${
               f.resolved ? 'border-line text-paper-dim hover:text-paper' : 'border-brand/40 bg-brand/10 text-brand hover:bg-brand/20'}`}>
             {f.resolved ? 'Reabrir' : 'Resuelto'}
           </button>

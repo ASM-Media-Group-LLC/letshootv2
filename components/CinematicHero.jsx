@@ -141,8 +141,8 @@ export default function CinematicHero() {
           <div className="mx-auto max-w-6xl px-6 sm:px-10">
             <div className="grid grid-cols-3 divide-x divide-white/10 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-md">
               {t.hero.highlight.split(',').map((seg, i) => (
-                <div key={i} className="px-3 py-4 text-center sm:px-6 sm:py-5">
-                  <span className="text-rainbow font-display text-[clamp(0.9rem,2vw,1.5rem)] font-semibold tracking-tight">
+                <div key={i} className="px-2 py-4 text-center sm:px-6 sm:py-5">
+                  <span className="text-rainbow font-display text-[clamp(0.8rem,2vw,1.5rem)] font-semibold tracking-tight break-words [hyphens:auto]">
                     {seg.trim()}
                   </span>
                 </div>

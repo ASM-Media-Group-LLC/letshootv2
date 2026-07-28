@@ -498,7 +498,7 @@ export default function BibliotecaPage() {
         </section>
 
         {/* Sticky controls */}
-        <div className="sticky top-[61px] z-20 -mx-5 mt-6 border-y border-line bg-ink/80 px-5 py-3.5 backdrop-blur-xl">
+        <div className="sticky top-[64px] z-20 -mx-5 mt-6 border-y border-line bg-ink/80 px-5 py-3.5 backdrop-blur-xl">
           <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative w-full min-w-0 flex-1">
               <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-paper-dim" />

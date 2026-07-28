@@ -248,7 +248,7 @@ export default function Pricing() {
                 key={per.key}
                 type="button"
                 onClick={() => setPeriod(per.key)}
-                className={`relative flex flex-1 flex-col items-center justify-center rounded-full px-3 py-2 text-sm font-bold transition-all duration-200 ${
+                className={`relative flex flex-1 flex-col items-center justify-center rounded-full px-1 py-2 text-xs font-bold transition-all duration-200 sm:px-3 sm:text-sm ${
                   active ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'
                 }`}
               >

@@ -364,7 +364,7 @@ function UploadSlot({ kind, label, hint, tap, file, onFile }) {
         <p className="text-sm font-medium text-paper">{label}</p>
         <p className="text-[11px] text-paper-dim">{hint}</p>
       </div>
-      <input ref={ref} type="file" accept="image/*" capture="environment" hidden
+      <input ref={ref} type="file" accept="image/*" capture={kind === 'selfie_id' ? 'user' : 'environment'} hidden
         onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
     </div>
   );
@@ -407,7 +407,7 @@ function PayStep({ me, onDone, t, lang, paid, plan }) {
           const active = period === per.key;
           return (
             <button key={per.key} type="button" onClick={() => setPeriod(per.key)}
-              className={`relative flex flex-1 flex-col items-center justify-center rounded-full px-3 py-2 text-sm font-bold transition-all duration-200 ${active ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'}`}>
+              className={`relative flex min-w-0 flex-1 flex-col items-center justify-center rounded-full px-1.5 py-2 text-xs font-bold transition-all duration-200 sm:px-3 sm:text-sm ${active ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'}`}>
               <span>{c.periods[per.key]}</span>
               {per.off > 0 && (
                 <span className={`mt-0.5 rounded-full px-1.5 font-mono text-[9px] font-semibold uppercase tracking-wide ${active ? 'bg-on-accent/20 text-on-accent' : 'bg-brand/15 text-brand'}`}>{c.save} {per.off}%</span>
