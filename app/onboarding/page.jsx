@@ -72,7 +72,7 @@ export default function OnboardingPage() {
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3.5">
           <div className="flex items-center gap-3">
             <Logo size="sm" />
-            <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-brand">{t.common.registro}</span>
+            <span className="hidden rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-block">{t.common.registro}</span>
           </div>
           <div className="flex items-center gap-2.5">
             <LangToggle />
