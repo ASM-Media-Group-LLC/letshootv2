@@ -31,8 +31,10 @@ const LORA_CATS = {
   half: { label: 'Medio cuerpo', slug: '05-medio-cuerpo' },
   body: { label: 'Cuerpo (vestida)', slug: '06-cuerpo-vestida' },
   bikini: { label: 'Bikini', slug: '07-bikini' },
-  other: { label: 'Tatuajes y marcas', slug: '08-marcas' },
-  nude: { label: 'Sin ropa', slug: '09-sin-ropa' },
+  hands: { label: 'Manos', slug: '08-manos' },
+  feet: { label: 'Pies', slug: '09-pies' },
+  other: { label: 'Tatuajes y marcas', slug: '10-marcas' },
+  nude: { label: 'Sin ropa', slug: '11-sin-ropa' },
   face: { label: 'Rostro', slug: '00-rostro' },
 };
 const REQ_STATUS = {
