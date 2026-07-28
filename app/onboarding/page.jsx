@@ -132,15 +132,9 @@ export default function OnboardingPage() {
                     active ? 'bg-brand text-on-accent' : 'bg-hair/[0.07] text-paper-mute group-hover:text-paper'}`}>
                     <tb.icon size={19} />
                   </span>
-                  {tb.done ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-brand">
-                      <CheckCircle2 size={15} /> {h.doneShort}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-paper-dim">
-                      <Circle size={13} /> {h.incomplete}
-                    </span>
-                  )}
+                  {tb.done
+                    ? <CheckCircle2 size={22} className="text-brand" aria-label={h.doneShort} />
+                    : <Circle size={22} className="text-paper-dim/40" aria-label={h.incomplete} />}
                 </div>
                 <div>
                   <div className="font-display text-base font-semibold text-paper">{tb.label}</div>
