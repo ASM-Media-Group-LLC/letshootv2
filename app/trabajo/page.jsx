@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
-  Check, RefreshCw, Sparkles, ChevronRight, Plus, ShieldCheck, X,
+  Check, RefreshCw, Sparkles, ChevronRight, Plus, ShieldCheck, X, Download,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -18,6 +18,23 @@ import { sendEmail } from '@/lib/notify';
 import Logo from '@/components/Logo';
 
 const ROLE_LABEL = { admin: 'Dueño', supervisor: 'Supervisor', producer: 'Supervisor', chatter: 'Servicio al cliente' };
+
+// LoRA training set: house minimum 50 photos, up to 80. Category labels +
+// numbered slugs so the bulk download lands organized for Higgsfield.
+const LORA_MIN = 50;
+const LORA_MAX = 80;
+const LORA_CATS = {
+  front: { label: 'Rostro de frente', slug: '01-rostro-frente' },
+  left: { label: 'Ángulo 3/4', slug: '02-angulo-3-4' },
+  right: { label: 'Perfil', slug: '03-perfil' },
+  expression: { label: 'Expresiones', slug: '04-expresiones' },
+  half: { label: 'Medio cuerpo', slug: '05-medio-cuerpo' },
+  body: { label: 'Cuerpo (vestida)', slug: '06-cuerpo-vestida' },
+  bikini: { label: 'Bikini', slug: '07-bikini' },
+  other: { label: 'Tatuajes y marcas', slug: '08-marcas' },
+  nude: { label: 'Sin ropa', slug: '09-sin-ropa' },
+  face: { label: 'Rostro', slug: '00-rostro' },
+};
 const REQ_STATUS = {
   pending: { l: 'Pendiente', cls: 'border-amber-500/40 bg-amber-500/10 text-amber-300' },
   in_progress: { l: 'En producción', cls: 'border-sky-500/40 bg-sky-500/10 text-sky-300' },
@@ -160,8 +177,9 @@ function CreatorDetail({ creator, me, flash }) {
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState('');
-  const [lora, setLora] = useState(null); // {count, urls[]}
+  const [lora, setLora] = useState(null); // {total, groups: [{key,label,slug,items:[{url,ext}]}]}
   const [showLora, setShowLora] = useState(false);
+  const [downloading, setDownloading] = useState('');
   const fileRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -221,16 +239,50 @@ function CreatorDetail({ creator, me, flash }) {
     if (!lora) {
       const supabase = getSupabase();
       const { data: rows } = await supabase.from('lora_photos')
-        .select('storage_path').eq('user_id', creator.id).order('created_at');
+        .select('storage_path, category').eq('user_id', creator.id).order('created_at');
       const paths = (rows || []).map((r) => r.storage_path);
-      let urls = [];
+      const urls = {};
       if (paths.length) {
         const { data: signed } = await supabase.storage.from('lora').createSignedUrls(paths, 3600);
-        urls = (signed || []).map((s) => s.signedUrl).filter(Boolean);
+        (signed || []).forEach((s, i) => { if (s?.signedUrl) urls[paths[i]] = s.signedUrl; });
       }
-      setLora({ count: paths.length, urls });
+      // Group by category, in LORA_CATS order, so the staff view and the bulk
+      // download land organized for Higgsfield.
+      const groups = [];
+      for (const [key, meta] of Object.entries(LORA_CATS)) {
+        const items = (rows || []).filter((r) => (LORA_CATS[r.category] ? r.category : 'front') === key)
+          .map((r) => ({ url: urls[r.storage_path] || '', ext: (r.storage_path.split('.').pop() || 'jpg').toLowerCase() }))
+          .filter((x) => x.url);
+        if (items.length) groups.push({ key, label: meta.label, slug: meta.slug, items });
+      }
+      setLora({ total: paths.length, groups });
     }
     setShowLora(true);
+  }
+
+  async function downloadAllLora() {
+    if (!lora?.total || downloading) return;
+    let i = 0;
+    for (const g of lora.groups) {
+      for (let j = 0; j < g.items.length; j++) {
+        i++;
+        setDownloading(`${i}/${lora.total}`);
+        try {
+          const res = await fetch(g.items[j].url);
+          const blob = await res.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `${g.slug}-${String(j + 1).padStart(2, '0')}.${g.items[j].ext}`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(a.href);
+          await new Promise((r) => setTimeout(r, 250));
+        } catch { /* skip failed file, keep going */ }
+      }
+    }
+    setDownloading('');
+    flash(`${lora.total} fotos descargadas — organizadas por categoría, listas para Higgsfield`);
   }
 
   return (
@@ -245,19 +297,43 @@ function CreatorDetail({ creator, me, flash }) {
 
       {showLora && (
         <div className="mt-3 rounded-2xl border border-line bg-card p-4">
-          {!lora ? <p className="text-sm text-paper-dim">Cargando…</p> : lora.count === 0 ? (
+          {!lora ? <p className="text-sm text-paper-dim">Cargando…</p> : lora.total === 0 ? (
             <p className="text-sm text-paper-dim">Aún no ha subido fotos para su clon.</p>
           ) : (
             <>
-              <p className="mb-3 text-sm text-paper-mute">{lora.count} fotos del set de clonación — clic para abrir/descargar.</p>
-              <div className="grid max-h-72 grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6 lg:grid-cols-8">
-                {lora.urls.map((u, i) => (
-                  <a key={i} href={u} target="_blank" rel="noreferrer" className="block aspect-square overflow-hidden rounded-lg border border-line">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={u} alt="" className="h-full w-full object-cover transition-transform hover:scale-105" />
-                  </a>
-                ))}
+              {/* Progreso vs mínimo/máximo de la LoRA + descarga masiva */}
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-[220px] flex-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className={`font-semibold ${lora.total >= LORA_MIN ? 'text-brand' : 'text-paper'}`}>
+                      {lora.total} fotos {lora.total >= LORA_MIN ? '· mínimo listo' : `· faltan ${LORA_MIN - lora.total} para el mínimo`}
+                    </span>
+                    <span className="text-xs text-paper-dim">mín. {LORA_MIN} · máx. {LORA_MAX}</span>
+                  </div>
+                  <div className="relative mt-1.5 h-2 overflow-hidden rounded-full bg-line">
+                    <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${Math.min(100, (lora.total / LORA_MAX) * 100)}%` }} />
+                    <span className="absolute inset-y-0 w-0.5 bg-paper/60" style={{ left: `${(LORA_MIN / LORA_MAX) * 100}%` }} aria-hidden />
+                  </div>
+                </div>
+                <button onClick={downloadAllLora} disabled={!!downloading}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
+                  {downloading ? <><Loader2 size={14} className="animate-spin" /> {downloading}</> : <><Download size={14} /> Descargar todas ({lora.total})</>}
+                </button>
               </div>
+
+              {lora.groups.map((g) => (
+                <div key={g.key} className="mb-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-paper-dim">{g.label} · {g.items.length}</p>
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+                    {g.items.map((it, i) => (
+                      <a key={i} href={it.url} target="_blank" rel="noreferrer" className="block aspect-square overflow-hidden rounded-lg border border-line">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={it.url} alt="" loading="lazy" className="h-full w-full object-cover transition-transform hover:scale-105" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </>
           )}
         </div>

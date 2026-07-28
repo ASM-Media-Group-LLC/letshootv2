@@ -8,12 +8,12 @@
 // Uploads go to the private 'lora' bucket, tagged with the category.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, Loader2, Check, Lightbulb, Lock, X, Expand } from 'lucide-react';
+import { Upload, Loader2, Check, Lightbulb, Lock, X, Expand, ChevronDown, Images } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
-import { CLONE_EXAMPLES, CLONE_POS, CLONE_TOTAL, FULLBODY_CATS, MARKS_CATEGORY, NUDE_CATEGORY } from '@/lib/clone-shots';
+import { CLONE_EXAMPLES, CLONE_RECS, CLONE_POS, FULLBODY_CATS, MARKS_CATEGORY, NUDE_CATEGORY, LORA_MIN, LORA_MAX } from '@/lib/clone-shots';
 
-const SHOTS = Object.entries(CLONE_EXAMPLES).map(([key, imgs]) => ({ key, rec: imgs.length }));
+const SHOTS = Object.keys(CLONE_EXAMPLES).map((key) => ({ key, rec: CLONE_RECS[key] || CLONE_EXAMPLES[key].length }));
 const ALL_CATS = [...SHOTS.map((s) => s.key), MARKS_CATEGORY, NUDE_CATEGORY];
 
 export default function CloneSetup({ userId, embedded = false }) {
@@ -70,20 +70,31 @@ export default function CloneSetup({ userId, embedded = false }) {
     }
   }
 
-  // Progress counts only the guided example categories.
-  const total = byCat ? SHOTS.reduce((a, s) => a + (byCat[s.key]?.length || 0), 0) : 0;
-  const pct = Math.min(100, Math.round((total / CLONE_TOTAL) * 100));
+  // Every uploaded photo (all categories, marks and nude included) feeds the
+  // LoRA training set: minimum 50, up to 80 for best quality.
+  const total = byCat ? ALL_CATS.reduce((a, k) => a + (byCat[k]?.length || 0), 0) : 0;
+  const pct = Math.min(100, Math.round((total / LORA_MAX) * 100));
+  const minPct = (LORA_MIN / LORA_MAX) * 100;
+  const missing = Math.max(0, LORA_MIN - total);
 
   return (
     <div className={embedded ? '' : 'rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-8'}>
       {!embedded && <h2 className="mb-1 font-display text-xl font-semibold text-paper">{t.lora.setupTitle}</h2>}
       <p className="mb-5 text-sm leading-relaxed text-paper-mute">{t.lora.setupDesc}</p>
 
-      <div className="mb-6 flex items-center gap-3">
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
-          <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${pct}%` }} />
+      <div className="mb-6">
+        <div className="flex items-center justify-between">
+          <span className={`text-sm font-semibold ${total >= LORA_MIN ? 'text-brand' : 'text-paper'}`}>{total} {t.lora.progress}</span>
+          <span className="text-xs font-medium text-paper-dim">{t.lora.minMax}</span>
         </div>
-        <span className="shrink-0 text-sm font-medium text-paper-mute">{total}/{CLONE_TOTAL} {t.lora.progress}</span>
+        <div className="relative mt-2 h-2 overflow-hidden rounded-full bg-line">
+          <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${pct}%` }} />
+          {/* marker at the 50-photo minimum */}
+          <span className="absolute inset-y-0 w-0.5 bg-paper/60" style={{ left: `${minPct}%` }} aria-hidden />
+        </div>
+        <p className={`mt-1.5 text-xs ${total >= LORA_MIN ? 'font-medium text-brand' : 'text-paper-mute'}`}>
+          {total >= LORA_MIN ? t.lora.minReached : t.lora.minMissing(missing)}
+        </p>
       </div>
 
       <div className="space-y-4">
@@ -173,6 +184,33 @@ function Uploads({ photos, label, onView }) {
   );
 }
 
+// Collapsible reference-examples section — a compact button that expands into
+// the labelled grid, so the guide isn't a wall of photos.
+function Examples({ examples, pos, contain, t, onView }) {
+  const [open, setOpen] = useState(false);
+  if (!examples?.length) return null;
+  return (
+    <div className="mt-4">
+      <button type="button" onClick={() => setOpen(!open)}
+        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+          open ? 'border-brand/40 bg-brand/10 text-brand' : 'border-line text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
+        <Images size={13} /> {open ? t.lora.hideExamples : t.lora.seeExamples} ({examples.length})
+        <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <p className="mb-2 mt-3 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{t.lora.examples}</p>
+          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+            {examples.map((img) => (
+              <Thumb key={img} src={`/lib/${img}.jpg`} pos={pos} contain={contain} onView={onView} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function CategoryBlock({ label, hint, rec, examples, pos, contain, photos, busy, progress, t, onView, onFiles }) {
   const complete = photos.length >= rec;
   return (
@@ -191,12 +229,7 @@ function CategoryBlock({ label, hint, rec, examples, pos, contain, photos, busy,
         <AddButton busy={busy} progress={progress} label={t.lora.addPhotos} onFiles={onFiles} />
       </div>
 
-      <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{t.lora.examples}</p>
-      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-        {examples.map((img) => (
-          <Thumb key={img} src={`/lib/${img}.jpg`} pos={pos} contain={contain} onView={onView} />
-        ))}
-      </div>
+      <Examples examples={examples} pos={pos} contain={contain} t={t} onView={onView} />
 
       <Uploads photos={photos} label={t.lora.yours} onView={onView} />
     </div>
@@ -220,14 +253,7 @@ function UploadOnlyBlock({ info, examples, priv, photos, busy, progress, t, onVi
         <AddButton busy={busy} progress={progress} label={t.lora.addPhotos} onFiles={onFiles} />
       </div>
 
-      {examples?.length > 0 && (
-        <>
-          <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{t.lora.examples}</p>
-          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-            {examples.map((img) => <Thumb key={img} src={`/lib/${img}.jpg`} pos="50% 40%" onView={onView} />)}
-          </div>
-        </>
-      )}
+      <Examples examples={examples} pos="50% 40%" t={t} onView={onView} />
 
       {info.note && (
         <p className="mt-4 flex items-center gap-1.5 text-[11px] text-paper-dim">
