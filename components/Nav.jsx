@@ -18,6 +18,12 @@ const MENU_ARIA = {
   zh: { open: '打开菜单', close: '关闭菜单' },
 };
 
+// Portal login button — all 7 public site languages, fallback en.
+const LOGIN_LABEL = {
+  es: 'Entrar', en: 'Log in', pt: 'Entrar', fr: 'Connexion',
+  de: 'Anmelden', it: 'Accedi', zh: '登录',
+};
+
 export default function Nav() {
   const { t, lang } = useLang();
   // Visible by default so the nav shows during the intro vapor text screens
@@ -90,6 +96,12 @@ export default function Nav() {
           <ThemeToggle />
           <LangToggle />
           <a
+            href="/login"
+            className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-paper transition-colors hover:border-brand/50 hover:text-brand"
+          >
+            {LOGIN_LABEL[lang] || LOGIN_LABEL.en}
+          </a>
+          <a
             href="#pricing"
             className="hidden rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.04] sm:inline-block"
           >
@@ -132,6 +144,13 @@ export default function Nav() {
               {l.label}
             </a>
           ))}
+          <a
+            href="/login"
+            onClick={() => setOpen(false)}
+            className="rounded-xl border border-line px-4 py-3 text-center text-base font-semibold text-paper transition-colors hover:border-brand/50 hover:text-brand"
+          >
+            {LOGIN_LABEL[lang] || LOGIN_LABEL.en}
+          </a>
           <a
             href="#pricing"
             onClick={() => setOpen(false)}
