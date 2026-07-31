@@ -1,16 +1,19 @@
 'use client';
 
-// Creator panel — her content, organized her way:
-//  · in-app notifications (bell) for deliveries / verification / feedback
-//  · her OWN folders: create, rename, delete (when empty), move photos
-//  · per-photo feedback (love / request change) and downloads (one or all)
+// Creator panel — the paid client's account:
+//  · month overview KPIs (delivered · sales · revenue · reach)
+//  · her delivered content, grouped by delivery date, in her own folders
+//  · per-photo PURPOSE ("por qué se hizo esta foto", set by the team)
+//  · per-photo PERFORMANCE she marks (sales / revenue / reach / interactions)
+//  · in-app notifications, feedback, folder management, downloads
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Folder, Heart, MessageSquarePlus,
-  User, Bell, FolderPlus, Pencil, Trash2, FolderInput,
+  User, Bell, FolderPlus, Pencil, Trash2, FolderInput, X, ShoppingBag, DollarSign,
+  Eye, Sparkles, Target, TrendingUp,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -25,6 +28,8 @@ function isDirect(path) {
   return !path || path.startsWith('http') || path.startsWith('/');
 }
 
+const ASSET_COLS = 'id, type, storage_path, deliver_date, title, purpose, sales_count, revenue, reach, interactions';
+
 function notifText(t, n) {
   const m = n.meta || {};
   switch (n.kind) {
@@ -36,22 +41,26 @@ function notifText(t, n) {
   }
 }
 
+const nf = (n) => Number(n || 0).toLocaleString('en-US');
+const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
 export default function PanelPage() {
   const { t, lang } = usePortal();
   const router = useRouter();
+  const locale = lang === 'es' ? 'es-US' : 'en-US';
   const [state, setState] = useState({ loading: true, profile: null, folders: [] });
   const [active, setActive] = useState(null);
   const [urls, setUrls] = useState({}); // asset id → signed url
   const [toast, setToast] = useState('');
   const [notifs, setNotifs] = useState([]);
   const [bellOpen, setBellOpen] = useState(false);
-  const [moveFor, setMoveFor] = useState(null); // asset id showing move menu
+  const [detail, setDetail] = useState(null);   // asset open in the lightbox
 
   const load = useCallback(async (userId) => {
     const supabase = getSupabase();
     const [{ data: folders }, { data: nots }] = await Promise.all([
       supabase.from('folders')
-        .select('id, name, kind, assets(id, type, storage_path, deliver_date)')
+        .select(`id, name, kind, assets(${ASSET_COLS})`)
         .eq('creator_id', userId)
         .order('created_at', { ascending: true }),
       supabase.from('notifications')
@@ -86,12 +95,12 @@ export default function PanelPage() {
     })();
   }, [router, load]);
 
-  async function refreshFolders() {
+  const refreshFolders = useCallback(async () => {
     if (!state.profile?.id) return;
     const list = await load(state.profile.id);
     setState((s) => ({ ...s, folders: list }));
     return list;
-  }
+  }, [state.profile?.id, load]);
 
   if (state.loading) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">{t.common.loading}</div>;
 
@@ -100,13 +109,32 @@ export default function PanelPage() {
   const srcFor = (a) => (isDirect(a.storage_path) ? a.storage_path : (urls[a.id] || ''));
   const unread = notifs.filter((n) => !n.read).length;
 
+  // Account-wide KPIs across every folder.
+  const allAssets = state.folders.flatMap((f) => f.assets || []);
+  const kpi = allAssets.reduce((acc, a) => {
+    acc.delivered += 1;
+    acc.sales += a.sales_count || 0;
+    acc.revenue += Number(a.revenue || 0);
+    acc.reach += a.reach || 0;
+    return acc;
+  }, { delivered: 0, sales: 0, revenue: 0, reach: 0 });
+
+  // Group the active folder's items by delivery date (a delivery timeline).
+  const groups = [];
+  items.forEach((a) => {
+    const key = a.deliver_date || '';
+    let g = groups.find((x) => x.date === key);
+    if (!g) { g = { date: key, items: [] }; groups.push(g); }
+    g.items.push(a);
+  });
+  const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long' }) : '');
+
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2600); }
 
   async function openBell() {
     const opening = !bellOpen;
     setBellOpen(opening);
     if (opening && unread > 0) {
-      // Optimistic mark-all-read.
       setNotifs((ns) => ns.map((n) => ({ ...n, read: true })));
       await getSupabase().from('notifications').update({ read: true })
         .eq('user_id', state.profile.id).eq('read', false);
@@ -177,6 +205,13 @@ export default function PanelPage() {
     });
   }
 
+  const KPIS = [
+    { key: 'delivered', icon: ImageIcon, label: t.panel.kpiDelivered, value: nf(kpi.delivered) },
+    { key: 'sales', icon: ShoppingBag, label: t.panel.kpiSales, value: nf(kpi.sales) },
+    { key: 'revenue', icon: DollarSign, label: t.panel.kpiRevenue, value: money(kpi.revenue) },
+    { key: 'reach', icon: Eye, label: t.panel.kpiReach, value: nf(kpi.reach) },
+  ];
+
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
@@ -213,7 +248,7 @@ export default function PanelPage() {
                         <div key={n.id} className="border-b border-line px-4 py-3 text-sm last:border-0">
                           <p className="text-paper">{notifText(t, n)}</p>
                           <p className="mt-0.5 text-[11px] text-paper-dim">
-                            {new Date(n.created_at).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                            {new Date(n.created_at).toLocaleDateString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
                           </p>
                         </div>
                       ))}
@@ -240,6 +275,26 @@ export default function PanelPage() {
       <main className="mx-auto max-w-6xl px-5 py-8">
         <h1 className="font-display text-2xl font-semibold sm:text-3xl">{t.panel.title}</h1>
         <p className="mt-1 text-sm text-paper-mute">{t.panel.sub}</p>
+
+        {/* Month overview — the tracking of what her content is doing */}
+        {allAssets.length > 0 && (
+          <div className="mt-6">
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+              <TrendingUp size={13} className="text-brand" /> {t.panel.overview}
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {KPIS.map((k) => (
+                <div key={k.key} className="rounded-2xl border border-line bg-card p-4">
+                  <div className="flex items-center gap-2 text-paper-dim">
+                    <k.icon size={15} className="text-brand" />
+                    <span className="text-xs font-medium">{k.label}</span>
+                  </div>
+                  <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{k.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {state.folders.length === 0 ? (
           <div className="mt-10 rounded-2xl border border-line bg-card p-10 text-center text-paper-mute">
@@ -296,56 +351,57 @@ export default function PanelPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {items.map((a) => {
-                  const src = srcFor(a);
-                  return (
-                    <div key={a.id} className="group relative overflow-hidden rounded-xl border border-line bg-card">
-                      {a.type === 'video' ? (
-                        <video src={src} className="aspect-[3/4] w-full object-cover" muted loop playsInline preload="metadata"
-                          onMouseEnter={(e) => e.currentTarget.play()} onMouseLeave={(e) => e.currentTarget.pause()}
-                          onClick={(e) => (e.currentTarget.paused ? e.currentTarget.play() : e.currentTarget.pause())} />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={src} alt="" className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                      )}
-                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-ink/90 to-transparent p-2 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
-                        <div className="flex gap-1">
-                          <button onClick={() => sendFeedback(a, 'love')} title={t.panel.love}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur transition-colors hover:text-brand">
-                            <Heart size={15} />
-                          </button>
-                          <button onClick={() => sendFeedback(a, 'change')} title={t.panel.change}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur transition-colors hover:text-brand">
-                            <MessageSquarePlus size={15} />
-                          </button>
-                          <button onClick={() => setMoveFor(moveFor === a.id ? null : a.id)} title={t.panel.moveTo}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur transition-colors hover:text-brand">
-                            <FolderInput size={15} />
-                          </button>
-                        </div>
-                        <a href={src} download className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink/80 text-paper backdrop-blur" aria-label={t.panel.download}>
-                          <Download size={15} />
-                        </a>
-                      </div>
-                      {moveFor === a.id && (
-                        <>
-                        <button className="fixed inset-0 z-20 cursor-default" onClick={() => setMoveFor(null)} aria-hidden />
-                        <div className="absolute inset-x-2 bottom-12 z-30 max-h-[calc(100%-3.5rem)] overflow-y-auto overflow-x-hidden rounded-xl border border-line bg-ink/95 backdrop-blur">
-                          <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim">{t.panel.moveTo}</div>
-                          {state.folders.filter((f) => f.id !== folder?.id).map((f) => (
-                            <button key={f.id} onClick={() => moveAsset(a.id, f.id)}
-                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-paper-mute transition-colors hover:bg-brand/10 hover:text-brand">
-                              <Folder size={12} /> {f.name}
-                            </button>
-                          ))}
-                        </div>
-                        </>
-                      )}
+              {/* Delivery timeline: assets grouped by their delivery date */}
+              {groups.map((g) => (
+                <div key={g.date || 'nodate'} className="mb-7">
+                  {g.date && (
+                    <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-brand">
+                        <Sparkles size={12} /> {t.panel.deliveredOn} {fmtDate(g.date)}
+                      </span>
+                      <span className="h-px flex-1 bg-line" />
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {g.items.map((a) => {
+                      const src = srcFor(a);
+                      return (
+                        <button
+                          key={a.id} onClick={() => setDetail(a)}
+                          className="group relative overflow-hidden rounded-xl border border-line bg-card text-left"
+                        >
+                          {a.type === 'video' ? (
+                            <video src={src} className="aspect-[3/4] w-full object-cover" muted loop playsInline preload="metadata" />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={src} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                          )}
+                          {/* performance badges */}
+                          {(a.sales_count > 0 || a.reach > 0) && (
+                            <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
+                              {a.sales_count > 0 && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur">
+                                  <ShoppingBag size={10} className="text-brand" /> {nf(a.sales_count)}
+                                </span>
+                              )}
+                              {a.reach > 0 && (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur">
+                                  <Eye size={10} className="text-brand" /> {nf(a.reach)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {/* caption: title + purpose */}
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2.5 pt-8">
+                            {a.title && <p className="truncate text-xs font-semibold text-paper">{a.title}</p>}
+                            {a.purpose && <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-paper-mute">{a.purpose}</p>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </section>
           </div>
         )}
@@ -358,11 +414,166 @@ export default function PanelPage() {
         )}
       </main>
 
+      {/* Detail lightbox: big view + purpose + performance the creator marks */}
+      {detail && (
+        <AssetDetail
+          asset={detail}
+          src={srcFor(detail)}
+          t={t} locale={locale}
+          folders={state.folders}
+          currentFolderId={folder?.id}
+          onClose={() => setDetail(null)}
+          onFeedback={sendFeedback}
+          onMove={async (fid) => { await moveAsset(detail.id, fid); setDetail(null); }}
+          onSaved={async (patch) => {
+            flash(t.panel.statsSaved);
+            setDetail((d) => (d ? { ...d, ...patch } : d));
+            await refreshFolders();
+          }}
+        />
+      )}
+
       {toast && (
-        <div className="fixed bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-sm font-medium text-brand backdrop-blur">
+        <div className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-sm font-medium text-brand backdrop-blur">
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Asset detail + performance editor (modal)
+// ─────────────────────────────────────────────────────────────────────────
+function AssetDetail({ asset, src, t, locale, folders, currentFolderId, onClose, onFeedback, onMove, onSaved }) {
+  const [sales, setSales] = useState(asset.sales_count || 0);
+  const [revenue, setRevenue] = useState(asset.revenue || 0);
+  const [reach, setReach] = useState(asset.reach || 0);
+  const [interactions, setInteractions] = useState(asset.interactions || 0);
+  const [saving, setSaving] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) : '');
+
+  async function save() {
+    setSaving(true);
+    const { error } = await getSupabase().rpc('mark_asset_stats', {
+      aid: asset.id,
+      p_sales: Math.max(0, parseInt(sales, 10) || 0),
+      p_revenue: Math.max(0, parseFloat(revenue) || 0),
+      p_reach: Math.max(0, parseInt(reach, 10) || 0),
+      p_interactions: Math.max(0, parseInt(interactions, 10) || 0),
+    });
+    setSaving(false);
+    if (error) { console.error(error); return; }
+    onSaved({
+      sales_count: Math.max(0, parseInt(sales, 10) || 0),
+      revenue: Math.max(0, parseFloat(revenue) || 0),
+      reach: Math.max(0, parseInt(reach, 10) || 0),
+      interactions: Math.max(0, parseInt(interactions, 10) || 0),
+    });
+  }
+
+  const STAT = (label, val, set, step = '1') => (
+    <label className="block">
+      <span className="text-[11px] font-medium text-paper-dim">{label}</span>
+      <input
+        type="number" min="0" step={step} value={val}
+        onChange={(e) => set(e.target.value)}
+        className="mt-1 w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/50"
+      />
+    </label>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[55] flex items-stretch justify-center overflow-y-auto bg-ink/85 backdrop-blur-sm sm:items-center sm:p-6">
+      <button className="fixed inset-0 -z-10 cursor-default" onClick={onClose} aria-hidden />
+      <div className="relative w-full max-w-4xl self-start overflow-hidden rounded-none border-line bg-card shadow-glow-sm sm:self-center sm:rounded-3xl sm:border">
+        <button onClick={onClose} aria-label={t.panel.close}
+          className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-ink/70 text-paper backdrop-blur transition-colors hover:text-brand">
+          <X size={18} />
+        </button>
+        <div className="grid md:grid-cols-[1.1fr_1fr]">
+          {/* Media */}
+          <div className="bg-ink">
+            {asset.type === 'video' ? (
+              <video src={src} className="h-full max-h-[46vh] w-full object-contain md:max-h-[80vh]" controls autoPlay loop playsInline />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={src} alt={asset.title || ''} className="h-full max-h-[46vh] w-full object-contain md:max-h-[80vh]" />
+            )}
+          </div>
+
+          {/* Info + performance */}
+          <div className="flex flex-col gap-4 overflow-y-auto p-5 md:max-h-[80vh]">
+            <div>
+              {asset.deliver_date && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-ink-2 px-2.5 py-1 text-[11px] font-medium text-paper-dim">
+                  <Sparkles size={11} className="text-brand" /> {t.panel.deliveredOn} {fmtDate(asset.deliver_date)}
+                </span>
+              )}
+              {asset.title && <h3 className="mt-2 font-display text-xl font-semibold text-paper">{asset.title}</h3>}
+            </div>
+
+            {/* Purpose — why the team made it */}
+            <div className="rounded-2xl border border-line bg-ink-2 p-3.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand">
+                <Target size={12} /> {t.panel.why}
+              </div>
+              <p className="mt-1.5 text-sm leading-relaxed text-paper-mute">{asset.purpose || t.panel.noPurpose}</p>
+            </div>
+
+            {/* Performance the creator marks */}
+            <div>
+              <div className="text-sm font-semibold text-paper">{t.panel.trackTitle}</div>
+              <p className="mt-0.5 text-xs text-paper-dim">{t.panel.trackSub}</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                {STAT(t.panel.salesLabel, sales, setSales)}
+                {STAT(t.panel.revenueLabel, revenue, setRevenue, '0.01')}
+                {STAT(t.panel.reachLabel, reach, setReach)}
+                {STAT(t.panel.interactionsLabel, interactions, setInteractions)}
+              </div>
+              <button onClick={save} disabled={saving}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
+                {saving ? t.common.saving : <><TrendingUp size={15} /> {t.panel.saveStats}</>}
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div className="mt-auto flex flex-wrap gap-2 border-t border-line pt-4">
+              <button onClick={() => onFeedback(asset, 'love')}
+                className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand">
+                <Heart size={14} /> {t.panel.love}
+              </button>
+              <button onClick={() => onFeedback(asset, 'change')}
+                className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand">
+                <MessageSquarePlus size={14} /> {t.panel.change}
+              </button>
+              <a href={src} download
+                className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand">
+                <Download size={14} /> {t.panel.download}
+              </a>
+              {folders.length > 1 && (
+                <div className="relative">
+                  <button onClick={() => setMoveOpen((v) => !v)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand">
+                    <FolderInput size={14} /> {t.panel.moveTo}
+                  </button>
+                  {moveOpen && (
+                    <div className="absolute bottom-11 left-0 z-10 max-h-48 w-52 overflow-y-auto rounded-xl border border-line bg-ink/95 backdrop-blur">
+                      {folders.filter((f) => f.id !== currentFolderId).map((f) => (
+                        <button key={f.id} onClick={() => { setMoveOpen(false); onMove(f.id); }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-paper-mute transition-colors hover:bg-brand/10 hover:text-brand">
+                          <Folder size={12} /> {f.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

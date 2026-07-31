@@ -179,6 +179,7 @@ function CreatorDetail({ creator, me, flash }) {
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState('');
+  const [purpose, setPurpose] = useState(''); // "por qué se hizo" — se guarda en cada foto de la entrega
   const [lora, setLora] = useState(null); // {total, groups: [{key,label,slug,items:[{url,ext}]}]}
   const [showLora, setShowLora] = useState(false);
   const [downloading, setDownloading] = useState('');
@@ -220,6 +221,7 @@ function CreatorDetail({ creator, me, flash }) {
         const { error: dbErr } = await supabase.from('assets').insert({
           creator_id: creator.id, folder_id: folderSel, storage_path: path,
           type: file.type.startsWith('video/') ? 'video' : 'photo', uploaded_by: me.id,
+          purpose: purpose.trim() || null,
         });
         if (dbErr) throw dbErr;
       }
@@ -227,6 +229,7 @@ function CreatorDetail({ creator, me, flash }) {
       sendEmail('delivery', creator.id, folderName);
       await supabase.from('notifications').insert({ user_id: creator.id, kind: 'delivery', meta: { folder: folderName } });
       flash('Entrega subida');
+      setPurpose('');
       load();
     } catch (err) {
       flash('Error: ' + err.message);
@@ -363,8 +366,16 @@ function CreatorDetail({ creator, me, flash }) {
           {folders && folders.length === 0 && <span className="text-sm text-paper-dim">Sin carpetas — crea la primera.</span>}
         </div>
 
+        <div className="mt-3">
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Propósito de esta entrega (por qué se hizo)</label>
+          <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={2}
+            placeholder="Ej. Pack PPV de bienvenida para la lista; teaser para el chat del fin de semana…"
+            className="mt-1 w-full resize-none rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          <p className="mt-1 text-[11px] text-paper-dim">Se guarda en cada foto de esta subida y la creadora lo ve en su cuenta.</p>
+        </div>
+
         <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading || !folderSel}
-          className="mt-4 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2 py-8 transition-colors hover:border-brand/40 disabled:opacity-50">
+          className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2 py-8 transition-colors hover:border-brand/40 disabled:opacity-50">
           {uploading ? (
             <span className="flex items-center gap-2 text-sm text-paper"><Loader2 size={17} className="animate-spin" /> Subiendo {uploading}…</span>
           ) : (

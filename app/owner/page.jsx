@@ -10,13 +10,15 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2 } from 'lucide-react';
-import { signIn, homeForProfile } from '@/lib/supabase/session';
+import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles } from 'lucide-react';
+import { signIn, signOut, homeForProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
 
 const ADMIN = { email: 'admin@letshoot.ai', password: 'LetShoot!admin' };
 const USER = { email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' };
+// Fully paid + content-delivered demo creator — the post-payment experience.
+const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
 
 export default function OwnerPage() {
   const router = useRouter();
@@ -25,6 +27,8 @@ export default function OwnerPage() {
 
   async function enter(acct, tag) {
     setBusy(tag); setError('');
+    // Clear any prior session first so a stale login never blocks the switch.
+    await signOut().catch(() => {});
     const res = await signIn(acct.email, acct.password);
     if (res.error || !res.profile) {
       setError(res.error || 'No se pudo entrar.'); setBusy(''); return;
@@ -35,6 +39,7 @@ export default function OwnerPage() {
   // Sign in as the test user, wipe their onboarding progress, land on the wizard.
   async function resetUser() {
     setBusy('reset'); setError('');
+    await signOut().catch(() => {});
     const res = await signIn(USER.email, USER.password);
     if (res.error || !res.profile) { setError(res.error || 'No se pudo entrar.'); setBusy(''); return; }
     const { error: err } = await getSupabase().from('profiles').update({
@@ -95,6 +100,30 @@ export default function OwnerPage() {
               {busy === 'reset' ? <Loader2 size={16} className="animate-spin" /> : <><RotateCcw size={15} /> Reiniciar onboarding y entrar</>}
             </button>
           </div>
+        </div>
+
+        {/* Cuenta ya completada — pagada + contenido entregado (experiencia post-pago) */}
+        <div className="mt-4 flex flex-col rounded-3xl border border-brand/30 bg-gradient-to-br from-brand/10 to-transparent p-6 shadow-glow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
+                <Sparkles size={14} /> Cuenta completada
+              </span>
+              <p className="text-sm text-paper-mute">
+                Cómo se ve la cuenta <strong className="text-paper">después de pagar</strong>: contenido ya
+                entregado por el equipo, organizado en carpetas, con propósito de cada foto y el seguimiento
+                de ventas, ingresos y alcance. Así vive su cuenta un cliente activo.
+              </p>
+              <div className="mt-3 inline-flex flex-col gap-0.5 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
+                <div>{CLIENTA.email}</div>
+                <div>{CLIENTA.password}</div>
+              </div>
+            </div>
+          </div>
+          <button onClick={() => enter(CLIENTA, 'clienta')} disabled={!!busy}
+            className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+            {busy === 'clienta' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como cuenta completada <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+          </button>
         </div>
 
         {error && (
