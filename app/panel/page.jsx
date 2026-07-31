@@ -12,8 +12,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Folder, Heart, MessageSquarePlus,
-  User, Bell, FolderPlus, Pencil, Trash2, FolderInput, X, ShoppingBag, DollarSign,
-  Eye, Sparkles, Target, TrendingUp,
+  User, Bell, FolderPlus, Pencil, Trash2, FolderInput, X, Sparkles, Target,
+  FolderOpen, CalendarDays, Building2,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -42,7 +42,6 @@ function notifText(t, n) {
 }
 
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
-const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 export default function PanelPage() {
   const { t, lang } = usePortal();
@@ -55,6 +54,7 @@ export default function PanelPage() {
   const [notifs, setNotifs] = useState([]);
   const [bellOpen, setBellOpen] = useState(false);
   const [detail, setDetail] = useState(null);   // asset open in the lightbox
+  const [agency, setAgency] = useState('');      // name of the managing agency
 
   const load = useCallback(async (userId) => {
     const supabase = getSupabase();
@@ -92,6 +92,8 @@ export default function PanelPage() {
       const list = await load(up.user.id);
       setState({ loading: false, profile: up.profile, folders: list });
       if (list.length) setActive((a) => a || list[0].id);
+      const { data: ag } = await getSupabase().rpc('my_agency');
+      if (ag) setAgency(ag);
     })();
   }, [router, load]);
 
@@ -109,15 +111,9 @@ export default function PanelPage() {
   const srcFor = (a) => (isDirect(a.storage_path) ? a.storage_path : (urls[a.id] || ''));
   const unread = notifs.filter((n) => !n.read).length;
 
-  // Account-wide KPIs across every folder.
+  // Content-focused overview (sales live on the agency's side, not here).
   const allAssets = state.folders.flatMap((f) => f.assets || []);
-  const kpi = allAssets.reduce((acc, a) => {
-    acc.delivered += 1;
-    acc.sales += a.sales_count || 0;
-    acc.revenue += Number(a.revenue || 0);
-    acc.reach += a.reach || 0;
-    return acc;
-  }, { delivered: 0, sales: 0, revenue: 0, reach: 0 });
+  const lastDate = allAssets.reduce((m, a) => (a.deliver_date && a.deliver_date > m ? a.deliver_date : m), '');
 
   // Group the active folder's items by delivery date (a delivery timeline).
   const groups = [];
@@ -206,10 +202,9 @@ export default function PanelPage() {
   }
 
   const KPIS = [
-    { key: 'delivered', icon: ImageIcon, label: t.panel.kpiDelivered, value: nf(kpi.delivered) },
-    { key: 'sales', icon: ShoppingBag, label: t.panel.kpiSales, value: nf(kpi.sales) },
-    { key: 'revenue', icon: DollarSign, label: t.panel.kpiRevenue, value: money(kpi.revenue) },
-    { key: 'reach', icon: Eye, label: t.panel.kpiReach, value: nf(kpi.reach) },
+    { key: 'delivered', icon: ImageIcon, label: t.panel.kpiDelivered, value: nf(allAssets.length) },
+    { key: 'folders', icon: FolderOpen, label: t.panel.kpiFolders, value: nf(state.folders.length) },
+    { key: 'last', icon: CalendarDays, label: t.panel.kpiLast, value: lastDate ? fmtDate(lastDate) : '—' },
   ];
 
   return (
@@ -273,16 +268,29 @@ export default function PanelPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-5 py-8">
-        <h1 className="font-display text-2xl font-semibold sm:text-3xl">{t.panel.title}</h1>
-        <p className="mt-1 text-sm text-paper-mute">{t.panel.sub}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="font-display text-2xl font-semibold sm:text-3xl">{t.panel.title}</h1>
+            <p className="mt-1 text-sm text-paper-mute">{t.panel.sub}</p>
+          </div>
+          {agency && (
+            <div className="rounded-2xl border border-line bg-card px-4 py-2.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+                <Building2 size={12} className="text-brand" /> {t.panel.managedBy}
+              </div>
+              <p className="mt-0.5 text-sm font-semibold text-paper">{agency}</p>
+              <p className="text-[11px] text-paper-dim">{t.panel.agencyNote}</p>
+            </div>
+          )}
+        </div>
 
-        {/* Month overview — the tracking of what her content is doing */}
+        {/* Content overview (sales live on the agency's side) */}
         {allAssets.length > 0 && (
           <div className="mt-6">
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-              <TrendingUp size={13} className="text-brand" /> {t.panel.overview}
+              <CalendarDays size={13} className="text-brand" /> {t.panel.overview}
             </div>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {KPIS.map((k) => (
                 <div key={k.key} className="rounded-2xl border border-line bg-card p-4">
                   <div className="flex items-center gap-2 text-paper-dim">
@@ -376,21 +384,6 @@ export default function PanelPage() {
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={src} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                           )}
-                          {/* performance badges */}
-                          {(a.sales_count > 0 || a.reach > 0) && (
-                            <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
-                              {a.sales_count > 0 && (
-                                <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur">
-                                  <ShoppingBag size={10} className="text-brand" /> {nf(a.sales_count)}
-                                </span>
-                              )}
-                              {a.reach > 0 && (
-                                <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur">
-                                  <Eye size={10} className="text-brand" /> {nf(a.reach)}
-                                </span>
-                              )}
-                            </div>
-                          )}
                           {/* caption: title + purpose */}
                           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2.5 pt-8">
                             {a.title && <p className="truncate text-xs font-semibold text-paper">{a.title}</p>}
@@ -425,11 +418,6 @@ export default function PanelPage() {
           onClose={() => setDetail(null)}
           onFeedback={sendFeedback}
           onMove={async (fid) => { await moveAsset(detail.id, fid); setDetail(null); }}
-          onSaved={async (patch) => {
-            flash(t.panel.statsSaved);
-            setDetail((d) => (d ? { ...d, ...patch } : d));
-            await refreshFolders();
-          }}
         />
       )}
 
@@ -443,46 +431,12 @@ export default function PanelPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Asset detail + performance editor (modal)
+// Asset detail (modal) — the delivered piece + why it was made. Sales live on
+// the agency's side, so the creator's view is read-only about performance.
 // ─────────────────────────────────────────────────────────────────────────
-function AssetDetail({ asset, src, t, locale, folders, currentFolderId, onClose, onFeedback, onMove, onSaved }) {
-  const [sales, setSales] = useState(asset.sales_count || 0);
-  const [revenue, setRevenue] = useState(asset.revenue || 0);
-  const [reach, setReach] = useState(asset.reach || 0);
-  const [interactions, setInteractions] = useState(asset.interactions || 0);
-  const [saving, setSaving] = useState(false);
+function AssetDetail({ asset, src, t, locale, folders, currentFolderId, onClose, onFeedback, onMove }) {
   const [moveOpen, setMoveOpen] = useState(false);
   const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) : '');
-
-  async function save() {
-    setSaving(true);
-    const { error } = await getSupabase().rpc('mark_asset_stats', {
-      aid: asset.id,
-      p_sales: Math.max(0, parseInt(sales, 10) || 0),
-      p_revenue: Math.max(0, parseFloat(revenue) || 0),
-      p_reach: Math.max(0, parseInt(reach, 10) || 0),
-      p_interactions: Math.max(0, parseInt(interactions, 10) || 0),
-    });
-    setSaving(false);
-    if (error) { console.error(error); return; }
-    onSaved({
-      sales_count: Math.max(0, parseInt(sales, 10) || 0),
-      revenue: Math.max(0, parseFloat(revenue) || 0),
-      reach: Math.max(0, parseInt(reach, 10) || 0),
-      interactions: Math.max(0, parseInt(interactions, 10) || 0),
-    });
-  }
-
-  const STAT = (label, val, set, step = '1') => (
-    <label className="block">
-      <span className="text-[11px] font-medium text-paper-dim">{label}</span>
-      <input
-        type="number" min="0" step={step} value={val}
-        onChange={(e) => set(e.target.value)}
-        className="mt-1 w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/50"
-      />
-    </label>
-  );
 
   return (
     <div className="fixed inset-0 z-[55] flex items-stretch justify-center overflow-y-auto bg-ink/85 backdrop-blur-sm sm:items-center sm:p-6">
@@ -503,7 +457,7 @@ function AssetDetail({ asset, src, t, locale, folders, currentFolderId, onClose,
             )}
           </div>
 
-          {/* Info + performance */}
+          {/* Info + purpose */}
           <div className="flex flex-col gap-4 overflow-y-auto p-5 md:max-h-[80vh]">
             <div>
               {asset.deliver_date && (
@@ -520,22 +474,6 @@ function AssetDetail({ asset, src, t, locale, folders, currentFolderId, onClose,
                 <Target size={12} /> {t.panel.why}
               </div>
               <p className="mt-1.5 text-sm leading-relaxed text-paper-mute">{asset.purpose || t.panel.noPurpose}</p>
-            </div>
-
-            {/* Performance the creator marks */}
-            <div>
-              <div className="text-sm font-semibold text-paper">{t.panel.trackTitle}</div>
-              <p className="mt-0.5 text-xs text-paper-dim">{t.panel.trackSub}</p>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                {STAT(t.panel.salesLabel, sales, setSales)}
-                {STAT(t.panel.revenueLabel, revenue, setRevenue, '0.01')}
-                {STAT(t.panel.reachLabel, reach, setReach)}
-                {STAT(t.panel.interactionsLabel, interactions, setInteractions)}
-              </div>
-              <button onClick={save} disabled={saving}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-                {saving ? t.common.saving : <><TrendingUp size={15} /> {t.panel.saveStats}</>}
-              </button>
             </div>
 
             {/* Actions */}

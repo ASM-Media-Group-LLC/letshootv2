@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles } from 'lucide-react';
+import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles, Building2 } from 'lucide-react';
 import { signIn, signOut, homeForProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
@@ -19,6 +19,8 @@ const ADMIN = { email: 'admin@letshoot.ai', password: 'LetShoot!admin' };
 const USER = { email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' };
 // Fully paid + content-delivered demo creator — the post-payment experience.
 const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
+// Agency / manager — manages its models, makes requests, records sales.
+const AGENCY = { email: 'agencia@letshoot.ai', password: 'LetShoot!agencia' };
 
 export default function OwnerPage() {
   const router = useRouter();
@@ -123,6 +125,26 @@ export default function OwnerPage() {
           <button onClick={() => enter(CLIENTA, 'clienta')} disabled={!!busy}
             className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
             {busy === 'clienta' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como cuenta completada <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+          </button>
+        </div>
+
+        {/* Agencia / Manager — gestiona sus modelos, pide contenido y lleva sus cuentas */}
+        <div className="mt-4 flex flex-col rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+          <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/12 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
+            <Building2 size={14} /> Agencia / Manager
+          </span>
+          <p className="text-sm text-paper-mute">
+            La cuenta que <strong className="text-paper">gestiona a las modelos</strong>: ve el contenido que
+            el equipo entrega, hace las peticiones y registra cuánto vendió cada pieza. La plataforma le lleva
+            las cuentas.
+          </p>
+          <div className="mt-3 inline-flex w-fit flex-col gap-0.5 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
+            <div>{AGENCY.email}</div>
+            <div>{AGENCY.password}</div>
+          </div>
+          <button onClick={() => enter(AGENCY, 'agency')} disabled={!!busy}
+            className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+            {busy === 'agency' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Agencia <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
           </button>
         </div>
 
