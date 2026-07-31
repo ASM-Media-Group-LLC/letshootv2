@@ -8,8 +8,9 @@ import SectionHeading from './SectionHeading';
 const ease = [0.22, 1, 0.36, 1];
 
 const PHOTOS = [
-  '/model-latina.jpg', '/card-locacion.jpg', '/card-moda.jpg', '/model-europea.jpg',
-  '/card-estilista.jpg', '/card-hd.jpg', '/model-noche.jpg', '/model-resort.jpg',
+  '/model-latina.jpg', '/model-normal-1.jpg', '/model-hombre-1.jpg', '/model-europea.jpg',
+  '/model-cocina.jpg', '/model-normal-3.jpg', '/model-hombre-3.jpg', '/model-noche.jpg',
+  '/model-normal-2.jpg', '/model-resort.jpg', '/model-hombre-2.jpg', '/card-locacion.jpg',
 ];
 const VIDEOS = ['/hero-miami.mp4'];
 

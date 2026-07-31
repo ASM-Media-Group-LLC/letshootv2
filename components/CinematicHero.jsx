@@ -7,12 +7,13 @@ import PanoramaCarousel from './PanoramaCarousel';
 
 const ease = [0.22, 1, 0.36, 1];
 
-// AI-generated showcase images for the coverflow carousel — deliberately
-// diverse models (Latina, European blonde, brunette night, Afro-Latina resort)
-// alternated with the strongest scene shots.
+// AI-generated showcase images for the coverflow carousel — deliberately diverse:
+// glam models (Latina, blonde, brunette night, resort) mixed with everyday
+// people at home and men, so it reads as "anyone, any moment", not just fashion.
 const SHOWCASE = [
-  '/model-latina.jpg', '/card-locacion.jpg', '/model-europea.jpg', '/card-moda.jpg',
-  '/model-noche.jpg', '/card-hd.jpg', '/model-resort.jpg', '/card-estilista.jpg',
+  '/model-latina.jpg', '/model-normal-1.jpg', '/model-hombre-1.jpg', '/model-europea.jpg',
+  '/model-cocina.jpg', '/model-noche.jpg', '/model-normal-3.jpg', '/model-hombre-3.jpg',
+  '/model-resort.jpg', '/model-normal-2.jpg', '/model-hombre-2.jpg', '/card-locacion.jpg',
 ];
 
 export default function CinematicHero() {
