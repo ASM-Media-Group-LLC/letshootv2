@@ -8,8 +8,8 @@ import SectionHeading from './SectionHeading';
 const ease = [0.22, 1, 0.36, 1];
 
 const PHOTOS = [
-  '/result-2.jpg', '/card-locacion.jpg', '/card-moda.jpg', '/result-4.jpg',
-  '/card-estilista.jpg', '/card-hd.jpg', '/result-5.jpg', '/ba-after-1.jpg',
+  '/model-latina.jpg', '/card-locacion.jpg', '/card-moda.jpg', '/model-europea.jpg',
+  '/card-estilista.jpg', '/card-hd.jpg', '/model-noche.jpg', '/model-resort.jpg',
 ];
 const VIDEOS = ['/hero-miami.mp4'];
 

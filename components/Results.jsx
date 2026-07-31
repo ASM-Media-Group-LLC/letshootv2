@@ -5,7 +5,7 @@ import { useLang } from '@/app/providers';
 import SectionHeading from './SectionHeading';
 
 const ease = [0.22, 1, 0.36, 1];
-const IMAGES = ['/result-2.jpg', '/result-4.jpg', '/result-5.jpg'];
+const IMAGES = ['/model-resort.jpg', '/model-latina.jpg', '/model-noche.jpg'];
 // All tags use glass-ios for premium consistency
 const HUE = {
   accent: 'glass-ios text-brand',

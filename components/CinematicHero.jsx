@@ -7,10 +7,12 @@ import PanoramaCarousel from './PanoramaCarousel';
 
 const ease = [0.22, 1, 0.36, 1];
 
-// AI-generated showcase images for the coverflow carousel
+// AI-generated showcase images for the coverflow carousel — deliberately
+// diverse models (Latina, European blonde, brunette night, Afro-Latina resort)
+// alternated with the strongest scene shots.
 const SHOWCASE = [
-  '/result-2.jpg', '/card-locacion.jpg', '/card-moda.jpg', '/card-estilista.jpg',
-  '/result-4.jpg', '/card-hd.jpg', '/result-5.jpg',
+  '/model-latina.jpg', '/card-locacion.jpg', '/model-europea.jpg', '/card-moda.jpg',
+  '/model-noche.jpg', '/card-hd.jpg', '/model-resort.jpg', '/card-estilista.jpg',
 ];
 
 export default function CinematicHero() {

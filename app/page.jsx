@@ -1,5 +1,6 @@
 import Nav from '@/components/Nav';
 import CinematicHero from '@/components/CinematicHero';
+import RealVsAI from '@/components/RealVsAI';
 import Comparison from '@/components/Comparison';
 import Solution from '@/components/Solution';
 import Showcase from '@/components/Showcase';
@@ -15,6 +16,7 @@ export default function Page() {
     <main className="relative z-10 min-h-screen">
       <Nav />
       <CinematicHero />
+      <RealVsAI />
       <Comparison />
       <Solution />
       <Showcase />
