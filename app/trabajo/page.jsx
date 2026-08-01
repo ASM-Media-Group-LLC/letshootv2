@@ -56,6 +56,12 @@ export default function TrabajoPage() {
   const [staff, setStaff] = useState([]);
   const [toast, setToast] = useState('');
 
+  // Managers (admin/supervisor) have every function; other staff have exactly
+  // the capabilities the admin assigned (producer defaults to 'content').
+  const caps = !me ? [] : (['admin', 'supervisor'].includes(me.role)
+    ? ['kyc', 'content', 'support', 'team']
+    : [...new Set([...(me.capabilities || []), ...(me.role === 'producer' ? ['content'] : [])])]);
+  const can = (c) => caps.includes(c);
   const isManager = me && ['admin', 'supervisor', 'producer'].includes(me.role);
 
   const load = useCallback(async () => {
@@ -75,7 +81,10 @@ export default function TrabajoPage() {
       const role = up.profile?.role;
       if (!['admin', 'supervisor', 'producer', 'chatter'].includes(role)) { router.replace('/panel'); return; }
       setMe(up.profile);
-      setTab(['admin', 'supervisor', 'producer'].includes(role) ? 'creadoras' : 'pedidos');
+      const c = ['admin', 'supervisor'].includes(role)
+        ? ['kyc', 'content', 'support', 'team']
+        : [...new Set([...(up.profile?.capabilities || []), ...(role === 'producer' ? ['content'] : [])])];
+      setTab(c.includes('content') ? 'creadoras' : c.includes('kyc') ? 'verificaciones' : c.includes('support') ? 'pedidos' : 'pedidos');
       load();
     })();
   }, [router, load]);
@@ -85,9 +94,10 @@ export default function TrabajoPage() {
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
   const TABS = [
-    ...(isManager ? [{ id: 'creadoras', label: 'Creadoras', icon: Users }] : []),
-    { id: 'pedidos', label: 'Pedidos', icon: Inbox },
-    ...(isManager ? [{ id: 'feedback', label: 'Feedback', icon: MessageSquare }] : []),
+    ...(can('content') ? [{ id: 'creadoras', label: 'Creadoras', icon: Users }] : []),
+    ...(can('kyc') ? [{ id: 'verificaciones', label: 'Verificaciones', icon: ShieldCheck }] : []),
+    ...(can('support') ? [{ id: 'pedidos', label: 'Pedidos', icon: Inbox }] : []),
+    ...(can('content') ? [{ id: 'feedback', label: 'Feedback', icon: MessageSquare }] : []),
   ];
 
   return (
@@ -129,9 +139,10 @@ export default function TrabajoPage() {
           ))}
         </div>
 
-        {tab === 'creadoras' && isManager && <CreadorasTab creators={creators} me={me} flash={flash} />}
-        {tab === 'pedidos' && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} isManager={isManager} />}
-        {tab === 'feedback' && isManager && <FeedbackTab creators={creators} flash={flash} />}
+        {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
+        {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
+        {tab === 'pedidos' && can('support') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} isManager={isManager} canDeliver={can('content')} />}
+        {tab === 'feedback' && can('content') && <FeedbackTab creators={creators} flash={flash} />}
       </main>
 
       {toast && (
@@ -391,8 +402,96 @@ function CreatorDetail({ creator, me, flash }) {
   );
 }
 
+/* ── Verificaciones: recibir y aprobar/rechazar IDs (capacidad 'kyc') ───── */
+function KycTab({ flash }) {
+  const [list, setList] = useState(null);
+  const [busy, setBusy] = useState(null);
+
+  const load = useCallback(async () => {
+    const supabase = getSupabase();
+    // profiles read is self-or-admin, so use the capability-gated RPC to list
+    // the pending queue (works for any staff with the 'kyc' capability).
+    const { data: pend } = await supabase.rpc('kyc_queue');
+    const out = [];
+    for (const p of pend || []) {
+      const { data: docs } = await supabase.from('kyc_documents').select('doc_type, storage_path').eq('user_id', p.id);
+      const imgs = {};
+      for (const d of docs || []) {
+        if (!d.storage_path) continue;
+        if (d.storage_path.startsWith('/') || d.storage_path.startsWith('http')) { imgs[d.doc_type] = d.storage_path; continue; }
+        const { data: s } = await supabase.storage.from('kyc').createSignedUrl(d.storage_path, 600);
+        if (s?.signedUrl) imgs[d.doc_type] = s.signedUrl;
+      }
+      out.push({ ...p, docs: imgs });
+    }
+    setList(out);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function review(userId, approve) {
+    let reason = null;
+    if (!approve) { reason = window.prompt('Motivo del rechazo (lo verá la creadora):', ''); if (reason === null) return; }
+    setBusy(userId);
+    const { error } = await getSupabase().rpc('review_kyc', { target: userId, approve, reason: approve ? null : reason });
+    setBusy(null);
+    if (error) { flash('Error: ' + error.message); return; }
+    setList((l) => l.filter((u) => u.id !== userId));
+    sendEmail(approve ? 'approved' : 'rejected', userId, approve ? '' : (reason || ''));
+    await getSupabase().from('notifications').insert({ user_id: userId, kind: approve ? 'approved' : 'rejected', meta: approve ? {} : { reason: reason || '' } });
+    flash(approve ? 'Identidad aprobada' : 'Identidad rechazada');
+  }
+
+  const DOC_LABEL = { id_front: 'ID frente', id_back: 'ID reverso', selfie_id: 'Selfie con ID' };
+  if (list === null) return <p className="mt-6 text-sm text-paper-dim">Cargando…</p>;
+
+  return (
+    <div className="mt-6 space-y-4">
+      <p className="text-sm text-paper-mute">Identidades por revisar. Aprueba para que la creadora pueda pagar, o rechaza con un motivo.</p>
+      {list.length === 0 && <p className="rounded-2xl border border-line bg-card p-8 text-center text-sm text-paper-dim">No hay identidades pendientes. Todo al día. 🎉</p>}
+      {list.map((u) => (
+        <div key={u.id} className="rounded-2xl border border-line bg-card p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-display font-semibold text-paper">{u.legal_first_name || u.full_name} {u.legal_last_name || ''}</p>
+              <p className="mt-0.5 text-xs text-paper-dim">
+                {u.stage_name && <>«{u.stage_name}» · </>}{u.country || '—'}{u.date_of_birth ? ` · ${u.date_of_birth}` : ''}
+                {u.consent_at ? ' · Consentimiento ✓' : ' · Sin consentimiento'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => review(u.id, false)} disabled={busy === u.id}
+                className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-3.5 py-2 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-60">
+                <X size={15} /> Rechazar
+              </button>
+              <button onClick={() => review(u.id, true)} disabled={busy === u.id}
+                className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+                {busy === u.id ? <Loader2 size={15} className="animate-spin" /> : <><Check size={15} /> Aprobar</>}
+              </button>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            {['id_front', 'id_back', 'selfie_id'].map((k) => (
+              <div key={k}>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-paper-dim">{DOC_LABEL[k]}</p>
+                {u.docs[k] ? (
+                  <a href={u.docs[k]} target="_blank" rel="noreferrer" className="block aspect-[3/2] overflow-hidden rounded-xl border border-line">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={u.docs[k]} alt={DOC_LABEL[k]} className="h-full w-full object-cover transition-transform hover:scale-105" />
+                  </a>
+                ) : (
+                  <div className="grid aspect-[3/2] place-items-center rounded-xl border border-dashed border-line text-xs text-paper-dim">Falta</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── Pedidos: chatter creates · manager takes/delivers ──────────────────── */
-function PedidosTab({ creators, staff, me, flash, isManager }) {
+function PedidosTab({ creators, staff, me, flash, isManager, canDeliver }) {
   const [requests, setRequests] = useState(null);
   const [assignedIds, setAssignedIds] = useState(null);
   const [form, setForm] = useState({ creator_id: '', title: '', description: '', due_date: '' });
@@ -443,7 +542,7 @@ function PedidosTab({ creators, staff, me, flash, isManager }) {
 
   return (
     <div className="mt-6 space-y-6">
-      {(me.role === 'chatter' || isManager) && (
+      {(
         <form onSubmit={createRequest} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
           <div className="mb-3 flex items-center gap-2 font-display font-semibold"><Plus size={17} className="text-brand" /> Nuevo pedido</div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -489,7 +588,7 @@ function PedidosTab({ creators, staff, me, flash, isManager }) {
                   </div>
                   {r.description && <p className="mt-1.5 text-sm text-paper-mute">{r.description}</p>}
                 </div>
-                {isManager && r.status !== 'delivered' && (
+                {canDeliver && r.status !== 'delivered' && (
                   <div className="flex shrink-0 gap-2">
                     {r.status === 'pending' && (
                       <button onClick={() => setStatus(r, 'in_progress')}

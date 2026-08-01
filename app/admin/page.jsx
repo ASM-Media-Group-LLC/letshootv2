@@ -18,6 +18,16 @@ const ROLES = [
 ];
 const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), producer: 'Supervisor' };
 
+// Dynamic staff functions — assigned one by one. Admin & Supervisor get all
+// implicitly (managers); for other staff these toggles decide what they can do.
+const CAPS = [
+  { v: 'kyc', l: 'Revisar IDs' },
+  { v: 'content', l: 'Subir fotos' },
+  { v: 'support', l: 'Servicio al cliente' },
+  { v: 'team', l: 'Gestionar equipo' },
+];
+const MANAGER_ROLES = ['admin', 'supervisor'];
+
 // Creator onboarding status → human label + tone
 // Flow: registered → info → id_pending → id_approved → active (pago al final).
 const OB = {
@@ -64,6 +74,9 @@ export default function AdminPage() {
       const { data: docs } = await supabase.from('kyc_documents').select('doc_type, storage_path').eq('user_id', p.id);
       const signed = {};
       for (const d of docs || []) {
+        if (!d.storage_path) continue;
+        // Demo/seed docs use a bundled /public (or full URL) path — show directly.
+        if (d.storage_path.startsWith('/') || d.storage_path.startsWith('http')) { signed[d.doc_type] = d.storage_path; continue; }
         const { data: s } = await supabase.storage.from('kyc').createSignedUrl(d.storage_path, 600);
         if (s?.signedUrl) signed[d.doc_type] = s.signedUrl;
       }
@@ -76,7 +89,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs }, { data: asg }, { data: reqs }, { count: loraCount }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at').order('role'),
+      supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at, capabilities').order('role'),
       supabase.from('chatter_assignments').select('chatter_id, creator_id'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
@@ -109,6 +122,17 @@ export default function AdminPage() {
     flash('Rol actualizado');
   }
 
+  async function toggleCap(id, cap, on) {
+    const u = profiles.find((x) => x.id === id);
+    const caps = new Set(u?.capabilities || []);
+    if (on) caps.add(cap); else caps.delete(cap);
+    const next = [...caps];
+    setProfiles((p) => p.map((x) => (x.id === id ? { ...x, capabilities: next } : x)));
+    const { error } = await getSupabase().from('profiles').update({ capabilities: next }).eq('id', id);
+    if (error) { flash('Error: ' + error.message); load(); return; }
+    flash('Funciones actualizadas');
+  }
+
   async function createUser(e) {
     e.preventDefault();
     setNuError('');
@@ -138,13 +162,9 @@ export default function AdminPage() {
     }
     setSavingId(userId);
     // Approve → unlocks payment (nothing charged yet). Reject → back to the ID
-    // step with the reason; no refund needed because the charge happens last.
-    const { error } = await getSupabase().from('profiles').update({
-      onboarding_status: approve ? 'id_approved' : 'id_rejected',
-      id_rejection_reason: approve ? null : reason,
-      id_reviewed_by: me.id,
-      id_reviewed_at: new Date().toISOString(),
-    }).eq('id', userId);
+    // step with the reason. Uses the review_kyc RPC so it works for any staff
+    // with the 'kyc' capability, not only admins.
+    const { error } = await getSupabase().rpc('review_kyc', { target: userId, approve, reason: approve ? null : reason });
     setSavingId(null);
     if (error) { flash('Error: ' + error.message); return; }
     setKyc((k) => k.filter((u) => u.id !== userId));
@@ -412,23 +432,46 @@ export default function AdminPage() {
               <p className="mt-3 text-xs text-paper-dim">La cuenta queda lista para entrar (correo confirmado). El equipo (admin/chatter/productor) omite el registro de creadora.</p>
             </form>
 
-            <div className="overflow-hidden rounded-2xl border border-line">
-              <div className="hidden gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim sm:grid sm:grid-cols-[1.4fr_1fr_auto]">
-                <span>Usuario</span><span>Correo</span><span>Rol</span>
-              </div>
-            {profiles.map((u) => (
-              <div key={u.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-5 py-3 text-sm last:border-0 sm:grid sm:grid-cols-[1.4fr_1fr_auto]">
-                <span className="truncate font-medium text-paper">{u.full_name || '—'}</span>
-                <span className="w-full truncate text-paper-mute sm:w-auto">{u.email}</span>
-                <div className="flex items-center gap-2">
-                  <select value={u.role} onChange={(e) => changeRole(u.id, e.target.value)} disabled={u.id === me.id}
-                    className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
-                    {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
-                  </select>
-                  {savingId === u.id && <RefreshCw size={14} className="animate-spin text-brand" />}
+            <p className="text-xs text-paper-dim">
+              Asigna funciones una por una a cada persona del equipo. <strong className="text-paper-mute">Admin y Supervisor</strong> tienen todas las funciones. A los demás (p. ej. chatter) les activas solo lo que hacen: revisar IDs, subir fotos o servicio al cliente.
+            </p>
+            <div className="space-y-3">
+            {profiles.filter((u) => u.role !== 'creator' && u.role !== 'agency').map((u) => {
+              const isMgr = MANAGER_ROLES.includes(u.role);
+              const caps = u.capabilities || [];
+              return (
+                <div key={u.id} className="rounded-2xl border border-line bg-card p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
+                      <p className="truncate text-xs text-paper-mute">{u.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select value={u.role} onChange={(e) => changeRole(u.id, e.target.value)} disabled={u.id === me.id}
+                        className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
+                        {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
+                      </select>
+                      {savingId === u.id && <RefreshCw size={14} className="animate-spin text-brand" />}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+                    {isMgr ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand">
+                        <ShieldCheck size={13} /> Todas las funciones
+                      </span>
+                    ) : CAPS.map((c) => {
+                      const on = caps.includes(c.v);
+                      return (
+                        <button key={c.v} onClick={() => toggleCap(u.id, c.v, !on)}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
+                          {on ? <Check size={13} /> : <Plus size={13} />} {c.l}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             </div>
           </div>
         ) : (

@@ -1,0 +1,11 @@
+-- ─────────────────────────────────────────────────────────────────────────
+-- DEMO SEED — review scenarios + staff personas (run manually, idempotent).
+-- Creators across every onboarding state so admin/staff have things to review,
+-- and staff accounts with granular capabilities. KYC docs point at bundled
+-- /public images (the review UI renders '/'-paths directly).
+-- Passwords: creators LetShoot!demo · manager LetShoot!manager ·
+-- soporte LetShoot!soporte · fotos LetShoot!fotos · ids LetShoot!ids
+-- ─────────────────────────────────────────────────────────────────────────
+-- (See the applied version in the DB; this file mirrors it for reproducibility.)
+-- The helper _seed_user(email,pw,name) creates the auth user+identity if missing.
+-- Full body identical to the migration/seed applied via MCP on 2026-07-30.

@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles, Building2 } from 'lucide-react';
+import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles, Building2, ClipboardList } from 'lucide-react';
 import { signIn, signOut, homeForProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
@@ -21,6 +21,13 @@ const USER = { email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' };
 const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
 // Agency / manager — manages its models, makes requests, records sales.
 const AGENCY = { email: 'agencia@letshoot.ai', password: 'LetShoot!agencia' };
+// Team personas — dynamic roles, each with only their function(s).
+const STAFF = [
+  { key: 'manager', label: 'Manager', desc: 'Todas las funciones', acct: { email: 'manager@letshoot.ai', password: 'LetShoot!manager' } },
+  { key: 'soporte', label: 'Servicio al cliente', desc: 'Pedidos', acct: { email: 'soporte@letshoot.ai', password: 'LetShoot!soporte' } },
+  { key: 'fotos', label: 'Subir fotos', desc: 'Entregas', acct: { email: 'fotos@letshoot.ai', password: 'LetShoot!fotos' } },
+  { key: 'ids', label: 'Revisar IDs', desc: 'Verificación', acct: { email: 'ids@letshoot.ai', password: 'LetShoot!ids' } },
+];
 
 export default function OwnerPage() {
   const router = useRouter();
@@ -146,6 +153,28 @@ export default function OwnerPage() {
             className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
             {busy === 'agency' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Agencia <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
           </button>
+        </div>
+
+        {/* Equipo — roles dinámicos, cada uno con su función */}
+        <div className="mt-4 rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+          <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/12 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
+            <ClipboardList size={14} /> Equipo (trabajadores)
+          </span>
+          <p className="mb-4 text-sm text-paper-mute">
+            Roles por función: cada quien ve solo lo suyo. El admin activa o quita funciones en «Equipo».
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {STAFF.map((s) => (
+              <button key={s.key} onClick={() => enter(s.acct, s.key)} disabled={!!busy}
+                className="group flex items-center justify-between gap-2 rounded-xl border border-line bg-ink-2 px-4 py-3 text-left transition-colors hover:border-brand/40 disabled:opacity-60">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-paper">{s.label}</span>
+                  <span className="block truncate text-xs text-paper-dim">{s.desc} · {s.acct.email}</span>
+                </span>
+                {busy === s.key ? <Loader2 size={16} className="shrink-0 animate-spin text-brand" /> : <ArrowRight size={16} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-1 group-hover:text-brand" />}
+              </button>
+            ))}
+          </div>
         </div>
 
         {error && (
