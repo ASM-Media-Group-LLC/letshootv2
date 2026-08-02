@@ -13,7 +13,7 @@ import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Folder, Heart, MessageSquarePlus,
   User, Bell, FolderPlus, Pencil, Trash2, FolderInput, X, Sparkles, Target,
-  FolderOpen, CalendarDays, Building2,
+  FolderOpen, CalendarDays, Building2, Inbox, Plus, Send,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -55,6 +55,8 @@ export default function PanelPage() {
   const [bellOpen, setBellOpen] = useState(false);
   const [detail, setDetail] = useState(null);   // asset open in the lightbox
   const [agency, setAgency] = useState('');      // name of the managing agency
+  const [requests, setRequests] = useState([]);  // her own content requests
+  const [reqOpen, setReqOpen] = useState(false);
 
   const load = useCallback(async (userId) => {
     const supabase = getSupabase();
@@ -69,6 +71,10 @@ export default function PanelPage() {
         .order('created_at', { ascending: false })
         .limit(20),
     ]);
+    const { data: reqs } = await supabase.from('requests')
+      .select('id, title, description, status, due_date, created_at')
+      .eq('creator_id', userId).order('created_at', { ascending: false });
+    setRequests(reqs || []);
     const list = folders || [];
     const toSign = list.flatMap((f) => (f.assets || []).filter((a) => !isDirect(a.storage_path)));
     if (toSign.length) {
@@ -147,6 +153,19 @@ export default function PanelPage() {
       asset_id: asset.id, creator_id: state.profile.id, kind, message,
     });
     if (!error) flash(t.panel.thanks);
+  }
+
+  async function createRequest(title, description) {
+    if (!title.trim()) return false;
+    const { error } = await getSupabase().from('requests').insert({
+      creator_id: state.profile.id, chatter_id: state.profile.id,
+      title: title.trim(), description: description.trim() || null, status: 'pending',
+    });
+    if (error) { console.error(error); flash(t.common.error); return false; }
+    setReqOpen(false);
+    flash(t.panel.reqSent);
+    await refreshFolders();
+    return true;
   }
 
   async function createFolder() {
@@ -304,6 +323,40 @@ export default function PanelPage() {
           </div>
         )}
 
+        {/* Request content — from the creator herself (her agency can too) */}
+        <div className="mt-6 rounded-2xl border border-line bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-paper">
+              <Inbox size={16} className="text-brand" /> {t.panel.requests}
+              {requests.length > 0 && <span className="font-mono text-xs text-paper-dim">· {requests.length}</span>}
+            </div>
+            <button onClick={() => setReqOpen((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20">
+              <Plus size={14} /> {t.panel.askContent}
+            </button>
+          </div>
+          {reqOpen && <RequestForm t={t} onSubmit={createRequest} />}
+          {requests.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {requests.map((r) => {
+                const st = r.status === 'delivered' ? { l: t.panel.reqDelivered, cls: 'border-brand/40 bg-brand/10 text-brand' }
+                  : r.status === 'in_progress' ? { l: t.panel.reqProgress, cls: 'border-sky/40 bg-sky/10 text-sky' }
+                  : { l: t.panel.reqPending, cls: 'border-amber-400/40 bg-amber-400/10 text-amber-300' };
+                return (
+                  <div key={r.id} className="flex items-start justify-between gap-3 rounded-xl border border-line bg-ink-2 px-3.5 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-paper">{r.title}</p>
+                      {r.description && <p className="mt-0.5 line-clamp-1 text-xs text-paper-dim">{r.description}</p>}
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${st.cls}`}>{st.l}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {requests.length === 0 && !reqOpen && <p className="mt-2 text-xs text-paper-dim">{t.panel.reqEmpty}</p>}
+        </div>
+
         {state.folders.length === 0 ? (
           <div className="mt-10 rounded-2xl border border-line bg-card p-10 text-center text-paper-mute">
             {t.panel.empty}
@@ -427,6 +480,28 @@ export default function PanelPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Content request form (the creator asks her team for content).
+function RequestForm({ t, onSubmit }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  return (
+    <form
+      onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onSubmit(title, description); setSaving(false); if (ok) { setTitle(''); setDescription(''); } }}
+      className="mt-3 rounded-xl border border-line bg-ink-2 p-3.5"
+    >
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t.panel.reqWhat}
+        className="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/50" />
+      <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder={t.panel.reqDetails}
+        className="mt-2 w-full resize-none rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/50" />
+      <button type="submit" disabled={saving}
+        className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+        <Send size={14} /> {saving ? t.common.saving : t.panel.reqSend}
+      </button>
+    </form>
   );
 }
 

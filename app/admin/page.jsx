@@ -8,25 +8,26 @@ import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import Logo from '@/components/Logo';
 
-// Owner's structure: admin = dueño · supervisor = manager · chatter = servicio
-// al cliente (solo pide). 'producer' is legacy (mapped to Supervisor label).
+// Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
+// asignar) · agency = agencia/manager (pide contenido, gestiona modelos) ·
+// creator = creadora. 'producer'/'chatter' son legacy → etiqueta "Equipo".
 const ROLES = [
   { v: 'admin', l: 'Admin (dueño)' },
-  { v: 'supervisor', l: 'Supervisor' },
-  { v: 'chatter', l: 'Chatter (SAC)' },
+  { v: 'supervisor', l: 'Equipo' },
+  { v: 'agency', l: 'Agencia / Manager' },
   { v: 'creator', l: 'Creadora' },
 ];
-const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), producer: 'Supervisor' };
+const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), producer: 'Equipo', chatter: 'Equipo' };
 
-// Dynamic staff functions — assigned one by one. Admin & Supervisor get all
-// implicitly (managers); for other staff these toggles decide what they can do.
+// Dynamic staff functions — assigned one by one to internal team members.
+// Only the admin has all functions implicitly. There is NO "servicio al
+// cliente": los pedidos los hacen la agencia/manager o la propia creadora.
 const CAPS = [
   { v: 'kyc', l: 'Revisar IDs' },
   { v: 'content', l: 'Subir fotos' },
-  { v: 'support', l: 'Servicio al cliente' },
   { v: 'team', l: 'Gestionar equipo' },
 ];
-const MANAGER_ROLES = ['admin', 'supervisor'];
+const MANAGER_ROLES = ['admin'];
 
 // Creator onboarding status → human label + tone
 // Flow: registered → info → id_pending → id_approved → active (pago al final).
@@ -429,11 +430,11 @@ export default function AdminPage() {
                 </div>
               </div>
               {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
-              <p className="mt-3 text-xs text-paper-dim">La cuenta queda lista para entrar (correo confirmado). El equipo (admin/chatter/productor) omite el registro de creadora.</p>
+              <p className="mt-3 text-xs text-paper-dim">La cuenta queda lista para entrar (correo confirmado). Elige «Equipo» para trabajadores internos, «Agencia / Manager» o «Creadora».</p>
             </form>
 
             <p className="text-xs text-paper-dim">
-              Asigna funciones una por una a cada persona del equipo. <strong className="text-paper-mute">Admin y Supervisor</strong> tienen todas las funciones. A los demás (p. ej. chatter) les activas solo lo que hacen: revisar IDs, subir fotos o servicio al cliente.
+              Asigna funciones una por una a cada persona del equipo. El <strong className="text-paper-mute">Admin</strong> tiene todas. Al equipo le activas solo lo que hace: revisar IDs o subir fotos. Los pedidos los hacen la agencia/manager o la creadora — el equipo los recibe.
             </p>
             <div className="space-y-3">
             {profiles.filter((u) => u.role !== 'creator' && u.role !== 'agency').map((u) => {

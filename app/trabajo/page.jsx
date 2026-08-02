@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
-  Check, RefreshCw, Sparkles, ChevronRight, Plus, ShieldCheck, X, Download,
+  Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -56,13 +56,13 @@ export default function TrabajoPage() {
   const [staff, setStaff] = useState([]);
   const [toast, setToast] = useState('');
 
-  // Managers (admin/supervisor) have every function; other staff have exactly
-  // the capabilities the admin assigned (producer defaults to 'content').
-  const caps = !me ? [] : (['admin', 'supervisor'].includes(me.role)
-    ? ['kyc', 'content', 'support', 'team']
-    : [...new Set([...(me.capabilities || []), ...(me.role === 'producer' ? ['content'] : [])])]);
+  // Only the admin has every function; other staff have exactly the functions
+  // the admin assigned to them. Requests come from the agency/creator — the
+  // internal team receives and fulfills them.
+  const caps = !me ? [] : (me.role === 'admin'
+    ? ['kyc', 'content', 'team']
+    : (me.capabilities || []));
   const can = (c) => caps.includes(c);
-  const isManager = me && ['admin', 'supervisor', 'producer'].includes(me.role);
 
   const load = useCallback(async () => {
     const supabase = getSupabase();
@@ -81,10 +81,8 @@ export default function TrabajoPage() {
       const role = up.profile?.role;
       if (!['admin', 'supervisor', 'producer', 'chatter'].includes(role)) { router.replace('/panel'); return; }
       setMe(up.profile);
-      const c = ['admin', 'supervisor'].includes(role)
-        ? ['kyc', 'content', 'support', 'team']
-        : [...new Set([...(up.profile?.capabilities || []), ...(role === 'producer' ? ['content'] : [])])];
-      setTab(c.includes('content') ? 'creadoras' : c.includes('kyc') ? 'verificaciones' : c.includes('support') ? 'pedidos' : 'pedidos');
+      const c = role === 'admin' ? ['kyc', 'content', 'team'] : (up.profile?.capabilities || []);
+      setTab(c.includes('content') ? 'creadoras' : c.includes('kyc') ? 'verificaciones' : 'creadoras');
       load();
     })();
   }, [router, load]);
@@ -96,7 +94,7 @@ export default function TrabajoPage() {
   const TABS = [
     ...(can('content') ? [{ id: 'creadoras', label: 'Creadoras', icon: Users }] : []),
     ...(can('kyc') ? [{ id: 'verificaciones', label: 'Verificaciones', icon: ShieldCheck }] : []),
-    ...(can('support') ? [{ id: 'pedidos', label: 'Pedidos', icon: Inbox }] : []),
+    ...(can('content') ? [{ id: 'pedidos', label: 'Pedidos', icon: Inbox }] : []),
     ...(can('content') ? [{ id: 'feedback', label: 'Feedback', icon: MessageSquare }] : []),
   ];
 
@@ -126,7 +124,7 @@ export default function TrabajoPage() {
       <main className="mx-auto max-w-6xl px-5 py-8">
         <h1 className="font-display text-2xl font-semibold sm:text-3xl">Espacio de trabajo</h1>
         <p className="mt-1 text-sm text-paper-mute">
-          {isManager ? 'Sube entregas, gestiona pedidos y responde feedback.' : 'Pide el contenido que tus creadoras necesitan.'}
+          Recibe los pedidos de agencias y creadoras, sube las entregas y revisa identidades.
         </p>
 
         <div className="mt-6 flex flex-wrap gap-2 border-b border-line">
@@ -141,7 +139,7 @@ export default function TrabajoPage() {
 
         {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
         {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
-        {tab === 'pedidos' && can('support') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} isManager={isManager} canDeliver={can('content')} />}
+        {tab === 'pedidos' && can('content') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} />}
         {tab === 'feedback' && can('content') && <FeedbackTab creators={creators} flash={flash} />}
       </main>
 
@@ -490,46 +488,20 @@ function KycTab({ flash }) {
   );
 }
 
-/* ── Pedidos: chatter creates · manager takes/delivers ──────────────────── */
-function PedidosTab({ creators, staff, me, flash, isManager, canDeliver }) {
+/* ── Pedidos: entrantes de agencias/creadoras · el equipo toma/entrega ──── */
+function PedidosTab({ creators, staff, me, flash }) {
   const [requests, setRequests] = useState(null);
-  const [assignedIds, setAssignedIds] = useState(null);
-  const [form, setForm] = useState({ creator_id: '', title: '', description: '', due_date: '' });
-  const [saving, setSaving] = useState(false);
   const nameOf = (id) => creators.find((c) => c.id === id)?.full_name
     || staff.find((s) => s.id === id)?.full_name || '—';
 
   const load = useCallback(async () => {
-    const supabase = getSupabase();
-    const { data } = await supabase.from('requests')
+    const { data } = await getSupabase().from('requests')
       .select('id, creator_id, chatter_id, producer_id, title, description, status, due_date, created_at')
       .order('created_at', { ascending: false });
     setRequests(data || []);
-    if (me.role === 'chatter') {
-      const { data: asg } = await supabase.from('chatter_assignments').select('creator_id').eq('chatter_id', me.id);
-      setAssignedIds((asg || []).map((a) => a.creator_id));
-    }
-  }, [me.id, me.role]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  const creatable = me.role === 'chatter'
-    ? creators.filter((c) => (assignedIds || []).includes(c.id))
-    : creators;
-
-  async function createRequest(e) {
-    e.preventDefault();
-    if (!form.creator_id || !form.title.trim()) { flash('Elige creadora y escribe el pedido.'); return; }
-    setSaving(true);
-    const { error } = await getSupabase().from('requests').insert({
-      creator_id: form.creator_id, chatter_id: me.id, title: form.title.trim(),
-      description: form.description.trim() || null, due_date: form.due_date || null,
-    });
-    setSaving(false);
-    if (error) { flash('Error: ' + error.message); return; }
-    setForm({ creator_id: '', title: '', description: '', due_date: '' });
-    flash('Pedido creado'); load();
-  }
 
   async function setStatus(req, status) {
     const patch = { status };
@@ -542,36 +514,14 @@ function PedidosTab({ creators, staff, me, flash, isManager, canDeliver }) {
 
   return (
     <div className="mt-6 space-y-6">
-      {(
-        <form onSubmit={createRequest} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
-          <div className="mb-3 flex items-center gap-2 font-display font-semibold"><Plus size={17} className="text-brand" /> Nuevo pedido</div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <select value={form.creator_id} onChange={(e) => setForm((f) => ({ ...f, creator_id: e.target.value }))}
-              className="rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
-              <option value="">Creadora…</option>
-              {creatable.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-            </select>
-            <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Qué necesita (ej. 4 fotos gym)"
-              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-            <input type="date" value={form.due_date} onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
-              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60 [color-scheme:dark]" />
-            <button type="submit" disabled={saving}
-              className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-              {saving ? 'Creando…' : 'Crear pedido'}
-            </button>
-          </div>
-          <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2}
-            placeholder="Detalles: escena, outfit, tono, contexto del fan…"
-            className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-          {me.role === 'chatter' && creatable.length === 0 && (
-            <p className="mt-2 text-xs text-amber-300">No tienes creadoras asignadas — pídele al admin que te asigne.</p>
-          )}
-        </form>
-      )}
+      <div className="flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-3 text-sm text-paper-mute">
+        <Inbox size={16} className="shrink-0 text-brand" />
+        Pedidos entrantes de las agencias y creadoras. Tómalos y márcalos como entregados cuando subas el contenido.
+      </div>
 
       <div className="space-y-3">
         {requests === null && <p className="text-paper-dim">Cargando…</p>}
-        {requests?.length === 0 && <p className="rounded-2xl border border-line bg-card p-8 text-center text-paper-dim">No hay pedidos todavía.</p>}
+        {requests?.length === 0 && <p className="rounded-2xl border border-line bg-card p-8 text-center text-paper-dim">No hay pedidos entrantes todavía.</p>}
         {(requests || []).map((r) => {
           const st = REQ_STATUS[r.status] || REQ_STATUS.pending;
           return (
@@ -588,7 +538,7 @@ function PedidosTab({ creators, staff, me, flash, isManager, canDeliver }) {
                   </div>
                   {r.description && <p className="mt-1.5 text-sm text-paper-mute">{r.description}</p>}
                 </div>
-                {canDeliver && r.status !== 'delivered' && (
+                {r.status !== 'delivered' && (
                   <div className="flex shrink-0 gap-2">
                     {r.status === 'pending' && (
                       <button onClick={() => setStatus(r, 'in_progress')}
