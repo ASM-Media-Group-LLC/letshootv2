@@ -11,7 +11,7 @@ import Link from 'next/link';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
-  BarChart3, UserCog, Plus, UserPlus,
+  BarChart3, UserCog, Plus, UserPlus, Clock,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -94,6 +94,26 @@ export default function TrabajoPage() {
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2600); }
 
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
+
+  // Invited staff waiting for the admin to approve them + assign access.
+  if (me?.role !== 'admin' && me?.staff_status === 'pending') {
+    return (
+      <div className="grid min-h-[100svh] place-items-center bg-ink px-5 text-center text-paper">
+        <div className="max-w-sm">
+          <Logo size="lg" />
+          <Clock className="mx-auto mt-8 mb-3 text-brand" size={38} />
+          <h1 className="font-display text-2xl font-semibold">Tu acceso está pendiente</h1>
+          <p className="mt-2 text-sm leading-relaxed text-paper-mute">
+            Ya estás registrado como equipo. El administrador debe <span className="text-paper">aprobar tu acceso</span> y asignarte tu puesto y permisos. Te avisaremos cuando puedas entrar a trabajar.
+          </p>
+          <button onClick={async () => { await signOut(); router.replace('/login'); }}
+            className="mt-6 inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">
+            <LogOut size={15} /> Salir
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const TABS = [
     ...(can('content') ? [{ id: 'creadoras', label: 'Creadoras', icon: Users }] : []),

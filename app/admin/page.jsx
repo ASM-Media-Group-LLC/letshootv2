@@ -75,6 +75,9 @@ export default function AdminPage() {
   const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
   const [assetStats, setAssetStats] = useState([]);   // per-creator sales/revenue for agency numbers
+  const [invites, setInvites] = useState([]);         // pending staff invite links
+  const [invBusy, setInvBusy] = useState(false);
+  const [copied, setCopied] = useState('');
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
   const [creating, setCreating] = useState(false);
   const [nuError, setNuError] = useState('');
@@ -105,7 +108,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at').order('role'),
+      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -114,6 +117,8 @@ export default function AdminPage() {
     setProfiles(profs || []);
     setAgencyLinks(agLinks || []);
     setAssetStats(assetRows || []);
+    const { data: inv } = await supabase.from('staff_invites').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+    setInvites(inv || []);
     setMetrics({ requests: reqs || [], lora: loraCount || 0 });
     await loadKyc();
     setLoading(false);
@@ -175,6 +180,36 @@ export default function AdminPage() {
     await load();
     // Open the freshly created team member's profile so the admin configures access.
     if (createdRole === 'supervisor' && out.id) { setTab('equipo'); setSelStaff(out.id); }
+  }
+
+  // ── Team invitations ──────────────────────────────────────────────────
+  async function createInvite() {
+    setInvBusy(true);
+    const token = (crypto.randomUUID?.() || `${Date.now()}-${Math.round(Math.random() * 1e9)}`).replace(/-/g, '');
+    const { data, error } = await getSupabase().from('staff_invites').insert({ token, created_by: me.id }).select().single();
+    setInvBusy(false);
+    if (error) { flash('Error: ' + error.message); return; }
+    setInvites((v) => [data, ...v]);
+    const link = `${window.location.origin}/unirse/${token}`;
+    try { await navigator.clipboard.writeText(link); setCopied(data.id); setTimeout(() => setCopied(''), 2000); flash('Link copiado'); } catch { flash('Link creado'); }
+  }
+  async function copyInvite(inv) {
+    const link = `${window.location.origin}/unirse/${inv.token}`;
+    try { await navigator.clipboard.writeText(link); setCopied(inv.id); setTimeout(() => setCopied(''), 2000); flash('Link copiado'); } catch { flash(link); }
+  }
+  async function revokeInvite(inv) {
+    const { error } = await getSupabase().from('staff_invites').update({ status: 'revoked' }).eq('id', inv.id);
+    if (error) { flash('Error: ' + error.message); return; }
+    setInvites((v) => v.filter((x) => x.id !== inv.id));
+    flash('Invitación cancelada');
+  }
+  async function approveStaff(id) {
+    setSavingId(id);
+    const { error } = await getSupabase().rpc('approve_staff', { target: id });
+    setSavingId(null);
+    if (error) { flash('Error: ' + error.message); return; }
+    setProfiles((ps) => ps.map((u) => (u.id === id ? { ...u, staff_status: 'approved' } : u)));
+    flash('Aprobado — ahora asígnale sus accesos');
   }
 
   // Which models an agency manages (admin marks them here).
@@ -410,6 +445,55 @@ export default function AdminPage() {
           </div>
         ) : tab === 'equipo' ? (
           <div className="mt-6 space-y-6">
+            {/* Invite by link — the person registers, you approve + assign access */}
+            <div className="rounded-2xl border border-line bg-card p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 font-display font-semibold text-paper"><Link2 size={18} className="text-brand" /> Invitar por link</div>
+                  <p className="mt-1 text-xs text-paper-dim">Genera un link, mándaselo a la persona. Ella se registra sola; tú la <strong className="text-paper-mute">apruebas</strong> y le asignas puesto y accesos.</p>
+                </div>
+                <button onClick={createInvite} disabled={invBusy}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+                  {invBusy ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear link de invitación
+                </button>
+              </div>
+              {invites.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {invites.map((inv) => (
+                    <div key={inv.id} className="flex items-center gap-2 rounded-xl border border-line bg-ink-2 px-3 py-2">
+                      <code className="min-w-0 flex-1 truncate text-xs text-paper-mute">/unirse/{inv.token}</code>
+                      <button onClick={() => copyInvite(inv)} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs text-paper-mute hover:text-paper">
+                        {copied === inv.id ? <Check size={13} className="text-brand" /> : <Copy size={13} />} {copied === inv.id ? 'Copiado' : 'Copiar'}
+                      </button>
+                      <button onClick={() => revokeInvite(inv)} className="rounded-lg border border-line px-2.5 py-1.5 text-xs text-paper-dim hover:text-rose-300">Cancelar</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Pending approval */}
+            {profiles.filter((u) => u.staff_status === 'pending' && u.role !== 'admin').length > 0 && (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.05] p-5">
+                <div className="mb-3 flex items-center gap-2 font-display font-semibold text-paper"><Clock size={17} className="text-amber-300" /> Pendientes de aprobar</div>
+                <div className="space-y-2">
+                  {profiles.filter((u) => u.staff_status === 'pending' && u.role !== 'admin').map((u) => (
+                    <div key={u.id} className="flex items-center gap-3 rounded-xl border border-line bg-ink-2 p-3">
+                      <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
+                        <p className="truncate text-xs text-paper-mute">{u.email}{u.job_title ? ` · ${u.job_title}` : ''}</p>
+                      </div>
+                      <button onClick={async () => { await approveStaff(u.id); setSelStaff(u.id); }} disabled={savingId === u.id}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-50">
+                        {savingId === u.id ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />} Aprobar y configurar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <form onSubmit={createUser} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
               <div className="mb-3 flex items-center gap-2 font-display font-semibold text-paper">
                 <UserPlus size={18} className="text-brand" /> Crear puesto / usuario
@@ -446,7 +530,7 @@ export default function AdminPage() {
               Cada puesto arranca <strong className="text-paper-mute">sin accesos</strong>. Ábrelo y enciende solo lo que necesita. El <strong className="text-paper-mute">Admin</strong> tiene todo. Ejemplo: para «datos con identificación» prende <em>Ver datos</em> + <em>Verificar identidad</em>; para «sin identificación», solo <em>Ver datos</em>.
             </p>
             <div className="space-y-3">
-            {profiles.filter((u) => u.role !== 'creator' && u.role !== 'agency').map((u) => {
+            {profiles.filter((u) => u.role !== 'creator' && u.role !== 'agency' && u.staff_status !== 'pending').map((u) => {
               const isMgr = MANAGER_ROLES.includes(u.role);
               const caps = u.capabilities || [];
               const grantedLabels = CAPS.filter((c) => caps.includes(c.v)).map((c) => c.l);
