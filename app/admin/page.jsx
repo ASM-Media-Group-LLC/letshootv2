@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2 } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, ChevronDown, CreditCard, Sparkles } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -23,14 +23,20 @@ const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), produc
 // Dynamic staff functions — assigned one by one to internal team members.
 // Only the admin has all functions implicitly. There is NO "servicio al
 // cliente": los pedidos los hacen la agencia/manager o la propia creadora.
+// You build the puesto and grant access function by function. 'datos' and 'kyc'
+// are split on purpose: 'datos' = see the creator's profile/legal data WITHOUT
+// her ID documents; 'kyc' = also see + verify the identity documents. So
+// "datos con identificación" = datos + kyc, "datos sin identificación" = datos.
 const CAPS = [
-  { v: 'kyc', l: 'Verificar IDs' },
-  { v: 'content', l: 'Subir entregas' },
-  { v: 'requests', l: 'Atender pedidos' },
-  { v: 'feedback', l: 'Responder feedback' },
-  { v: 'metrics', l: 'Ver métricas' },
-  { v: 'team', l: 'Gestionar equipo' },
+  { v: 'datos', l: 'Ver datos de la creadora', hint: 'Perfil y datos (sin documentos de ID)' },
+  { v: 'kyc', l: 'Verificar identidad', hint: 'Ver documentos de ID + aprobar / rechazar' },
+  { v: 'content', l: 'Subir entregas', hint: 'Entregar fotos y videos' },
+  { v: 'requests', l: 'Atender pedidos', hint: 'Tomar y entregar pedidos' },
+  { v: 'feedback', l: 'Responder feedback', hint: 'Contestar el feedback de la creadora' },
+  { v: 'metrics', l: 'Ver métricas', hint: 'Embudo y estados' },
+  { v: 'team', l: 'Gestionar equipo', hint: 'Crear puestos y dar accesos' },
 ];
+const LORA_MIN = 50; // house minimum clone photos
 const MANAGER_ROLES = ['admin'];
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
 const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -65,7 +71,8 @@ export default function AdminPage() {
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
   const [nu, setNu] = useState({ full_name: '', email: '', password: '', role: 'supervisor' });
-  const [nuCaps, setNuCaps] = useState([]); // functions for a new internal team member
+  const [selCreator, setSelCreator] = useState(null); // creator id whose profile drawer is open
+  const [expandedStaff, setExpandedStaff] = useState(null); // team member id whose functions are expanded
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
   const [assetStats, setAssetStats] = useState([]);   // per-creator sales/revenue for agency numbers
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
@@ -98,7 +105,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at, capabilities, handle, avatar_url').order('role'),
+      supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -153,18 +160,24 @@ export default function AdminPage() {
     // Supabase Edge Function 'create-user' runs with the service role (injected
     // by Supabase) and verifies the caller is admin. functions.invoke sends the
     // signed-in user's JWT automatically.
-    // The edge function (v3) sets the functions server-side for Equipo puestos.
-    const { data, error } = await getSupabase().functions.invoke('create-user', { body: { ...nu, capabilities: nuCaps } });
+    // Create the puesto first with NO functions; the admin then expands the
+    // card below to grant access one by one. (Edge fn v3 accepts capabilities.)
+    const { data, error } = await getSupabase().functions.invoke('create-user', { body: { ...nu, capabilities: [] } });
     setCreating(false);
     let out = data;
     if (error && !out) {
       try { out = await error.context.json(); } catch { out = { error: error.message }; }
     }
     if (!out?.ok) { setNuError(out?.error || 'No se pudo crear el usuario.'); return; }
+    const createdEmail = nu.email;
     setNu({ full_name: '', email: '', password: '', role: 'supervisor' });
-    setNuCaps([]);
-    flash('Usuario creado');
-    load();
+    flash(nu.role === 'supervisor' ? 'Puesto creado — ábrelo abajo para dar accesos' : 'Cuenta creada');
+    await load();
+    // Auto-expand the freshly created team member so the admin configures access.
+    if (nu.role === 'supervisor') {
+      const { data: np } = await getSupabase().from('profiles').select('id').eq('email', createdEmail.trim().toLowerCase()).single();
+      if (np?.id) { setTab('equipo'); setExpandedStaff(np.id); }
+    }
   }
 
   // Which models an agency manages (admin marks them here).
@@ -182,25 +195,25 @@ export default function AdminPage() {
     flash('Agencia actualizada');
   }
 
-  async function reviewKyc(userId, approve) {
-    let reason = null;
-    if (!approve) {
-      reason = window.prompt('Motivo del rechazo (lo verá la creadora):', '');
-      if (reason === null) return; // cancelled
-    }
+  // Professional review — approve unlocks payment (nothing charged yet); reject
+  // sends the creator back to the ID step with the reason. Updates both the
+  // pending queue and the full profiles list so the profile drawer stays in sync.
+  async function reviewKyc(userId, approve, reason = null) {
     setSavingId(userId);
-    // Approve → unlocks payment (nothing charged yet). Reject → back to the ID
-    // step with the reason. Uses the review_kyc RPC so it works for any staff
-    // with the 'kyc' capability, not only admins.
     const { error } = await getSupabase().rpc('review_kyc', { target: userId, approve, reason: approve ? null : reason });
     setSavingId(null);
-    if (error) { flash('Error: ' + error.message); return; }
+    if (error) { flash('Error: ' + error.message); return false; }
+    const newStatus = approve ? 'id_approved' : 'id_rejected';
+    setProfiles((ps) => ps.map((u) => (u.id === userId
+      ? { ...u, onboarding_status: newStatus, id_rejection_reason: approve ? null : reason, id_reviewed_at: new Date().toISOString() }
+      : u)));
     setKyc((k) => k.filter((u) => u.id !== userId));
     sendEmail(approve ? 'approved' : 'rejected', userId, approve ? '' : (reason || ''));
     await getSupabase().from('notifications').insert({
       user_id: userId, kind: approve ? 'approved' : 'rejected', meta: approve ? {} : { reason: reason || '' },
     });
     flash(approve ? 'Aprobada — ya puede pagar' : 'Verificación rechazada');
+    return true;
   }
 
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
@@ -266,7 +279,8 @@ export default function AdminPage() {
                     ))}
                   </div>
 
-                  <div className="mt-6 overflow-x-auto rounded-2xl border border-line">
+                  <p className="mt-4 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
+                  <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
                     <div className="grid min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
                       <span>Creadora</span><span>Correo</span><span>Estado</span><span></span>
                     </div>
@@ -274,7 +288,8 @@ export default function AdminPage() {
                     {cr.map((u) => {
                       const st = OB[u.onboarding_status] || OB.registered;
                       return (
-                        <div key={u.id} className="grid min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-0">
+                        <button key={u.id} onClick={() => setSelCreator(u.id)}
+                          className="grid w-full min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
                           <span className="flex min-w-0 items-center gap-2.5">
                             <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                             <span className="min-w-0">
@@ -284,12 +299,11 @@ export default function AdminPage() {
                           </span>
                           <span className="truncate text-paper-mute">{u.email}</span>
                           <span><span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span></span>
-                          <span className="text-right">
-                            {u.onboarding_status === 'id_pending' && (
-                              <button onClick={() => setTab('verificaciones')} className="rounded-full bg-brand/15 px-3.5 py-2 text-xs font-semibold text-brand hover:bg-brand/25">Revisar →</button>
-                            )}
+                          <span className="flex items-center justify-end gap-1.5 text-xs font-semibold text-brand">
+                            {u.onboarding_status === 'id_pending' && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">Revisar</span>}
+                            Abrir →
                           </span>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -372,54 +386,29 @@ export default function AdminPage() {
                 <p className="text-paper-mute">No hay verificaciones pendientes.</p>
               </div>
             )}
+            {kyc.length > 0 && <p className="text-sm text-paper-mute">{kyc.length} identidad{kyc.length === 1 ? '' : 'es'} por revisar. Abre cada una para ver sus documentos y aprobar o rechazar.</p>}
             {kyc.map((u) => (
-              <div key={u.id} className="rounded-2xl border border-line bg-card p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+              <button key={u.id} onClick={() => setSelCreator(u.id)}
+                className="flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.04] p-5 text-left transition-colors hover:border-amber-500/50">
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1.5">
+                    {['id_front', 'id_back', 'selfie_id'].map((k) => (
+                      u.docs[k]
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img key={k} src={u.docs[k]} alt="" className="h-12 w-10 rounded-md object-cover ring-1 ring-line" />
+                        : <span key={k} className="grid h-12 w-10 place-items-center rounded-md border border-dashed border-line text-[9px] text-paper-dim">falta</span>
+                    ))}
+                  </div>
                   <div>
-                    <div className="font-display font-semibold text-paper">
-                      {u.legal_first_name} {u.legal_last_name}
-                      {u.stage_name && <span className="ml-2 text-xs font-normal text-paper-dim">· "{u.stage_name}"</span>}
-                    </div>
-                    <div className="mt-0.5 text-xs text-paper-dim">
-                      {u.email} · {u.country || '—'} · Nac. {u.date_of_birth || '—'}
-                    </div>
-                    {u.consent_at ? (
-                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-0.5 text-[11px] font-medium text-brand">
-                        <ShieldCheck size={12} /> Consentimiento firmado · {new Date(u.consent_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </div>
-                    ) : (
-                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-300">
-                        <AlertTriangle size={12} /> Sin consentimiento
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => reviewKyc(u.id, false)} disabled={savingId === u.id}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm font-medium text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50">
-                      <X size={15} /> Rechazar
-                    </button>
-                    <button onClick={() => reviewKyc(u.id, true)} disabled={savingId === u.id}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-50">
-                      {savingId === u.id ? <RefreshCw size={15} className="animate-spin" /> : <Check size={15} />} Aprobar
-                    </button>
+                    <div className="font-display font-semibold text-paper">{u.legal_first_name} {u.legal_last_name}
+                      {u.stage_name && <span className="ml-2 text-xs font-normal text-paper-dim">· "{u.stage_name}"</span>}</div>
+                    <div className="mt-0.5 text-xs text-paper-dim">{u.email} · {u.country || '—'}</div>
                   </div>
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {[{ k: 'id_front', l: 'ID frente' }, { k: 'id_back', l: 'ID reverso' }, { k: 'selfie_id', l: 'Selfie con ID' }].map((d) => (
-                    <div key={d.k}>
-                      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-paper-dim">{d.l}</p>
-                      {u.docs[d.k] ? (
-                        <a href={u.docs[d.k]} target="_blank" rel="noreferrer" className="block aspect-[3/4] overflow-hidden rounded-xl border border-line">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={u.docs[d.k]} alt={d.l} className="h-full w-full object-cover transition-transform hover:scale-105" />
-                        </a>
-                      ) : (
-                        <div className="grid aspect-[3/4] place-items-center rounded-xl border border-dashed border-line text-xs text-paper-dim">Falta</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm">
+                  <ShieldCheck size={15} /> Revisar identidad →
+                </span>
+              </button>
             ))}
           </div>
         ) : tab === 'equipo' ? (
@@ -446,70 +435,82 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
-              {/* Functions for a new internal team member — you decide what each puesto can do */}
-              {nu.role === 'supervisor' && (
-                <div className="mt-3 rounded-xl border border-line bg-ink-2 p-3.5">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Funciones de este puesto</p>
-                  <div className="flex flex-wrap gap-2">
-                    {CAPS.map((c) => {
-                      const on = nuCaps.includes(c.v);
-                      return (
-                        <button key={c.v} type="button"
-                          onClick={() => setNuCaps((prev) => (on ? prev.filter((x) => x !== c.v) : [...prev, c.v]))}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
-                          {on ? <Check size={13} /> : <Plus size={13} />} {c.l}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-2 text-[11px] text-paper-dim">Prende solo lo que este puesto podrá hacer. Puedes cambiarlo después en la lista de abajo.</p>
-                </div>
-              )}
               {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
-              <p className="mt-3 text-xs text-paper-dim">La cuenta queda lista para entrar (correo confirmado). Elige «Equipo» para un puesto interno (y sus funciones), «Agencia / Manager» o «Creadora».</p>
+              <p className="mt-3 text-xs text-paper-dim">
+                Tú decides cuántos puestos crear y cómo llamarlos. Al crear un <strong className="text-paper-mute">Equipo</strong>, se abre su tarjeta abajo para que le des acceso <strong className="text-paper-mute">función por función</strong>. «Agencia / Manager» y «Creadora» quedan listas para entrar.
+              </p>
             </form>
 
             <p className="text-xs text-paper-dim">
-              Asigna funciones una por una a cada persona del equipo. El <strong className="text-paper-mute">Admin</strong> tiene todas. Al equipo le activas solo lo que hace: revisar IDs o subir fotos. Los pedidos los hacen la agencia/manager o la creadora — el equipo los recibe.
+              Cada puesto arranca <strong className="text-paper-mute">sin accesos</strong>. Ábrelo y enciende solo lo que necesita. El <strong className="text-paper-mute">Admin</strong> tiene todo. Ejemplo: para «datos con identificación» prende <em>Ver datos</em> + <em>Verificar identidad</em>; para «sin identificación», solo <em>Ver datos</em>.
             </p>
             <div className="space-y-3">
             {profiles.filter((u) => u.role !== 'creator' && u.role !== 'agency').map((u) => {
               const isMgr = MANAGER_ROLES.includes(u.role);
               const caps = u.capabilities || [];
+              const open = expandedStaff === u.id;
+              const grantedLabels = CAPS.filter((c) => caps.includes(c.v)).map((c) => c.l);
               return (
-                <div key={u.id} className="rounded-2xl border border-line bg-card p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
-                        <p className="truncate text-xs text-paper-mute">{u.email}</p>
+                <div key={u.id} className="overflow-hidden rounded-2xl border border-line bg-card">
+                  {/* Collapsed header — click to expand and configure access */}
+                  <button onClick={() => setExpandedStaff(open ? null : u.id)}
+                    className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-hair/[0.04]">
+                    <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
+                      <p className="truncate text-xs text-paper-mute">{u.email}</p>
+                    </div>
+                    <div className="hidden max-w-[45%] shrink-0 items-center justify-end gap-1.5 sm:flex">
+                      {isMgr ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand"><ShieldCheck size={12} /> Todas</span>
+                      ) : grantedLabels.length ? (
+                        <span className="truncate text-[11px] text-paper-dim">{grantedLabels.length} acceso{grantedLabels.length === 1 ? '' : 's'}: {grantedLabels.join(' · ')}</span>
+                      ) : (
+                        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">Sin accesos</span>
+                      )}
+                    </div>
+                    <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
+                  </button>
+                  {/* Expanded — role + function toggles */}
+                  {open && (
+                    <div className="border-t border-line px-4 pb-4 pt-3">
+                      <div className="mb-3 flex items-center gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Tipo</span>
+                        <select value={isMgr && u.role !== 'admin' ? 'supervisor' : u.role} onChange={(e) => changeRole(u.id, e.target.value)} disabled={u.id === me.id}
+                          className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
+                          <option value="admin">Admin (dueño)</option>
+                          <option value="supervisor">Equipo</option>
+                        </select>
+                        {savingId === u.id && <RefreshCw size={14} className="animate-spin text-brand" />}
                       </div>
+                      {isMgr ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand">
+                          <ShieldCheck size={13} /> El admin tiene todas las funciones
+                        </span>
+                      ) : (
+                        <>
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Accesos de este puesto</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {CAPS.map((c) => {
+                              const on = caps.includes(c.v);
+                              return (
+                                <button key={c.v} onClick={() => toggleCap(u.id, c.v, !on)}
+                                  className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
+                                  <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
+                                    {on ? <Check size={13} /> : <Plus size={13} />}
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
+                                    <span className="block text-[11px] text-paper-dim">{c.hint}</span>
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <select value={isMgr && u.role !== 'admin' ? 'supervisor' : u.role} onChange={(e) => changeRole(u.id, e.target.value)} disabled={u.id === me.id}
-                        className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
-                        <option value="admin">Admin (dueño)</option>
-                        <option value="supervisor">Equipo</option>
-                      </select>
-                      {savingId === u.id && <RefreshCw size={14} className="animate-spin text-brand" />}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
-                    {isMgr ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand">
-                        <ShieldCheck size={13} /> Todas las funciones
-                      </span>
-                    ) : CAPS.map((c) => {
-                      const on = caps.includes(c.v);
-                      return (
-                        <button key={c.v} onClick={() => toggleCap(u.id, c.v, !on)}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
-                          {on ? <Check size={13} /> : <Plus size={13} />} {c.l}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -558,11 +559,223 @@ export default function AdminPage() {
         ) : null}
       </main>
 
+      {selCreator && (
+        <CreatorProfile
+          creator={profiles.find((p) => p.id === selCreator)}
+          onClose={() => setSelCreator(null)}
+          onReview={reviewKyc}
+          savingId={savingId}
+          flash={flash}
+        />
+      )}
+
       {toast && (
-        <div className="fixed bottom-5 left-1/2 w-max max-w-[calc(100vw-2.5rem)] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-center text-sm font-medium text-brand backdrop-blur">
+        <div className="fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100vw-2.5rem)] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-center text-sm font-medium text-brand backdrop-blur">
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Creator profile drawer — full checklist + professional ID review ───────── */
+const OB2 = {
+  registered:  { label: 'Solo registrada',          tone: 'zinc' },
+  info:        { label: 'Datos listos · falta ID',  tone: 'zinc' },
+  id_pending:  { label: 'Por revisar',              tone: 'amber' },
+  id_rejected: { label: 'ID rechazado',             tone: 'rose' },
+  id_approved: { label: 'Aprobada · falta pago',    tone: 'sky' },
+  authorized:  { label: 'Aprobada · falta pago',    tone: 'sky' },
+  paid:        { label: 'Activa',                   tone: 'brand' },
+  active:      { label: 'Activa',                   tone: 'brand' },
+};
+const TONE2 = {
+  zinc:  'border-line bg-hair/5 text-paper-mute',
+  amber: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+  rose:  'border-rose-500/40 bg-rose-500/10 text-rose-300',
+  sky:   'border-sky-500/40 bg-sky-500/10 text-sky-300',
+  brand: 'border-brand/40 bg-brand/10 text-brand',
+};
+
+function CreatorProfile({ creator, onClose, onReview, savingId, flash }) {
+  const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
+  const [loraCount, setLoraCount] = useState(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
+
+  useEffect(() => {
+    if (!creator) return;
+    (async () => {
+      const supabase = getSupabase();
+      const [{ data: kd }, { count }] = await Promise.all([
+        supabase.from('kyc_documents').select('doc_type, storage_path').eq('user_id', creator.id),
+        supabase.from('lora_photos').select('id', { count: 'exact', head: true }).eq('user_id', creator.id),
+      ]);
+      const signed = {};
+      for (const d of kd || []) {
+        if (!d.storage_path) continue;
+        if (d.storage_path.startsWith('/') || d.storage_path.startsWith('http')) { signed[d.doc_type] = d.storage_path; continue; }
+        const { data: s } = await supabase.storage.from('kyc').createSignedUrl(d.storage_path, 600);
+        if (s?.signedUrl) signed[d.doc_type] = s.signedUrl;
+      }
+      setDocs(signed);
+      setLoraCount(count || 0);
+    })();
+  }, [creator]);
+
+  if (!creator) return null;
+  const st = OB2[creator.onboarding_status] || OB2.registered;
+  const datosDone = !!(creator.legal_first_name && creator.legal_last_name && creator.date_of_birth && creator.country);
+  const idApproved = ['id_approved', 'active', 'paid', 'authorized'].includes(creator.onboarding_status);
+  const idPending = creator.onboarding_status === 'id_pending';
+  const idRejected = creator.onboarding_status === 'id_rejected';
+  const hasDocs = docs && (docs.id_front || docs.id_back || docs.selfie_id);
+  const paid = creator.payment_status === 'paid' || ['active', 'paid'].includes(creator.onboarding_status);
+  const lc = loraCount ?? 0;
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+
+  const idState = idApproved ? { label: 'Aprobada', tone: 'brand' }
+    : idPending ? { label: 'Por revisar', tone: 'amber' }
+    : idRejected ? { label: 'Rechazada', tone: 'rose' }
+    : hasDocs ? { label: 'Documentos subidos', tone: 'sky' }
+    : { label: 'Sin documentos', tone: 'zinc' };
+
+  async function doReview(approve) {
+    if (!approve) {
+      if (!rejecting) { setRejecting(true); return; }
+      const ok = await onReview(creator.id, false, reason.trim() || 'Documento ilegible o no coincide.');
+      if (ok) { setRejecting(false); setReason(''); onClose(); }
+      return;
+    }
+    const ok = await onReview(creator.id, true);
+    if (ok) onClose();
+  }
+
+  const Row = ({ done, warn, icon: Icon, title, children }) => (
+    <div className="rounded-2xl border border-line bg-ink-2 p-4">
+      <div className="flex items-center gap-2.5">
+        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${done ? 'bg-brand/15 text-brand' : warn ? 'bg-rose-500/15 text-rose-300' : 'bg-hair/10 text-paper-dim'}`}>
+          {done ? <Check size={16} /> : <Icon size={15} />}
+        </span>
+        <h4 className="flex-1 font-display font-semibold text-paper">{title}</h4>
+        {done
+          ? <span className="rounded-full border border-brand/40 bg-brand/10 px-2.5 py-0.5 text-[11px] font-medium text-brand">Completo</span>
+          : <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${warn ? TONE2.rose : 'border-line bg-hair/5 text-paper-dim'}`}>Falta</span>}
+      </div>
+      {children && <div className="mt-3">{children}</div>}
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-ink/70 backdrop-blur-sm" onClick={onClose}>
+      <div className="h-full w-full max-w-xl overflow-y-auto border-l border-line bg-ink" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-ink/90 px-5 py-4 backdrop-blur">
+          <Avatar src={creator.avatar_url} name={creator.full_name} size="md" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-display text-lg font-semibold text-paper">{creator.stage_name || creator.full_name || '—'}</p>
+            <p className="truncate text-xs text-paper-dim">{creator.handle ? `@${creator.handle} · ` : ''}{creator.email}</p>
+          </div>
+          <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${TONE2[st.tone]}`}>{st.label}</span>
+          <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
+        </div>
+
+        <div className="space-y-3 p-5">
+          {/* 1 · Datos */}
+          <Row done={datosDone} icon={Users} title="Datos personales">
+            {datosDone ? (
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nombre legal</dt><dd className="text-paper">{creator.legal_first_name} {creator.legal_last_name}</dd></div>
+                <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nacimiento</dt><dd className="text-paper">{fmtDate(creator.date_of_birth)}</dd></div>
+                <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">País</dt><dd className="text-paper">{creator.country || '—'}</dd></div>
+                <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Teléfono</dt><dd className="text-paper">{creator.phone || '—'}</dd></div>
+              </dl>
+            ) : <p className="text-sm text-paper-dim">La creadora aún no completó sus datos personales.</p>}
+          </Row>
+
+          {/* 2 · Identidad + professional review */}
+          <Row done={idApproved} warn={idRejected} icon={IdCard} title="Identidad">
+            <div className="mb-3 flex items-center gap-2">
+              <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${TONE2[idState.tone]}`}>{idState.label}</span>
+              {creator.consent_at && <span className="inline-flex items-center gap-1 text-[11px] text-paper-dim"><ShieldCheck size={12} className="text-brand" /> Consentimiento {fmtDate(creator.consent_at)}</span>}
+            </div>
+            {idRejected && creator.id_rejection_reason && (
+              <p className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">Motivo del último rechazo: {creator.id_rejection_reason}</p>
+            )}
+            {docs === null ? (
+              <p className="text-sm text-paper-dim">Cargando documentos…</p>
+            ) : hasDocs ? (
+              <div className="grid grid-cols-3 gap-2">
+                {[{ k: 'id_front', l: 'ID frente' }, { k: 'id_back', l: 'ID reverso' }, { k: 'selfie_id', l: 'Selfie con ID' }].map((d) => (
+                  <div key={d.k}>
+                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-paper-dim">{d.l}</p>
+                    {docs[d.k] ? (
+                      <a href={docs[d.k]} target="_blank" rel="noreferrer" className="block aspect-[3/4] overflow-hidden rounded-lg border border-line">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={docs[d.k]} alt={d.l} className="h-full w-full object-cover transition-transform hover:scale-105" />
+                      </a>
+                    ) : <div className="grid aspect-[3/4] place-items-center rounded-lg border border-dashed border-line text-[10px] text-paper-dim">Falta</div>}
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-sm text-paper-dim">Todavía no subió sus documentos de identidad.</p>}
+
+            {/* Review actions */}
+            {hasDocs && (idPending || idRejected || idApproved) && (
+              <div className="mt-4 rounded-xl border border-line bg-card p-3">
+                {rejecting ? (
+                  <div className="space-y-2">
+                    <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} autoFocus
+                      placeholder="Motivo del rechazo (lo verá la creadora)…"
+                      className="w-full resize-none rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                    <div className="flex gap-2">
+                      <button onClick={() => { setRejecting(false); setReason(''); }} className="rounded-lg border border-line px-3 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
+                      <button onClick={() => doReview(false)} disabled={savingId === creator.id}
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50">
+                        {savingId === creator.id ? <RefreshCw size={14} className="animate-spin" /> : <X size={14} />} Confirmar rechazo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <button onClick={() => doReview(false)} disabled={savingId === creator.id}
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2.5 text-sm font-medium text-rose-300 hover:bg-rose-500/20 disabled:opacity-50">
+                        <X size={15} /> Rechazar
+                      </button>
+                      <button onClick={() => doReview(true)} disabled={savingId === creator.id || idApproved}
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand px-3 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-50">
+                        {savingId === creator.id ? <RefreshCw size={15} className="animate-spin" /> : <Check size={15} />} {idApproved ? 'Aprobada' : 'Aprobar'}
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[11px] text-paper-dim">
+                      Al <strong className="text-paper-mute">aprobar</strong>, la creadora pasa a «Aprobada · falta pago» y al pagar queda <strong className="text-paper-mute">Activa</strong>. Los documentos quedan guardados y cifrados (solo los ve quien tenga «Verificar identidad»). Al <strong className="text-paper-mute">rechazar</strong>, vuelve al paso de identidad con tu motivo.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </Row>
+
+          {/* 3 · Suscripción */}
+          <Row done={paid} icon={CreditCard} title="Suscripción">
+            <p className="text-sm text-paper">{paid ? <>Plan <span className="font-medium">{creator.plan || '—'}</span> · pago al día</> : <span className="text-paper-dim">Aún no ha pagado{creator.plan ? ` (eligió ${creator.plan})` : ''}.</span>}</p>
+          </Row>
+
+          {/* 4 · Fotos del clon */}
+          <Row done={lc >= LORA_MIN} icon={Sparkles} title="Fotos del clon">
+            <div>
+              <div className="mb-1.5 flex items-center justify-between text-sm">
+                <span className="text-paper">{loraCount === null ? '…' : lc} / {LORA_MIN} fotos</span>
+                <span className="text-[11px] text-paper-dim">mínimo para entrenar</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-hair/10">
+                <div className="h-full rounded-full bg-brand" style={{ width: `${Math.min(100, (lc / LORA_MIN) * 100)}%` }} />
+              </div>
+            </div>
+          </Row>
+        </div>
+      </div>
     </div>
   );
 }

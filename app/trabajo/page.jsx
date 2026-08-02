@@ -61,7 +61,7 @@ export default function TrabajoPage() {
   // Only the admin has every function; other staff have exactly the functions
   // assigned to their puesto. Requests come from the agency/creator — the
   // internal team receives and fulfills them.
-  const ALL_CAPS = ['kyc', 'content', 'requests', 'feedback', 'metrics', 'team'];
+  const ALL_CAPS = ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team'];
   const caps = !me ? [] : (me.role === 'admin' ? ALL_CAPS : (me.capabilities || []));
   const can = (c) => caps.includes(c);
 
@@ -82,7 +82,7 @@ export default function TrabajoPage() {
       const role = up.profile?.role;
       if (!['admin', 'supervisor', 'producer', 'chatter'].includes(role)) { router.replace('/panel'); return; }
       setMe(up.profile);
-      const c = role === 'admin' ? ['kyc', 'content', 'requests', 'feedback', 'metrics', 'team'] : (up.profile?.capabilities || []);
+      const c = role === 'admin' ? ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team'] : (up.profile?.capabilities || []);
       const first = c.includes('content') ? 'creadoras' : c.includes('kyc') ? 'verificaciones'
         : c.includes('requests') ? 'pedidos' : c.includes('feedback') ? 'feedback'
         : c.includes('metrics') ? 'metricas' : c.includes('team') ? 'equipo' : 'creadoras';
@@ -708,20 +708,22 @@ function MetricasTab({ creators }) {
 }
 
 /* ── Equipo: crear puestos y asignar funciones (función 'team') ─────────── */
+// 'datos' = ver perfil/datos SIN documentos; 'kyc' = ver ID + verificar.
 const TEAM_CAPS = [
-  { v: 'kyc', l: 'Verificar IDs' },
-  { v: 'content', l: 'Subir entregas' },
-  { v: 'requests', l: 'Atender pedidos' },
-  { v: 'feedback', l: 'Responder feedback' },
-  { v: 'metrics', l: 'Ver métricas' },
-  { v: 'team', l: 'Gestionar equipo' },
+  { v: 'datos', l: 'Ver datos de la creadora', hint: 'Perfil y datos (sin documentos de ID)' },
+  { v: 'kyc', l: 'Verificar identidad', hint: 'Ver documentos de ID + aprobar / rechazar' },
+  { v: 'content', l: 'Subir entregas', hint: 'Entregar fotos y videos' },
+  { v: 'requests', l: 'Atender pedidos', hint: 'Tomar y entregar pedidos' },
+  { v: 'feedback', l: 'Responder feedback', hint: 'Contestar el feedback' },
+  { v: 'metrics', l: 'Ver métricas', hint: 'Embudo y estados' },
+  { v: 'team', l: 'Gestionar equipo', hint: 'Crear puestos y dar accesos' },
 ];
 
 function EquipoTab({ staff, me, flash, reload }) {
   const [form, setForm] = useState({ full_name: '', email: '', password: '' });
-  const [formCaps, setFormCaps] = useState([]);
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState('');
+  const [expanded, setExpanded] = useState(null);
 
   async function createPuesto(e) {
     e.preventDefault();
@@ -729,16 +731,17 @@ function EquipoTab({ staff, me, flash, reload }) {
     if (!form.email || !form.password) { setErr('Completa correo y contraseña.'); return; }
     if (form.password.length < 8) { setErr('La contraseña debe tener al menos 8 caracteres.'); return; }
     setCreating(true);
+    // Create the puesto first with NO access; then expand its card to grant it.
     const { data, error } = await getSupabase().functions.invoke('create-user', {
-      body: { ...form, role: 'supervisor', capabilities: formCaps },
+      body: { ...form, role: 'supervisor', capabilities: [] },
     });
     setCreating(false);
     let out = data;
     if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
     if (!out?.ok) { setErr(out?.error || 'No se pudo crear el puesto.'); return; }
     setForm({ full_name: '', email: '', password: '' });
-    setFormCaps([]);
-    flash('Puesto creado');
+    flash('Puesto creado — ábrelo para dar accesos');
+    if (out.id) setExpanded(out.id);
     reload();
   }
 
@@ -747,7 +750,7 @@ function EquipoTab({ staff, me, flash, reload }) {
     if (cur.has(cap)) cur.delete(cap); else cur.add(cap);
     const { error } = await getSupabase().rpc('set_staff_functions', { target: member.id, caps: [...cur] });
     if (error) { flash('Error: ' + error.message); return; }
-    flash('Funciones actualizadas');
+    flash('Accesos actualizados');
     reload();
   }
 
@@ -757,30 +760,19 @@ function EquipoTab({ staff, me, flash, reload }) {
   return (
     <div className="mt-6 space-y-6">
       <form onSubmit={createPuesto} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
-        <div className="mb-3 flex items-center gap-2 font-display font-semibold text-paper">
+        <div className="mb-1 flex items-center gap-2 font-display font-semibold text-paper">
           <UserPlus size={18} className="text-brand" /> Crear puesto del equipo
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <p className="mb-3 text-xs text-paper-dim">Tú le pones el nombre. Al crearlo, ábrelo abajo para darle acceso función por función.</p>
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
           <input value={form.full_name} onChange={(e) => setForm((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre o puesto (ej. Supervisor 2)"
             className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
           <input type="email" value={form.email} onChange={(e) => setForm((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
             className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
           <input type="text" value={form.password} onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
             className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {TEAM_CAPS.map((c) => {
-            const on = formCaps.includes(c.v);
-            return (
-              <button key={c.v} type="button"
-                onClick={() => setFormCaps((prev) => (on ? prev.filter((x) => x !== c.v) : [...prev, c.v]))}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
-                {on ? <Check size={13} /> : <Plus size={13} />} {c.l}
-              </button>
-            );
-          })}
           <button type="submit" disabled={creating}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
             {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Crear
           </button>
         </div>
@@ -796,22 +788,42 @@ function EquipoTab({ staff, me, flash, reload }) {
             </span>
           </div>
         ))}
-        {team.map((u) => (
-          <div key={u.id} className="rounded-2xl border border-line bg-card p-4">
-            <p className="font-medium text-paper">{u.full_name || '—'}</p>
-            <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
-              {TEAM_CAPS.map((c) => {
-                const on = (u.capabilities || []).includes(c.v);
-                return (
-                  <button key={c.v} onClick={() => toggleFn(u, c.v)} disabled={u.id === me.id && c.v === 'team'}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
-                    {on ? <Check size={13} /> : <Plus size={13} />} {c.l}
-                  </button>
-                );
-              })}
+        {team.map((u) => {
+          const open = expanded === u.id;
+          const caps = u.capabilities || [];
+          const granted = TEAM_CAPS.filter((c) => caps.includes(c.v)).map((c) => c.l);
+          return (
+            <div key={u.id} className="overflow-hidden rounded-2xl border border-line bg-card">
+              <button onClick={() => setExpanded(open ? null : u.id)} className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-hair/[0.04]">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
+                  <p className="truncate text-[11px] text-paper-dim">{granted.length ? `${granted.length} acceso${granted.length === 1 ? '' : 's'}: ${granted.join(' · ')}` : 'Sin accesos'}</p>
+                </div>
+                {!granted.length && <span className="shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">Sin accesos</span>}
+                <ChevronRight size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-90' : ''}`} />
+              </button>
+              {open && (
+                <div className="grid gap-2 border-t border-line px-4 pb-4 pt-3 sm:grid-cols-2">
+                  {TEAM_CAPS.map((c) => {
+                    const on = caps.includes(c.v);
+                    return (
+                      <button key={c.v} onClick={() => toggleFn(u, c.v)} disabled={u.id === me.id && c.v === 'team'}
+                        className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors disabled:opacity-50 ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
+                        <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
+                          {on ? <Check size={13} /> : <Plus size={13} />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
+                          <span className="block text-[11px] text-paper-dim">{c.hint}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -158,10 +158,10 @@ export default function OwnerPage() {
         {/* Equipo — roles dinámicos, cada uno con su función */}
         <div className="mt-4 rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
           <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/12 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
-            <ClipboardList size={14} /> Equipo (trabajadores)
+            <ClipboardList size={14} /> Cuentas de ejemplo (equipo)
           </span>
           <p className="mb-4 text-sm text-paper-mute">
-            Roles por función: cada quien ve solo lo suyo. El admin activa o quita funciones en «Equipo».
+            Solo para probar. Estos <strong className="text-paper-mute">no son roles fijos</strong>: en Admin → «Equipo interno» tú creas los puestos que quieras, les pones nombre y les das acceso función por función.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {STAFF.map((s) => (

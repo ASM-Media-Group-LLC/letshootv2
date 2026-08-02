@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  LogOut, Check, ShieldCheck, IdCard, CreditCard, Upload, User,
+  LogOut, Check, ShieldCheck, IdCard, CreditCard, Upload, User, Plus,
   AlertTriangle, ArrowRight, Loader2, Sparkles, Clock, CheckCircle2, Circle,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
@@ -51,11 +51,12 @@ export default function OnboardingPage() {
   const paid = p.payment_status === 'paid';
   const canActivate = idApproved && paid;
 
+  // Datos + Identidad are ONE step now (kept every field — just merged).
+  const esL = lang === 'es';
   const TABS = [
     { key: 'pago', label: h.tabs.pago, desc: h.tabDesc.pago, icon: CreditCard, done: paid },
     { key: 'clon', label: h.tabs.clon, desc: h.tabDesc.clon, icon: Sparkles, done: loraCount > 0 },
-    { key: 'datos', label: h.tabs.datos, desc: h.tabDesc.datos, icon: User, done: datosDone },
-    { key: 'identidad', label: h.tabs.identidad, desc: h.tabDesc.identidad, icon: IdCard, done: idApproved },
+    { key: 'datos', label: esL ? 'Datos e identidad' : 'Data & identity', desc: esL ? 'Tu información y verificación' : 'Your info & verification', icon: IdCard, done: datosDone && idApproved },
   ];
   const doneCount = TABS.filter((tb) => tb.done).length;
 
@@ -96,9 +97,9 @@ export default function OnboardingPage() {
                 <circle cx="22" cy="22" r="18" fill="none" stroke="currentColor" strokeWidth="4" className="text-line" />
                 <circle cx="22" cy="22" r="18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
                   className="text-brand" strokeDasharray={2 * Math.PI * 18}
-                  strokeDashoffset={2 * Math.PI * 18 * (1 - doneCount / 4)} />
+                  strokeDashoffset={2 * Math.PI * 18 * (1 - doneCount / TABS.length)} />
               </svg>
-              <span className="absolute text-xs font-semibold text-paper">{doneCount}/4</span>
+              <span className="absolute text-xs font-semibold text-paper">{doneCount}/{TABS.length}</span>
             </div>
             <div className="whitespace-pre-line text-xs leading-tight text-paper-mute">{h.stepsDone}</div>
           </div>
@@ -118,7 +119,7 @@ export default function OnboardingPage() {
         )}
 
         {/* Premium stepper tabs — same card language as the plan cards */}
-        <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-7 grid grid-cols-3 gap-3">
           {TABS.map((tb) => {
             const active = tab === tb.key;
             return (
@@ -146,10 +147,15 @@ export default function OnboardingPage() {
         </div>
 
         {/* Panel */}
-        <div className="mt-6">
-          {tab === 'datos' && <InfoStep me={me} t={t} onDone={done} />}
-          {tab === 'identidad' && <IdentityStep me={me} t={t} onDone={done}
-            rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} pending={st === 'id_pending'} />}
+        <div className="mt-6 space-y-6">
+          {/* Datos + Identidad merged into one step (all fields kept) */}
+          {tab === 'datos' && (
+            <>
+              <InfoStep me={me} t={t} onDone={done} />
+              <IdentityStep me={me} t={t} onDone={done}
+                rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} pending={st === 'id_pending'} />
+            </>
+          )}
           {tab === 'pago' && <PayStep me={me} t={t} lang={lang} paid={paid} plan={p.plan} onDone={done} />}
           {tab === 'clon' && <CloneSetup userId={me.user.id} embedded />}
         </div>
@@ -167,7 +173,9 @@ function InfoStep({ me, onDone, t }) {
     stage_name: p.stage_name || '', handle: p.handle || '',
   });
   const [avatarUrl, setAvatarUrl] = useState(p.avatar_url || '');
-  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState('');   // local object URL while uploading
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -176,7 +184,37 @@ function InfoStep({ me, onDone, t }) {
   // @handle: normalize as they type — lowercase, drop invalid chars, strip a leading @.
   const setHandle = (e) => setForm((f) => ({ ...f, handle: e.target.value.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9._]/g, '') }));
 
-  const preview = avatarFile ? URL.createObjectURL(avatarFile) : avatarUrl;
+  const preview = avatarPreview || avatarUrl;
+
+  // Upload the profile photo THE MOMENT it's picked — independent of the rest of
+  // the form. (Before, it only uploaded on Save and got blocked by the required
+  // legal-fields validation, which read as "the photo errored".)
+  async function pickAvatar(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    setAvatarError('');
+    setAvatarPreview(URL.createObjectURL(file));
+    setAvatarUploading(true);
+    const supabase = getSupabase();
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${me.user.id}/avatar.${ext}`;
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
+      const url = `${pub.publicUrl}?v=${Date.now()}`; // cache-bust on replace
+      const { error: dbErr } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', me.user.id);
+      if (dbErr) throw dbErr;
+      setAvatarUrl(url);
+      setAvatarPreview('');
+    } catch (err) {
+      console.error(err);
+      setAvatarError(t.common.error);
+      setAvatarPreview('');
+    } finally {
+      setAvatarUploading(false);
+      if (avatarRef.current) avatarRef.current.value = '';
+    }
+  }
 
   function ageFrom(dob) {
     const d = new Date(dob); const n = new Date();
@@ -196,22 +234,9 @@ function InfoStep({ me, onDone, t }) {
     if (form.handle && !/^[a-z0-9._]{3,30}$/.test(form.handle)) { setError(t.onboarding.info.handleBad); return; }
     setSaving(true);
     const supabase = getSupabase();
-
-    // Upload the profile photo (public avatars bucket) if a new one was picked.
-    let newAvatar = avatarUrl;
-    if (avatarFile) {
-      const ext = (avatarFile.name.split('.').pop() || 'jpg').toLowerCase();
-      const path = `${me.user.id}/avatar.${ext}`;
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
-      if (upErr) { setSaving(false); setError(t.common.error); return; }
-      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
-      newAvatar = `${pub.publicUrl}?v=${Date.now()}`; // cache-bust on replace
-    }
-
     const patch = {
       ...form,
       handle: form.handle || null,
-      avatar_url: newAvatar || null,
       full_name: form.stage_name || `${form.legal_first_name} ${form.legal_last_name}`.trim(),
     };
     if (me.profile.onboarding_status === 'registered') patch.onboarding_status = 'info';
@@ -223,7 +248,6 @@ function InfoStep({ me, onDone, t }) {
       setError(err.code === '23505' ? t.onboarding.info.handleTaken : t.common.error);
       return;
     }
-    setAvatarUrl(newAvatar); setAvatarFile(null);
     setSaved(true); onDone();
   }
 
@@ -232,17 +256,22 @@ function InfoStep({ me, onDone, t }) {
       <form onSubmit={save} className="grid gap-4">
         {/* Profile photo + @handle */}
         <div className="flex items-center gap-4 rounded-xl border border-line bg-ink-2 p-4">
-          <button type="button" onClick={() => avatarRef.current?.click()}
-            className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-full ring-1 ring-hair/20 transition-transform hover:scale-[1.03]">
+          <button type="button" onClick={() => avatarRef.current?.click()} disabled={avatarUploading}
+            className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-full ring-1 ring-hair/20 transition-transform hover:scale-[1.03] disabled:opacity-70">
             {preview ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={preview} alt="" className="h-full w-full object-cover" />
             ) : (
               <span className="grid h-full w-full place-items-center bg-brand/15 text-brand"><User size={26} /></span>
             )}
-            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-ink/70 py-1 text-[10px] font-medium text-paper opacity-0 transition-opacity group-hover:opacity-100">
-              <Upload size={11} /> {preview ? t.onboarding.info.photoChange : t.onboarding.info.photoPick}
-            </span>
+            {avatarUploading ? (
+              <span className="absolute inset-0 grid place-items-center bg-ink/60"><Loader2 size={20} className="animate-spin text-brand" /></span>
+            ) : (
+              <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-ink/70 py-1 text-[10px] font-medium text-paper opacity-0 transition-opacity group-hover:opacity-100">
+                <Upload size={11} /> {preview ? t.onboarding.info.photoChange : t.onboarding.info.photoPick}
+              </span>
+            )}
+            {!preview && !avatarUploading && <span className="absolute -bottom-0 right-0 grid h-6 w-6 place-items-center rounded-full border-2 border-ink-2 bg-brand text-on-accent"><Plus size={12} /></span>}
           </button>
           <div className="min-w-0 flex-1">
             <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.onboarding.info.handle}</span>
@@ -253,9 +282,10 @@ function InfoStep({ me, onDone, t }) {
                 className="w-full rounded-xl border border-line bg-ink py-3 pl-8 pr-3 text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60" />
             </div>
             <p className="mt-1.5 text-[11px] text-paper-dim">{t.onboarding.info.photoHint}</p>
+            {avatarError && <p className="mt-1 text-[11px] text-rose-300">{avatarError}</p>}
           </div>
           <input ref={avatarRef} type="file" accept="image/*" hidden
-            onChange={(e) => e.target.files?.[0] && setAvatarFile(e.target.files[0])} />
+            onChange={(e) => e.target.files?.[0] && pickAvatar(e.target.files[0])} />
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
