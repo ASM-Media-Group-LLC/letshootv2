@@ -230,7 +230,7 @@ function CreatorDetail({ creator, me, flash }) {
         const { error: dbErr } = await supabase.from('assets').insert({
           creator_id: creator.id, folder_id: folderSel, storage_path: path,
           type: file.type.startsWith('video/') ? 'video' : 'photo', uploaded_by: me.id,
-          purpose: purpose.trim() || null,
+          added_by: me.full_name || null, purpose: purpose.trim() || null,
         });
         if (dbErr) throw dbErr;
       }

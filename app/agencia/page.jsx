@@ -9,9 +9,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Eye,
+  LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
-  ChevronLeft, Send, CheckCircle2,
+  ChevronLeft, Send, CheckCircle2, NotebookPen,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -127,6 +127,10 @@ export default function AgenciaPage() {
   const prevAssets = model ? model.assets.filter((a) => ymOf(a.deliver_date) === shiftYm(month || '2026-01', -1)) : [];
   const cur = aggregate(monthAssets);
   const prev = aggregate(prevAssets);
+  const curPhotos = monthAssets.filter((a) => a.type !== 'video').length;
+  const curVideos = monthAssets.filter((a) => a.type === 'video').length;
+  const prevPhotos = prevAssets.filter((a) => a.type !== 'video').length;
+  const prevVideos = prevAssets.filter((a) => a.type === 'video').length;
   const modelRequests = model ? requests.filter((r) => r.creator_id === model.id) : requests;
 
   const BOOK_KPIS = [
@@ -227,10 +231,10 @@ export default function AgenciaPage() {
                   <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={17} /></button>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                  <StatCard icon={ImageIcon} label="Hechas este mes" value={nf(cur.delivered)} d={pct(cur.delivered, prev.delivered)} />
+                  <StatCard icon={ImageIcon} label="Fotos este mes" value={nf(curPhotos)} d={pct(curPhotos, prevPhotos)} />
+                  <StatCard icon={Film} label="Videos este mes" value={nf(curVideos)} d={pct(curVideos, prevVideos)} />
                   <StatCard icon={ShoppingBag} label="Vendidas" value={nf(cur.sales)} d={pct(cur.sales, prev.sales)} />
                   <StatCard icon={DollarSign} label="Ingresos" value={money(cur.revenue)} d={pct(cur.revenue, prev.revenue)} />
-                  <StatCard icon={Eye} label="Alcance" value={nf(cur.reach)} d={pct(cur.reach, prev.reach)} />
                 </div>
 
                 {reqOpen && (
@@ -302,8 +306,9 @@ export default function AgenciaPage() {
       {detail && (
         <RecordSale
           asset={detail} src={srcFor(detail)} folderName={folders[detail.folder_id]}
+          agencyId={me.id} agencyName={me.full_name}
           onClose={() => setDetail(null)}
-          onSaved={async (patch) => { flash('Venta registrada'); setDetail((d) => (d ? { ...d, ...patch } : d)); await refresh(); }}
+          onSaved={async (patch) => { flash('Guardado'); setDetail((d) => (d ? { ...d, ...patch } : d)); await refresh(); }}
         />
       )}
 
@@ -373,31 +378,47 @@ function NewRequest({ creatorId, agencyId, onDone }) {
   );
 }
 
-// Agency records what a piece sold (attributed to the agency).
-function RecordSale({ asset, src, folderName, onClose, onSaved }) {
+// Agency records what a piece sold + keeps a day-by-day notes journal.
+function RecordSale({ asset, src, folderName, agencyId, agencyName, onClose, onSaved }) {
   const [sales, setSales] = useState(asset.sales_count || 0);
   const [revenue, setRevenue] = useState(asset.revenue || 0);
-  const [reach, setReach] = useState(asset.reach || 0);
-  const [interactions, setInteractions] = useState(asset.interactions || 0);
   const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState([]);
+  const [newNote, setNewNote] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+
+  const loadNotes = useCallback(async () => {
+    const { data } = await getSupabase().from('asset_notes')
+      .select('id, note, note_date, author_name').eq('asset_id', asset.id)
+      .order('note_date', { ascending: false }).order('created_at', { ascending: false });
+    setNotes(data || []);
+  }, [asset.id]);
+  useEffect(() => { loadNotes(); }, [loadNotes]);
+
+  const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 
   async function save() {
     setSaving(true);
+    const p_sales = Math.max(0, parseInt(sales, 10) || 0);
+    const p_revenue = Math.max(0, parseFloat(revenue) || 0);
     const { error } = await getSupabase().rpc('agency_set_stats', {
-      aid: asset.id,
-      p_sales: Math.max(0, parseInt(sales, 10) || 0),
-      p_revenue: Math.max(0, parseFloat(revenue) || 0),
-      p_reach: Math.max(0, parseInt(reach, 10) || 0),
-      p_interactions: Math.max(0, parseInt(interactions, 10) || 0),
+      aid: asset.id, p_sales, p_revenue,
+      p_reach: asset.reach || 0, p_interactions: asset.interactions || 0,
     });
     setSaving(false);
     if (error) { console.error(error); return; }
-    onSaved({
-      sales_count: Math.max(0, parseInt(sales, 10) || 0),
-      revenue: Math.max(0, parseFloat(revenue) || 0),
-      reach: Math.max(0, parseInt(reach, 10) || 0),
-      interactions: Math.max(0, parseInt(interactions, 10) || 0),
+    onSaved({ sales_count: p_sales, revenue: p_revenue });
+  }
+
+  async function addNote() {
+    if (!newNote.trim()) return;
+    setAddingNote(true);
+    const { error } = await getSupabase().from('asset_notes').insert({
+      asset_id: asset.id, author_id: agencyId, author_name: agencyName, note: newNote.trim(),
     });
+    setAddingNote(false);
+    if (error) { console.error(error); return; }
+    setNewNote(''); loadNotes();
   }
 
   const STAT = (label, val, set, step = '1') => (
@@ -419,15 +440,15 @@ function RecordSale({ asset, src, folderName, onClose, onSaved }) {
         <div className="grid md:grid-cols-[1.1fr_1fr]">
           <div className="bg-ink">
             {asset.type === 'video'
-              ? <video src={src} className="h-full max-h-[46vh] w-full object-contain md:max-h-[80vh]" controls autoPlay loop playsInline />
+              ? <video src={src} className="h-full max-h-[46vh] w-full object-contain md:max-h-[85vh]" controls autoPlay loop playsInline />
               // eslint-disable-next-line @next/next/no-img-element
-              : <img src={src} alt={asset.title || ''} className="h-full max-h-[46vh] w-full object-contain md:max-h-[80vh]" />}
+              : <img src={src} alt={asset.title || ''} className="h-full max-h-[46vh] w-full object-contain md:max-h-[85vh]" />}
           </div>
-          <div className="flex flex-col gap-4 overflow-y-auto p-5 md:max-h-[80vh]">
+          <div className="flex flex-col gap-4 overflow-y-auto p-5 md:max-h-[85vh]">
             <div>
               {asset.deliver_date && (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-ink-2 px-2.5 py-1 text-[11px] font-medium text-paper-dim">
-                  <Sparkles size={11} className="text-brand" /> {folderName || 'Entrega'}
+                  <Sparkles size={11} className="text-brand" /> {folderName || 'Entrega'} · {fmtDate(asset.deliver_date)}
                 </span>
               )}
               {asset.title && <h3 className="mt-2 font-display text-xl font-semibold text-paper">{asset.title}</h3>}
@@ -438,18 +459,39 @@ function RecordSale({ asset, src, folderName, onClose, onSaved }) {
             </div>
             <div>
               <div className="text-sm font-semibold text-paper">Registrar venta</div>
-              <p className="mt-0.5 text-xs text-paper-dim">Lo que vendiste con esta pieza. Queda en las cuentas de tu agencia.</p>
+              <p className="mt-0.5 text-xs text-paper-dim">Conteo manual — la foto llega en cero y tú vas sumando lo que se venda.</p>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {STAT('Ventas (unidades)', sales, setSales)}
                 {STAT('Ingresos ($)', revenue, setRevenue, '0.01')}
-                {STAT('Alcance (vistas)', reach, setReach)}
-                {STAT('Interacciones', interactions, setInteractions)}
               </div>
               <button onClick={save} disabled={saving}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
                 {saving ? 'Guardando…' : <><TrendingUp size={15} /> Guardar en mis cuentas</>}
               </button>
-              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-paper-dim"><CheckCircle2 size={12} className="text-brand" /> Se atribuye a tu agencia.</p>
+              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-paper-dim"><CheckCircle2 size={12} className="text-brand" /> Se atribuye a tu agencia y la modelo lo ve.</p>
+            </div>
+
+            {/* Day-by-day notes journal */}
+            <div>
+              <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-paper"><NotebookPen size={15} className="text-brand" /> Bitácora de notas</div>
+              <div className="flex gap-2">
+                <input value={newNote} onChange={(e) => setNewNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addNote(); }}
+                  placeholder="Escribe una nota de hoy…"
+                  className="flex-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/50" />
+                <button onClick={addNote} disabled={addingNote || !newNote.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-on-accent transition-transform hover:scale-[1.03] disabled:opacity-50">
+                  {addingNote ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                </button>
+              </div>
+              <div className="mt-3 space-y-2">
+                {notes.length === 0 && <p className="rounded-xl border border-dashed border-line px-3 py-3 text-xs text-paper-dim">Aún no hay notas. Empieza tu bitácora del día.</p>}
+                {notes.map((n) => (
+                  <div key={n.id} className="rounded-xl border border-line bg-ink-2 px-3 py-2.5">
+                    <p className="text-sm text-paper">{n.note}</p>
+                    <p className="mt-1 text-[10px] uppercase tracking-wide text-paper-dim">{fmtDate(n.note_date)}{n.author_name ? ` · ${n.author_name}` : ''}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
