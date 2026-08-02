@@ -78,6 +78,7 @@ export default function AdminPage() {
   const [invites, setInvites] = useState([]);         // pending staff invite links
   const [invBusy, setInvBusy] = useState(false);
   const [copied, setCopied] = useState('');
+  const [equipoPanel, setEquipoPanel] = useState(null); // null | 'invite' | 'create' — keep the tab calm
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
   const [creating, setCreating] = useState(false);
   const [nuError, setNuError] = useState('');
@@ -444,38 +445,85 @@ export default function AdminPage() {
             ))}
           </div>
         ) : tab === 'equipo' ? (
-          <div className="mt-6 space-y-6">
-            {/* Invite by link — the person registers, you approve + assign access */}
-            <div className="rounded-2xl border border-line bg-card p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 font-display font-semibold text-paper"><Link2 size={18} className="text-brand" /> Invitar por link</div>
-                  <p className="mt-1 text-xs text-paper-dim">Genera un link, mándaselo a la persona. Ella se registra sola; tú la <strong className="text-paper-mute">apruebas</strong> y le asignas puesto y accesos.</p>
-                </div>
-                <button onClick={createInvite} disabled={invBusy}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
-                  {invBusy ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear link de invitación
+          <div className="mt-6 space-y-4">
+            {/* Calm action bar — the forms stay hidden until you ask for them */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-lg font-semibold text-paper">Tu equipo interno</h3>
+                <p className="text-xs text-paper-dim">Quienes suben el contenido y verifican identidades. Toca a alguien para ver su perfil y accesos.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setEquipoPanel(equipoPanel === 'invite' ? null : 'invite')}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-colors ${equipoPanel === 'invite' ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+                  <Link2 size={15} /> Invitar por link
+                </button>
+                <button onClick={() => setEquipoPanel(equipoPanel === 'create' ? null : 'create')}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
+                  <Plus size={15} /> Crear puesto
                 </button>
               </div>
-              {invites.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  {invites.map((inv) => (
-                    <div key={inv.id} className="flex items-center gap-2 rounded-xl border border-line bg-ink-2 px-3 py-2">
-                      <code className="min-w-0 flex-1 truncate text-xs text-paper-mute">/unirse/{inv.token}</code>
-                      <button onClick={() => copyInvite(inv)} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs text-paper-mute hover:text-paper">
-                        {copied === inv.id ? <Check size={13} className="text-brand" /> : <Copy size={13} />} {copied === inv.id ? 'Copiado' : 'Copiar'}
-                      </button>
-                      <button onClick={() => revokeInvite(inv)} className="rounded-lg border border-line px-2.5 py-1.5 text-xs text-paper-dim hover:text-rose-300">Cancelar</button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
-            {/* Pending approval */}
+            {/* Invite panel (collapsed by default) */}
+            {equipoPanel === 'invite' && (
+              <div className="rounded-2xl border border-line bg-card p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-paper-mute">Genera un link y mándaselo. La persona se registra sola; luego la <strong className="text-paper">apruebas</strong> y le das puesto y accesos.</p>
+                  <button onClick={createInvite} disabled={invBusy}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+                    {invBusy ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear link
+                  </button>
+                </div>
+                {invites.length > 0 ? (
+                  <div className="mt-4 space-y-2">
+                    {invites.map((inv) => (
+                      <div key={inv.id} className="flex items-center gap-2 rounded-xl border border-line bg-ink-2 px-3 py-2">
+                        <code className="min-w-0 flex-1 truncate text-xs text-paper-mute">/unirse/{inv.token}</code>
+                        <button onClick={() => copyInvite(inv)} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs text-paper-mute hover:text-paper">
+                          {copied === inv.id ? <Check size={13} className="text-brand" /> : <Copy size={13} />} {copied === inv.id ? 'Copiado' : 'Copiar'}
+                        </button>
+                        <button onClick={() => revokeInvite(inv)} className="rounded-lg border border-line px-2.5 py-1.5 text-xs text-paper-dim hover:text-rose-300">Cancelar</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="mt-3 text-xs text-paper-dim">No hay links activos. Crea uno y cópialo.</p>}
+              </div>
+            )}
+
+            {/* Create panel (collapsed by default) */}
+            {equipoPanel === 'create' && (
+              <form onSubmit={createUser} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input value={nu.full_name} onChange={(e) => setNu((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre (ej. Camila)"
+                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  {nu.role === 'supervisor' ? (
+                    <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (ej. Verificación)"
+                      className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  ) : <div className="hidden sm:block" />}
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
+                  <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
+                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  <input type="text" value={nu.password} onChange={(e) => setNu((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
+                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  <select value={nu.role} onChange={(e) => setNu((v) => ({ ...v, role: e.target.value }))}
+                    className="rounded-xl border border-line bg-ink-2 px-2.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
+                    {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
+                  </select>
+                  <button type="submit" disabled={creating}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+                    {creating ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear
+                  </button>
+                </div>
+                {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
+                <p className="mt-3 text-xs text-paper-dim">Arranca sin accesos: al crearlo se abre su perfil para darle acceso función por función.</p>
+              </form>
+            )}
+
+            {/* Pending approval (only when there are any) */}
             {profiles.filter((u) => u.staff_status === 'pending' && u.role !== 'admin').length > 0 && (
-              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.05] p-5">
-                <div className="mb-3 flex items-center gap-2 font-display font-semibold text-paper"><Clock size={17} className="text-amber-300" /> Pendientes de aprobar</div>
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.05] p-4">
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-paper"><Clock size={15} className="text-amber-300" /> Pendientes de aprobar</div>
                 <div className="space-y-2">
                   {profiles.filter((u) => u.staff_status === 'pending' && u.role !== 'admin').map((u) => (
                     <div key={u.id} className="flex items-center gap-3 rounded-xl border border-line bg-ink-2 p-3">
@@ -493,42 +541,6 @@ export default function AdminPage() {
                 </div>
               </div>
             )}
-
-            <form onSubmit={createUser} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
-              <div className="mb-3 flex items-center gap-2 font-display font-semibold text-paper">
-                <UserPlus size={18} className="text-brand" /> Crear puesto / usuario
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input value={nu.full_name} onChange={(e) => setNu((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre (ej. Camila)"
-                  className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                {nu.role === 'supervisor' ? (
-                  <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (ej. Verificación)"
-                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                ) : <div className="hidden sm:block" />}
-              </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
-                <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
-                  className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                <input type="text" value={nu.password} onChange={(e) => setNu((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
-                  className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                <select value={nu.role} onChange={(e) => setNu((v) => ({ ...v, role: e.target.value }))}
-                  className="rounded-xl border border-line bg-ink-2 px-2.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
-                  {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
-                </select>
-                <button type="submit" disabled={creating}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
-                  {creating ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear
-                </button>
-              </div>
-              {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
-              <p className="mt-3 text-xs text-paper-dim">
-                Tú decides cuántos puestos crear y cómo llamarlos. Al crear un <strong className="text-paper-mute">Equipo</strong>, se abre su tarjeta abajo para que le des acceso <strong className="text-paper-mute">función por función</strong>. «Agencia / Manager» y «Creadora» quedan listas para entrar.
-              </p>
-            </form>
-
-            <p className="text-xs text-paper-dim">
-              Cada puesto arranca <strong className="text-paper-mute">sin accesos</strong>. Ábrelo y enciende solo lo que necesita. El <strong className="text-paper-mute">Admin</strong> tiene todo. Ejemplo: para «datos con identificación» prende <em>Ver datos</em> + <em>Verificar identidad</em>; para «sin identificación», solo <em>Ver datos</em>.
-            </p>
             <div className="space-y-3">
             {profiles.filter((u) => u.role !== 'creator' && u.role !== 'agency' && u.staff_status !== 'pending').map((u) => {
               const isMgr = MANAGER_ROLES.includes(u.role);
