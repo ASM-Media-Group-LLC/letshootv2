@@ -59,7 +59,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
-  const [nu, setNu] = useState({ full_name: '', email: '', password: '', role: 'admin' });
+  const [nu, setNu] = useState({ full_name: '', email: '', password: '', role: 'supervisor' });
+  const [nuCaps, setNuCaps] = useState([]); // functions for a new internal team member
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
   const [creating, setCreating] = useState(false);
   const [nuError, setNuError] = useState('');
@@ -150,7 +151,13 @@ export default function AdminPage() {
       try { out = await error.context.json(); } catch { out = { error: error.message }; }
     }
     if (!out?.ok) { setNuError(out?.error || 'No se pudo crear el usuario.'); return; }
-    setNu({ full_name: '', email: '', password: '', role: 'admin' });
+    // Internal team member → apply the chosen functions to the new account.
+    if (nu.role === 'supervisor' && nuCaps.length) {
+      const { data: prof } = await getSupabase().from('profiles').select('id').eq('email', nu.email.trim().toLowerCase()).single();
+      if (prof?.id) await getSupabase().from('profiles').update({ capabilities: nuCaps }).eq('id', prof.id);
+    }
+    setNu({ full_name: '', email: '', password: '', role: 'supervisor' });
+    setNuCaps([]);
     flash('Usuario creado');
     load();
   }
@@ -409,10 +416,10 @@ export default function AdminPage() {
           <div className="mt-6 space-y-6">
             <form onSubmit={createUser} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
               <div className="mb-3 flex items-center gap-2 font-display font-semibold text-paper">
-                <UserPlus size={18} className="text-brand" /> Crear usuario
+                <UserPlus size={18} className="text-brand" /> Crear puesto / usuario
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <input value={nu.full_name} onChange={(e) => setNu((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre"
+                <input value={nu.full_name} onChange={(e) => setNu((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre o puesto (ej. Supervisor 1)"
                   className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
                   className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
@@ -429,8 +436,27 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
+              {/* Functions for a new internal team member — you decide what each puesto can do */}
+              {nu.role === 'supervisor' && (
+                <div className="mt-3 rounded-xl border border-line bg-ink-2 p-3.5">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Funciones de este puesto</p>
+                  <div className="flex flex-wrap gap-2">
+                    {CAPS.map((c) => {
+                      const on = nuCaps.includes(c.v);
+                      return (
+                        <button key={c.v} type="button"
+                          onClick={() => setNuCaps((prev) => (on ? prev.filter((x) => x !== c.v) : [...prev, c.v]))}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
+                          {on ? <Check size={13} /> : <Plus size={13} />} {c.l}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-[11px] text-paper-dim">Prende solo lo que este puesto podrá hacer. Puedes cambiarlo después en la lista de abajo.</p>
+                </div>
+              )}
               {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
-              <p className="mt-3 text-xs text-paper-dim">La cuenta queda lista para entrar (correo confirmado). Elige «Equipo» para trabajadores internos, «Agencia / Manager» o «Creadora».</p>
+              <p className="mt-3 text-xs text-paper-dim">La cuenta queda lista para entrar (correo confirmado). Elige «Equipo» para un puesto interno (y sus funciones), «Agencia / Manager» o «Creadora».</p>
             </form>
 
             <p className="text-xs text-paper-dim">
