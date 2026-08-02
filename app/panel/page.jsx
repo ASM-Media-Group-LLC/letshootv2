@@ -13,7 +13,7 @@ import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, User, Bell,
   X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight,
-  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen,
+  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -52,7 +52,8 @@ export default function PanelPage() {
   const [agency, setAgency] = useState('');
   const [requests, setRequests] = useState([]);
   const [reqOpen, setReqOpen] = useState(false);
-  const [view, setView] = useState('gallery');   // gallery | requests
+  const [notesFeed, setNotesFeed] = useState([]);
+  const [view, setView] = useState('gallery');   // gallery | activity | requests
   const [month, setMonth] = useState(null);
 
   const load = useCallback(async (userId) => {
@@ -70,6 +71,15 @@ export default function PanelPage() {
       const map = {}; (signed || []).forEach((s, i) => { if (s?.signedUrl) map[toSign[i].id] = s.signedUrl; }); setUrls(map);
     }
     setNotifs(nots || []); setRequests(reqs || []);
+    // Activity feed — the agency's notes across all her content (with thumbs).
+    const ids = assets.map((a) => a.id);
+    if (ids.length) {
+      const { data: ns } = await supabase.from('asset_notes')
+        .select('id, note, note_date, author_name, asset_id')
+        .in('asset_id', ids).order('note_date', { ascending: false }).order('created_at', { ascending: false }).limit(40);
+      const byId = {}; assets.forEach((a) => { byId[a.id] = a; });
+      setNotesFeed((ns || []).map((n) => ({ ...n, asset: byId[n.asset_id] })).filter((n) => n.asset));
+    } else setNotesFeed([]);
     return { assets, folders: folderMap };
   }, []);
 
@@ -129,7 +139,11 @@ export default function PanelPage() {
   });
   const fmtDay = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' }) : '');
 
-  const NAV = [{ id: 'gallery', label: t.panel.navGallery, icon: Images }, { id: 'requests', label: t.panel.navRequests, icon: Inbox }];
+  const NAV = [
+    { id: 'gallery', label: t.panel.navGallery, icon: Images },
+    { id: 'activity', label: t.panel.navActivity, icon: Activity },
+    { id: 'requests', label: t.panel.navRequests, icon: Inbox },
+  ];
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
@@ -170,11 +184,12 @@ export default function PanelPage() {
 
       <main className="mx-auto max-w-5xl px-5 py-8">
         <div>
-          <h1 className="font-display text-2xl font-semibold sm:text-3xl">{t.panel.title}</h1>
-          {agency && <p className="mt-1 flex items-center gap-1.5 text-xs text-paper-dim"><Building2 size={12} className="text-brand" /> {t.panel.managedBy} <span className="font-medium text-paper-mute">{agency}</span></p>}
+          <h1 className="font-display text-2xl font-semibold sm:text-3xl">{t.panel.hello} {(state.profile?.stage_name || state.profile?.full_name || '').split(' ')[0]}</h1>
+          <p className="mt-1 text-sm text-paper-mute">{t.panel.greeting}</p>
+          {agency && <p className="mt-1.5 flex items-center gap-1.5 text-xs text-paper-dim"><Building2 size={12} className="text-brand" /> {t.panel.managedBy} <span className="font-medium text-paper-mute">{agency}</span></p>}
         </div>
 
-        <div className="mt-5 inline-flex rounded-full border border-line bg-card p-1">
+        <div className="mt-5 inline-flex max-w-full overflow-x-auto rounded-full border border-line bg-card p-1">
           {NAV.map((n) => (
             <button key={n.id} onClick={() => setView(n.id)} className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${view === n.id ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'}`}>
               <n.icon size={15} /> {n.label}
@@ -223,6 +238,35 @@ export default function PanelPage() {
                 <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-paper-mute"><UserPlus size={15} className="text-brand" /> {t.panel.addClonePhotos}</summary>
                 <div className="mt-4"><LoraUploader userId={state.profile.id} compact /></div>
               </details>
+            )}
+          </div>
+        )}
+
+        {view === 'activity' && (
+          <div className="mt-6">
+            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-paper"><Activity size={16} className="text-brand" /> {t.panel.activityLead}</div>
+            {notesFeed.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{t.panel.activityEmpty}</p>
+            ) : (
+              <div className="relative space-y-3 before:absolute before:left-[27px] before:top-3 before:bottom-3 before:w-px before:bg-line">
+                {notesFeed.map((n) => (
+                  <button key={n.id} onClick={() => setDetail(n.asset)} className="group relative flex w-full items-start gap-3 rounded-2xl border border-line bg-card p-3 text-left transition-colors hover:border-brand/40">
+                    <div className="relative z-10 h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-line">
+                      {n.asset.type === 'video'
+                        ? <video src={srcFor(n.asset)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                        // eslint-disable-next-line @next/next/no-img-element
+                        : <img src={srcFor(n.asset)} alt="" className="h-full w-full object-cover" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm leading-snug text-paper">{n.note}</p>
+                      <p className="mt-1 text-[11px] text-paper-dim">
+                        <span className="text-paper-mute">{n.asset.title}</span> · {new Date(n.note_date + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long' })}{n.author_name ? ` · ${n.author_name}` : ''}
+                      </p>
+                    </div>
+                    <ChevronRight size={16} className="mt-1 shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}
