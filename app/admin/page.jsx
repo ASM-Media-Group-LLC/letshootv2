@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, Link2, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3 } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
@@ -54,7 +54,6 @@ export default function AdminPage() {
   const [me, setMe] = useState(undefined);
   const [tab, setTab] = useState('registros');
   const [profiles, setProfiles] = useState([]);
-  const [assignments, setAssignments] = useState([]);
   const [kyc, setKyc] = useState([]); // pending verifications w/ signed doc urls
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
@@ -90,14 +89,12 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs }, { data: asg }, { data: reqs }, { count: loraCount }] = await Promise.all([
+    const [{ data: profs }, { data: reqs }, { count: loraCount }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at, capabilities').order('role'),
-      supabase.from('chatter_assignments').select('chatter_id, creator_id'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
     ]);
     setProfiles(profs || []);
-    setAssignments(asg || []);
     setMetrics({ requests: reqs || [], lora: loraCount || 0 });
     await loadKyc();
     setLoading(false);
@@ -183,28 +180,12 @@ export default function AdminPage() {
     flash(approve ? 'Aprobada — ya puede pagar' : 'Verificación rechazada');
   }
 
-  async function toggleAssignment(chatterId, creatorId, on) {
-    const supabase = getSupabase();
-    if (on) {
-      const { error } = await supabase.from('chatter_assignments').insert({ chatter_id: chatterId, creator_id: creatorId });
-      if (error) return flash('Error: ' + error.message);
-      setAssignments((a) => [...a, { chatter_id: chatterId, creator_id: creatorId }]);
-    } else {
-      const { error } = await supabase.from('chatter_assignments').delete().eq('chatter_id', chatterId).eq('creator_id', creatorId);
-      if (error) return flash('Error: ' + error.message);
-      setAssignments((a) => a.filter((x) => !(x.chatter_id === chatterId && x.creator_id === creatorId)));
-    }
-    flash('Asignación actualizada');
-  }
-
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
   // Non-admin staff work in /trabajo.
   if (me?.role !== 'admin') { router.replace('/trabajo'); return null; }
 
   const creators = profiles.filter((p) => p.role === 'creator');
-  const chatters = profiles.filter((p) => p.role === 'chatter');
-  const has = (c, cr) => assignments.some((a) => a.chatter_id === c && a.creator_id === cr);
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
@@ -214,7 +195,7 @@ export default function AdminPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="font-display text-2xl font-semibold sm:text-3xl">Administración</h1>
-            <p className="mt-1 text-sm text-paper-mute">Gestiona usuarios, roles y asignaciones — todo desde aquí.</p>
+            <p className="mt-1 text-sm text-paper-mute">Registros, verificaciones y tu equipo interno — todo desde aquí.</p>
           </div>
           <button onClick={load} className="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-2 text-sm text-paper-mute hover:text-paper">
             <RefreshCw size={15} /> Actualizar
@@ -226,8 +207,7 @@ export default function AdminPage() {
             { id: 'registros', label: 'Registros', icon: ClipboardList },
             { id: 'metricas', label: 'Métricas', icon: BarChart3 },
             { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
-            { id: 'equipo', label: 'Equipo & roles', icon: Users },
-            { id: 'asignaciones', label: 'Asignaciones', icon: Link2 },
+            { id: 'equipo', label: 'Equipo interno', icon: Users },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${tab === tb.id ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
@@ -474,9 +454,10 @@ export default function AdminPage() {
                       <p className="truncate text-xs text-paper-mute">{u.email}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <select value={u.role} onChange={(e) => changeRole(u.id, e.target.value)} disabled={u.id === me.id}
+                      <select value={isMgr && u.role !== 'admin' ? 'supervisor' : u.role} onChange={(e) => changeRole(u.id, e.target.value)} disabled={u.id === me.id}
                         className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
-                        {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
+                        <option value="admin">Admin (dueño)</option>
+                        <option value="supervisor">Equipo</option>
                       </select>
                       {savingId === u.id && <RefreshCw size={14} className="animate-spin text-brand" />}
                     </div>
@@ -501,29 +482,7 @@ export default function AdminPage() {
             })}
             </div>
           </div>
-        ) : (
-          <div className="mt-6 space-y-4">
-            <p className="text-sm text-paper-mute">Marca qué chatters pueden pedir contenido para cada creadora.</p>
-            {creators.length === 0 && <p className="text-paper-dim">No hay creadoras todavía.</p>}
-            {creators.map((cr) => (
-              <div key={cr.id} className="rounded-2xl border border-line bg-card p-5">
-                <div className="mb-3 font-display font-semibold text-paper">{cr.full_name} <span className="text-xs font-normal text-paper-dim">· {cr.email}</span></div>
-                <div className="flex flex-wrap gap-2">
-                  {chatters.length === 0 && <span className="text-sm text-paper-dim">No hay chatters. Asigna el rol "Chatter" a alguien primero.</span>}
-                  {chatters.map((c) => {
-                    const on = has(c.id, cr.id);
-                    return (
-                      <button key={c.id} onClick={() => toggleAssignment(c.id, cr.id, !on)}
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
-                        {on ? <Check size={14} /> : <Plus size={14} />} {c.full_name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        ) : null}
       </main>
 
       {toast && (
