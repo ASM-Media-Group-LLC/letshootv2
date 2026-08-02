@@ -1,4 +1,4 @@
-// Edge function: create-user (v3)
+// Edge function: create-user (v4 — accepts job_title/puesto for Equipo)
 // Creates accounts with the service role. Who can create what:
 //  · admin → any role (admin, supervisor/Equipo, agency, creator) + capabilities
 //  · staff with the 'team' capability → ONLY role 'supervisor' (Equipo) + capabilities
@@ -11,7 +11,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const VALID_ROLES = ['admin', 'supervisor', 'chatter', 'producer', 'creator', 'agency'];
-const VALID_CAPS = ['kyc', 'content', 'requests', 'feedback', 'metrics', 'team'];
+const VALID_CAPS = ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team'];
 
 function reply(obj: unknown, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -40,6 +40,7 @@ Deno.serve(async (req) => {
     const email = String(body.email || '').trim().toLowerCase();
     const password = String(body.password || '');
     const full_name = String(body.full_name || '').trim();
+    const job_title = String(body.job_title || '').trim();
     const role = String(body.role || '');
     const capabilities = Array.isArray(body.capabilities)
       ? body.capabilities.filter((c: unknown) => typeof c === 'string' && VALID_CAPS.includes(c))
@@ -57,7 +58,7 @@ Deno.serve(async (req) => {
 
     const patch: Record<string, unknown> = { role, full_name, email };
     if (role !== 'creator') patch.onboarding_status = 'active';
-    if (role === 'supervisor') patch.capabilities = capabilities;
+    if (role === 'supervisor') { patch.capabilities = capabilities; if (job_title) patch.job_title = job_title; }
     const { error: upErr } = await svc.from('profiles').update(patch).eq('id', created.user.id);
     if (upErr) return reply({ ok: false, error: upErr.message });
 

@@ -148,14 +148,20 @@ export default function AgenciaPage() {
     <div className="min-h-[100svh] bg-ink text-paper">
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <Logo size="sm" />
-            <span className="hidden items-center gap-1.5 text-sm text-paper-dim sm:flex">
-              · <Building2 size={13} /> Agencia
+            <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
+              <Building2 size={12} /> Agencia · Manager
             </span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="hidden text-sm text-paper-mute md:inline">{me?.full_name}</span>
+            <div className="flex items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3">
+              <Avatar src={me?.avatar_url} name={me?.full_name} size="xs" />
+              <span className="hidden leading-tight sm:block">
+                <span className="block text-xs font-semibold text-paper">{me?.full_name}</span>
+                <span className="block text-[10px] text-paper-dim">Administra a tus modelos</span>
+              </span>
+            </div>
             <button onClick={async () => { await signOut(); router.replace('/login'); }}
               className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
               <LogOut size={15} /> <span className="hidden sm:inline">Salir</span>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, ChevronDown, CreditCard, Sparkles } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -70,9 +70,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
-  const [nu, setNu] = useState({ full_name: '', email: '', password: '', role: 'supervisor' });
+  const [nu, setNu] = useState({ full_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
   const [selCreator, setSelCreator] = useState(null); // creator id whose profile drawer is open
-  const [expandedStaff, setExpandedStaff] = useState(null); // team member id whose functions are expanded
+  const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
   const [assetStats, setAssetStats] = useState([]);   // per-creator sales/revenue for agency numbers
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
@@ -105,7 +105,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at').order('role'),
+      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -169,15 +169,12 @@ export default function AdminPage() {
       try { out = await error.context.json(); } catch { out = { error: error.message }; }
     }
     if (!out?.ok) { setNuError(out?.error || 'No se pudo crear el usuario.'); return; }
-    const createdEmail = nu.email;
-    setNu({ full_name: '', email: '', password: '', role: 'supervisor' });
-    flash(nu.role === 'supervisor' ? 'Puesto creado — ábrelo abajo para dar accesos' : 'Cuenta creada');
+    const createdRole = nu.role;
+    setNu({ full_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
+    flash(createdRole === 'supervisor' ? 'Puesto creado — ábrelo para dar accesos' : 'Cuenta creada');
     await load();
-    // Auto-expand the freshly created team member so the admin configures access.
-    if (nu.role === 'supervisor') {
-      const { data: np } = await getSupabase().from('profiles').select('id').eq('email', createdEmail.trim().toLowerCase()).single();
-      if (np?.id) { setTab('equipo'); setExpandedStaff(np.id); }
-    }
+    // Open the freshly created team member's profile so the admin configures access.
+    if (createdRole === 'supervisor' && out.id) { setTab('equipo'); setSelStaff(out.id); }
   }
 
   // Which models an agency manages (admin marks them here).
@@ -417,23 +414,27 @@ export default function AdminPage() {
               <div className="mb-3 flex items-center gap-2 font-display font-semibold text-paper">
                 <UserPlus size={18} className="text-brand" /> Crear puesto / usuario
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <input value={nu.full_name} onChange={(e) => setNu((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre o puesto (ej. Supervisor 1)"
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input value={nu.full_name} onChange={(e) => setNu((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre (ej. Camila)"
                   className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                {nu.role === 'supervisor' ? (
+                  <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (ej. Verificación)"
+                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                ) : <div className="hidden sm:block" />}
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
                 <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
                   className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 <input type="text" value={nu.password} onChange={(e) => setNu((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
                   className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                <div className="flex gap-2">
-                  <select value={nu.role} onChange={(e) => setNu((v) => ({ ...v, role: e.target.value }))}
-                    className="flex-1 rounded-xl border border-line bg-ink-2 px-2.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
-                    {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
-                  </select>
-                  <button type="submit" disabled={creating}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
-                    {creating ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear
-                  </button>
-                </div>
+                <select value={nu.role} onChange={(e) => setNu((v) => ({ ...v, role: e.target.value }))}
+                  className="rounded-xl border border-line bg-ink-2 px-2.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
+                  {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
+                </select>
+                <button type="submit" disabled={creating}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+                  {creating ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear
+                </button>
               </div>
               {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
               <p className="mt-3 text-xs text-paper-dim">
@@ -448,70 +449,25 @@ export default function AdminPage() {
             {profiles.filter((u) => u.role !== 'creator' && u.role !== 'agency').map((u) => {
               const isMgr = MANAGER_ROLES.includes(u.role);
               const caps = u.capabilities || [];
-              const open = expandedStaff === u.id;
               const grantedLabels = CAPS.filter((c) => caps.includes(c.v)).map((c) => c.l);
               return (
-                <div key={u.id} className="overflow-hidden rounded-2xl border border-line bg-card">
-                  {/* Collapsed header — click to expand and configure access */}
-                  <button onClick={() => setExpandedStaff(open ? null : u.id)}
-                    className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-hair/[0.04]">
-                    <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
-                      <p className="truncate text-xs text-paper-mute">{u.email}</p>
-                    </div>
-                    <div className="hidden max-w-[45%] shrink-0 items-center justify-end gap-1.5 sm:flex">
-                      {isMgr ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand"><ShieldCheck size={12} /> Todas</span>
-                      ) : grantedLabels.length ? (
-                        <span className="truncate text-[11px] text-paper-dim">{grantedLabels.length} acceso{grantedLabels.length === 1 ? '' : 's'}: {grantedLabels.join(' · ')}</span>
-                      ) : (
-                        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">Sin accesos</span>
-                      )}
-                    </div>
-                    <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
-                  </button>
-                  {/* Expanded — role + function toggles */}
-                  {open && (
-                    <div className="border-t border-line px-4 pb-4 pt-3">
-                      <div className="mb-3 flex items-center gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Tipo</span>
-                        <select value={isMgr && u.role !== 'admin' ? 'supervisor' : u.role} onChange={(e) => changeRole(u.id, e.target.value)} disabled={u.id === me.id}
-                          className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
-                          <option value="admin">Admin (dueño)</option>
-                          <option value="supervisor">Equipo</option>
-                        </select>
-                        {savingId === u.id && <RefreshCw size={14} className="animate-spin text-brand" />}
-                      </div>
-                      {isMgr ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand">
-                          <ShieldCheck size={13} /> El admin tiene todas las funciones
-                        </span>
-                      ) : (
-                        <>
-                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Accesos de este puesto</p>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {CAPS.map((c) => {
-                              const on = caps.includes(c.v);
-                              return (
-                                <button key={c.v} onClick={() => toggleCap(u.id, c.v, !on)}
-                                  className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
-                                  <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
-                                    {on ? <Check size={13} /> : <Plus size={13} />}
-                                  </span>
-                                  <span className="min-w-0">
-                                    <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
-                                    <span className="block text-[11px] text-paper-dim">{c.hint}</span>
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <button key={u.id} onClick={() => setSelStaff(u.id)}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-line bg-card p-4 text-left transition-colors hover:border-brand/30 hover:bg-hair/[0.04]">
+                  <Avatar src={u.avatar_url} name={u.full_name} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-paper">{u.full_name || '—'}
+                      <span className="ml-2 rounded-full bg-hair/10 px-2 py-0.5 text-[11px] font-normal text-paper-dim">{isMgr ? 'Dueño' : (u.job_title || 'Equipo')}</span>
+                    </p>
+                    <p className="truncate text-xs text-paper-mute">{u.email}</p>
+                    <p className="mt-0.5 truncate text-[11px] text-paper-dim">
+                      {isMgr ? 'Todas las funciones'
+                        : grantedLabels.length ? `${grantedLabels.length} acceso${grantedLabels.length === 1 ? '' : 's'}: ${grantedLabels.join(' · ')}`
+                        : 'Sin accesos'}
+                    </p>
+                  </div>
+                  {!isMgr && !grantedLabels.length && <span className="hidden shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300 sm:inline">Sin accesos</span>}
+                  <span className="shrink-0 text-xs font-semibold text-brand">Abrir →</span>
+                </button>
               );
             })}
             </div>
@@ -566,6 +522,17 @@ export default function AdminPage() {
           onReview={reviewKyc}
           savingId={savingId}
           flash={flash}
+        />
+      )}
+
+      {selStaff && (
+        <EmployeeProfile
+          staff={profiles.find((p) => p.id === selStaff)}
+          isSelf={selStaff === me.id}
+          onClose={() => setSelStaff(null)}
+          onToggleCap={toggleCap}
+          onChangeRole={changeRole}
+          savingId={savingId}
         />
       )}
 
@@ -780,16 +747,130 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash }) {
   );
 }
 
+/* ── Employee profile drawer — full staff view: identity, access, activity ── */
+function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, savingId }) {
+  const [activity, setActivity] = useState(null); // { deliveries, idsReviewed }
+
+  useEffect(() => {
+    if (!staff) return;
+    (async () => {
+      const supabase = getSupabase();
+      const [{ count: deliveries }, { count: idsReviewed }] = await Promise.all([
+        supabase.from('assets').select('id', { count: 'exact', head: true }).eq('uploaded_by', staff.id),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('id_reviewed_by', staff.id),
+      ]);
+      setActivity({ deliveries: deliveries || 0, idsReviewed: idsReviewed || 0 });
+    })();
+  }, [staff]);
+
+  if (!staff) return null;
+  const isMgr = staff.role === 'admin';
+  const caps = staff.capabilities || [];
+  const memberSince = staff.created_at ? new Date(staff.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-ink/70 backdrop-blur-sm" onClick={onClose}>
+      <div className="h-full w-full max-w-xl overflow-y-auto border-l border-line bg-ink" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-ink/90 px-5 py-4 backdrop-blur">
+          <Avatar src={staff.avatar_url} name={staff.full_name} size="md" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-display text-lg font-semibold text-paper">{staff.full_name || '—'}</p>
+            <p className="truncate text-xs text-paper-dim">{staff.email}</p>
+          </div>
+          <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${isMgr ? 'border-brand/40 bg-brand/10 text-brand' : 'border-line bg-hair/5 text-paper-mute'}`}>
+            {isMgr ? 'Admin (dueño)' : (staff.job_title || 'Equipo')}
+          </span>
+          <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
+        </div>
+
+        <div className="space-y-3 p-5">
+          {/* Identity */}
+          <div className="rounded-2xl border border-line bg-ink-2 p-4">
+            <h4 className="mb-3 flex items-center gap-2 font-display font-semibold text-paper"><Users size={15} className="text-brand" /> Identidad</h4>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nombre</dt><dd className="text-paper">{staff.full_name || '—'}</dd></div>
+              <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Puesto</dt><dd className="text-paper">{isMgr ? 'Dueño' : (staff.job_title || '—')}</dd></div>
+              <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Correo</dt><dd className="truncate text-paper">{staff.email}</dd></div>
+              <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Miembro desde</dt><dd className="text-paper">{memberSince}</dd></div>
+            </dl>
+            <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Tipo</span>
+              <select value={isMgr ? 'admin' : 'supervisor'} onChange={(e) => onChangeRole(staff.id, e.target.value)} disabled={isSelf}
+                className="rounded-lg border border-line bg-ink px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
+                <option value="admin">Admin (dueño)</option>
+                <option value="supervisor">Equipo</option>
+              </select>
+              {savingId === staff.id && <RefreshCw size={14} className="animate-spin text-brand" />}
+            </div>
+          </div>
+
+          {/* Access */}
+          <div className="rounded-2xl border border-line bg-ink-2 p-4">
+            <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-paper"><ShieldCheck size={15} className="text-brand" /> Accesos</h4>
+            {isMgr ? (
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand"><ShieldCheck size={13} /> El dueño tiene todas las funciones</p>
+            ) : (
+              <>
+                <p className="mb-3 text-[11px] text-paper-dim">Enciende solo lo que este puesto puede hacer. «Ver datos» + «Verificar identidad» = acceso a datos con identificación.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {CAPS.map((c) => {
+                    const on = caps.includes(c.v);
+                    return (
+                      <button key={c.v} onClick={() => onToggleCap(staff.id, c.v, !on)} disabled={isSelf && c.v === 'team'}
+                        className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors disabled:opacity-50 ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink hover:border-hair'}`}>
+                        <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
+                          {on ? <Check size={13} /> : <Plus size={13} />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
+                          <span className="block text-[11px] text-paper-dim">{c.hint}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Activity */}
+          <div className="rounded-2xl border border-line bg-ink-2 p-4">
+            <h4 className="mb-3 flex items-center gap-2 font-display font-semibold text-paper"><BarChart3 size={15} className="text-brand" /> Actividad</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-line bg-ink p-3">
+                <div className="font-display text-2xl font-semibold text-paper">{activity === null ? '…' : activity.deliveries}</div>
+                <div className="text-[11px] text-paper-dim">Entregas subidas</div>
+              </div>
+              <div className="rounded-xl border border-line bg-ink p-3">
+                <div className="font-display text-2xl font-semibold text-paper">{activity === null ? '…' : activity.idsReviewed}</div>
+                <div className="text-[11px] text-paper-dim">IDs revisados</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Header({ me, router }) {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <Logo size="sm" />
-          <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-brand">Admin</span>
+          <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
+            <ShieldCheck size={12} /> Administración
+          </span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden text-sm text-paper-mute sm:inline">{me?.full_name}</span>
+          <div className="flex items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3">
+            <Avatar src={me?.avatar_url} name={me?.full_name} size="xs" />
+            <span className="hidden leading-tight sm:block">
+              <span className="block text-xs font-semibold text-paper">{me?.full_name}</span>
+              <span className="block text-[10px] text-paper-dim">Dueño · Administración</span>
+            </span>
+          </div>
           <a href="/trabajo" className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">Trabajo</a>
           <button onClick={async () => { await signOut(); router.replace('/login'); }}
             className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">

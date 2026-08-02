@@ -108,12 +108,21 @@ export default function TrabajoPage() {
     <div className="min-h-[100svh] bg-ink text-paper">
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <Logo size="sm" />
-            <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-brand">Trabajo</span>
+            <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
+              <Users size={12} /> Equipo interno
+            </span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="hidden text-sm text-paper-mute sm:inline">{me?.full_name} · {ROLE_LABEL[me?.role]}</span>
+            {/* Who am I + where — always visible */}
+            <div className="flex items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3">
+              <Avatar src={me?.avatar_url} name={me?.full_name} size="xs" />
+              <span className="hidden leading-tight sm:block">
+                <span className="block text-xs font-semibold text-paper">{me?.full_name}</span>
+                <span className="block text-[10px] text-paper-dim">{me?.role === 'admin' ? 'Dueño' : (me?.job_title || 'Equipo')} · Equipo interno</span>
+              </span>
+            </div>
             {me?.role === 'admin' && (
               <Link href="/admin" className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
                 Admin
@@ -720,7 +729,7 @@ const TEAM_CAPS = [
 ];
 
 function EquipoTab({ staff, me, flash, reload }) {
-  const [form, setForm] = useState({ full_name: '', email: '', password: '' });
+  const [form, setForm] = useState({ full_name: '', job_title: '', email: '', password: '' });
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState('');
   const [expanded, setExpanded] = useState(null);
@@ -739,7 +748,7 @@ function EquipoTab({ staff, me, flash, reload }) {
     let out = data;
     if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
     if (!out?.ok) { setErr(out?.error || 'No se pudo crear el puesto.'); return; }
-    setForm({ full_name: '', email: '', password: '' });
+    setForm({ full_name: '', job_title: '', email: '', password: '' });
     flash('Puesto creado — ábrelo para dar accesos');
     if (out.id) setExpanded(out.id);
     reload();
@@ -764,15 +773,19 @@ function EquipoTab({ staff, me, flash, reload }) {
           <UserPlus size={18} className="text-brand" /> Crear puesto del equipo
         </div>
         <p className="mb-3 text-xs text-paper-dim">Tú le pones el nombre. Al crearlo, ábrelo abajo para darle acceso función por función.</p>
-        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
-          <input value={form.full_name} onChange={(e) => setForm((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre o puesto (ej. Supervisor 2)"
+        <div className="grid gap-3 sm:grid-cols-2">
+          <input value={form.full_name} onChange={(e) => setForm((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre (ej. Camila)"
             className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          <input value={form.job_title} onChange={(e) => setForm((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (ej. Verificación)"
+            className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <input type="email" value={form.email} onChange={(e) => setForm((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
             className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
           <input type="text" value={form.password} onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
             className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
           <button type="submit" disabled={creating}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
             {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Crear
           </button>
         </div>
@@ -796,7 +809,9 @@ function EquipoTab({ staff, me, flash, reload }) {
             <div key={u.id} className="overflow-hidden rounded-2xl border border-line bg-card">
               <button onClick={() => setExpanded(open ? null : u.id)} className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-hair/[0.04]">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
+                  <p className="truncate font-medium text-paper">{u.full_name || '—'}
+                    {u.job_title && <span className="ml-2 rounded-full bg-hair/10 px-2 py-0.5 text-[11px] font-normal text-paper-dim">{u.job_title}</span>}
+                  </p>
                   <p className="truncate text-[11px] text-paper-dim">{granted.length ? `${granted.length} acceso${granted.length === 1 ? '' : 's'}: ${granted.join(' · ')}` : 'Sin accesos'}</p>
                 </div>
                 {!granted.length && <span className="shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">Sin accesos</span>}
