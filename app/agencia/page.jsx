@@ -9,11 +9,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target,
-  Sparkles, X, TrendingUp, Plus, Clock, Loader2, ChevronRight, Send, CheckCircle2,
+  LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Eye,
+  Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
+  ChevronLeft, Send, CheckCircle2,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
+import { ymOf, ymLabel, shiftYm, aggregate, pct } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
@@ -35,9 +37,17 @@ export default function AgenciaPage() {
   const [requests, setRequests] = useState([]);
   const [urls, setUrls] = useState({});
   const [sel, setSel] = useState(null);           // selected creator id
+  const [month, setMonth] = useState(null);       // 'YYYY-MM' for the selected model
   const [detail, setDetail] = useState(null);     // asset being edited
   const [toast, setToast] = useState('');
   const [reqOpen, setReqOpen] = useState(false);
+
+  // Select a model and jump to its latest delivery month.
+  function pickModel(m) {
+    setSel(m.id); setReqOpen(false);
+    const latest = (m.assets || []).reduce((mx, a) => (a.deliver_date && a.deliver_date > mx ? a.deliver_date : mx), '');
+    setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
+  }
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 2600); };
 
@@ -113,12 +123,10 @@ export default function AgenciaPage() {
   if (loading) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
   const model = models.find((m) => m.id === sel) || null;
-  const modelAgg = model ? {
-    delivered: model.assets.length,
-    sales: model.assets.reduce((s, a) => s + (a.sales_count || 0), 0),
-    revenue: model.assets.reduce((s, a) => s + Number(a.revenue || 0), 0),
-    reach: model.assets.reduce((s, a) => s + (a.reach || 0), 0),
-  } : null;
+  const monthAssets = model ? model.assets.filter((a) => ymOf(a.deliver_date) === month) : [];
+  const prevAssets = model ? model.assets.filter((a) => ymOf(a.deliver_date) === shiftYm(month || '2026-01', -1)) : [];
+  const cur = aggregate(monthAssets);
+  const prev = aggregate(prevAssets);
   const modelRequests = model ? requests.filter((r) => r.creator_id === model.id) : requests;
 
   const BOOK_KPIS = [
@@ -175,7 +183,7 @@ export default function AgenciaPage() {
               const rev = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
               const activeSel = sel === m.id;
               return (
-                <button key={m.id} onClick={() => { setSel(m.id); setReqOpen(false); }}
+                <button key={m.id} onClick={() => pickModel(m)}
                   className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors ${
                     activeSel ? 'border-brand/50 bg-brand/10' : 'border-line bg-card hover:border-brand/30'}`}>
                   <div className="min-w-0">
@@ -202,16 +210,27 @@ export default function AgenciaPage() {
             ) : (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-display text-xl font-semibold">{model.name}</h2>
-                    <p className="text-xs text-paper-dim">
-                      {modelAgg.delivered} entregadas · {nf(modelAgg.sales)} ventas · {money(modelAgg.revenue)} · {nf(modelAgg.reach)} alcance
-                    </p>
-                  </div>
+                  <h2 className="font-display text-xl font-semibold">{model.name}</h2>
                   <button onClick={() => setReqOpen((v) => !v)}
                     className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
                     <Plus size={15} /> Pedir contenido
                   </button>
+                </div>
+
+                {/* Month accounting — this month vs last month */}
+                <div className="mt-4 flex items-center justify-between">
+                  <button onClick={() => setMonth(shiftYm(month, -1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronLeft size={17} /></button>
+                  <div className="text-center">
+                    <div className="font-display text-lg font-semibold">{ymLabel(month, 'es-US')}</div>
+                    <div className="text-[11px] text-paper-dim">vs. {ymLabel(shiftYm(month || '2026-01', -1), 'es-US')}</div>
+                  </div>
+                  <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={17} /></button>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <StatCard icon={ImageIcon} label="Hechas este mes" value={nf(cur.delivered)} d={pct(cur.delivered, prev.delivered)} />
+                  <StatCard icon={ShoppingBag} label="Vendidas" value={nf(cur.sales)} d={pct(cur.sales, prev.sales)} />
+                  <StatCard icon={DollarSign} label="Ingresos" value={money(cur.revenue)} d={pct(cur.revenue, prev.revenue)} />
+                  <StatCard icon={Eye} label="Alcance" value={nf(cur.reach)} d={pct(cur.reach, prev.reach)} />
                 </div>
 
                 {reqOpen && (
@@ -239,14 +258,14 @@ export default function AgenciaPage() {
                   </div>
                 )}
 
-                {/* Delivered content — the team uploads it, the agency reviews + records sales */}
+                {/* Delivered content this month — team uploads, agency records sales/price */}
                 <div className="mt-6">
-                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-paper-dim"><ImageIcon size={12} /> Contenido entregado</div>
-                  {model.assets.length === 0 ? (
-                    <p className="rounded-xl border border-line bg-card p-5 text-sm text-paper-dim">Todavía no hay contenido entregado para esta modelo.</p>
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-paper-dim"><ImageIcon size={12} /> Contenido de {ymLabel(month, 'es-US')} · toca para poner precio y ventas</div>
+                  {monthAssets.length === 0 ? (
+                    <p className="rounded-xl border border-line bg-card p-5 text-sm text-paper-dim">No hay contenido entregado en este mes.</p>
                   ) : (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                      {[...model.assets].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || '')).map((a) => (
+                      {[...monthAssets].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || '')).map((a) => (
                         <button key={a.id} onClick={() => setDetail(a)}
                           className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
                           {a.type === 'video'
@@ -293,6 +312,24 @@ export default function AgenciaPage() {
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+// KPI card with a month-over-month delta chip.
+function StatCard({ icon: Icon, label, value, d }) {
+  const chip = d === null
+    ? { txt: 'nuevo', cls: 'text-brand', Ic: TrendingUp }
+    : d > 0 ? { txt: `+${d}%`, cls: 'text-brand', Ic: TrendingUp }
+    : d < 0 ? { txt: `${d}%`, cls: 'text-rose-300', Ic: TrendingDown }
+    : { txt: '0%', cls: 'text-paper-dim', Ic: TrendingUp };
+  return (
+    <div className="rounded-2xl border border-line bg-card p-4">
+      <div className="flex items-center justify-between text-paper-dim">
+        <span className="flex items-center gap-1.5"><Icon size={14} className="text-brand" /><span className="text-[11px] font-medium">{label}</span></span>
+        <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${chip.cls}`}><chip.Ic size={12} /> {chip.txt}</span>
+      </div>
+      <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{value}</div>
     </div>
   );
 }
