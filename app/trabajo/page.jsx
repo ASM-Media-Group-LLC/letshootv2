@@ -11,13 +11,14 @@ import Link from 'next/link';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
+  BarChart3, UserCog, Plus, UserPlus,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import Logo from '@/components/Logo';
 
-const ROLE_LABEL = { admin: 'Dueño', supervisor: 'Supervisor', producer: 'Supervisor', chatter: 'Servicio al cliente' };
+const ROLE_LABEL = { admin: 'Dueño', supervisor: 'Equipo', producer: 'Equipo', chatter: 'Equipo' };
 
 // LoRA training set: house minimum 50 photos, up to 80. Category labels +
 // numbered slugs so the bulk download lands organized for Higgsfield.
@@ -57,11 +58,10 @@ export default function TrabajoPage() {
   const [toast, setToast] = useState('');
 
   // Only the admin has every function; other staff have exactly the functions
-  // the admin assigned to them. Requests come from the agency/creator — the
+  // assigned to their puesto. Requests come from the agency/creator — the
   // internal team receives and fulfills them.
-  const caps = !me ? [] : (me.role === 'admin'
-    ? ['kyc', 'content', 'team']
-    : (me.capabilities || []));
+  const ALL_CAPS = ['kyc', 'content', 'requests', 'feedback', 'metrics', 'team'];
+  const caps = !me ? [] : (me.role === 'admin' ? ALL_CAPS : (me.capabilities || []));
   const can = (c) => caps.includes(c);
 
   const load = useCallback(async () => {
@@ -81,8 +81,11 @@ export default function TrabajoPage() {
       const role = up.profile?.role;
       if (!['admin', 'supervisor', 'producer', 'chatter'].includes(role)) { router.replace('/panel'); return; }
       setMe(up.profile);
-      const c = role === 'admin' ? ['kyc', 'content', 'team'] : (up.profile?.capabilities || []);
-      setTab(c.includes('content') ? 'creadoras' : c.includes('kyc') ? 'verificaciones' : 'creadoras');
+      const c = role === 'admin' ? ['kyc', 'content', 'requests', 'feedback', 'metrics', 'team'] : (up.profile?.capabilities || []);
+      const first = c.includes('content') ? 'creadoras' : c.includes('kyc') ? 'verificaciones'
+        : c.includes('requests') ? 'pedidos' : c.includes('feedback') ? 'feedback'
+        : c.includes('metrics') ? 'metricas' : c.includes('team') ? 'equipo' : 'creadoras';
+      setTab(first);
       load();
     })();
   }, [router, load]);
@@ -94,8 +97,10 @@ export default function TrabajoPage() {
   const TABS = [
     ...(can('content') ? [{ id: 'creadoras', label: 'Creadoras', icon: Users }] : []),
     ...(can('kyc') ? [{ id: 'verificaciones', label: 'Verificaciones', icon: ShieldCheck }] : []),
-    ...(can('content') ? [{ id: 'pedidos', label: 'Pedidos', icon: Inbox }] : []),
-    ...(can('content') ? [{ id: 'feedback', label: 'Feedback', icon: MessageSquare }] : []),
+    ...(can('requests') ? [{ id: 'pedidos', label: 'Pedidos', icon: Inbox }] : []),
+    ...(can('feedback') ? [{ id: 'feedback', label: 'Feedback', icon: MessageSquare }] : []),
+    ...(can('metrics') ? [{ id: 'metricas', label: 'Métricas', icon: BarChart3 }] : []),
+    ...(can('team') ? [{ id: 'equipo', label: 'Equipo', icon: UserCog }] : []),
   ];
 
   return (
@@ -139,8 +144,10 @@ export default function TrabajoPage() {
 
         {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
         {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
-        {tab === 'pedidos' && can('content') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} />}
-        {tab === 'feedback' && can('content') && <FeedbackTab creators={creators} flash={flash} />}
+        {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} />}
+        {tab === 'feedback' && can('feedback') && <FeedbackTab creators={creators} flash={flash} />}
+        {tab === 'metricas' && can('metrics') && <MetricasTab creators={creators} />}
+        {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
       </main>
 
       {toast && (
@@ -189,6 +196,8 @@ function CreatorDetail({ creator, me, flash }) {
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState('');
   const [purpose, setPurpose] = useState(''); // "por qué se hizo" — se guarda en cada foto de la entrega
+  const [openReqs, setOpenReqs] = useState([]); // pedidos abiertos de esta modelo
+  const [reqSel, setReqSel] = useState('');     // pedido al que corresponde esta entrega
   const [lora, setLora] = useState(null); // {total, groups: [{key,label,slug,items:[{url,ext}]}]}
   const [showLora, setShowLora] = useState(false);
   const [downloading, setDownloading] = useState('');
@@ -196,10 +205,12 @@ function CreatorDetail({ creator, me, flash }) {
 
   const load = useCallback(async () => {
     const supabase = getSupabase();
-    const { data } = await supabase.from('folders')
-      .select('id, name, kind, assets(id)')
-      .eq('creator_id', creator.id).order('created_at');
+    const [{ data }, { data: reqs }] = await Promise.all([
+      supabase.from('folders').select('id, name, kind, assets(id)').eq('creator_id', creator.id).order('created_at'),
+      supabase.from('requests').select('id, title, status').eq('creator_id', creator.id).neq('status', 'delivered').order('created_at', { ascending: false }),
+    ]);
     setFolders(data || []);
+    setOpenReqs(reqs || []);
   }, [creator.id]);
 
   useEffect(() => { load(); }, [load]);
@@ -237,8 +248,17 @@ function CreatorDetail({ creator, me, flash }) {
       const folderName = (folders || []).find((f) => f.id === folderSel)?.name || '';
       sendEmail('delivery', creator.id, folderName);
       await supabase.from('notifications').insert({ user_id: creator.id, kind: 'delivery', meta: { folder: folderName } });
-      flash('Entrega subida');
+      // Entrega amarrada a un pedido → se marca entregado automáticamente.
+      if (reqSel) {
+        await supabase.from('requests').update({
+          status: 'delivered', delivered_at: new Date().toISOString(), producer_id: me.id,
+        }).eq('id', reqSel);
+        flash('Entrega subida · pedido marcado como entregado');
+      } else {
+        flash('Entrega subida');
+      }
       setPurpose('');
+      setReqSel('');
       load();
     } catch (err) {
       flash('Error: ' + err.message);
@@ -382,6 +402,17 @@ function CreatorDetail({ creator, me, flash }) {
             className="mt-1 w-full resize-none rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
           <p className="mt-1 text-[11px] text-paper-dim">Se guarda en cada foto de esta subida y la creadora lo ve en su cuenta.</p>
         </div>
+
+        {openReqs.length > 0 && (
+          <div className="mt-3">
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">¿Corresponde a un pedido? (se marcará entregado)</label>
+            <select value={reqSel} onChange={(e) => setReqSel(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
+              <option value="">No — entrega libre</option>
+              {openReqs.map((r) => <option key={r.id} value={r.id}>{r.title} · {REQ_STATUS[r.status]?.l || r.status}</option>)}
+            </select>
+          </div>
+        )}
 
         <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading || !folderSel}
           className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2 py-8 transition-colors hover:border-brand/40 disabled:opacity-50">
@@ -609,6 +640,168 @@ function FeedbackTab({ creators, flash }) {
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── Métricas: embudo de creadoras + pedidos (función 'metrics') ────────── */
+function MetricasTab({ creators }) {
+  const [reqs, setReqs] = useState(null);
+  useEffect(() => {
+    (async () => {
+      const { data } = await getSupabase().from('requests').select('id, status');
+      setReqs(data || []);
+    })();
+  }, []);
+
+  const funnel = [
+    ['Registrada', creators.filter((c) => c.onboarding_status === 'registered').length],
+    ['Falta ID', creators.filter((c) => ['info'].includes(c.onboarding_status)).length],
+    ['ID en revisión', creators.filter((c) => c.onboarding_status === 'id_pending').length],
+    ['ID rechazado', creators.filter((c) => c.onboarding_status === 'id_rejected').length],
+    ['Falta pago', creators.filter((c) => ['id_approved', 'authorized'].includes(c.onboarding_status)).length],
+    ['Activa', creators.filter((c) => ['active', 'paid'].includes(c.onboarding_status)).length],
+  ];
+  const rq = [
+    ['Pendientes', (reqs || []).filter((r) => r.status === 'pending').length],
+    ['En producción', (reqs || []).filter((r) => r.status === 'in_progress').length],
+    ['Entregados', (reqs || []).filter((r) => r.status === 'delivered').length],
+  ];
+
+  return (
+    <div className="mt-6 space-y-6">
+      <div>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Creadoras · embudo</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {funnel.map(([l, n]) => (
+            <div key={l} className="rounded-2xl border border-line bg-card p-4">
+              <p className="text-[11px] font-medium text-paper-dim">{l}</p>
+              <p className="mt-1 font-display text-2xl font-semibold text-paper">{n}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Pedidos</p>
+        <div className="grid grid-cols-3 gap-3">
+          {rq.map(([l, n]) => (
+            <div key={l} className="rounded-2xl border border-line bg-card p-4">
+              <p className="text-[11px] font-medium text-paper-dim">{l}</p>
+              <p className="mt-1 font-display text-2xl font-semibold text-paper">{reqs === null ? '…' : n}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Equipo: crear puestos y asignar funciones (función 'team') ─────────── */
+const TEAM_CAPS = [
+  { v: 'kyc', l: 'Verificar IDs' },
+  { v: 'content', l: 'Subir entregas' },
+  { v: 'requests', l: 'Atender pedidos' },
+  { v: 'feedback', l: 'Responder feedback' },
+  { v: 'metrics', l: 'Ver métricas' },
+  { v: 'team', l: 'Gestionar equipo' },
+];
+
+function EquipoTab({ staff, me, flash, reload }) {
+  const [form, setForm] = useState({ full_name: '', email: '', password: '' });
+  const [formCaps, setFormCaps] = useState([]);
+  const [creating, setCreating] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function createPuesto(e) {
+    e.preventDefault();
+    setErr('');
+    if (!form.email || !form.password) { setErr('Completa correo y contraseña.'); return; }
+    if (form.password.length < 8) { setErr('La contraseña debe tener al menos 8 caracteres.'); return; }
+    setCreating(true);
+    const { data, error } = await getSupabase().functions.invoke('create-user', {
+      body: { ...form, role: 'supervisor', capabilities: formCaps },
+    });
+    setCreating(false);
+    let out = data;
+    if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setErr(out?.error || 'No se pudo crear el puesto.'); return; }
+    setForm({ full_name: '', email: '', password: '' });
+    setFormCaps([]);
+    flash('Puesto creado');
+    reload();
+  }
+
+  async function toggleFn(member, cap) {
+    const cur = new Set(member.capabilities || []);
+    if (cur.has(cap)) cur.delete(cap); else cur.add(cap);
+    const { error } = await getSupabase().rpc('set_staff_functions', { target: member.id, caps: [...cur] });
+    if (error) { flash('Error: ' + error.message); return; }
+    flash('Funciones actualizadas');
+    reload();
+  }
+
+  const team = (staff || []).filter((s) => s.role !== 'admin');
+  const admins = (staff || []).filter((s) => s.role === 'admin');
+
+  return (
+    <div className="mt-6 space-y-6">
+      <form onSubmit={createPuesto} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
+        <div className="mb-3 flex items-center gap-2 font-display font-semibold text-paper">
+          <UserPlus size={18} className="text-brand" /> Crear puesto del equipo
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <input value={form.full_name} onChange={(e) => setForm((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre o puesto (ej. Supervisor 2)"
+            className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          <input type="email" value={form.email} onChange={(e) => setForm((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
+            className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          <input type="text" value={form.password} onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
+            className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {TEAM_CAPS.map((c) => {
+            const on = formCaps.includes(c.v);
+            return (
+              <button key={c.v} type="button"
+                onClick={() => setFormCaps((prev) => (on ? prev.filter((x) => x !== c.v) : [...prev, c.v]))}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
+                {on ? <Check size={13} /> : <Plus size={13} />} {c.l}
+              </button>
+            );
+          })}
+          <button type="submit" disabled={creating}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+            {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Crear
+          </button>
+        </div>
+        {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
+      </form>
+
+      <div className="space-y-3">
+        {admins.map((u) => (
+          <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-line bg-card p-4">
+            <p className="font-medium text-paper">{u.full_name || '—'} <span className="text-xs font-normal text-paper-dim">· Admin (dueño)</span></p>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand">
+              <ShieldCheck size={13} /> Todas las funciones
+            </span>
+          </div>
+        ))}
+        {team.map((u) => (
+          <div key={u.id} className="rounded-2xl border border-line bg-card p-4">
+            <p className="font-medium text-paper">{u.full_name || '—'}</p>
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+              {TEAM_CAPS.map((c) => {
+                const on = (u.capabilities || []).includes(c.v);
+                return (
+                  <button key={c.v} onClick={() => toggleFn(u, c.v)} disabled={u.id === me.id && c.v === 'team'}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors disabled:opacity-50 ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
+                    {on ? <Check size={13} /> : <Plus size={13} />} {c.l}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

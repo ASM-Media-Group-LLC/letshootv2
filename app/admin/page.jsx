@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3 } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
@@ -23,11 +23,16 @@ const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), produc
 // Only the admin has all functions implicitly. There is NO "servicio al
 // cliente": los pedidos los hacen la agencia/manager o la propia creadora.
 const CAPS = [
-  { v: 'kyc', l: 'Revisar IDs' },
-  { v: 'content', l: 'Subir fotos' },
+  { v: 'kyc', l: 'Verificar IDs' },
+  { v: 'content', l: 'Subir entregas' },
+  { v: 'requests', l: 'Atender pedidos' },
+  { v: 'feedback', l: 'Responder feedback' },
+  { v: 'metrics', l: 'Ver métricas' },
   { v: 'team', l: 'Gestionar equipo' },
 ];
 const MANAGER_ROLES = ['admin'];
+const nf = (n) => Number(n || 0).toLocaleString('en-US');
+const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 // Creator onboarding status → human label + tone
 // Flow: registered → info → id_pending → id_approved → active (pago al final).
@@ -60,6 +65,8 @@ export default function AdminPage() {
   const [toast, setToast] = useState('');
   const [nu, setNu] = useState({ full_name: '', email: '', password: '', role: 'supervisor' });
   const [nuCaps, setNuCaps] = useState([]); // functions for a new internal team member
+  const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
+  const [assetStats, setAssetStats] = useState([]);   // per-creator sales/revenue for agency numbers
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
   const [creating, setCreating] = useState(false);
   const [nuError, setNuError] = useState('');
@@ -89,12 +96,16 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs }, { data: reqs }, { count: loraCount }] = await Promise.all([
+    const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at, capabilities').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
+      supabase.from('agency_creators').select('agency_id, creator_id'),
+      supabase.from('assets').select('creator_id, sales_count, revenue'),
     ]);
     setProfiles(profs || []);
+    setAgencyLinks(agLinks || []);
+    setAssetStats(assetRows || []);
     setMetrics({ requests: reqs || [], lora: loraCount || 0 });
     await loadKyc();
     setLoading(false);
@@ -141,22 +152,33 @@ export default function AdminPage() {
     // Supabase Edge Function 'create-user' runs with the service role (injected
     // by Supabase) and verifies the caller is admin. functions.invoke sends the
     // signed-in user's JWT automatically.
-    const { data, error } = await getSupabase().functions.invoke('create-user', { body: nu });
+    // The edge function (v3) sets the functions server-side for Equipo puestos.
+    const { data, error } = await getSupabase().functions.invoke('create-user', { body: { ...nu, capabilities: nuCaps } });
     setCreating(false);
     let out = data;
     if (error && !out) {
       try { out = await error.context.json(); } catch { out = { error: error.message }; }
     }
     if (!out?.ok) { setNuError(out?.error || 'No se pudo crear el usuario.'); return; }
-    // Internal team member → apply the chosen functions to the new account.
-    if (nu.role === 'supervisor' && nuCaps.length) {
-      const { data: prof } = await getSupabase().from('profiles').select('id').eq('email', nu.email.trim().toLowerCase()).single();
-      if (prof?.id) await getSupabase().from('profiles').update({ capabilities: nuCaps }).eq('id', prof.id);
-    }
     setNu({ full_name: '', email: '', password: '', role: 'supervisor' });
     setNuCaps([]);
     flash('Usuario creado');
     load();
+  }
+
+  // Which models an agency manages (admin marks them here).
+  async function toggleAgencyModel(agencyId, creatorId, on) {
+    const supabase = getSupabase();
+    if (on) {
+      const { error } = await supabase.from('agency_creators').insert({ agency_id: agencyId, creator_id: creatorId });
+      if (error) return flash('Error: ' + error.message);
+      setAgencyLinks((l) => [...l, { agency_id: agencyId, creator_id: creatorId }]);
+    } else {
+      const { error } = await supabase.from('agency_creators').delete().eq('agency_id', agencyId).eq('creator_id', creatorId);
+      if (error) return flash('Error: ' + error.message);
+      setAgencyLinks((l) => l.filter((x) => !(x.agency_id === agencyId && x.creator_id === creatorId)));
+    }
+    flash('Agencia actualizada');
   }
 
   async function reviewKyc(userId, approve) {
@@ -208,6 +230,7 @@ export default function AdminPage() {
             { id: 'metricas', label: 'Métricas', icon: BarChart3 },
             { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
             { id: 'equipo', label: 'Equipo interno', icon: Users },
+            { id: 'agencias', label: 'Agencias', icon: Building2 },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${tab === tb.id ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
@@ -481,6 +504,46 @@ export default function AdminPage() {
               );
             })}
             </div>
+          </div>
+        ) : tab === 'agencias' ? (
+          <div className="mt-6 space-y-4">
+            <p className="text-sm text-paper-mute">
+              Cada agencia / manager entra a <em>todas</em> sus modelos, hace pedidos y registra las ventas.
+              Aquí marcas qué modelos maneja cada una. Para crear una agencia nueva, usa «Crear puesto / usuario» en Equipo interno con tipo «Agencia / Manager».
+            </p>
+            {profiles.filter((p) => p.role === 'agency').length === 0 && (
+              <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay agencias todavía.</p>
+            )}
+            {profiles.filter((p) => p.role === 'agency').map((ag) => {
+              const linked = agencyLinks.filter((l) => l.agency_id === ag.id).map((l) => l.creator_id);
+              const rows = assetStats.filter((a) => linked.includes(a.creator_id));
+              const sales = rows.reduce((s, a) => s + (a.sales_count || 0), 0);
+              const revenue = rows.reduce((s, a) => s + Number(a.revenue || 0), 0);
+              return (
+                <div key={ag.id} className="rounded-2xl border border-line bg-card p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 font-display font-semibold text-paper"><Building2 size={16} className="text-brand" /> {ag.full_name || '—'}</p>
+                      <p className="mt-0.5 truncate text-xs text-paper-mute">{ag.email}</p>
+                    </div>
+                    <div className="text-xs text-paper-dim">{linked.length} modelo{linked.length === 1 ? '' : 's'} · {nf(sales)} ventas · {money(revenue)}</div>
+                  </div>
+                  <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Modelos que maneja</p>
+                  <div className="flex flex-wrap gap-2">
+                    {creators.length === 0 && <span className="text-sm text-paper-dim">No hay creadoras registradas todavía.</span>}
+                    {creators.map((cr) => {
+                      const on = linked.includes(cr.id);
+                      return (
+                        <button key={cr.id} onClick={() => toggleAgencyModel(ag.id, cr.id, !on)}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
+                          {on ? <Check size={14} /> : <Plus size={14} />} {cr.full_name || cr.email}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : null}
       </main>

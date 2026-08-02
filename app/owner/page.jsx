@@ -21,12 +21,12 @@ const USER = { email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' };
 const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
 // Agency / manager — manages its models, makes requests, records sales.
 const AGENCY = { email: 'agencia@letshoot.ai', password: 'LetShoot!agencia' };
-// Internal team personas — each with only their function(s). No "SAC/chatter":
+// Internal team personas — puestos with granular functions. No "SAC/chatter":
 // requests come from the agency/manager or the creator; the team fulfills them.
 const STAFF = [
-  { key: 'manager', label: 'Supervisor (equipo)', desc: 'Subir fotos · Revisar IDs · Equipo', acct: { email: 'manager@letshoot.ai', password: 'LetShoot!manager' } },
-  { key: 'fotos', label: 'Subir fotos', desc: 'Recibe pedidos y sube entregas', acct: { email: 'fotos@letshoot.ai', password: 'LetShoot!fotos' } },
-  { key: 'ids', label: 'Revisar IDs', desc: 'Verificación de identidad', acct: { email: 'ids@letshoot.ai', password: 'LetShoot!ids' } },
+  { key: 'manager', label: 'Supervisor 1 (todas)', desc: 'IDs · Entregas · Pedidos · Feedback · Métricas · Equipo', acct: { email: 'manager@letshoot.ai', password: 'LetShoot!manager' } },
+  { key: 'fotos', label: 'Producción', desc: 'Entregas · Pedidos · Feedback', acct: { email: 'fotos@letshoot.ai', password: 'LetShoot!fotos' } },
+  { key: 'ids', label: 'Verificación', desc: 'Solo Verificar IDs', acct: { email: 'ids@letshoot.ai', password: 'LetShoot!ids' } },
 ];
 
 export default function OwnerPage() {
