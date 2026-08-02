@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
-import { ymOf, ymLabel, shiftYm, aggregate, pct } from '@/lib/portal-stats';
+import { ymOf, ymLabel, shiftYm, aggregate, pct, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
@@ -38,13 +38,14 @@ export default function AgenciaPage() {
   const [urls, setUrls] = useState({});
   const [sel, setSel] = useState(null);           // selected creator id
   const [month, setMonth] = useState(null);       // 'YYYY-MM' for the selected model
+  const [mtab, setMtab] = useState('content');    // content | pedidos
   const [detail, setDetail] = useState(null);     // asset being edited
   const [toast, setToast] = useState('');
   const [reqOpen, setReqOpen] = useState(false);
 
   // Select a model and jump to its latest delivery month.
   function pickModel(m) {
-    setSel(m.id); setReqOpen(false);
+    setSel(m.id); setReqOpen(false); setMtab('content');
     const latest = (m.assets || []).reduce((mx, a) => (a.deliver_date && a.deliver_date > mx ? a.deliver_date : mx), '');
     setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
   }
@@ -215,7 +216,7 @@ export default function AgenciaPage() {
               <>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="font-display text-xl font-semibold">{model.name}</h2>
-                  <button onClick={() => setReqOpen((v) => !v)}
+                  <button onClick={() => { setMtab('pedidos'); setReqOpen(true); }}
                     className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
                     <Plus size={15} /> Pedir contenido
                   </button>
@@ -237,22 +238,29 @@ export default function AgenciaPage() {
                   <StatCard icon={DollarSign} label="Ingresos" value={money(cur.revenue)} d={pct(cur.revenue, prev.revenue)} />
                 </div>
 
-                {reqOpen && (
-                  <NewRequest creatorId={model.id} agencyId={me.id} onDone={async () => { setReqOpen(false); await refresh(); flash('Pedido enviado al equipo'); }} />
-                )}
+                {/* Per-model sub-nav: content vs orders */}
+                <div className="mt-6 inline-flex rounded-full border border-line bg-card p-1">
+                  {[{ id: 'content', l: 'Contenido', Ic: ImageIcon }, { id: 'pedidos', l: 'Pedidos', Ic: Clock }].map((tb) => (
+                    <button key={tb.id} onClick={() => setMtab(tb.id)}
+                      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${mtab === tb.id ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'}`}>
+                      <tb.Ic size={15} /> {tb.l}
+                      {tb.id === 'pedidos' && modelRequests.length > 0 && <span className={`rounded-full px-1.5 text-[10px] font-bold ${mtab === tb.id ? 'bg-on-accent/20' : 'bg-brand/15 text-brand'}`}>{modelRequests.length}</span>}
+                    </button>
+                  ))}
+                </div>
 
-                {/* Requests for this model */}
-                {modelRequests.length > 0 && (
-                  <div className="mt-5">
-                    <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-paper-dim"><Clock size={12} /> Pedidos</div>
-                    <div className="space-y-2">
+                {mtab === 'pedidos' && (
+                  <div className="mt-4">
+                    {reqOpen && <NewRequest creatorId={model.id} agencyId={me.id} onDone={async () => { setReqOpen(false); await refresh(); flash('Pedido enviado al equipo'); }} />}
+                    <div className="mt-3 space-y-2">
+                      {modelRequests.length === 0 && !reqOpen && <p className="rounded-xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Sin pedidos. Usa «Pedir contenido» para crear uno.</p>}
                       {modelRequests.map((r) => {
                         const st = REQ_STATUS[r.status] || REQ_STATUS.pending;
                         return (
                           <div key={r.id} className="flex items-start justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3">
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-paper">{r.title}</p>
-                              {r.description && <p className="mt-0.5 line-clamp-1 text-xs text-paper-dim">{r.description}</p>}
+                              {r.description && <p className="mt-0.5 text-xs text-paper-dim">{r.description}</p>}
                             </div>
                             <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${st.cls}`}>{st.label}</span>
                           </div>
@@ -263,7 +271,8 @@ export default function AgenciaPage() {
                 )}
 
                 {/* Delivered content this month — team uploads, agency records sales/price */}
-                <div className="mt-6">
+                {mtab === 'content' && (
+                <div className="mt-5">
                   <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-paper-dim"><ImageIcon size={12} /> Contenido de {ymLabel(month, 'es-US')} · toca para poner precio y ventas</div>
                   {monthAssets.length === 0 ? (
                     <p className="rounded-xl border border-line bg-card p-5 text-sm text-paper-dim">No hay contenido entregado en este mes.</p>
@@ -297,6 +306,7 @@ export default function AgenciaPage() {
                     </div>
                   )}
                 </div>
+                )}
               </>
             )}
           </section>
@@ -486,9 +496,13 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, onClose, onS
               <div className="mt-3 space-y-2">
                 {notes.length === 0 && <p className="rounded-xl border border-dashed border-line px-3 py-3 text-xs text-paper-dim">Aún no hay notas. Empieza tu bitácora del día.</p>}
                 {notes.map((n) => (
-                  <div key={n.id} className="rounded-xl border border-line bg-ink-2 px-3 py-2.5">
-                    <p className="text-sm text-paper">{n.note}</p>
-                    <p className="mt-1 text-[10px] uppercase tracking-wide text-paper-dim">{fmtDate(n.note_date)}{n.author_name ? ` · ${n.author_name}` : ''}</p>
+                  <div key={n.id} className="rounded-xl border border-line bg-ink-2 p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-bold text-brand">{initials(n.author_name)}</span>
+                      <span className="truncate text-xs font-semibold text-paper">{n.author_name || 'Equipo'}</span>
+                      <span className="ml-auto shrink-0 text-[10px] text-paper-dim">{fmtDate(n.note_date)}</span>
+                    </div>
+                    <p className="mt-2 text-sm leading-snug text-paper">{n.note}</p>
                   </div>
                 ))}
               </div>

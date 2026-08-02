@@ -18,7 +18,7 @@ import {
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
-import { ymOf, ymLabel, shiftYm } from '@/lib/portal-stats';
+import { ymOf, ymLabel, shiftYm, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
 import LoraUploader from '@/components/LoraUploader';
@@ -392,9 +392,13 @@ function AssetDetail({ asset, src, t, locale, folderName, onClose, onFeedback })
               ) : (
                 <div className="space-y-2">
                   {notes.map((n) => (
-                    <div key={n.id} className="rounded-xl border border-line bg-ink-2 px-3 py-2.5">
-                      <p className="text-sm text-paper">{n.note}</p>
-                      <p className="mt-1 text-[10px] uppercase tracking-wide text-paper-dim">{fmtDate(n.note_date)}{n.author_name ? ` · ${n.author_name}` : ''}</p>
+                    <div key={n.id} className="rounded-xl border border-line bg-ink-2 p-3">
+                      <div className="flex items-center gap-2">
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-bold text-brand">{initials(n.author_name)}</span>
+                        <span className="truncate text-xs font-semibold text-paper">{n.author_name || t.panel.managedBy}</span>
+                        <span className="ml-auto shrink-0 text-[10px] text-paper-dim">{fmtDate(n.note_date)}</span>
+                      </div>
+                      <p className="mt-2 text-sm leading-snug text-paper">{n.note}</p>
                     </div>
                   ))}
                 </div>
