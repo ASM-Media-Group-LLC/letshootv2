@@ -164,12 +164,19 @@ function InfoStep({ me, onDone, t }) {
   const [form, setForm] = useState({
     legal_first_name: p.legal_first_name || '', legal_last_name: p.legal_last_name || '',
     date_of_birth: p.date_of_birth || '', country: p.country || '', phone: p.phone || '',
-    stage_name: p.stage_name || '',
+    stage_name: p.stage_name || '', handle: p.handle || '',
   });
+  const [avatarUrl, setAvatarUrl] = useState(p.avatar_url || '');
+  const [avatarFile, setAvatarFile] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const avatarRef = useRef(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  // @handle: normalize as they type — lowercase, drop invalid chars, strip a leading @.
+  const setHandle = (e) => setForm((f) => ({ ...f, handle: e.target.value.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9._]/g, '') }));
+
+  const preview = avatarFile ? URL.createObjectURL(avatarFile) : avatarUrl;
 
   function ageFrom(dob) {
     const d = new Date(dob); const n = new Date();
@@ -186,18 +193,71 @@ function InfoStep({ me, onDone, t }) {
       setError(t.onboarding.info.missing); return;
     }
     if (ageFrom(form.date_of_birth) < 18) { setError(t.onboarding.info.underage); return; }
+    if (form.handle && !/^[a-z0-9._]{3,30}$/.test(form.handle)) { setError(t.onboarding.info.handleBad); return; }
     setSaving(true);
-    const patch = { ...form, full_name: form.stage_name || `${form.legal_first_name} ${form.legal_last_name}`.trim() };
+    const supabase = getSupabase();
+
+    // Upload the profile photo (public avatars bucket) if a new one was picked.
+    let newAvatar = avatarUrl;
+    if (avatarFile) {
+      const ext = (avatarFile.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${me.user.id}/avatar.${ext}`;
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+      if (upErr) { setSaving(false); setError(t.common.error); return; }
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
+      newAvatar = `${pub.publicUrl}?v=${Date.now()}`; // cache-bust on replace
+    }
+
+    const patch = {
+      ...form,
+      handle: form.handle || null,
+      avatar_url: newAvatar || null,
+      full_name: form.stage_name || `${form.legal_first_name} ${form.legal_last_name}`.trim(),
+    };
     if (me.profile.onboarding_status === 'registered') patch.onboarding_status = 'info';
-    const { error: err } = await getSupabase().from('profiles').update(patch).eq('id', me.user.id);
+    const { error: err } = await supabase.from('profiles').update(patch).eq('id', me.user.id);
     setSaving(false);
-    if (err) { console.error(err); setError(t.common.error); return; }
+    if (err) {
+      console.error(err);
+      // 23505 = unique_violation on the handle index.
+      setError(err.code === '23505' ? t.onboarding.info.handleTaken : t.common.error);
+      return;
+    }
+    setAvatarUrl(newAvatar); setAvatarFile(null);
     setSaved(true); onDone();
   }
 
   return (
     <Panel title={t.onboarding.info.title} desc={t.onboarding.info.desc}>
       <form onSubmit={save} className="grid gap-4">
+        {/* Profile photo + @handle */}
+        <div className="flex items-center gap-4 rounded-xl border border-line bg-ink-2 p-4">
+          <button type="button" onClick={() => avatarRef.current?.click()}
+            className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-full ring-1 ring-hair/20 transition-transform hover:scale-[1.03]">
+            {preview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={preview} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="grid h-full w-full place-items-center bg-brand/15 text-brand"><User size={26} /></span>
+            )}
+            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-ink/70 py-1 text-[10px] font-medium text-paper opacity-0 transition-opacity group-hover:opacity-100">
+              <Upload size={11} /> {preview ? t.onboarding.info.photoChange : t.onboarding.info.photoPick}
+            </span>
+          </button>
+          <div className="min-w-0 flex-1">
+            <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.onboarding.info.handle}</span>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim">@</span>
+              <input value={form.handle} onChange={setHandle} placeholder={t.onboarding.info.handlePh} maxLength={30}
+                autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                className="w-full rounded-xl border border-line bg-ink py-3 pl-8 pr-3 text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60" />
+            </div>
+            <p className="mt-1.5 text-[11px] text-paper-dim">{t.onboarding.info.photoHint}</p>
+          </div>
+          <input ref={avatarRef} type="file" accept="image/*" hidden
+            onChange={(e) => e.target.files?.[0] && setAvatarFile(e.target.files[0])} />
+        </div>
+
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t.onboarding.info.firstName} value={form.legal_first_name} onChange={set('legal_first_name')} required />
           <Field label={t.onboarding.info.lastName} value={form.legal_last_name} onChange={set('legal_last_name')} required />

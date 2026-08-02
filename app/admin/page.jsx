@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2 } from 'lucide-react';
+import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
@@ -97,7 +98,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at, capabilities').order('role'),
+      supabase.from('profiles').select('id, full_name, email, role, onboarding_status, created_at, capabilities, handle, avatar_url').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -274,7 +275,13 @@ export default function AdminPage() {
                       const st = OB[u.onboarding_status] || OB.registered;
                       return (
                         <div key={u.id} className="grid min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-0">
-                          <span className="truncate font-medium text-paper">{u.full_name || '—'}</span>
+                          <span className="flex min-w-0 items-center gap-2.5">
+                            <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium text-paper">{u.full_name || '—'}</span>
+                              {u.handle && <span className="block truncate text-[11px] text-paper-dim">@{u.handle}</span>}
+                            </span>
+                          </span>
                           <span className="truncate text-paper-mute">{u.email}</span>
                           <span><span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span></span>
                           <span className="text-right">
@@ -472,9 +479,12 @@ export default function AdminPage() {
               return (
                 <div key={u.id} className="rounded-2xl border border-line bg-card p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
-                      <p className="truncate text-xs text-paper-mute">{u.email}</p>
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
+                        <p className="truncate text-xs text-paper-mute">{u.email}</p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <select value={isMgr && u.role !== 'admin' ? 'supervisor' : u.role} onChange={(e) => changeRole(u.id, e.target.value)} disabled={u.id === me.id}

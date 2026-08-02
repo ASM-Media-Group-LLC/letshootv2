@@ -17,6 +17,7 @@ import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { ymOf, ymLabel, shiftYm, aggregate, pct, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
+import Avatar from '@/components/Avatar';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
@@ -60,7 +61,7 @@ export default function AgenciaPage() {
     if (!ids.length) { setModels([]); setRequests([]); return; }
 
     const [{ data: profs }, { data: assets }, { data: fols }, { data: reqs }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, stage_name, onboarding_status').in('id', ids),
+      supabase.from('profiles').select('id, full_name, stage_name, onboarding_status, handle, avatar_url').in('id', ids),
       supabase.from('assets')
         .select('id, creator_id, folder_id, type, storage_path, deliver_date, title, purpose, sales_count, revenue, reach, interactions')
         .in('creator_id', ids),
@@ -76,6 +77,8 @@ export default function AgenciaPage() {
     const list = (profs || []).map((p) => ({
       id: p.id,
       name: p.stage_name || p.full_name || 'Modelo',
+      handle: p.handle,
+      avatar_url: p.avatar_url,
       status: p.onboarding_status,
       assets: (assets || []).filter((a) => a.creator_id === p.id),
     }));
@@ -189,15 +192,17 @@ export default function AgenciaPage() {
               const activeSel = sel === m.id;
               return (
                 <button key={m.id} onClick={() => pickModel(m)}
-                  className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors ${
+                  className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
                     activeSel ? 'border-brand/50 bg-brand/10' : 'border-line bg-card hover:border-brand/30'}`}>
-                  <div className="min-w-0">
+                  <Avatar src={m.avatar_url} name={m.name} size="sm" />
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-semibold text-paper">{m.name}</span>
                       {m.status === 'active'
                         ? <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-brand">Activa</span>
                         : <span className="rounded-full bg-hair/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-paper-dim">Onboarding</span>}
                     </div>
+                    {m.handle && <div className="truncate text-[11px] text-paper-dim">@{m.handle}</div>}
                     <div className="mt-0.5 text-[11px] text-paper-dim">{m.assets.length} entregadas · {nf(sales)} ventas · {money(rev)}</div>
                   </div>
                   <ChevronRight size={16} className={activeSel ? 'text-brand' : 'text-paper-dim'} />

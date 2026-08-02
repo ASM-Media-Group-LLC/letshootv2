@@ -17,6 +17,7 @@ import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import Logo from '@/components/Logo';
+import Avatar from '@/components/Avatar';
 
 const ROLE_LABEL = { admin: 'Dueño', supervisor: 'Equipo', producer: 'Equipo', chatter: 'Equipo' };
 
@@ -170,10 +171,14 @@ function CreadorasTab({ creators, me, flash }) {
       <aside className="space-y-2">
         {[...active, ...others].map((c) => (
           <button key={c.id} onClick={() => setSel(c)}
-            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
+            className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
               sel?.id === c.id ? 'border-brand/50 bg-brand/10 text-paper' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
-            <span className="truncate font-medium">{c.full_name || '—'}</span>
-            <span className="ml-2 shrink-0 rounded-full bg-hair/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper-dim">
+            <Avatar src={c.avatar_url} name={c.full_name} size="sm" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium text-paper">{c.full_name || '—'}</span>
+              {c.handle && <span className="block truncate text-[11px] text-paper-dim">@{c.handle}</span>}
+            </span>
+            <span className="shrink-0 rounded-full bg-hair/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper-dim">
               {OB_LABEL[c.onboarding_status] || c.onboarding_status}
             </span>
           </button>
@@ -322,7 +327,13 @@ function CreatorDetail({ creator, me, flash }) {
   return (
     <section className="min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-lg font-semibold">{creator.full_name}</h2>
+        <div className="flex items-center gap-3">
+          <Avatar src={creator.avatar_url} name={creator.full_name} size="md" />
+          <div className="min-w-0">
+            <h2 className="font-display text-lg font-semibold leading-tight">{creator.full_name}</h2>
+            {creator.handle && <p className="text-xs text-paper-dim">@{creator.handle}</p>}
+          </div>
+        </div>
         <button onClick={toggleLora}
           className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
           <Sparkles size={14} /> Fotos LoRA {showLora ? '▴' : '▾'}

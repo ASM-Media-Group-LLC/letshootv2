@@ -20,6 +20,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
 import { ymOf, ymLabel, shiftYm, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
+import Avatar from '@/components/Avatar';
 import LangToggle from '@/components/LangToggle';
 import LoraUploader from '@/components/LoraUploader';
 
@@ -183,10 +184,14 @@ export default function PanelPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-5 py-8">
-        <div>
-          <h1 className="font-display text-2xl font-semibold sm:text-3xl">{t.panel.hello} {(state.profile?.stage_name || state.profile?.full_name || '').split(' ')[0]}</h1>
-          <p className="mt-1 text-sm text-paper-mute">{t.panel.greeting}</p>
-          {agency && <p className="mt-1.5 flex items-center gap-1.5 text-xs text-paper-dim"><Building2 size={12} className="text-brand" /> {t.panel.managedBy} <span className="font-medium text-paper-mute">{agency}</span></p>}
+        <div className="flex items-center gap-4">
+          <Avatar src={state.profile?.avatar_url} name={state.profile?.stage_name || state.profile?.full_name} size="lg" />
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl font-semibold sm:text-3xl">{t.panel.hello} {(state.profile?.stage_name || state.profile?.full_name || '').split(' ')[0]}</h1>
+            {state.profile?.handle && <p className="text-sm text-paper-dim">@{state.profile.handle}</p>}
+            <p className="mt-1 text-sm text-paper-mute">{t.panel.greeting}</p>
+            {agency && <p className="mt-1.5 flex items-center gap-1.5 text-xs text-paper-dim"><Building2 size={12} className="text-brand" /> {t.panel.managedBy} <span className="font-medium text-paper-mute">{agency}</span></p>}
+          </div>
         </div>
 
         <div className="mt-5 inline-flex max-w-full overflow-x-auto rounded-full border border-line bg-card p-1">
