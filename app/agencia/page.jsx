@@ -43,6 +43,7 @@ export default function AgenciaPage() {
   const [detail, setDetail] = useState(null);     // asset being edited
   const [toast, setToast] = useState('');
   const [reqOpen, setReqOpen] = useState(false);
+  const [modelProfile, setModelProfile] = useState(null); // creator_profile of the selected model (status only)
 
   // Select a model and jump to its latest delivery month.
   function pickModel(m) {
@@ -50,6 +51,15 @@ export default function AgenciaPage() {
     const latest = (m.assets || []).reduce((mx, a) => (a.deliver_date && a.deliver_date > mx ? a.deliver_date : mx), '');
     setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
   }
+
+  // Load the selected model's completion checklist (status only — no docs/legal data).
+  useEffect(() => {
+    if (!sel) { setModelProfile(null); return; }
+    (async () => {
+      const { data } = await getSupabase().rpc('creator_profile', { target: sel });
+      setModelProfile(Array.isArray(data) ? data[0] : data || null);
+    })();
+  }, [sel]);
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 2600); };
 
@@ -227,11 +237,46 @@ export default function AgenciaPage() {
               <>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="font-display text-xl font-semibold">{model.name}</h2>
-                  <button onClick={() => { setMtab('pedidos'); setReqOpen(true); }}
+                  <button onClick={() => setReqOpen(true)}
                     className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
                     <Plus size={15} /> Pedir contenido
                   </button>
                 </div>
+
+                {/* Account completion — what the model still needs (status only) */}
+                {modelProfile && (() => {
+                  const s = modelProfile.onboarding_status;
+                  const items = [
+                    { k: 'Datos', done: s !== 'registered', note: s !== 'registered' ? 'Listos' : 'Faltan' },
+                    { k: 'Identidad', done: ['id_approved', 'active', 'paid', 'authorized'].includes(s),
+                      note: ['id_approved', 'active', 'paid', 'authorized'].includes(s) ? 'Aprobada'
+                        : s === 'id_pending' ? 'En revisión' : s === 'id_rejected' ? 'Rechazada'
+                        : modelProfile.has_id_docs ? 'Enviada' : 'Falta' },
+                    { k: 'Suscripción', done: modelProfile.payment_status === 'paid' || ['active', 'paid'].includes(s),
+                      note: (modelProfile.payment_status === 'paid' || ['active', 'paid'].includes(s)) ? 'Al día' : 'Falta pago' },
+                    { k: 'Fotos del clon', done: (modelProfile.lora_count || 0) >= 50, note: `${modelProfile.lora_count || 0}/50` },
+                  ];
+                  const complete = items.every((i) => i.done);
+                  return (
+                    <div className={`mt-4 rounded-2xl border p-4 ${complete ? 'border-brand/25 bg-brand/[0.04]' : 'border-amber-500/25 bg-amber-500/[0.04]'}`}>
+                      <div className="mb-2.5 flex items-center gap-2 text-sm font-semibold text-paper">
+                        {complete ? <CheckCircle2 size={15} className="text-brand" /> : <Clock size={15} className="text-amber-300" />}
+                        {complete ? 'Cuenta completa' : 'Le falta para completar su cuenta'}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {items.map((i) => (
+                          <div key={i.k} className={`rounded-xl border px-3 py-2 ${i.done ? 'border-line bg-ink-2' : 'border-amber-500/30 bg-amber-500/[0.06]'}`}>
+                            <div className="flex items-center gap-1.5 text-[11px] font-medium text-paper-dim">
+                              {i.done ? <CheckCircle2 size={12} className="text-brand" /> : <span className="grid h-3 w-3 place-items-center rounded-full border border-amber-400/50 text-[8px] text-amber-300">!</span>}
+                              {i.k}
+                            </div>
+                            <div className={`mt-0.5 text-sm font-semibold ${i.done ? 'text-paper' : 'text-amber-200'}`}>{i.note}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Month accounting — this month vs last month */}
                 <div className="mt-4 flex items-center justify-between">
@@ -261,23 +306,37 @@ export default function AgenciaPage() {
                 </div>
 
                 {mtab === 'pedidos' && (
-                  <div className="mt-4">
-                    {reqOpen && <NewRequest creatorId={model.id} agencyId={me.id} onDone={async () => { setReqOpen(false); await refresh(); flash('Pedido enviado al equipo'); }} />}
-                    <div className="mt-3 space-y-2">
-                      {modelRequests.length === 0 && !reqOpen && <p className="rounded-xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Sin pedidos. Usa «Pedir contenido» para crear uno.</p>}
-                      {modelRequests.map((r) => {
-                        const st = REQ_STATUS[r.status] || REQ_STATUS.pending;
-                        return (
-                          <div key={r.id} className="flex items-start justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-paper">{r.title}</p>
-                              {r.description && <p className="mt-0.5 text-xs text-paper-dim">{r.description}</p>}
-                            </div>
-                            <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${st.cls}`}>{st.label}</span>
+                  <div className="mt-4 space-y-5">
+                    {modelRequests.length === 0 && <p className="rounded-xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Sin pedidos. Usa «Pedir contenido» para crear uno.</p>}
+                    {[
+                      { key: 'in_progress', title: 'En proceso', hint: 'El equipo ya está trabajando en esto' },
+                      { key: 'pending', title: 'Pendientes', hint: 'El equipo ya lo sabe, aún no empieza' },
+                      { key: 'delivered', title: 'Entregados', hint: 'Listos y subidos' },
+                    ].map((grp) => {
+                      const rows = modelRequests.filter((r) => (r.status || 'pending') === grp.key);
+                      if (!rows.length) return null;
+                      const st = REQ_STATUS[grp.key];
+                      return (
+                        <div key={grp.key}>
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase ${st.cls}`}>{grp.title}</span>
+                            <span className="text-[11px] text-paper-dim">{rows.length} · {grp.hint}</span>
                           </div>
-                        );
-                      })}
-                    </div>
+                          <div className="space-y-2">
+                            {rows.map((r) => (
+                              <div key={r.id} className="rounded-xl border border-line bg-card p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                  <p className="text-sm font-semibold text-paper">{r.title}</p>
+                                  <span className="shrink-0 text-[11px] text-paper-dim">{new Date(r.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span>
+                                </div>
+                                {r.description && <p className="mt-1 text-xs leading-relaxed text-paper-mute">{r.description}</p>}
+                                {r.due_date && <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-paper-dim"><Clock size={11} /> para el {r.due_date}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -331,6 +390,23 @@ export default function AgenciaPage() {
           onClose={() => setDetail(null)}
           onSaved={async (patch) => { flash('Guardado'); setDetail((d) => (d ? { ...d, ...patch } : d)); await refresh(); }}
         />
+      )}
+
+      {/* New request — pop-up */}
+      {reqOpen && model && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-ink/80 p-5 backdrop-blur-sm" onClick={() => setReqOpen(false)}>
+          <div className="w-full max-w-lg rounded-3xl border border-line bg-card p-6 shadow-glow-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-display text-lg font-semibold text-paper">Pedir contenido</h3>
+                <p className="text-xs text-paper-dim">Para <span className="text-paper-mute">{model.name}</span> · le llega al equipo al instante</p>
+              </div>
+              <button onClick={() => setReqOpen(false)} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
+            </div>
+            <NewRequest creatorId={model.id} agencyId={me.id}
+              onDone={async () => { setReqOpen(false); await refresh(); flash('Pedido enviado al equipo'); }} />
+          </div>
+        </div>
       )}
 
       {toast && (
