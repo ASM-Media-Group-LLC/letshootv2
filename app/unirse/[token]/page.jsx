@@ -1,12 +1,15 @@
 'use client';
 
-// Public team-join page. An invited person lands here via the admin's invite
-// link, registers, and their account is created as internal team PENDING approval.
-// The admin then approves + assigns puesto & accesos in the admin panel.
+// Public join page. An invited person lands here via an invite link and
+// registers. The invite decides who they become:
+//  · a team invite (from admin) → internal team account, PENDING admin approval
+//    (admin then assigns puesto & accesos).
+//  · a model invite (from an agency) → creator account; she does her own
+//    onboarding and is auto-linked to the inviting agency.
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff, Lock, Mail, User, ArrowRight, CheckCircle2, Users } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, User, ArrowRight, CheckCircle2, Sparkles } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
 
@@ -17,6 +20,7 @@ export default function JoinPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  const [role, setRole] = useState(null); // 'creator' | 'supervisor' — from redeem-invite
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function onSubmit(e) {
@@ -32,10 +36,12 @@ export default function JoinPage() {
     let out = data;
     if (err && !out) { try { out = await err.context.json(); } catch { out = { error: err.message }; } }
     if (!out?.ok) { setError(out?.error || 'No se pudo completar el registro.'); return; }
+    setRole(out.target_role || null);
     setDone(true);
   }
 
   if (done) {
+    const isCreator = role === 'creator';
     return (
       <main className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-ink px-5 py-16">
         <div className="blob left-1/2 top-1/3 h-[420px] w-[520px] -translate-x-1/2 bg-brand/10" aria-hidden />
@@ -44,9 +50,13 @@ export default function JoinPage() {
           <CheckCircle2 className="mx-auto mt-8 mb-3 text-brand" size={40} />
           <h1 className="font-display text-2xl font-semibold text-paper">Cuenta creada</h1>
           <p className="mt-2 text-sm leading-relaxed text-paper-mute">
-            Tu registro quedó enviado. El administrador debe <span className="text-paper">aprobar tu acceso</span> y asignarte tu puesto y permisos. Cuando lo haga, podrás entrar a trabajar.
+            {isCreator
+              ? <>Ya eres parte de LetShoot. <span className="text-paper">Inicia sesión y completa tu registro</span>: tus datos, tu identidad, tu consentimiento y las fotos de tu clon. Tu agencia ya quedó vinculada a tu cuenta.</>
+              : <>Tu registro quedó enviado. El administrador debe <span className="text-paper">aprobar tu acceso</span> y asignarte tu puesto y permisos. Cuando lo haga, podrás entrar a trabajar.</>}
           </p>
-          <Link href="/login" className="mt-6 inline-block text-sm font-semibold text-brand hover:underline">Ir a iniciar sesión</Link>
+          <Link href="/login" className="mt-6 inline-block text-sm font-semibold text-brand hover:underline">
+            {isCreator ? 'Iniciar sesión y continuar' : 'Ir a iniciar sesión'}
+          </Link>
         </div>
       </main>
     );
@@ -59,10 +69,10 @@ export default function JoinPage() {
         <div className="mb-8 flex flex-col items-center text-center">
           <Logo size="lg" />
           <span className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand">
-            <Users size={13} /> Únete al equipo
+            <Sparkles size={13} /> Te invitaron a LetShoot
           </span>
-          <h1 className="mt-3 font-display text-2xl font-semibold text-paper">Crea tu cuenta de equipo</h1>
-          <p className="mt-1.5 text-sm text-paper-mute">Te invitaron a trabajar en LetShoot. Regístrate y el administrador aprobará tu acceso.</p>
+          <h1 className="mt-3 font-display text-2xl font-semibold text-paper">Crea tu cuenta</h1>
+          <p className="mt-1.5 text-sm text-paper-mute">Regístrate con este enlace para empezar. Toma menos de un minuto.</p>
         </div>
 
         <form onSubmit={onSubmit} className="rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-7">
@@ -102,7 +112,7 @@ export default function JoinPage() {
             {loading ? 'Creando…' : 'Crear mi cuenta'}
             {!loading && <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />}
           </button>
-          <p className="mt-4 text-center text-[11px] text-paper-dim">Tu puesto y tus permisos los asigna el administrador. Tú solo los verás reflejados.</p>
+          <p className="mt-4 text-center text-[11px] text-paper-dim">Al continuar aceptas los Términos y la Política de privacidad de LetShoot.</p>
         </form>
 
         <p className="mt-5 text-center text-sm text-paper-mute">

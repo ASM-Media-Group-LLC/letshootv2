@@ -29,6 +29,26 @@ const REQ_STATUS = {
   delivered: { label: 'Entregado', cls: 'text-brand border-brand/30 bg-brand/10' },
 };
 
+const AGENCY_TABS = [
+  { id: 'modelos', label: 'Modelos', Ic: Users },
+  { id: 'contenido', label: 'Contenido', Ic: ImageIcon },
+  { id: 'ingresos', label: 'Ingresos', Ic: DollarSign },
+];
+
+// Completion checklist for a model (agency sees status only, mirrors admin/staff).
+// Reads the same creator_profile fields the detail view uses.
+function completion(p) {
+  if (!p) return { done: 0, total: 4 };
+  const s = p.onboarding_status;
+  const oks = [
+    s !== 'registered',
+    ['id_approved', 'active', 'paid', 'authorized'].includes(s),
+    p.payment_status === 'paid' || ['active', 'paid'].includes(s),
+    (p.lora_count || 0) >= 50,
+  ];
+  return { done: oks.filter(Boolean).length, total: 4 };
+}
+
 export default function AgenciaPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -44,6 +64,13 @@ export default function AgenciaPage() {
   const [toast, setToast] = useState('');
   const [reqOpen, setReqOpen] = useState(false);
   const [modelProfile, setModelProfile] = useState(null); // creator_profile of the selected model (status only)
+  const [atab, setAtab] = useState('modelos');    // modelos | contenido | ingresos
+  const [checklists, setChecklists] = useState({}); // creator_id -> creator_profile (roster glance)
+  const [invites, setInvites] = useState([]);      // pending model-invite links
+  const [addOpen, setAddOpen] = useState(false);   // "agregar modelo" modal
+  const [newLink, setNewLink] = useState('');      // freshly-created invite URL
+  const [copied, setCopied] = useState('');        // token just copied
+  const [cFilter, setCFilter] = useState('all');   // Contenido tab: model filter
 
   // Select a model and jump to its latest delivery month.
   function pickModel(m) {
@@ -102,10 +129,32 @@ export default function AgenciaPage() {
       (signed || []).forEach((s, i) => { if (s?.signedUrl) map[toSign[i].id] = s.signedUrl; });
       setUrls(map);
     }
+    // Pending model-invite links this agency has generated.
+    const { data: invs } = await supabase.from('staff_invites')
+      .select('id, token, status, created_at, expires_at, used_by')
+      .eq('agency_id', agencyId).eq('target_role', 'creator')
+      .order('created_at', { ascending: false });
+
     setFolders(folderMap);
     setModels(list);
     setRequests(reqs || []);
+    setInvites(invs || []);
   }, []);
+
+  // Roster glance: load each model's completion checklist (status only).
+  useEffect(() => {
+    if (!models.length) { setChecklists({}); return; }
+    let alive = true;
+    (async () => {
+      const supabase = getSupabase();
+      const entries = await Promise.all(models.map(async (m) => {
+        const { data } = await supabase.rpc('creator_profile', { target: m.id });
+        return [m.id, Array.isArray(data) ? data[0] : data || null];
+      }));
+      if (alive) setChecklists(Object.fromEntries(entries));
+    })();
+    return () => { alive = false; };
+  }, [models]);
 
   useEffect(() => {
     (async () => {
@@ -120,7 +169,47 @@ export default function AgenciaPage() {
 
   const refresh = useCallback(async () => { if (me?.id) await load(me.id); }, [me?.id, load]);
 
+  // Add a model to the roster by generating a personal invite link. She registers
+  // herself, does her own onboarding, and is auto-linked to this agency on redeem.
+  async function createModelInvite() {
+    if (!me?.id) return;
+    const token = (typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID() : `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`).replace(/-/g, '');
+    const { error } = await getSupabase().from('staff_invites')
+      .insert({ token, agency_id: me.id, created_by: me.id, target_role: 'creator' });
+    if (error) { flash('No se pudo crear la invitación.'); return; }
+    const url = `${window.location.origin}/unirse/${token}`;
+    setNewLink(url);
+    await refresh();
+    try { await navigator.clipboard.writeText(url); setCopied(token); flash('Enlace copiado.'); }
+    catch { flash('Enlace de invitación creado.'); }
+  }
+
+  async function copyLink(token) {
+    const url = `${window.location.origin}/unirse/${token}`;
+    try { await navigator.clipboard.writeText(url); setCopied(token); flash('Enlace copiado.'); setTimeout(() => setCopied(''), 2000); }
+    catch { flash('No se pudo copiar.'); }
+  }
+
   const srcFor = (a) => (isDirect(a.storage_path) ? a.storage_path : (urls[a.id] || ''));
+
+  // Every delivered piece across all models — for the Contenido tab.
+  const allContent = useMemo(() => {
+    const rows = models.flatMap((m) => m.assets.map((a) => ({ ...a, modelName: m.name, modelHandle: m.handle, modelAvatar: m.avatar_url })));
+    return rows.sort((x, y) => (y.deliver_date || '').localeCompare(x.deliver_date || ''));
+  }, [models]);
+
+  // Per-model income roll-up — for the Ingresos tab.
+  const income = useMemo(() => {
+    const rows = models.map((m) => {
+      const sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
+      const revenue = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
+      return { id: m.id, name: m.name, handle: m.handle, avatar_url: m.avatar_url,
+        delivered: m.assets.length, sales, revenue };
+    }).sort((a, b) => b.revenue - a.revenue);
+    const total = rows.reduce((s, r) => s + r.revenue, 0);
+    return { rows, total };
+  }, [models]);
 
   // Agency-wide books.
   const books = useMemo(() => {
@@ -199,15 +288,32 @@ export default function AgenciaPage() {
           ))}
         </div>
 
-        <div className="mt-8 grid gap-6 md:grid-cols-[260px_1fr]">
+        {/* Views */}
+        <div className="mt-8 flex flex-wrap items-center gap-2">
+          {AGENCY_TABS.map((tb) => (
+            <button key={tb.id} onClick={() => { setAtab(tb.id); if (tb.id !== 'modelos') setSel(null); }}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
+                atab === tb.id ? 'border-brand/50 bg-brand text-on-accent shadow-glow-sm' : 'border-line bg-card text-paper-mute hover:border-brand/30 hover:text-paper'}`}>
+              <tb.Ic size={15} /> {tb.label}
+            </button>
+          ))}
+          <button onClick={() => { setNewLink(''); setAddOpen(true); }}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
+            <Plus size={15} /> Agregar modelo
+          </button>
+        </div>
+
+        {atab === 'modelos' && (
+        <div className="mt-6 grid gap-6 md:grid-cols-[280px_1fr]">
           {/* Models list */}
           <aside className="space-y-1.5">
-            <div className="mb-1 px-1 text-xs font-semibold uppercase tracking-wider text-paper-dim">Tus modelos</div>
-            {models.length === 0 && <p className="rounded-xl border border-line bg-card p-4 text-sm text-paper-dim">Aún no tienes modelos asignadas. El administrador las vincula a tu agencia.</p>}
+            <div className="mb-1 px-1 text-xs font-semibold uppercase tracking-wider text-paper-dim">Tus modelos · {models.length}</div>
+            {models.length === 0 && <p className="rounded-xl border border-line bg-card p-4 text-sm text-paper-dim">Aún no tienes modelos. Usa <span className="font-semibold text-paper">Agregar modelo</span> para invitar a una, o el administrador puede vincularla.</p>}
             {models.map((m) => {
               const sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
               const rev = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
               const activeSel = sel === m.id;
+              const ck = completion(checklists[m.id]);
               return (
                 <button key={m.id} onClick={() => pickModel(m)}
                   className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
@@ -222,6 +328,12 @@ export default function AgenciaPage() {
                     </div>
                     {m.handle && <div className="truncate text-[11px] text-paper-dim">@{m.handle}</div>}
                     <div className="mt-0.5 text-[11px] text-paper-dim">{m.assets.length} entregadas · {nf(sales)} ventas · {money(rev)}</div>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className={`h-1.5 flex-1 overflow-hidden rounded-full ${ck.done === ck.total ? 'bg-brand/20' : 'bg-amber-500/20'}`}>
+                        <span className={`block h-full rounded-full ${ck.done === ck.total ? 'bg-brand' : 'bg-amber-400'}`} style={{ width: `${(ck.done / ck.total) * 100}%` }} />
+                      </span>
+                      <span className={`text-[10px] font-semibold ${ck.done === ck.total ? 'text-brand' : 'text-amber-300'}`}>{ck.done}/{ck.total}</span>
+                    </div>
                   </div>
                   <ChevronRight size={16} className={activeSel ? 'text-brand' : 'text-paper-dim'} />
                 </button>
@@ -383,6 +495,122 @@ export default function AgenciaPage() {
             )}
           </section>
         </div>
+        )}
+
+        {/* ── Contenido: every delivered piece across all models ────────────── */}
+        {atab === 'contenido' && (
+        <div className="mt-6">
+          {allContent.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-line bg-card p-8 text-center text-sm text-paper-dim">Aún no hay contenido entregado para tus modelos.</p>
+          ) : (
+            <>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <button onClick={() => setCFilter('all')}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${cFilter === 'all' ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
+                  Todas · {allContent.length}
+                </button>
+                {models.map((m) => (
+                  <button key={m.id} onClick={() => setCFilter(m.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${cFilter === m.id ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
+                    <Avatar src={m.avatar_url} name={m.name} size="xs" /> {m.name}
+                  </button>
+                ))}
+              </div>
+              <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">Toca una pieza para ponerle precio y ventas</div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {allContent.filter((a) => cFilter === 'all' || a.creator_id === cFilter).map((a) => (
+                  <button key={a.id} onClick={() => setDetail(a)}
+                    className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
+                    {a.type === 'video'
+                      ? <video src={srcFor(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
+                      // eslint-disable-next-line @next/next/no-img-element
+                      : <img src={srcFor(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
+                    <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
+                      {a.sales_count > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><ShoppingBag size={10} className="text-brand" /> {nf(a.sales_count)}</span>
+                      )}
+                      {Number(a.revenue) > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
+                      )}
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2.5 pt-8">
+                      <div className="flex items-center gap-1.5">
+                        <Avatar src={a.modelAvatar} name={a.modelName} size="xs" />
+                        <p className="truncate text-xs font-semibold text-paper">{a.modelName}</p>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] text-paper-mute">{a.deliver_date ? new Date(a.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short' }) : ''}{a.title ? ` · ${a.title}` : ''}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        )}
+
+        {/* ── Ingresos: per-model roll-up with detail ──────────────────────── */}
+        {atab === 'ingresos' && (
+        <div className="mt-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="rounded-2xl border border-brand/25 bg-brand/[0.06] p-4">
+              <div className="flex items-center gap-2 text-paper-dim"><DollarSign size={15} className="text-brand" /><span className="text-xs font-medium">Ingresos totales</span></div>
+              <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{money(income.total)}</div>
+              <div className="mt-0.5 text-[11px] text-paper-dim">de todas tus modelos</div>
+            </div>
+            <div className="rounded-2xl border border-line bg-card p-4">
+              <div className="flex items-center gap-2 text-paper-dim"><ShoppingBag size={15} className="text-brand" /><span className="text-xs font-medium">Piezas vendidas</span></div>
+              <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{nf(books.sales)}</div>
+              <div className="mt-0.5 text-[11px] text-paper-dim">unidades cobradas</div>
+            </div>
+            <div className="rounded-2xl border border-line bg-card p-4">
+              <div className="flex items-center gap-2 text-paper-dim"><ImageIcon size={15} className="text-brand" /><span className="text-xs font-medium">Contenido</span></div>
+              <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{nf(books.delivered)}</div>
+              <div className="mt-0.5 text-[11px] text-paper-dim">piezas entregadas</div>
+            </div>
+            <div className="rounded-2xl border border-line bg-card p-4">
+              <div className="flex items-center gap-2 text-paper-dim"><Users size={15} className="text-brand" /><span className="text-xs font-medium">Modelos</span></div>
+              <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{nf(books.models)}</div>
+              <div className="mt-0.5 text-[11px] text-paper-dim">en tu agencia</div>
+            </div>
+          </div>
+
+          <div className="mt-6 mb-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">Ingresos por modelo</div>
+          {income.rows.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-line bg-card p-8 text-center text-sm text-paper-dim">Aún no hay ventas registradas.</p>
+          ) : (
+            <div className="space-y-2">
+              {income.rows.map((r) => {
+                const share = income.total > 0 ? Math.round((r.revenue / income.total) * 100) : 0;
+                return (
+                  <div key={r.id} className="rounded-2xl border border-line bg-card p-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar src={r.avatar_url} name={r.name} size="md" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-paper">{r.name}</span>
+                          {r.handle && <span className="truncate text-[11px] text-paper-dim">@{r.handle}</span>}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-paper-dim">{r.delivered} entregadas · {nf(r.sales)} ventas</div>
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-brand/15"><span className="block h-full rounded-full bg-brand" style={{ width: `${share}%` }} /></span>
+                          <span className="text-[10px] font-semibold text-paper-dim">{share}%</span>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-display text-lg font-semibold text-paper">{money(r.revenue)}</div>
+                        <button onClick={() => { const m = models.find((x) => x.id === r.id); if (m) { setAtab('modelos'); pickModel(m); } }}
+                          className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand hover:underline">
+                          Ver detalle <ChevronRight size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        )}
       </main>
 
       {detail && (
@@ -407,6 +635,63 @@ export default function AgenciaPage() {
             </div>
             <NewRequest creatorId={model.id} agencyId={me.id}
               onDone={async () => { setReqOpen(false); await refresh(); flash('Pedido enviado al equipo'); }} />
+          </div>
+        </div>
+      )}
+
+      {/* Agregar modelo — invite by link */}
+      {addOpen && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-ink/80 p-5 backdrop-blur-sm" onClick={() => setAddOpen(false)}>
+          <div className="w-full max-w-lg rounded-3xl border border-line bg-card p-6 shadow-glow-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="font-display text-lg font-semibold text-paper">Agregar modelo</h3>
+              <button onClick={() => setAddOpen(false)} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
+            </div>
+            <p className="mb-4 text-xs leading-relaxed text-paper-mute">Genera un enlace personal de invitación. La modelo se registra ella misma, hace su propio onboarding (identidad y consentimiento son personales) y queda vinculada a tu agencia automáticamente.</p>
+
+            <button onClick={createModelInvite}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand px-4 py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01]">
+              <Plus size={16} /> Crear enlace de invitación
+            </button>
+
+            {newLink && (
+              <div className="mt-4 rounded-2xl border border-brand/25 bg-brand/[0.05] p-3">
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand">Enlace listo · cópialo y compártelo</div>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={newLink} onFocus={(e) => e.target.select()}
+                    className="min-w-0 flex-1 rounded-lg border border-line bg-ink px-3 py-2 text-xs text-paper" />
+                  <button onClick={() => copyLink(newLink.split('/unirse/')[1])}
+                    className="shrink-0 rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-xs font-semibold text-brand hover:bg-brand/20">Copiar</button>
+                </div>
+              </div>
+            )}
+
+            {invites.length > 0 && (
+              <div className="mt-5">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Invitaciones generadas</div>
+                <div className="space-y-1.5">
+                  {invites.map((iv) => {
+                    const used = iv.status === 'accepted' || iv.used_by;
+                    const expired = !used && iv.expires_at && new Date(iv.expires_at) < new Date();
+                    return (
+                      <div key={iv.id} className="flex items-center gap-2 rounded-xl border border-line bg-ink-2 px-3 py-2">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${used ? 'bg-brand' : expired ? 'bg-rose-400' : 'bg-amber-400'}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium text-paper">{used ? 'Aceptada · ya se registró' : expired ? 'Expirada' : 'Pendiente de registro'}</div>
+                          <div className="truncate text-[10px] text-paper-dim">{new Date(iv.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                        </div>
+                        {!used && !expired && (
+                          <button onClick={() => copyLink(iv.token)}
+                            className="shrink-0 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-semibold text-paper-mute hover:border-brand/40 hover:text-paper">
+                            {copied === iv.token ? 'Copiado' : 'Copiar enlace'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

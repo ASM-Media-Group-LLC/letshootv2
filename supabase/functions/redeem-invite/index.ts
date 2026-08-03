@@ -44,21 +44,25 @@ Deno.serve(async (req) => {
     });
     if (error) return reply({ ok: false, error: error.message });
 
-    const { error: upErr } = await svc.from('profiles').update({
-      role: 'supervisor',
-      staff_status: 'pending',
-      full_name,
-      job_title: invite.job_title || null,
-      capabilities: [],
-      onboarding_status: 'active',
-    }).eq('id', created.user.id);
+    const isCreator = invite.target_role === 'creator';
+    const patch = isCreator
+      // A model invited by an agency: she registers and does her OWN onboarding.
+      ? { role: 'creator', full_name, onboarding_status: 'registered' }
+      // Internal team member: pending admin approval, no access yet.
+      : { role: 'supervisor', staff_status: 'pending', full_name, job_title: invite.job_title || null, capabilities: [], onboarding_status: 'active' };
+    const { error: upErr } = await svc.from('profiles').update(patch).eq('id', created.user.id);
     if (upErr) return reply({ ok: false, error: upErr.message });
+
+    // Link the model to the inviting agency.
+    if (isCreator && invite.agency_id) {
+      await svc.from('agency_creators').insert({ agency_id: invite.agency_id, creator_id: created.user.id });
+    }
 
     await svc.from('staff_invites').update({
       status: 'accepted', used_at: new Date().toISOString(), used_by: created.user.id,
     }).eq('id', invite.id);
 
-    return reply({ ok: true });
+    return reply({ ok: true, target_role: isCreator ? 'creator' : 'supervisor' });
   } catch (e) {
     return reply({ ok: false, error: String((e as Error)?.message || e) }, 500);
   }
