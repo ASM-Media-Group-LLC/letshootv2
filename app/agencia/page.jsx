@@ -6,7 +6,7 @@
 //  · makes content requests for its models
 // Sales live HERE (attributed to the agency), not on the creator's own panel.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
@@ -239,7 +239,7 @@ export default function AgenciaPage() {
                   <h2 className="font-display text-xl font-semibold">{model.name}</h2>
                   <button onClick={() => setReqOpen(true)}
                     className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
-                    <Plus size={15} /> Pedir contenido
+                    <Plus size={15} /> Nueva petición
                   </button>
                 </div>
 
@@ -398,7 +398,7 @@ export default function AgenciaPage() {
           <div className="w-full max-w-lg rounded-3xl border border-line bg-card p-6 shadow-glow-sm" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="font-display text-lg font-semibold text-paper">Pedir contenido</h3>
+                <h3 className="font-display text-lg font-semibold text-paper">Nueva petición</h3>
                 <p className="text-xs text-paper-dim">Para <span className="text-paper-mute">{model.name}</span> · le llega al equipo al instante</p>
               </div>
               <button onClick={() => setReqOpen(false)} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
@@ -436,42 +436,70 @@ function StatCard({ icon: Icon, label, value, d }) {
   );
 }
 
-// New content request from the agency to the team.
+// New content request from the agency to the team — what you want, how you need
+// it, and reference photos. No date (delivery timing is automatic).
 function NewRequest({ creatorId, agencyId, onDone }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [due, setDue] = useState('');
+  const [refFiles, setRefFiles] = useState([]);
   const [saving, setSaving] = useState(false);
+  const refInput = useRef(null);
+  const addFiles = (list) => setRefFiles((prev) => [...prev, ...Array.from(list).filter((f) => f.type.startsWith('image/'))].slice(0, 6));
 
   async function submit(e) {
     e.preventDefault();
     if (!title.trim()) return;
     setSaving(true);
     const supabase = getSupabase();
-    const { data: rq, error } = await supabase.from('requests').insert({
-      creator_id: creatorId, chatter_id: agencyId, title: title.trim(),
-      description: description.trim() || null, status: 'pending', due_date: due || null,
-    }).select('id').single();
+    // Client-generated id so reference photos upload under it, then one insert.
+    const reqId = crypto.randomUUID();
+    const paths = [];
+    for (const f of refFiles) {
+      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${agencyId}/${reqId}/${crypto.randomUUID()}.${ext}`;
+      const { error: up } = await supabase.storage.from('request-refs').upload(path, f, { contentType: f.type });
+      if (!up) paths.push(path);
+    }
+    const { error } = await supabase.from('requests').insert({
+      id: reqId, creator_id: creatorId, chatter_id: agencyId, title: title.trim(),
+      description: description.trim() || null, status: 'pending', ref_images: paths.length ? paths : null,
+    });
     setSaving(false);
-    if (error || !rq) { console.error(error); return; }
+    if (error) { console.error(error); return; }
     // Reach the team that attends requests: in-app pop-up + email.
-    supabase.functions.invoke('notify-request', { body: { request_id: rq.id } }).catch(() => {});
+    supabase.functions.invoke('notify-request', { body: { request_id: reqId } }).catch(() => {});
     onDone();
   }
 
   return (
-    <form onSubmit={submit} className="mt-4 rounded-2xl border border-line bg-card p-4">
+    <form onSubmit={submit}>
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="¿Qué necesitas? (ej. Set de lencería para PPV)"
         className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-      <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Detalles del pedido…"
+      <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Cómo lo necesitas: escena, outfit, tono…"
         className="mt-2 w-full resize-none rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <label className="text-xs text-paper-dim">Para el:</label>
-        <input type="date" value={due} onChange={(e) => setDue(e.target.value)}
-          className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60" />
+
+      <div className="mt-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-paper-dim">Fotos de referencia (opcional)</p>
+        <p className="text-[11px] text-paper-dim">Sube ejemplos de lo que quieres. El equipo las verá.</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {refFiles.map((f, i) => (
+            <span key={i} className="relative h-14 w-14 overflow-hidden rounded-lg border border-line">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={URL.createObjectURL(f)} alt="" className="h-full w-full object-cover" />
+              <button type="button" onClick={() => setRefFiles((p) => p.filter((_, j) => j !== i))} className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-ink/80 text-paper"><X size={10} /></button>
+            </span>
+          ))}
+          {refFiles.length < 6 && (
+            <button type="button" onClick={() => refInput.current?.click()} className="grid h-14 w-14 place-items-center rounded-lg border border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-brand"><Plus size={18} /></button>
+          )}
+          <input ref={refInput} type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-end">
         <button type="submit" disabled={saving}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-          {saving ? <Loader2 size={15} className="animate-spin" /> : <><Send size={14} /> Enviar pedido</>}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+          {saving ? <Loader2 size={15} className="animate-spin" /> : <><Send size={14} /> Enviar petición</>}
         </button>
       </div>
     </form>
