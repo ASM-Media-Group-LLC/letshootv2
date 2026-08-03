@@ -152,7 +152,7 @@ export default function OnboardingPage() {
           {tab === 'datos' && (
             <>
               <InfoStep me={me} t={t} onDone={done} />
-              <IdentityStep me={me} t={t} onDone={done}
+              <IdentityStep me={me} t={t} lang={lang} onDone={done}
                 rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} pending={st === 'id_pending'} />
             </>
           )}
@@ -332,11 +332,13 @@ function Field({ label, type = 'text', value, onChange, placeholder, required })
 
 /* ── Identidad + consentimiento ─────────────────────────────────────────── */
 const KYC_SLOTS = ['id_front', 'id_back', 'selfie_id'];
-const CONSENT_KEYS = ['person', 'clone', 'billing'];
+// Granular, unbundled consents (biometric + AI-likeness must be separate & specific).
+const CONSENT_KEYS = ['age', 'ownlikeness', 'biometric', 'likeness', 'aicontent', 'billing', 'terms'];
+const CONSENT_INIT = Object.fromEntries(CONSENT_KEYS.map((k) => [k, false]));
 
-function IdentityStep({ me, onDone, t, rejected, reason, approved, pending }) {
+function IdentityStep({ me, onDone, t, lang, rejected, reason, approved, pending }) {
   const [files, setFiles] = useState({});
-  const [consents, setConsents] = useState({ person: false, clone: false, billing: false });
+  const [consents, setConsents] = useState(CONSENT_INIT);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -363,7 +365,7 @@ function IdentityStep({ me, onDone, t, rejected, reason, approved, pending }) {
   async function submit() {
     setError('');
     if (KYC_SLOTS.some((k) => !files[k])) { setError(t.onboarding.id.missingDocs); return; }
-    if (!consents.person || !consents.clone || !consents.billing) { setError(t.onboarding.id.missingConsent); return; }
+    if (CONSENT_KEYS.some((k) => !consents[k])) { setError(t.onboarding.id.missingConsent); return; }
     setSaving(true);
     const supabase = getSupabase();
     try {
@@ -405,16 +407,26 @@ function IdentityStep({ me, onDone, t, rejected, reason, approved, pending }) {
             onFile={(f) => setFiles((prev) => ({ ...prev, [k]: f }))} />
         ))}
       </div>
-      <div className="mt-6 space-y-2.5">
-        {CONSENT_KEYS.map((k) => (
-          <label key={k} className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-ink-2 px-4 py-3 transition-colors hover:border-brand/30">
-            <input type="checkbox" checked={consents[k]} onChange={(e) => setConsents((v) => ({ ...v, [k]: e.target.checked }))} className="peer sr-only" />
-            <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${consents[k] ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
-              {consents[k] && <Check size={13} />}
-            </span>
-            <span className="text-sm leading-relaxed text-paper-mute">{t.onboarding.id.consents[k]}</span>
-          </label>
-        ))}
+      <div className="mt-6">
+        <p className="text-sm font-medium text-paper">{t.onboarding.id.consentsTitle}</p>
+        <p className="mb-2.5 text-[11px] text-paper-dim">{t.onboarding.id.consentsIntro}</p>
+        <div className="space-y-2.5">
+          {CONSENT_KEYS.map((k) => (
+            <label key={k} className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-ink-2 px-4 py-3 transition-colors hover:border-brand/30">
+              <input type="checkbox" checked={consents[k]} onChange={(e) => setConsents((v) => ({ ...v, [k]: e.target.checked }))} className="peer sr-only" />
+              <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${consents[k] ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
+                {consents[k] && <Check size={13} />}
+              </span>
+              <span className="text-sm leading-relaxed text-paper-mute">{t.onboarding.id.consents[k]}</span>
+            </label>
+          ))}
+        </div>
+        <p className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-paper-dim">
+          <a href="/likeness-consent" target="_blank" className="underline hover:text-brand">{lang === 'es' ? 'Licencia de imagen IA' : 'AI Likeness License'}</a>
+          <a href="/biometric-policy" target="_blank" className="underline hover:text-brand">{lang === 'es' ? 'Política biométrica' : 'Biometric Policy'}</a>
+          <a href="/terms" target="_blank" className="underline hover:text-brand">{lang === 'es' ? 'Términos' : 'Terms'}</a>
+          <a href="/privacy" target="_blank" className="underline hover:text-brand">{lang === 'es' ? 'Privacidad' : 'Privacy'}</a>
+        </p>
       </div>
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={submit} disabled={saving}

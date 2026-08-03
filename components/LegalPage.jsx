@@ -12,7 +12,7 @@ import Logo from './Logo';
 export const COMPANY = 'ASM Media Group LLC';
 export const SITE = 'letshoot.ai';
 export const CONTACT_EMAIL = 'soporte@letshoot.ai';
-export const LEGAL_UPDATED = '2026-07-26';
+export const LEGAL_UPDATED = '2026-08-02';
 
 export function useLegalLang() {
   const { lang } = useLang();

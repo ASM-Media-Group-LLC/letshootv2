@@ -7,13 +7,13 @@ import Logo from './Logo';
 // Legal link labels — all 7 public site languages, fallback en.
 // (18 U.S.C. § 2257 is a statute citation and stays identical everywhere.)
 const LEGAL_LABELS = {
-  es: { terms: 'Términos de servicio', privacy: 'Privacidad', usc2257: '18 U.S.C. § 2257', contact: 'Contacto' },
-  en: { terms: 'Terms of Service', privacy: 'Privacy Policy', usc2257: '18 U.S.C. § 2257', contact: 'Contact' },
-  pt: { terms: 'Termos de serviço', privacy: 'Privacidade', usc2257: '18 U.S.C. § 2257', contact: 'Contato' },
-  fr: { terms: 'Conditions d’utilisation', privacy: 'Confidentialité', usc2257: '18 U.S.C. § 2257', contact: 'Contact' },
-  de: { terms: 'Nutzungsbedingungen', privacy: 'Datenschutz', usc2257: '18 U.S.C. § 2257', contact: 'Kontakt' },
-  it: { terms: 'Termini di servizio', privacy: 'Privacy', usc2257: '18 U.S.C. § 2257', contact: 'Contatti' },
-  zh: { terms: '服务条款', privacy: '隐私政策', usc2257: '18 U.S.C. § 2257', contact: '联系我们' },
+  es: { terms: 'Términos de servicio', privacy: 'Privacidad', usc2257: '18 U.S.C. § 2257', use: 'Uso aceptable', dmca: 'DMCA', report: 'Retirar contenido', contact: 'Contacto' },
+  en: { terms: 'Terms of Service', privacy: 'Privacy Policy', usc2257: '18 U.S.C. § 2257', use: 'Acceptable Use', dmca: 'DMCA', report: 'Content removal', contact: 'Contact' },
+  pt: { terms: 'Termos de serviço', privacy: 'Privacidade', usc2257: '18 U.S.C. § 2257', use: 'Uso aceitável', dmca: 'DMCA', report: 'Remoção de conteúdo', contact: 'Contato' },
+  fr: { terms: 'Conditions d’utilisation', privacy: 'Confidentialité', usc2257: '18 U.S.C. § 2257', use: 'Usage acceptable', dmca: 'DMCA', report: 'Retrait de contenu', contact: 'Contact' },
+  de: { terms: 'Nutzungsbedingungen', privacy: 'Datenschutz', usc2257: '18 U.S.C. § 2257', use: 'Zulässige Nutzung', dmca: 'DMCA', report: 'Inhalt entfernen', contact: 'Kontakt' },
+  it: { terms: 'Termini di servizio', privacy: 'Privacy', usc2257: '18 U.S.C. § 2257', use: 'Uso accettabile', dmca: 'DMCA', report: 'Rimozione contenuti', contact: 'Contatti' },
+  zh: { terms: '服务条款', privacy: '隐私政策', usc2257: '18 U.S.C. § 2257', use: '可接受使用', dmca: 'DMCA', report: '内容删除', contact: '联系我们' },
 };
 
 export default function Footer() {
@@ -25,6 +25,9 @@ export default function Footer() {
     { href: '/terms', label: L.terms },
     { href: '/privacy', label: L.privacy },
     { href: '/usc2257', label: L.usc2257 },
+    { href: '/acceptable-use', label: L.use },
+    { href: '/dmca', label: L.dmca },
+    { href: '/report', label: L.report },
     { href: '/contacto', label: L.contact },
   ];
 
