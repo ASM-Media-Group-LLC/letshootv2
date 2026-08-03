@@ -633,8 +633,10 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
                     <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.l}</span>
                   </div>
                   <div className="mt-1 text-xs text-paper-dim">
-                    Para <span className="text-paper-mute">{nameOf(r.creator_id)}</span> · pidió {nameOf(r.chatter_id)}
-                    {r.due_date && <> · entrega {r.due_date}</>}
+                    Para <span className="text-paper-mute">{nameOf(r.creator_id)}</span>
+                    {' · '}{r.chatter_id === r.creator_id ? 'lo pidió ella' : 'lo pidió su agencia'}
+                    {' · '}{new Date(r.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}
+                    {r.due_date && <> · para el {r.due_date}</>}
                   </div>
                   {r.description && <p className="mt-1.5 text-sm text-paper-mute">{r.description}</p>}
                   {r._refUrls?.length > 0 && (

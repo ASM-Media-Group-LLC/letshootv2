@@ -119,27 +119,28 @@ export default function PanelPage() {
     const { error } = await getSupabase().from('feedback').insert({ asset_id: asset.id, creator_id: state.profile.id, kind, message });
     if (!error) flash(t.panel.thanks);
   }
-  async function createRequest({ title, description, dueDate, refFiles }) {
+  async function createRequest({ title, description, refFiles }) {
     if (!title.trim()) return false;
     const supabase = getSupabase();
-    const { data: rq, error } = await supabase.from('requests').insert({
-      creator_id: state.profile.id, chatter_id: state.profile.id,
-      title: title.trim(), description: description.trim() || null,
-      due_date: dueDate || null, status: 'pending',
-    }).select('id').single();
-    if (error || !rq) { console.error(error); flash(t.common.error); return false; }
-    // Optional reference photos → private request-refs bucket.
+    // Client-generated id so reference photos upload under it BEFORE the insert —
+    // creators can't UPDATE a request afterward (RLS), so everything goes in one insert.
+    const reqId = crypto.randomUUID();
     const paths = [];
     for (const f of (refFiles || [])) {
       if (!f.type?.startsWith('image/')) continue;
       const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
-      const path = `${state.profile.id}/${rq.id}/${crypto.randomUUID()}.${ext}`;
+      const path = `${state.profile.id}/${reqId}/${crypto.randomUUID()}.${ext}`;
       const { error: up } = await supabase.storage.from('request-refs').upload(path, f, { contentType: f.type });
       if (!up) paths.push(path);
     }
-    if (paths.length) await supabase.from('requests').update({ ref_images: paths }).eq('id', rq.id);
+    const { error } = await supabase.from('requests').insert({
+      id: reqId, creator_id: state.profile.id, chatter_id: state.profile.id,
+      title: title.trim(), description: description.trim() || null,
+      status: 'pending', ref_images: paths.length ? paths : null,
+    });
+    if (error) { console.error(error); flash(t.common.error); return false; }
     // Reach the team that attends requests: in-app pop-up + email.
-    supabase.functions.invoke('notify-request', { body: { request_id: rq.id } }).catch(() => {});
+    supabase.functions.invoke('notify-request', { body: { request_id: reqId } }).catch(() => {});
     setReqOpen(false); flash(t.panel.reqSent); await refresh(); return true;
   }
   function downloadMany(items) { items.forEach((a, i) => { const src = srcFor(a); if (!src) return; setTimeout(() => { const el = document.createElement('a'); el.href = src; el.download = ''; document.body.appendChild(el); el.click(); el.remove(); }, i * 350); }); }
@@ -348,20 +349,16 @@ function PhotoCard({ a, src, folder, onOpen }) {
 function RequestForm({ t, onSubmit }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [dueDate, setDueDate] = useState('');
   const [refFiles, setRefFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const refInput = useRef(null);
   const addFiles = (list) => setRefFiles((prev) => [...prev, ...Array.from(list).filter((f) => f.type.startsWith('image/'))].slice(0, 6));
 
   return (
-    <form onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onSubmit({ title, description, dueDate, refFiles }); setSaving(false); if (ok) { setTitle(''); setDescription(''); setDueDate(''); setRefFiles([]); } }}
+    <form onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onSubmit({ title, description, refFiles }); setSaving(false); if (ok) { setTitle(''); setDescription(''); setRefFiles([]); } }}
       className="mt-3 rounded-2xl border border-line bg-card p-4">
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t.panel.reqWhat} className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/50" />
       <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder={t.panel.reqDetails} className="mt-2 w-full resize-none rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/50" />
-
-      <label className="mt-3 block text-[11px] font-medium uppercase tracking-wide text-paper-dim">{t.panel.reqWhen}</label>
-      <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/50 [color-scheme:dark]" />
 
       <div className="mt-3">
         <label className="block text-[11px] font-medium uppercase tracking-wide text-paper-dim">{t.panel.reqRefs}</label>
