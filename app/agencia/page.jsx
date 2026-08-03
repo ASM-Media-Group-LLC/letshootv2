@@ -327,7 +327,7 @@ export default function AgenciaPage() {
       {detail && (
         <RecordSale
           asset={detail} src={srcFor(detail)} folderName={folders[detail.folder_id]}
-          agencyId={me.id} agencyName={me.full_name}
+          agencyId={me.id} agencyName={me.full_name} agencyHandle={me.handle} agencyEmail={me.email}
           onClose={() => setDetail(null)}
           onSaved={async (patch) => { flash('Guardado'); setDetail((d) => (d ? { ...d, ...patch } : d)); await refresh(); }}
         />
@@ -400,7 +400,7 @@ function NewRequest({ creatorId, agencyId, onDone }) {
 }
 
 // Agency records what a piece sold + keeps a day-by-day notes journal.
-function RecordSale({ asset, src, folderName, agencyId, agencyName, onClose, onSaved }) {
+function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle, agencyEmail, onClose, onSaved }) {
   const [sales, setSales] = useState(asset.sales_count || 0);
   const [revenue, setRevenue] = useState(asset.revenue || 0);
   const [saving, setSaving] = useState(false);
@@ -410,7 +410,7 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, onClose, onS
 
   const loadNotes = useCallback(async () => {
     const { data } = await getSupabase().from('asset_notes')
-      .select('id, note, note_date, author_name').eq('asset_id', asset.id)
+      .select('id, note, note_date, author_name, author_handle').eq('asset_id', asset.id)
       .order('note_date', { ascending: false }).order('created_at', { ascending: false });
     setNotes(data || []);
   }, [asset.id]);
@@ -435,7 +435,7 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, onClose, onS
     if (!newNote.trim()) return;
     setAddingNote(true);
     const { error } = await getSupabase().from('asset_notes').insert({
-      asset_id: asset.id, author_id: agencyId, author_name: agencyName, note: newNote.trim(),
+      asset_id: asset.id, author_id: agencyId, author_name: agencyName, author_handle: agencyHandle || null, author_email: agencyEmail || null, note: newNote.trim(),
     });
     setAddingNote(false);
     if (error) { console.error(error); return; }
@@ -510,7 +510,7 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, onClose, onS
                   <div key={n.id} className="rounded-xl border border-line bg-ink-2 p-3">
                     <div className="flex items-center gap-2">
                       <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-bold text-brand">{initials(n.author_name)}</span>
-                      <span className="truncate text-xs font-semibold text-paper">{n.author_name || 'Equipo'}</span>
+                      <span className="truncate text-xs font-semibold text-paper">{n.author_name || 'Equipo'}{n.author_handle ? <span className="font-normal text-paper-dim"> · @{n.author_handle}</span> : null}</span>
                       <span className="ml-auto shrink-0 text-[10px] text-paper-dim">{fmtDate(n.note_date)}</span>
                     </div>
                     <p className="mt-2 text-sm leading-snug text-paper">{n.note}</p>

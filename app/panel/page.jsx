@@ -76,7 +76,7 @@ export default function PanelPage() {
     const ids = assets.map((a) => a.id);
     if (ids.length) {
       const { data: ns } = await supabase.from('asset_notes')
-        .select('id, note, note_date, author_name, asset_id')
+        .select('id, note, note_date, author_name, author_handle, asset_id')
         .in('asset_id', ids).order('note_date', { ascending: false }).order('created_at', { ascending: false }).limit(40);
       const byId = {}; assets.forEach((a) => { byId[a.id] = a; });
       setNotesFeed((ns || []).map((n) => ({ ...n, asset: byId[n.asset_id] })).filter((n) => n.asset));
@@ -249,7 +249,6 @@ export default function PanelPage() {
 
         {view === 'activity' && (
           <div className="mt-6">
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-paper"><Activity size={16} className="text-brand" /> {t.panel.activityLead}</div>
             {notesFeed.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{t.panel.activityEmpty}</p>
             ) : (
@@ -265,7 +264,7 @@ export default function PanelPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm leading-snug text-paper">{n.note}</p>
                       <p className="mt-1 text-[11px] text-paper-dim">
-                        <span className="text-paper-mute">{n.asset.title}</span> · {new Date(n.note_date + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long' })}{n.author_name ? ` · ${n.author_name}` : ''}
+                        <span className="text-paper-mute">{n.asset.title}</span> · {new Date(n.note_date + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long' })}{n.author_name ? ` · ${n.author_name}` : ''}{n.author_handle ? ` · @${n.author_handle}` : ''}
                       </p>
                     </div>
                     <ChevronRight size={16} className="mt-1 shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
@@ -346,7 +345,7 @@ function RequestForm({ t, onSubmit }) {
 // the agency's notes journal (read-only), and the creator's own feedback.
 function AssetDetail({ asset, src, t, locale, folderName, onClose, onFeedback }) {
   const [notes, setNotes] = useState([]);
-  useEffect(() => { (async () => { const { data } = await getSupabase().from('asset_notes').select('id, note, note_date, author_name').eq('asset_id', asset.id).order('note_date', { ascending: false }).order('created_at', { ascending: false }); setNotes(data || []); })(); }, [asset.id]);
+  useEffect(() => { (async () => { const { data } = await getSupabase().from('asset_notes').select('id, note, note_date, author_name, author_handle, author_email').eq('asset_id', asset.id).order('note_date', { ascending: false }).order('created_at', { ascending: false }); setNotes(data || []); })(); }, [asset.id]);
   const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 
   return (
@@ -400,7 +399,10 @@ function AssetDetail({ asset, src, t, locale, folderName, onClose, onFeedback })
                     <div key={n.id} className="rounded-xl border border-line bg-ink-2 p-3">
                       <div className="flex items-center gap-2">
                         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-bold text-brand">{initials(n.author_name)}</span>
-                        <span className="truncate text-xs font-semibold text-paper">{n.author_name || t.panel.managedBy}</span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-semibold text-paper">{n.author_name || t.panel.managedBy}{n.author_handle ? <span className="font-normal text-paper-dim"> · @{n.author_handle}</span> : null}</span>
+                          {n.author_email && <span className="block truncate text-[10px] text-paper-dim">{n.author_email}</span>}
+                        </span>
                         <span className="ml-auto shrink-0 text-[10px] text-paper-dim">{fmtDate(n.note_date)}</span>
                       </div>
                       <p className="mt-2 text-sm leading-snug text-paper">{n.note}</p>
