@@ -371,12 +371,15 @@ function NewRequest({ creatorId, agencyId, onDone }) {
     e.preventDefault();
     if (!title.trim()) return;
     setSaving(true);
-    const { error } = await getSupabase().from('requests').insert({
+    const supabase = getSupabase();
+    const { data: rq, error } = await supabase.from('requests').insert({
       creator_id: creatorId, chatter_id: agencyId, title: title.trim(),
       description: description.trim() || null, status: 'pending', due_date: due || null,
-    });
+    }).select('id').single();
     setSaving(false);
-    if (error) { console.error(error); return; }
+    if (error || !rq) { console.error(error); return; }
+    // Reach the team that attends requests: in-app pop-up + email.
+    supabase.functions.invoke('notify-request', { body: { request_id: rq.id } }).catch(() => {});
     onDone();
   }
 

@@ -7,7 +7,7 @@
 // agency/manager keeps. Per photo she sees: when it was delivered, how much it
 // sold, who added it, the agency's day-by-day notes, and she can leave feedback.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -119,10 +119,27 @@ export default function PanelPage() {
     const { error } = await getSupabase().from('feedback').insert({ asset_id: asset.id, creator_id: state.profile.id, kind, message });
     if (!error) flash(t.panel.thanks);
   }
-  async function createRequest(title, description) {
+  async function createRequest({ title, description, dueDate, refFiles }) {
     if (!title.trim()) return false;
-    const { error } = await getSupabase().from('requests').insert({ creator_id: state.profile.id, chatter_id: state.profile.id, title: title.trim(), description: description.trim() || null, status: 'pending' });
-    if (error) { console.error(error); flash(t.common.error); return false; }
+    const supabase = getSupabase();
+    const { data: rq, error } = await supabase.from('requests').insert({
+      creator_id: state.profile.id, chatter_id: state.profile.id,
+      title: title.trim(), description: description.trim() || null,
+      due_date: dueDate || null, status: 'pending',
+    }).select('id').single();
+    if (error || !rq) { console.error(error); flash(t.common.error); return false; }
+    // Optional reference photos → private request-refs bucket.
+    const paths = [];
+    for (const f of (refFiles || [])) {
+      if (!f.type?.startsWith('image/')) continue;
+      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${state.profile.id}/${rq.id}/${crypto.randomUUID()}.${ext}`;
+      const { error: up } = await supabase.storage.from('request-refs').upload(path, f, { contentType: f.type });
+      if (!up) paths.push(path);
+    }
+    if (paths.length) await supabase.from('requests').update({ ref_images: paths }).eq('id', rq.id);
+    // Reach the team that attends requests: in-app pop-up + email.
+    supabase.functions.invoke('notify-request', { body: { request_id: rq.id } }).catch(() => {});
     setReqOpen(false); flash(t.panel.reqSent); await refresh(); return true;
   }
   function downloadMany(items) { items.forEach((a, i) => { const src = srcFor(a); if (!src) return; setTimeout(() => { const el = document.createElement('a'); el.href = src; el.download = ''; document.body.appendChild(el); el.click(); el.remove(); }, i * 350); }); }
@@ -331,12 +348,40 @@ function PhotoCard({ a, src, folder, onOpen }) {
 function RequestForm({ t, onSubmit }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [refFiles, setRefFiles] = useState([]);
   const [saving, setSaving] = useState(false);
+  const refInput = useRef(null);
+  const addFiles = (list) => setRefFiles((prev) => [...prev, ...Array.from(list).filter((f) => f.type.startsWith('image/'))].slice(0, 6));
+
   return (
-    <form onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onSubmit(title, description); setSaving(false); if (ok) { setTitle(''); setDescription(''); } }} className="mt-3 rounded-2xl border border-line bg-card p-4">
+    <form onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onSubmit({ title, description, dueDate, refFiles }); setSaving(false); if (ok) { setTitle(''); setDescription(''); setDueDate(''); setRefFiles([]); } }}
+      className="mt-3 rounded-2xl border border-line bg-card p-4">
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t.panel.reqWhat} className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/50" />
       <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder={t.panel.reqDetails} className="mt-2 w-full resize-none rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/50" />
-      <button type="submit" disabled={saving} className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60"><Send size={14} /> {saving ? t.common.saving : t.panel.reqSend}</button>
+
+      <label className="mt-3 block text-[11px] font-medium uppercase tracking-wide text-paper-dim">{t.panel.reqWhen}</label>
+      <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/50 [color-scheme:dark]" />
+
+      <div className="mt-3">
+        <label className="block text-[11px] font-medium uppercase tracking-wide text-paper-dim">{t.panel.reqRefs}</label>
+        <p className="text-[11px] text-paper-dim">{t.panel.reqRefsHint}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {refFiles.map((f, i) => (
+            <span key={i} className="relative h-14 w-14 overflow-hidden rounded-lg border border-line">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={URL.createObjectURL(f)} alt="" className="h-full w-full object-cover" />
+              <button type="button" onClick={() => setRefFiles((p) => p.filter((_, j) => j !== i))} className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-ink/80 text-paper"><X size={10} /></button>
+            </span>
+          ))}
+          {refFiles.length < 6 && (
+            <button type="button" onClick={() => refInput.current?.click()} className="grid h-14 w-14 place-items-center rounded-lg border border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-brand"><Plus size={18} /></button>
+          )}
+          <input ref={refInput} type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
+        </div>
+      </div>
+
+      <button type="submit" disabled={saving} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60"><Send size={14} /> {saving ? t.common.saving : t.panel.reqSend}</button>
     </form>
   );
 }

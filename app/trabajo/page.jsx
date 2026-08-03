@@ -56,6 +56,7 @@ export default function TrabajoPage() {
   const [tab, setTab] = useState('pedidos');
   const [creators, setCreators] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
 
   // Only the admin has every function; other staff have exactly the functions
@@ -92,6 +93,25 @@ export default function TrabajoPage() {
   }, [router, load]);
 
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2600); }
+
+  // Live pop-up: when a new request notification lands for me, toast it.
+  useEffect(() => {
+    if (!me?.id) return;
+    const supabase = getSupabase();
+    const ch = supabase
+      .channel(`notif-${me.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${me.id}` },
+        (payload) => {
+          const n = payload.new;
+          if (n?.kind === 'request') {
+            setToast(`📥 Nuevo pedido${n.meta?.requester ? ` de ${n.meta.requester}` : ''}: ${n.meta?.title || ''}`);
+            setTimeout(() => setToast(''), 6000);
+            setReqPing((x) => x + 1); // refresh the Pedidos inbox
+          }
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [me?.id]);
 
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
@@ -174,7 +194,7 @@ export default function TrabajoPage() {
 
         {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
         {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
-        {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} />}
+        {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
         {tab === 'feedback' && can('feedback') && <FeedbackTab creators={creators} flash={flash} />}
         {tab === 'metricas' && can('metrics') && <MetricasTab creators={creators} />}
         {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
@@ -560,19 +580,28 @@ function KycTab({ flash }) {
 }
 
 /* ── Pedidos: entrantes de agencias/creadoras · el equipo toma/entrega ──── */
-function PedidosTab({ creators, staff, me, flash }) {
+function PedidosTab({ creators, staff, me, flash, ping }) {
   const [requests, setRequests] = useState(null);
   const nameOf = (id) => creators.find((c) => c.id === id)?.full_name
     || staff.find((s) => s.id === id)?.full_name || '—';
 
   const load = useCallback(async () => {
-    const { data } = await getSupabase().from('requests')
-      .select('id, creator_id, chatter_id, producer_id, title, description, status, due_date, created_at')
+    const supabase = getSupabase();
+    const { data } = await supabase.from('requests')
+      .select('id, creator_id, chatter_id, producer_id, title, description, status, due_date, created_at, ref_images')
       .order('created_at', { ascending: false });
-    setRequests(data || []);
+    const rows = data || [];
+    // Sign reference photos so the worker can see the examples.
+    const allPaths = rows.flatMap((r) => r.ref_images || []);
+    let urlMap = {};
+    if (allPaths.length) {
+      const { data: signed } = await supabase.storage.from('request-refs').createSignedUrls(allPaths, 3600);
+      (signed || []).forEach((s) => { if (s.signedUrl) urlMap[s.path] = s.signedUrl; });
+    }
+    setRequests(rows.map((r) => ({ ...r, _refUrls: (r.ref_images || []).map((p) => urlMap[p]).filter(Boolean) })));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, ping]);
 
   async function setStatus(req, status) {
     const patch = { status };
@@ -608,6 +637,17 @@ function PedidosTab({ creators, staff, me, flash }) {
                     {r.due_date && <> · entrega {r.due_date}</>}
                   </div>
                   {r.description && <p className="mt-1.5 text-sm text-paper-mute">{r.description}</p>}
+                  {r._refUrls?.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {r._refUrls.map((u, i) => (
+                        <a key={i} href={u} target="_blank" rel="noreferrer" className="block h-14 w-14 overflow-hidden rounded-lg border border-line">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={u} alt="referencia" className="h-full w-full object-cover transition-transform hover:scale-105" />
+                        </a>
+                      ))}
+                      <span className="self-center text-[11px] text-paper-dim">ejemplos de lo que quiere</span>
+                    </div>
+                  )}
                 </div>
                 {r.status !== 'delivered' && (
                   <div className="flex shrink-0 gap-2">
