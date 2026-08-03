@@ -107,6 +107,10 @@ export default function TrabajoPage() {
             setToast(`📥 Nuevo pedido${n.meta?.requester ? ` de ${n.meta.requester}` : ''}: ${n.meta?.title || ''}`);
             setTimeout(() => setToast(''), 6000);
             setReqPing((x) => x + 1); // refresh the Pedidos inbox
+          } else if (n?.kind === 'feedback') {
+            const fk = n.meta?.feedback_kind === 'love' ? '❤ Le encantó' : '✎ Pide un cambio';
+            setToast(`${fk}${n.meta?.creator ? ` · ${n.meta.creator}` : ''}: ${n.meta?.asset || ''}`);
+            setTimeout(() => setToast(''), 6000);
           }
         })
       .subscribe();

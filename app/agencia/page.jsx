@@ -148,10 +148,10 @@ export default function AgenciaPage() {
   const modelRequests = model ? requests.filter((r) => r.creator_id === model.id) : requests;
 
   const BOOK_KPIS = [
-    { icon: Users, label: 'Modelos', value: nf(books.models) },
-    { icon: ImageIcon, label: 'Entregadas', value: nf(books.delivered) },
-    { icon: ShoppingBag, label: 'Ventas', value: nf(books.sales) },
-    { icon: DollarSign, label: 'Ingresos', value: money(books.revenue) },
+    { icon: Users, label: 'Modelos', value: nf(books.models), sub: 'que gestionas' },
+    { icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo' },
+    { icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades' },
+    { icon: DollarSign, label: 'Ingresos generados', value: money(books.revenue), sub: 'total histórico' },
   ];
 
   return (
@@ -185,7 +185,8 @@ export default function AgenciaPage() {
         <p className="mt-1 text-sm text-paper-mute">Gestiona a tus modelos, revisa el contenido entregado, registra ventas y haz pedidos.</p>
 
         {/* Agency books */}
-        <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen de tu agencia · histórico</div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {BOOK_KPIS.map((k) => (
             <div key={k.label} className="rounded-2xl border border-line bg-card p-4">
               <div className="flex items-center gap-2 text-paper-dim">
@@ -193,6 +194,7 @@ export default function AgenciaPage() {
                 <span className="text-xs font-medium">{k.label}</span>
               </div>
               <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{k.value}</div>
+              {k.sub && <div className="mt-0.5 text-[11px] text-paper-dim">{k.sub}</div>}
             </div>
           ))}
         </div>

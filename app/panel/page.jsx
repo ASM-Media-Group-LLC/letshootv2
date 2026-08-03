@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, User, Bell,
-  X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight,
+  X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
   ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
@@ -56,6 +56,8 @@ export default function PanelPage() {
   const [notesFeed, setNotesFeed] = useState([]);
   const [view, setView] = useState('gallery');   // gallery | activity | requests
   const [month, setMonth] = useState(null);
+  const [openDays, setOpenDays] = useState([]);   // gallery day-folders expanded
+  const [myFeedback, setMyFeedback] = useState({}); // asset_id -> 'love' | 'change'
 
   const load = useCallback(async (userId) => {
     const supabase = getSupabase();
@@ -81,6 +83,9 @@ export default function PanelPage() {
       const byId = {}; assets.forEach((a) => { byId[a.id] = a; });
       setNotesFeed((ns || []).map((n) => ({ ...n, asset: byId[n.asset_id] })).filter((n) => n.asset));
     } else setNotesFeed([]);
+    // Her own feedback so the gallery/detail can reflect it.
+    const { data: fb } = await supabase.from('feedback').select('asset_id, kind').eq('creator_id', userId);
+    const fbMap = {}; (fb || []).forEach((f) => { fbMap[f.asset_id] = f.kind; }); setMyFeedback(fbMap);
     return { assets, folders: folderMap };
   }, []);
 
@@ -117,7 +122,10 @@ export default function PanelPage() {
     let message = null;
     if (kind === 'change') { message = window.prompt(t.panel.changePrompt, ''); if (message === null) return; }
     const { error } = await getSupabase().from('feedback').insert({ asset_id: asset.id, creator_id: state.profile.id, kind, message });
-    if (!error) flash(t.panel.thanks);
+    if (error) { flash(t.common.error); return; }
+    // Reflect it for her; a DB trigger notifies the team (pop-up + dashboard).
+    setMyFeedback((m) => ({ ...m, [asset.id]: kind }));
+    flash(kind === 'love' ? (t.panel.fbLoved || '❤ Le dijiste que te encantó') : (t.panel.fbChange || '✎ Pediste un cambio — el equipo ya lo sabe'));
   }
   async function createRequest({ title, description, refFiles }) {
     if (!title.trim()) return false;
@@ -241,20 +249,53 @@ export default function PanelPage() {
               <p className="mt-2 text-[11px] text-paper-dim">{t.panel.statsNote}</p>
             </div>
 
-            {/* Gallery — deliveries grouped by day */}
+            {/* Gallery — one folder per day; tap to open its photos */}
             {groups.length === 0 ? (
               <p className="mt-6 rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{t.panel.emptyMonth}</p>
-            ) : groups.map((g) => (
-              <div key={g.date} className="mt-7">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-paper"><Sparkles size={15} className="text-brand" /> {fmtDay(g.date)} <span className="font-normal text-paper-dim">· {g.items.length} {g.items.length === 1 ? t.panel.mPhotos.slice(0, -1).toLowerCase() : t.panel.mPhotos.toLowerCase()}</span></div>
-                  <button onClick={() => downloadMany(g.items)} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand"><Download size={13} /> {t.panel.downloadAll}</button>
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                  {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} />)}
-                </div>
+            ) : (
+              <div className="mt-6 space-y-3">
+                {groups.map((g) => {
+                  const open = openDays.includes(g.date);
+                  const cover = g.items[0];
+                  const label = `${g.items.length} ${g.items.length === 1 ? t.panel.mPhotos.slice(0, -1).toLowerCase() : t.panel.mPhotos.toLowerCase()}`;
+                  return (
+                    <div key={g.date} className="overflow-hidden rounded-2xl border border-line bg-card">
+                      {/* Folder header */}
+                      <div className="flex items-center gap-3 p-3">
+                        <button onClick={() => setOpenDays((d) => open ? d.filter((x) => x !== g.date) : [...d, g.date])}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                          <span className="relative h-16 w-16 shrink-0">
+                            <span className="absolute -right-1 -top-1 h-full w-full rounded-xl border border-line bg-ink-2" aria-hidden />
+                            <span className="relative block h-16 w-16 overflow-hidden rounded-xl border border-line">
+                              {cover.type === 'video'
+                                ? <video src={srcFor(cover)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                                // eslint-disable-next-line @next/next/no-img-element
+                                : <img src={srcFor(cover)} alt="" className="h-full w-full object-cover" />}
+                              <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-bold text-paper">{g.items.length}</span>
+                            </span>
+                          </span>
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5 text-sm font-semibold text-paper"><Sparkles size={14} className="text-brand" /> {fmtDay(g.date)}</span>
+                            <span className="mt-0.5 block text-xs text-paper-dim">{label} · {open ? t.panel.tapClose || 'toca para cerrar' : t.panel.tapOpen || 'toca para ver'}</span>
+                          </span>
+                        </button>
+                        <button onClick={() => downloadMany(g.items)} className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:inline-flex"><Download size={13} /> {t.panel.downloadAll}</button>
+                        <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
+                      </div>
+                      {/* Photos */}
+                      {open && (
+                        <div className="border-t border-line p-3">
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                            {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} />)}
+                          </div>
+                          <button onClick={() => downloadMany(g.items)} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:hidden"><Download size={13} /> {t.panel.downloadAll}</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            )}
 
             {state.profile?.id && (
               <details className="mt-10 rounded-2xl border border-line bg-card p-4">
@@ -318,24 +359,26 @@ export default function PanelPage() {
         )}
       </main>
 
-      {detail && <AssetDetail asset={detail} src={srcFor(detail)} t={t} locale={locale} folderName={state.folders[detail.folder_id]} onClose={() => setDetail(null)} onFeedback={sendFeedback} />}
+      {detail && <AssetDetail asset={detail} src={srcFor(detail)} t={t} locale={locale} folderName={state.folders[detail.folder_id]} feedback={myFeedback[detail.id]} onClose={() => setDetail(null)} onFeedback={sendFeedback} />}
       {toast && <div className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-sm font-medium text-brand backdrop-blur">{toast}</div>}
     </div>
   );
 }
 
-function PhotoCard({ a, src, folder, onOpen }) {
+function PhotoCard({ a, src, folder, onOpen, feedback }) {
   return (
     <button onClick={() => onOpen(a)} className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
       {a.type === 'video'
         ? <video src={src} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
         // eslint-disable-next-line @next/next/no-img-element
         : <img src={src} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
-      {Number(a.revenue) > 0 && (
-        <div className="pointer-events-none absolute left-2 top-2">
+      <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
+        {Number(a.revenue) > 0 && (
           <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
-        </div>
-      )}
+        )}
+        {feedback === 'love' && <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/80 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur"><Heart size={10} /> </span>}
+        {feedback === 'change' && <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/80 px-1.5 py-0.5 text-[10px] font-semibold text-ink backdrop-blur"><MessageSquarePlus size={10} /> </span>}
+      </div>
       {(a.title || folder) && (
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2.5 pt-8">
           {a.title && <p className="truncate text-xs font-semibold text-paper">{a.title}</p>}
@@ -385,7 +428,7 @@ function RequestForm({ t, onSubmit }) {
 
 // Read-only photo detail: when delivered, how much it sold, who added it,
 // the agency's notes journal (read-only), and the creator's own feedback.
-function AssetDetail({ asset, src, t, locale, folderName, onClose, onFeedback }) {
+function AssetDetail({ asset, src, t, locale, folderName, feedback, onClose, onFeedback }) {
   const [notes, setNotes] = useState([]);
   useEffect(() => { (async () => { const { data } = await getSupabase().from('asset_notes').select('id, note, note_date, author_name, author_handle, author_email').eq('asset_id', asset.id).order('note_date', { ascending: false }).order('created_at', { ascending: false }); setNotes(data || []); })(); }, [asset.id]);
   const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) : '');
@@ -454,11 +497,20 @@ function AssetDetail({ asset, src, t, locale, folderName, onClose, onFeedback })
               )}
             </div>
 
-            {/* Her feedback */}
-            <div className="mt-auto flex flex-wrap gap-2 border-t border-line pt-4">
-              <button onClick={() => onFeedback(asset, 'love')} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand"><Heart size={14} /> {t.panel.love}</button>
-              <button onClick={() => onFeedback(asset, 'change')} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand"><MessageSquarePlus size={14} /> {t.panel.change}</button>
-              <a href={src} download className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand"><Download size={14} /> {t.panel.download}</a>
+            {/* Her feedback — reflects the current state; the team is notified */}
+            <div className="mt-auto border-t border-line pt-4">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => onFeedback(asset, 'love')}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium transition-colors ${feedback === 'love' ? 'border-rose-400/50 bg-rose-500/15 text-rose-300' : 'border-line text-paper-mute hover:border-brand/40 hover:text-brand'}`}>
+                  <Heart size={14} fill={feedback === 'love' ? 'currentColor' : 'none'} /> {feedback === 'love' ? (t.panel.fbLovedShort || 'Te encantó') : t.panel.love}
+                </button>
+                <button onClick={() => onFeedback(asset, 'change')}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium transition-colors ${feedback === 'change' ? 'border-amber-400/50 bg-amber-500/15 text-amber-300' : 'border-line text-paper-mute hover:border-brand/40 hover:text-brand'}`}>
+                  <MessageSquarePlus size={14} /> {feedback === 'change' ? (t.panel.fbChangeShort || 'Cambio pedido') : t.panel.change}
+                </button>
+                <a href={src} download className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand"><Download size={14} /> {t.panel.download}</a>
+              </div>
+              {feedback && <p className="mt-2 text-[11px] text-paper-dim">{feedback === 'love' ? (t.panel.fbLoved || '❤ Le dijiste al equipo que te encantó.') : (t.panel.fbChange || '✎ Pediste un cambio — el equipo ya lo sabe.')}</p>}
             </div>
           </div>
         </div>
