@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { centsOf, sumCents, moneyCents } from '@/lib/money';
+import { PACKS } from '@/lib/packs';
 
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
 const ymLabelEs = (ym) => {
@@ -41,8 +42,23 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
   const [fMonth, setFMonth] = useState('all');
   const todayISO = new Date().toISOString().slice(0, 10);
   const thisMonth = todayISO.slice(0, 7);
-  const blank = { model_name: '', instagram: '', sold_on: todayISO, paid_on: '', amount: '', period_month: thisMonth, pieces: '', concept: '', rebill_on: '' };
+  // The sale date IS the payment date (money in). The month it covers is derived
+  // from that date — no redundant fields.
+  const blank = { model_name: '', instagram: '', package_key: '', amount: '', sold_on: todayISO, rebill_on: '', images: '', videos: '', concept: '' };
   const [form, setForm] = useState(blank);
+
+  // Picking a package prefills its price + how many images/videos it closes with.
+  function onPackage(key) {
+    const p = PACKS.find((x) => x.key === key);
+    if (!p) { setForm((f) => ({ ...f, package_key: '' })); return; }
+    setForm((f) => ({
+      ...f, package_key: key,
+      amount: String(p.m),
+      images: String(p.photos),
+      videos: String(p.videos),
+      concept: f.concept || `${p.name} · ${p.photos} fotos · ${p.videos} videos`,
+    }));
+  }
 
   const load = useCallback(async () => {
     const { data } = await getSupabase().from('manual_sales')
@@ -64,15 +80,23 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
     if (!form.model_name.trim()) { setErr('Falta el nombre de la modelo.'); return; }
     if (!form.amount || amountCents <= 0) { setErr('Pon un monto válido (mayor que cero).'); return; }
     setSaving(true);
+    const soldOn = form.sold_on || todayISO;
+    const pack = PACKS.find((p) => p.key === form.package_key);
+    const images = Math.max(0, Math.round(Number(form.images) || 0));
+    const videos = Math.max(0, Math.round(Number(form.videos) || 0));
     const { error } = await getSupabase().from('manual_sales').insert({
       creator_id: form.creator_id || null,
       model_name: form.model_name.trim(),
       instagram: form.instagram.trim() || null,
-      sold_on: form.sold_on || todayISO,
-      paid_on: form.paid_on || null,
-      amount: amountCents / 100, // exact 2-decimal value into numeric(12,2)
-      period_month: form.period_month || null,
-      pieces: Math.max(0, Math.round(Number(form.pieces) || 0)),
+      sold_on: soldOn,
+      paid_on: soldOn,                       // sale day = payment day
+      amount: amountCents / 100,             // exact 2-decimal value into numeric(12,2)
+      period_month: soldOn.slice(0, 7),      // derived from the sale date
+      images,
+      videos,
+      pieces: images + videos,
+      package_key: pack?.key || null,
+      package_name: pack?.name || null,
       concept: form.concept.trim() || null,
       rebill_on: form.rebill_on || null,
       created_by: me.id,
@@ -95,13 +119,11 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
     return true;
   });
 
-  // Exact accounting — integer cents everywhere. Vendido ≠ cobrado:
-  // a row without paid_on is money still on the street (por cobrar).
+  // Exact accounting — integer cents everywhere.
   const totalC = sumCents(view, (r) => r.amount);
-  const pieces = view.reduce((s, r) => s + (Number(r.pieces) || 0), 0);
+  const imgs = view.reduce((s, r) => s + (Number(r.images) || 0), 0);
+  const vids = view.reduce((s, r) => s + (Number(r.videos) || 0), 0);
   const monthC = sumCents(rows.filter((r) => r.period_month === thisMonth), (r) => r.amount);
-  const paidC = sumCents(view.filter((r) => r.paid_on), (r) => r.amount);
-  const dueC = totalC - paidC;
   const upcoming = rows.filter((r) => r.rebill_on && daysUntil(r.rebill_on) !== null && daysUntil(r.rebill_on) <= 14 && daysUntil(r.rebill_on) >= -30)
     .sort((a, b) => a.rebill_on.localeCompare(b.rebill_on));
   const months = [...new Set(rows.map((r) => r.period_month).filter(Boolean))].sort().reverse();
@@ -123,10 +145,10 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
           </button>
         </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat icon={DollarSign} label="Vendido" value={moneyCents(totalC)} sub={`${view.length} ventas · ${nf(pieces)} piezas`} />
-          <Stat icon={ShoppingBag} label="Cobrado" value={moneyCents(paidC)} sub={dueC > 0 ? `${moneyCents(dueC)} por cobrar` : 'todo cobrado'} />
+          <Stat icon={DollarSign} label="Vendido" value={moneyCents(totalC)} sub={`${view.length} ventas`} />
           <Stat icon={DollarSign} label="Este mes" value={moneyCents(monthC)} sub={ymLabelEs(thisMonth)} />
-          <Stat icon={Clock} label="Próximos cobros" value={nf(upcoming.length)} sub="en 14 días o vencidos" />
+          <Stat icon={ShoppingBag} label="Contenido" value={`${nf(imgs)} + ${nf(vids)}`} sub="fotos + videos vendidos" />
+          <Stat icon={Clock} label="Por volver a cobrar" value={nf(upcoming.length)} sub="en 14 días o vencidos" />
         </div>
       </section>
 
@@ -182,12 +204,13 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
         {groupKeys.map((k) => {
           const gRows = groups[k];
           const gTotalC = sumCents(gRows, (r) => r.amount);
-          const gPieces = gRows.reduce((s, r) => s + (Number(r.pieces) || 0), 0);
+          const gImgs = gRows.reduce((s, r) => s + (Number(r.images) || 0), 0);
+          const gVids = gRows.reduce((s, r) => s + (Number(r.videos) || 0), 0);
           return (
             <div key={k} className="mb-5">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-semibold capitalize text-paper">{k === 'sin-mes' ? 'Sin mes asignado' : ymLabelEs(k)}</span>
-                <span className="text-xs text-paper-dim">{gRows.length} ventas · {nf(gPieces)} piezas · <span className="font-semibold text-brand">{moneyCents(gTotalC)}</span></span>
+                <span className="text-xs text-paper-dim">{gRows.length} ventas · {nf(gImgs)} fotos · {nf(gVids)} videos · <span className="font-semibold text-brand">{moneyCents(gTotalC)}</span></span>
               </div>
               <div className="overflow-hidden rounded-2xl border border-line">
                 {gRows.map((r, i) => (
@@ -196,15 +219,14 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold text-paper">{r.model_name}</span>
                         {r.instagram && <span className="truncate text-[11px] text-paper-dim">{r.instagram}</span>}
+                        {r.package_name && <span className="shrink-0 rounded-full bg-brand/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand">{r.package_name}</span>}
                       </div>
                       <div className="mt-0.5 truncate text-[11px] text-paper-dim">
-                        {r.concept || 'Venta'} · {r.pieces || 0} piezas · vendido {fmtDate(r.sold_on)}
+                        {(Number(r.images) || 0)} fotos · {(Number(r.videos) || 0)} videos · {fmtDate(r.sold_on)}
                         {r.rebill_on && <> · recobrar {fmtDate(r.rebill_on)}</>}
+                        {r.concept ? ` · ${r.concept}` : ''}
                       </div>
                     </div>
-                    {r.paid_on
-                      ? <span className="shrink-0 rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[10px] font-semibold text-brand">Pagado {fmtDate(r.paid_on)}</span>
-                      : <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">Por cobrar</span>}
                     <div className="shrink-0 font-display text-base font-semibold text-paper">{moneyCents(centsOf(r.amount))}</div>
                   </div>
                 ))}
@@ -226,7 +248,7 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
             <p className="mb-4 text-xs text-paper-dim">Regístrala a mano. Todo se suma exacto y se agrupa por el mes que cubre.</p>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block sm:col-span-2">
+              <label className="block">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Modelo</span>
                 <input list="ms-models" value={form.model_name} onChange={(e) => onModelName(e.target.value)} placeholder="Ej. Valentina"
                   className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
@@ -237,39 +259,55 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
                 <input value={form.instagram} onChange={(e) => setForm((f) => ({ ...f, instagram: e.target.value }))} placeholder="@usuaria"
                   className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               </label>
+
+              {/* Paquete → preselecciona precio, fotos y videos */}
+              <label className="block sm:col-span-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Paquete vendido</span>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {PACKS.map((p) => (
+                    <button type="button" key={p.key} onClick={() => onPackage(p.key)}
+                      className={`flex-1 min-w-[140px] rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                        form.package_key === p.key ? 'border-brand/60 bg-brand/10' : 'border-line bg-ink-2 hover:border-brand/40'}`}>
+                      <span className={`block text-sm font-semibold ${form.package_key === p.key ? 'text-brand' : 'text-paper'}`}>{p.name} · ${p.m}</span>
+                      <span className="block text-[11px] text-paper-dim">{p.photos} fotos · {p.videos} videos</span>
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => setForm((f) => ({ ...f, package_key: '' }))}
+                    className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      form.package_key === '' ? 'border-brand/60 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
+                    Personalizado
+                  </button>
+                </div>
+              </label>
+
               <label className="block">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Monto vendido (USD)</span>
                 <input type="number" min="0" step="0.01" inputMode="decimal" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} placeholder="0.00"
                   className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               </label>
               <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Fecha de la venta</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Fecha <span className="normal-case text-paper-dim/80">— día que se vendió y pagó</span></span>
                 <input type="date" value={form.sold_on} onChange={(e) => setForm((f) => ({ ...f, sold_on: e.target.value }))}
                   className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
               </label>
               <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Fecha de pago <span className="normal-case text-paper-dim/80">— cuándo entró el dinero</span></span>
-                <input type="date" value={form.paid_on} onChange={(e) => setForm((f) => ({ ...f, paid_on: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Mes que cubre</span>
-                <input type="month" value={form.period_month} onChange={(e) => setForm((f) => ({ ...f, period_month: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Piezas de contenido</span>
-                <input type="number" min="0" step="1" value={form.pieces} onChange={(e) => setForm((f) => ({ ...f, pieces: e.target.value }))} placeholder="0"
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Fotos</span>
+                <input type="number" min="0" step="1" value={form.images} onChange={(e) => setForm((f) => ({ ...f, images: e.target.value }))} placeholder="0"
                   className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               </label>
               <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Volver a cobrar el</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Videos</span>
+                <input type="number" min="0" step="1" value={form.videos} onChange={(e) => setForm((f) => ({ ...f, videos: e.target.value }))} placeholder="0"
+                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              </label>
+              <label className="block">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Volver a cobrar el <span className="normal-case text-paper-dim/80">— próximo cobro</span></span>
                 <input type="date" value={form.rebill_on} onChange={(e) => setForm((f) => ({ ...f, rebill_on: e.target.value }))}
                   className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
               </label>
               <label className="block sm:col-span-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Concepto</span>
-                <input value={form.concept} onChange={(e) => setForm((f) => ({ ...f, concept: e.target.value }))} placeholder="Ej. Pack PPV de bienvenida · suscripción mensual"
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Concepto <span className="normal-case text-paper-dim/80">— opcional</span></span>
+                <input value={form.concept} onChange={(e) => setForm((f) => ({ ...f, concept: e.target.value }))} placeholder="Ej. Renovación · pack PPV de bienvenida"
                   className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               </label>
             </div>
