@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
-  Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
+  Check, RefreshCw, Sparkles, ChevronRight, ChevronDown, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
@@ -49,15 +49,19 @@ const OB_LABEL = {
   id_rejected: 'ID rechazado', id_approved: 'Falta pago', authorized: 'Falta pago',
   paid: 'Activa', active: 'Activa',
 };
+const nf = (n) => Number(n || 0).toLocaleString('en-US');
+const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 export default function TrabajoPage() {
   const router = useRouter();
   const [me, setMe] = useState(undefined);
-  const [tab, setTab] = useState('pedidos');
+  const [tab, setTab] = useState(null);       // null = todo cerrado; se abre al tocar una tarjeta
   const [creators, setCreators] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [counts, setCounts] = useState(null); // números reales de las tarjetas
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
+  const meRef = useRef(null);
 
   // Only the admin has every function; other staff have exactly the functions
   // assigned to their puesto. Requests come from the agency/creator — the
@@ -66,14 +70,33 @@ export default function TrabajoPage() {
   const caps = !me ? [] : (me.role === 'admin' ? ALL_CAPS : (me.capabilities || []));
   const can = (c) => caps.includes(c);
 
+  // One load for everything the cards summarize, guarded by the puesto's caps.
   const load = useCallback(async () => {
+    const profile = meRef.current;
+    if (!profile) return;
     const supabase = getSupabase();
-    const [{ data: cr }, { data: st }] = await Promise.all([
+    const pcaps = profile.role === 'admin'
+      ? ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team']
+      : (profile.capabilities || []);
+    const monthStart = new Date().toISOString().slice(0, 8) + '01';
+    const [{ data: cr }, { data: st }, rq, fb, as] = await Promise.all([
       supabase.rpc('team_creators'),
       supabase.rpc('team_staff'),
+      pcaps.includes('requests') ? supabase.from('requests').select('id, status') : Promise.resolve({ data: [] }),
+      pcaps.includes('feedback') ? supabase.from('feedback').select('id, kind, resolved') : Promise.resolve({ data: [] }),
+      pcaps.includes('metrics') ? supabase.from('assets').select('id, revenue').gte('deliver_date', monthStart) : Promise.resolve({ data: [] }),
     ]);
     setCreators(cr || []);
     setStaff(st || []);
+    const reqs = rq.data || [], fbs = fb.data || [], month = as.data || [];
+    setCounts({
+      reqPend: reqs.filter((r) => r.status === 'pending').length,
+      reqProg: reqs.filter((r) => r.status === 'in_progress').length,
+      fbOpen: fbs.filter((f) => !f.resolved && f.kind !== 'love').length,
+      fbLove: fbs.filter((f) => f.kind === 'love').length,
+      monthPieces: month.length,
+      monthRev: month.reduce((s, a) => s + Number(a.revenue || 0), 0),
+    });
   }, []);
 
   useEffect(() => {
@@ -82,12 +105,8 @@ export default function TrabajoPage() {
       if (!up) { router.replace('/login'); return; }
       const role = up.profile?.role;
       if (!['admin', 'supervisor', 'producer', 'chatter'].includes(role)) { router.replace('/panel'); return; }
+      meRef.current = up.profile;
       setMe(up.profile);
-      const c = role === 'admin' ? ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team'] : (up.profile?.capabilities || []);
-      const first = c.includes('content') ? 'creadoras' : c.includes('kyc') ? 'verificaciones'
-        : c.includes('requests') ? 'pedidos' : c.includes('feedback') ? 'feedback'
-        : c.includes('metrics') ? 'metricas' : c.includes('team') ? 'equipo' : 'creadoras';
-      setTab(first);
       load();
     })();
   }, [router, load]);
@@ -107,15 +126,17 @@ export default function TrabajoPage() {
             setToast(`📥 Nuevo pedido${n.meta?.requester ? ` de ${n.meta.requester}` : ''}: ${n.meta?.title || ''}`);
             setTimeout(() => setToast(''), 6000);
             setReqPing((x) => x + 1); // refresh the Pedidos inbox
+            load();                   // refresh the card numbers too
           } else if (n?.kind === 'feedback') {
             const fk = n.meta?.feedback_kind === 'love' ? '❤ Le encantó' : '✎ Pide un cambio';
             setToast(`${fk}${n.meta?.creator ? ` · ${n.meta.creator}` : ''}: ${n.meta?.asset || ''}`);
             setTimeout(() => setToast(''), 6000);
+            load();
           }
         })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [me?.id]);
+  }, [me?.id, load]);
 
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
@@ -139,13 +160,19 @@ export default function TrabajoPage() {
     );
   }
 
-  const TABS = [
-    ...(can('content') ? [{ id: 'creadoras', label: 'Creadoras', icon: Users }] : []),
-    ...(can('kyc') ? [{ id: 'verificaciones', label: 'Verificaciones', icon: ShieldCheck }] : []),
-    ...(can('requests') ? [{ id: 'pedidos', label: 'Pedidos', icon: Inbox }] : []),
-    ...(can('feedback') ? [{ id: 'feedback', label: 'Feedback', icon: MessageSquare }] : []),
-    ...(can('metrics') ? [{ id: 'metricas', label: 'Métricas', icon: BarChart3 }] : []),
-    ...(can('team') ? [{ id: 'equipo', label: 'Equipo', icon: UserCog }] : []),
+  // The summary cards ARE the navigation — real numbers, everything closed
+  // by default; tap a card to open its area, tap again to close.
+  const act = creators.filter((c) => ['active', 'paid'].includes(c.onboarding_status)).length;
+  const proc = creators.length - act;
+  const idPend = creators.filter((c) => c.onboarding_status === 'id_pending').length;
+  const staffPend = staff.filter((s) => s.staff_status === 'pending').length;
+  const CARDS = [
+    ...(can('content') ? [{ id: 'creadoras', icon: Users, label: 'Creadoras', value: nf(creators.length), sub: `${act} activas · ${proc} en proceso` }] : []),
+    ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
+    ...(can('requests') ? [{ id: 'pedidos', icon: Inbox, label: 'Pedidos', value: nf((counts?.reqPend || 0) + (counts?.reqProg || 0)), sub: `${counts?.reqPend || 0} pendientes · ${counts?.reqProg || 0} en producción`, alert: (counts?.reqPend || 0) > 0 }] : []),
+    ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} ❤`, alert: (counts?.fbOpen || 0) > 0 }] : []),
+    ...(can('metrics') ? [{ id: 'metricas', icon: BarChart3, label: 'Este mes', value: money(counts?.monthRev || 0), sub: `${nf(counts?.monthPieces || 0)} piezas entregadas` }] : []),
+    ...(can('team') ? [{ id: 'equipo', icon: UserCog, label: 'Equipo', value: nf(staff.length), sub: staffPend ? `${staffPend} por aprobar` : 'todos con acceso', alert: staffPend > 0 }] : []),
   ];
 
   return (
@@ -183,17 +210,30 @@ export default function TrabajoPage() {
       <main className="mx-auto max-w-6xl px-5 py-8">
         <h1 className="font-display text-2xl font-semibold sm:text-3xl">Espacio de trabajo</h1>
         <p className="mt-1 text-sm text-paper-mute">
-          Recibe los pedidos de agencias y creadoras, sube las entregas y revisa identidades.
+          Todo tu trabajo en un vistazo. Toca una tarjeta para abrir esa área.
         </p>
 
-        <div className="mt-6 flex flex-wrap gap-2 border-b border-line">
-          {TABS.map((tb) => (
-            <button key={tb.id} onClick={() => setTab(tb.id)}
-              className={`relative -mb-px flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${tab === tb.id ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
-              <tb.icon size={15} /> {tb.label}
-              {tab === tb.id && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand" />}
-            </button>
-          ))}
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {CARDS.map((k) => {
+            const open = tab === k.id;
+            return (
+              <button key={k.id} onClick={() => setTab(open ? null : k.id)}
+                className={`rounded-2xl border p-4 text-left transition-colors ${
+                  open ? 'border-brand/50 bg-brand/[0.07] shadow-glow-sm'
+                  : k.alert ? 'border-amber-500/30 bg-amber-500/[0.04] hover:border-amber-400/50'
+                  : 'border-line bg-card hover:border-brand/30'}`}>
+                <div className="flex items-center justify-between gap-1 text-paper-dim">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <k.icon size={14} className={k.alert && !open ? 'text-amber-300' : 'text-brand'} />
+                    <span className="truncate text-xs font-medium">{k.label}</span>
+                  </span>
+                  <ChevronDown size={13} className={`shrink-0 transition-transform ${open ? 'rotate-180 text-brand' : ''}`} />
+                </div>
+                <div className="mt-1 font-display text-xl font-semibold text-paper sm:text-2xl">{k.value}</div>
+                <div className={`mt-0.5 truncate text-[10px] ${k.alert && !open ? 'text-amber-200' : 'text-paper-dim'}`}>{k.sub}</div>
+              </button>
+            );
+          })}
         </div>
 
         {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
@@ -219,23 +259,28 @@ function CreadorasTab({ creators, me, flash }) {
   const active = creators.filter((c) => ['active', 'paid'].includes(c.onboarding_status));
   const others = creators.filter((c) => !['active', 'paid'].includes(c.onboarding_status));
 
+  const row = (c) => (
+    <button key={c.id} onClick={() => setSel(c)}
+      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
+        sel?.id === c.id ? 'border-brand/50 bg-brand/10 text-paper' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
+      <Avatar src={c.avatar_url} name={c.full_name} size="sm" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-paper">{c.full_name || '—'}</span>
+        {c.handle && <span className="block truncate text-[11px] text-paper-dim">@{c.handle}</span>}
+      </span>
+      <span className="shrink-0 rounded-full bg-hair/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper-dim">
+        {OB_LABEL[c.onboarding_status] || c.onboarding_status}
+      </span>
+    </button>
+  );
+
   return (
     <div className="mt-6 grid gap-6 lg:grid-cols-[280px_1fr]">
       <aside className="space-y-2">
-        {[...active, ...others].map((c) => (
-          <button key={c.id} onClick={() => setSel(c)}
-            className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
-              sel?.id === c.id ? 'border-brand/50 bg-brand/10 text-paper' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
-            <Avatar src={c.avatar_url} name={c.full_name} size="sm" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium text-paper">{c.full_name || '—'}</span>
-              {c.handle && <span className="block truncate text-[11px] text-paper-dim">@{c.handle}</span>}
-            </span>
-            <span className="shrink-0 rounded-full bg-hair/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper-dim">
-              {OB_LABEL[c.onboarding_status] || c.onboarding_status}
-            </span>
-          </button>
-        ))}
+        {active.length > 0 && <div className="px-1 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Activas · {active.length} — súbeles contenido</div>}
+        {active.map(row)}
+        {others.length > 0 && <div className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">En proceso · {others.length}</div>}
+        {others.map(row)}
         {creators.length === 0 && <p className="text-sm text-paper-dim">No hay creadoras todavía.</p>}
       </aside>
       {sel ? <CreatorDetail key={sel.id} creator={sel} me={me} flash={flash} /> : (
@@ -453,49 +498,58 @@ function CreatorDetail({ creator, me, flash }) {
         </div>
       )}
 
-      <div className="mt-5">
-        <form onSubmit={createFolder} className="flex gap-2">
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nueva carpeta (ej. Semana 1 — Venta)"
-            className="flex-1 rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-          <button type="submit" disabled={creating}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
-            <FolderPlus size={15} /> Crear
-          </button>
-        </form>
+      {/* Entrega simple: carpeta → pedido → subir. Nada más. */}
+      <div className="mt-5 rounded-2xl border border-line bg-card p-5">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-paper">
+          <Upload size={15} className="text-brand" /> Entregar contenido a {creator.full_name}
+        </h3>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(folders || []).map((f) => (
-            <button key={f.id} onClick={() => setFolderSel(f.id)}
-              className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition-colors ${
-                folderSel === f.id ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
-              <Folder size={14} /> {f.name}
-              <span className="font-mono text-[10px] text-paper-dim">{f.assets?.length || 0}</span>
-            </button>
-          ))}
-          {folders && folders.length === 0 && <span className="text-sm text-paper-dim">Sin carpetas — crea la primera.</span>}
+        {/* 1 · Carpeta */}
+        <div className="mt-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">1 · ¿En qué carpeta va?</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {(folders || []).map((f) => (
+              <button key={f.id} type="button" onClick={() => setFolderSel(f.id)}
+                className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition-colors ${
+                  folderSel === f.id ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
+                <Folder size={14} /> {f.name}
+                <span className="font-mono text-[10px] text-paper-dim">{f.assets?.length || 0}</span>
+              </button>
+            ))}
+            <form onSubmit={createFolder} className="flex items-center gap-1.5">
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="+ Nueva carpeta…"
+                className="w-40 rounded-full border border-dashed border-line bg-transparent px-3.5 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              {newName.trim() && (
+                <button type="submit" disabled={creating}
+                  className="grid h-9 w-9 place-items-center rounded-full border border-brand/40 bg-brand/10 text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+                  {creating ? <Loader2 size={14} className="animate-spin" /> : <FolderPlus size={14} />}
+                </button>
+              )}
+            </form>
+          </div>
         </div>
 
-        <div className="mt-3">
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Propósito de esta entrega (por qué se hizo)</label>
-          <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} rows={2}
-            placeholder="Ej. Pack PPV de bienvenida para la lista; teaser para el chat del fin de semana…"
-            className="mt-1 w-full resize-none rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-          <p className="mt-1 text-[11px] text-paper-dim">Se guarda en cada foto de esta subida y la creadora lo ve en su cuenta.</p>
-        </div>
-
+        {/* 2 · Pedido (solo si tiene abiertos) */}
         {openReqs.length > 0 && (
-          <div className="mt-3">
-            <label className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">¿Corresponde a un pedido? (se marcará entregado)</label>
+          <div className="mt-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">2 · ¿Responde a un pedido? <span className="normal-case text-paper-dim/80">— se marcará entregado solo</span></div>
             <select value={reqSel} onChange={(e) => setReqSel(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
+              className="mt-2 w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
               <option value="">No — entrega libre</option>
               {openReqs.map((r) => <option key={r.id} value={r.id}>{r.title} · {REQ_STATUS[r.status]?.l || r.status}</option>)}
             </select>
           </div>
         )}
 
+        {/* 3 · Para qué */}
+        <div className="mt-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">{openReqs.length > 0 ? '3' : '2'} · ¿Para qué se hizo? <span className="normal-case text-paper-dim/80">— la creadora lo ve en cada foto</span></div>
+          <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Ej. Pack PPV de bienvenida para la lista"
+            className="mt-2 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        </div>
+
         <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading || !folderSel}
-          className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2 py-8 transition-colors hover:border-brand/40 disabled:opacity-50">
+          className="mt-4 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2 py-8 transition-colors hover:border-brand/40 disabled:opacity-50">
           {uploading ? (
             <span className="flex items-center gap-2 text-sm text-paper"><Loader2 size={17} className="animate-spin" /> Subiendo {uploading} para {creator.full_name}…</span>
           ) : (
@@ -505,7 +559,7 @@ function CreatorDetail({ creator, me, flash }) {
                 <span className="text-sm font-medium text-paper">
                   {folderSel
                     ? <>Subir fotos o videos → «{(folders || []).find((f) => f.id === folderSel)?.name}» de <span className="text-brand">{creator.full_name}</span></>
-                    : <>Elige arriba una carpeta de <span className="text-brand">{creator.full_name}</span> para subirle</>}
+                    : <>Elige la carpeta del paso 1 para subirle a <span className="text-brand">{creator.full_name}</span></>}
                 </span>
               </span>
               <span className="flex items-center gap-1.5 text-[11px] text-paper-dim">
