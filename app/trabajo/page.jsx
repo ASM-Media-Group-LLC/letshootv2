@@ -17,6 +17,7 @@ import {
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
+import { sumCents, moneyCents } from '@/lib/money';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
 
@@ -62,8 +63,7 @@ export default function TrabajoPage() {
   const [staff, setStaff] = useState([]);
   const [counts, setCounts] = useState(null); // números reales de las tarjetas
   const [books, setBooks] = useState(null);   // números de empresa (producción/agencias)
-  const [ms, setMs] = useState(null);         // resumen del libro Manual Sales
-  const [salesPing, setSalesPing] = useState(0); // refresca el card cuando se agrega una venta
+  const [ms, setMs] = useState(null);         // resumen del libro Manual Sales (centavos exactos)
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
   const meRef = useRef(null);
@@ -97,9 +97,9 @@ export default function TrabajoPage() {
     setBooks(bk.data || null);
     const srows = sales.data || [];
     setMs({
-      total: srows.reduce((s, r) => s + Number(r.amount || 0), 0),
+      totalC: sumCents(srows, (r) => r.amount),
       count: srows.length,
-      month: srows.filter((r) => r.period_month === monthKey).reduce((s, r) => s + Number(r.amount || 0), 0),
+      monthC: sumCents(srows.filter((r) => r.period_month === monthKey), (r) => r.amount),
     });
     const reqs = rq.data || [], fbs = fb.data || [];
     setCounts({
@@ -186,7 +186,7 @@ export default function TrabajoPage() {
   ];
   const BIZ_CARDS = [
     ...(can('metrics') ? [{ id: 'produccion', icon: ImageIcon, label: 'Producción', value: nf(books?.pieces || 0), sub: `piezas creadas en total` }] : []),
-    ...(can('metrics') ? [{ id: 'ventas', icon: DollarSign, label: 'Manual Sales', value: money(ms?.total || 0), sub: `${nf(ms?.count || 0)} ventas · ${money(ms?.month || 0)} este mes` }] : []),
+    ...(can('metrics') ? [{ id: 'ventas', href: '/sales', icon: DollarSign, label: 'Manual Sales', value: moneyCents(ms?.totalC || 0), sub: `${nf(ms?.count || 0)} ventas · ${moneyCents(ms?.monthC || 0)} este mes — abrir /sales` }] : []),
     ...(can('metrics') ? [{ id: 'agencias', icon: Building2, label: 'Agencias', value: nf(books?.agencies || 0), sub: `${nf(books?.creators || 0)} creadoras en total` }] : []),
     ...(can('team') ? [{ id: 'equipo', icon: UserCog, label: 'Equipo', value: nf(staff.length), sub: staffPend ? `${staffPend} por aprobar` : 'todos con acceso', alert: staffPend > 0 }] : []),
   ];
@@ -194,7 +194,7 @@ export default function TrabajoPage() {
   const cardBtn = (k) => {
     const open = tab === k.id;
     return (
-      <button key={k.id} onClick={() => setTab(open ? null : k.id)}
+      <button key={k.id} onClick={() => (k.href ? router.push(k.href) : setTab(open ? null : k.id))}
         className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition-all ${
           open ? 'border-brand/60 bg-brand/[0.08] shadow-glow-sm'
           : k.alert ? 'border-amber-500/30 bg-amber-500/[0.04] hover:border-amber-400/50'
@@ -204,7 +204,9 @@ export default function TrabajoPage() {
             open ? 'bg-brand text-on-accent' : k.alert ? 'bg-amber-500/15 text-amber-300' : 'bg-brand/10 text-brand'}`}>
             <k.icon size={17} />
           </span>
-          <ChevronDown size={15} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180 text-brand' : ''}`} />
+          {k.href
+            ? <ChevronRight size={15} className="shrink-0 text-paper-dim" />
+            : <ChevronDown size={15} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180 text-brand' : ''}`} />}
         </div>
         <div className="mt-3 font-display text-2xl font-semibold leading-none text-paper">{k.value}</div>
         <div className="mt-1.5 text-sm font-medium text-paper">{k.label}</div>
@@ -287,7 +289,6 @@ export default function TrabajoPage() {
         {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
         {tab === 'feedback' && can('feedback') && <FeedbackTab creators={creators} flash={flash} />}
         {tab === 'produccion' && can('metrics') && <ProduccionTab books={books} />}
-        {tab === 'ventas' && can('metrics') && <ManualSalesTab creators={creators} me={me} flash={flash} onChange={() => { setSalesPing((x) => x + 1); load(); }} ping={salesPing} />}
         {tab === 'agencias' && can('metrics') && <AgenciasTab books={books} />}
         {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
       </main>
@@ -1186,255 +1187,6 @@ function ProduccionTab({ books }) {
           ))}
         </div>
       </section>
-    </div>
-  );
-}
-
-/* ── Manual Sales: libro de ventas a mano (hasta tener procesador de pago) ─ */
-const ymLabelEs = (ym) => {
-  if (!ym) return '—';
-  const [y, m] = ym.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, 1).toLocaleDateString('es-US', { month: 'long', year: 'numeric' });
-};
-const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
-const daysUntil = (d) => (d ? Math.round((new Date(d + 'T00:00:00') - new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00')) / 86400000) : null);
-
-function ManualSalesTab({ creators, me, flash, onChange, ping }) {
-  const [rows, setRows] = useState(null);
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-  const [q, setQ] = useState('');
-  const [fMonth, setFMonth] = useState('all');
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const thisMonth = todayISO.slice(0, 7);
-  const blank = { model_name: '', instagram: '', sold_on: todayISO, amount: '', period_month: thisMonth, pieces: '', concept: '', rebill_on: '' };
-  const [form, setForm] = useState(blank);
-
-  const load = useCallback(async () => {
-    const { data } = await getSupabase().from('manual_sales')
-      .select('*').order('sold_on', { ascending: false }).order('created_at', { ascending: false });
-    setRows(data || []);
-  }, []);
-  useEffect(() => { load(); }, [load, ping]);
-
-  // Autocompletar Instagram al escribir un nombre que coincide con una modelo.
-  function onModelName(v) {
-    const match = creators.find((c) => (c.full_name || '').toLowerCase() === v.trim().toLowerCase());
-    setForm((f) => ({ ...f, model_name: v, ...(match ? { instagram: match.handle ? `@${match.handle}` : f.instagram, creator_id: match.id } : {}) }));
-  }
-
-  async function save(e) {
-    e.preventDefault();
-    setErr('');
-    if (!form.model_name.trim()) { setErr('Falta el nombre de la modelo.'); return; }
-    if (!form.amount || Number(form.amount) <= 0) { setErr('Pon un monto válido.'); return; }
-    setSaving(true);
-    const { error } = await getSupabase().from('manual_sales').insert({
-      creator_id: form.creator_id || null,
-      model_name: form.model_name.trim(),
-      instagram: form.instagram.trim() || null,
-      sold_on: form.sold_on || todayISO,
-      amount: Number(form.amount),
-      period_month: form.period_month || null,
-      pieces: Number(form.pieces) || 0,
-      concept: form.concept.trim() || null,
-      rebill_on: form.rebill_on || null,
-      created_by: me.id,
-    });
-    setSaving(false);
-    if (error) { setErr(error.message); return; }
-    setForm(blank); setOpen(false);
-    flash('Venta registrada');
-    await load();
-    onChange?.();
-  }
-
-  if (rows === null) return <p className="mt-6 text-sm text-paper-dim">Cargando…</p>;
-
-  // Filtros
-  const t = q.trim().toLowerCase();
-  const view = rows.filter((r) => {
-    if (fMonth !== 'all' && r.period_month !== fMonth) return false;
-    if (t && !(`${r.model_name} ${r.instagram || ''} ${r.concept || ''}`.toLowerCase().includes(t))) return false;
-    return true;
-  });
-  const total = view.reduce((s, r) => s + Number(r.amount || 0), 0);
-  const pieces = view.reduce((s, r) => s + Number(r.pieces || 0), 0);
-  const monthTotal = rows.filter((r) => r.period_month === thisMonth).reduce((s, r) => s + Number(r.amount || 0), 0);
-  // Próximos cobros: rebill dentro de 14 días o vencidos, no muy viejos.
-  const upcoming = rows.filter((r) => r.rebill_on && daysUntil(r.rebill_on) !== null && daysUntil(r.rebill_on) <= 14 && daysUntil(r.rebill_on) >= -30)
-    .sort((a, b) => a.rebill_on.localeCompare(b.rebill_on));
-  const months = [...new Set(rows.map((r) => r.period_month).filter(Boolean))].sort().reverse();
-
-  // Agrupar por mes que cubre.
-  const groups = {};
-  view.forEach((r) => { const k = r.period_month || 'sin-mes'; (groups[k] = groups[k] || []).push(r); });
-  const groupKeys = Object.keys(groups).sort().reverse();
-
-  return (
-    <div className="mt-6 space-y-6">
-      {/* Resumen */}
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen del libro</p>
-          <button onClick={() => { setForm(blank); setErr(''); setOpen(true); }}
-            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
-            <Plus size={15} /> New entry
-          </button>
-        </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat icon={DollarSign} label="Vendido (filtro)" value={money(total)} sub={`${view.length} ventas · ${nf(pieces)} piezas`} />
-          <Stat icon={DollarSign} label="Este mes" value={money(monthTotal)} sub={ymLabelEs(thisMonth)} />
-          <Stat icon={ShoppingBag} label="Ventas totales" value={nf(rows.length)} sub="entradas en el libro" />
-          <Stat icon={Clock} label="Próximos cobros" value={nf(upcoming.length)} sub="en 14 días o vencidos" />
-        </div>
-      </section>
-
-      {/* Próximos cobros */}
-      {upcoming.length > 0 && (
-        <section>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Por volver a cobrar</p>
-          <div className="space-y-2">
-            {upcoming.map((r) => {
-              const d = daysUntil(r.rebill_on);
-              const late = d < 0;
-              return (
-                <div key={r.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 ${late ? 'border-rose-500/30 bg-rose-500/[0.05]' : 'border-amber-500/25 bg-amber-500/[0.04]'}`}>
-                  <div className="min-w-0">
-                    <span className="text-sm font-semibold text-paper">{r.model_name}</span>
-                    {r.instagram && <span className="ml-2 text-[11px] text-paper-dim">{r.instagram}</span>}
-                    {r.concept && <span className="ml-2 text-[11px] text-paper-dim">· {r.concept}</span>}
-                  </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="font-semibold text-paper">{money(r.amount)}</span>
-                    <span className={late ? 'text-rose-300' : 'text-amber-300'}>{late ? `vencido hace ${Math.abs(d)}d` : d === 0 ? 'hoy' : `en ${d}d`} · {fmtDate(r.rebill_on)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Filtros + libro por mes */}
-      <section>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[200px] flex-1">
-            <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por modelo, IG o concepto…"
-              className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-          </div>
-          <select value={fMonth} onChange={(e) => setFMonth(e.target.value)}
-            className="rounded-full border border-line bg-card px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
-            <option value="all">Todos los meses</option>
-            {months.map((m) => <option key={m} value={m}>{ymLabelEs(m)}</option>)}
-          </select>
-        </div>
-
-        {rows.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-line bg-card/50 p-10 text-center">
-            <DollarSign size={24} className="mx-auto mb-2 text-paper-dim" />
-            <p className="text-sm text-paper-mute">El libro está en cero. Toca <span className="font-semibold text-paper">New entry</span> para registrar la primera venta a mano.</p>
-          </div>
-        )}
-        {rows.length > 0 && view.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">Ninguna venta coincide con tu búsqueda.</p>}
-
-        {groupKeys.map((k) => {
-          const gRows = groups[k];
-          const gTotal = gRows.reduce((s, r) => s + Number(r.amount || 0), 0);
-          const gPieces = gRows.reduce((s, r) => s + Number(r.pieces || 0), 0);
-          return (
-            <div key={k} className="mb-5">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-semibold capitalize text-paper">{k === 'sin-mes' ? 'Sin mes asignado' : ymLabelEs(k)}</span>
-                <span className="text-xs text-paper-dim">{gRows.length} ventas · {nf(gPieces)} piezas · <span className="font-semibold text-brand">{money(gTotal)}</span></span>
-              </div>
-              <div className="overflow-hidden rounded-2xl border border-line">
-                {gRows.map((r, i) => (
-                  <div key={r.id} className={`flex flex-wrap items-center gap-3 bg-card p-3.5 ${i > 0 ? 'border-t border-line' : ''}`}>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-paper">{r.model_name}</span>
-                        {r.instagram && <span className="truncate text-[11px] text-paper-dim">{r.instagram}</span>}
-                      </div>
-                      <div className="mt-0.5 truncate text-[11px] text-paper-dim">
-                        {r.concept || 'Venta'} · {r.pieces || 0} piezas · vendido {fmtDate(r.sold_on)}
-                        {r.rebill_on && <> · recobrar {fmtDate(r.rebill_on)}</>}
-                      </div>
-                    </div>
-                    <div className="shrink-0 font-display text-base font-semibold text-paper">{money(r.amount)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </section>
-
-      {/* New entry — modal */}
-      {open && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/80 p-5 backdrop-blur-sm" onClick={() => setOpen(false)}>
-          <form onClick={(e) => e.stopPropagation()} onSubmit={save}
-            className="w-full max-w-lg rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="font-display text-lg font-semibold text-paper">Nueva venta manual</h3>
-              <button type="button" onClick={() => setOpen(false)} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
-            </div>
-            <p className="mb-4 text-xs text-paper-dim">Regístrala a mano. Todo se suma y se agrupa por el mes que cubre.</p>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block sm:col-span-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Modelo</span>
-                <input list="ms-models" value={form.model_name} onChange={(e) => onModelName(e.target.value)} placeholder="Ej. Valentina"
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                <datalist id="ms-models">{creators.map((c) => <option key={c.id} value={c.full_name || ''} />)}</datalist>
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Instagram</span>
-                <input value={form.instagram} onChange={(e) => setForm((f) => ({ ...f, instagram: e.target.value }))} placeholder="@usuaria"
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Monto vendido (USD)</span>
-                <input type="number" min="0" step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} placeholder="0.00"
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Fecha de la venta</span>
-                <input type="date" value={form.sold_on} onChange={(e) => setForm((f) => ({ ...f, sold_on: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Mes que cubre</span>
-                <input type="month" value={form.period_month} onChange={(e) => setForm((f) => ({ ...f, period_month: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Piezas de contenido</span>
-                <input type="number" min="0" value={form.pieces} onChange={(e) => setForm((f) => ({ ...f, pieces: e.target.value }))} placeholder="0"
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-              </label>
-              <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Volver a cobrar el</span>
-                <input type="date" value={form.rebill_on} onChange={(e) => setForm((f) => ({ ...f, rebill_on: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Concepto</span>
-                <input value={form.concept} onChange={(e) => setForm((f) => ({ ...f, concept: e.target.value }))} placeholder="Ej. Pack PPV de bienvenida · suscripción mensual"
-                  className="mt-1 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-              </label>
-            </div>
-
-            {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
-            <button type="submit" disabled={saving}
-              className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-              {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Registrar venta
-            </button>
-          </form>
-        </div>
-      )}
     </div>
   );
 }
