@@ -12,6 +12,7 @@ import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
   Check, RefreshCw, Sparkles, ChevronRight, ChevronDown, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
+  ImageIcon, DollarSign, Building2, Film, ShoppingBag, TrendingUp, TrendingDown,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -60,6 +61,7 @@ export default function TrabajoPage() {
   const [creators, setCreators] = useState([]);
   const [staff, setStaff] = useState([]);
   const [counts, setCounts] = useState(null); // números reales de las tarjetas
+  const [books, setBooks] = useState(null);   // números de empresa (producción/pagos/agencias)
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
   const meRef = useRef(null);
@@ -79,24 +81,22 @@ export default function TrabajoPage() {
     const pcaps = profile.role === 'admin'
       ? ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team']
       : (profile.capabilities || []);
-    const monthStart = new Date().toISOString().slice(0, 8) + '01';
-    const [{ data: cr }, { data: st }, rq, fb, as] = await Promise.all([
+    const [{ data: cr }, { data: st }, rq, fb, bk] = await Promise.all([
       supabase.rpc('team_creators'),
       supabase.rpc('team_staff'),
       pcaps.includes('requests') ? supabase.from('requests').select('id, status') : Promise.resolve({ data: [] }),
       pcaps.includes('feedback') ? supabase.from('feedback').select('id, kind, resolved') : Promise.resolve({ data: [] }),
-      pcaps.includes('metrics') ? supabase.from('assets').select('id, revenue').gte('deliver_date', monthStart) : Promise.resolve({ data: [] }),
+      pcaps.includes('metrics') ? supabase.rpc('team_books') : Promise.resolve({ data: null }),
     ]);
     setCreators(cr || []);
     setStaff(st || []);
-    const reqs = rq.data || [], fbs = fb.data || [], month = as.data || [];
+    setBooks(bk.data || null);
+    const reqs = rq.data || [], fbs = fb.data || [];
     setCounts({
       reqPend: reqs.filter((r) => r.status === 'pending').length,
       reqProg: reqs.filter((r) => r.status === 'in_progress').length,
       fbOpen: fbs.filter((f) => !f.resolved && f.kind !== 'love').length,
       fbLove: fbs.filter((f) => f.kind === 'love').length,
-      monthPieces: month.length,
-      monthRev: month.reduce((s, a) => s + Number(a.revenue || 0), 0),
     });
   }, []);
 
@@ -161,20 +161,47 @@ export default function TrabajoPage() {
     );
   }
 
-  // The summary cards ARE the navigation — real numbers, everything closed
-  // by default; tap a card to open its area, tap again to close.
+  // The cards ARE the navigation — real numbers, everything closed by default;
+  // tap a card to open its area, tap again to close. Split into two rooms:
+  // OPERACIÓN (the daily work queues) and EMPRESA (how the company is doing).
   const act = creators.filter((c) => ['active', 'paid'].includes(c.onboarding_status)).length;
   const proc = creators.length - act;
   const idPend = creators.filter((c) => c.onboarding_status === 'id_pending').length;
   const staffPend = staff.filter((s) => s.staff_status === 'pending').length;
-  const CARDS = [
+  const OPS_CARDS = [
     ...(can('content') ? [{ id: 'creadoras', icon: Users, label: 'Creadoras', value: nf(creators.length), sub: `${act} activas · ${proc} en proceso` }] : []),
     ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
     ...(can('requests') ? [{ id: 'pedidos', icon: Inbox, label: 'Pedidos', value: nf((counts?.reqPend || 0) + (counts?.reqProg || 0)), sub: `${counts?.reqPend || 0} pendientes · ${counts?.reqProg || 0} en producción`, alert: (counts?.reqPend || 0) > 0 }] : []),
     ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} ❤`, alert: (counts?.fbOpen || 0) > 0 }] : []),
-    ...(can('metrics') ? [{ id: 'metricas', icon: BarChart3, label: 'Producción', value: nf(counts?.monthPieces || 0), sub: `piezas este mes · ${money(counts?.monthRev || 0)} vendidos` }] : []),
+  ];
+  const BIZ_CARDS = [
+    ...(can('metrics') ? [{ id: 'produccion', icon: ImageIcon, label: 'Producción', value: nf(books?.pieces || 0), sub: `piezas creadas · ${nf(books?.month_pieces || 0)} este mes` }] : []),
+    ...(can('metrics') ? [{ id: 'pagos', icon: DollarSign, label: 'Pagos', value: money(books?.revenue || 0), sub: `ingresos totales · ${money(books?.month_revenue || 0)} este mes` }] : []),
+    ...(can('metrics') ? [{ id: 'agencias', icon: Building2, label: 'Agencias', value: nf(books?.agencies || 0), sub: `${nf(books?.creators || 0)} creadoras en total` }] : []),
     ...(can('team') ? [{ id: 'equipo', icon: UserCog, label: 'Equipo', value: nf(staff.length), sub: staffPend ? `${staffPend} por aprobar` : 'todos con acceso', alert: staffPend > 0 }] : []),
   ];
+
+  const cardBtn = (k) => {
+    const open = tab === k.id;
+    return (
+      <button key={k.id} onClick={() => setTab(open ? null : k.id)}
+        className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition-all ${
+          open ? 'border-brand/60 bg-brand/[0.08] shadow-glow-sm'
+          : k.alert ? 'border-amber-500/30 bg-amber-500/[0.04] hover:border-amber-400/50'
+          : 'border-line bg-card hover:border-brand/40 hover:bg-card/80'}`}>
+        <div className="flex items-center justify-between">
+          <span className={`grid h-9 w-9 place-items-center rounded-xl ${
+            open ? 'bg-brand text-on-accent' : k.alert ? 'bg-amber-500/15 text-amber-300' : 'bg-brand/10 text-brand'}`}>
+            <k.icon size={17} />
+          </span>
+          <ChevronDown size={15} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180 text-brand' : ''}`} />
+        </div>
+        <div className="mt-3 font-display text-2xl font-semibold leading-none text-paper">{k.value}</div>
+        <div className="mt-1.5 text-sm font-medium text-paper">{k.label}</div>
+        <div className={`mt-0.5 truncate text-[11px] ${k.alert && !open ? 'text-amber-200' : 'text-paper-dim'}`}>{k.sub}</div>
+      </button>
+    );
+  };
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
@@ -214,34 +241,26 @@ export default function TrabajoPage() {
           Todo tu trabajo en un vistazo. Toca una tarjeta para abrir esa área.
         </p>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {CARDS.map((k) => {
-            const open = tab === k.id;
-            return (
-              <button key={k.id} onClick={() => setTab(open ? null : k.id)}
-                className={`rounded-2xl border p-4 text-left transition-colors ${
-                  open ? 'border-brand/50 bg-brand/[0.07] shadow-glow-sm'
-                  : k.alert ? 'border-amber-500/30 bg-amber-500/[0.04] hover:border-amber-400/50'
-                  : 'border-line bg-card hover:border-brand/30'}`}>
-                <div className="flex items-center justify-between gap-1 text-paper-dim">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <k.icon size={14} className={k.alert && !open ? 'text-amber-300' : 'text-brand'} />
-                    <span className="truncate text-xs font-medium">{k.label}</span>
-                  </span>
-                  <ChevronDown size={13} className={`shrink-0 transition-transform ${open ? 'rotate-180 text-brand' : ''}`} />
-                </div>
-                <div className="mt-1 font-display text-xl font-semibold text-paper sm:text-2xl">{k.value}</div>
-                <div className={`mt-0.5 truncate text-[10px] ${k.alert && !open ? 'text-amber-200' : 'text-paper-dim'}`}>{k.sub}</div>
-              </button>
-            );
-          })}
-        </div>
+        {OPS_CARDS.length > 0 && (
+          <>
+            <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Operación · tu trabajo del día</div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{OPS_CARDS.map(cardBtn)}</div>
+          </>
+        )}
+        {BIZ_CARDS.length > 0 && (
+          <>
+            <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Empresa · cómo vamos</div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{BIZ_CARDS.map(cardBtn)}</div>
+          </>
+        )}
 
         {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
         {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
         {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
         {tab === 'feedback' && can('feedback') && <FeedbackTab creators={creators} flash={flash} />}
-        {tab === 'metricas' && can('metrics') && <MetricasTab creators={creators} />}
+        {tab === 'produccion' && can('metrics') && <ProduccionTab books={books} />}
+        {tab === 'pagos' && can('metrics') && <PagosTab books={books} />}
+        {tab === 'agencias' && can('metrics') && <AgenciasTab books={books} />}
         {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
       </main>
 
@@ -255,13 +274,33 @@ export default function TrabajoPage() {
 }
 
 /* ── Creadoras: folders + deliveries upload + LoRA view ─────────────────── */
+// Which filter bucket a creator's onboarding_status falls into.
+const CREATOR_CAT = {
+  active: 'active', paid: 'active', info: 'info', id_pending: 'id_pending',
+  id_rejected: 'id_rejected', id_approved: 'falta_pago', authorized: 'falta_pago', registered: 'registered',
+};
+const CREATOR_FILTERS = [
+  ['all', 'Todas'], ['active', 'Activas'], ['info', 'Falta ID'], ['id_pending', 'En revisión'],
+  ['id_rejected', 'Rechazado'], ['falta_pago', 'Falta pago'], ['registered', 'Registrada'],
+];
+
 function CreadorasTab({ creators, me, flash }) {
   const [sel, setSel] = useState(null);
-  const active = creators.filter((c) => ['active', 'paid'].includes(c.onboarding_status));
-  const others = creators.filter((c) => !['active', 'paid'].includes(c.onboarding_status));
+  const [q, setQ] = useState('');
+  const [fCat, setFCat] = useState('all');
 
   // Inside a creator you get her full-width library; back returns to the roster.
   if (sel) return <CreatorDetail key={sel.id} creator={sel} me={me} flash={flash} onBack={() => setSel(null)} />;
+
+  const catOf = (c) => CREATOR_CAT[c.onboarding_status] || 'registered';
+  const view = creators.filter((c) => {
+    if (fCat !== 'all' && catOf(c) !== fCat) return false;
+    const t = q.trim().toLowerCase();
+    if (t && !(`${c.full_name || ''} ${c.handle || ''}`.toLowerCase().includes(t))) return false;
+    return true;
+  });
+  const active = view.filter((c) => catOf(c) === 'active');
+  const others = view.filter((c) => catOf(c) !== 'active');
 
   const card = (c) => (
     <button key={c.id} onClick={() => setSel(c)}
@@ -281,6 +320,26 @@ function CreadorasTab({ creators, me, flash }) {
 
   return (
     <div className="mt-6">
+      <div className="relative mb-3">
+        <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar creadora por nombre o @…"
+          className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+      </div>
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {CREATOR_FILTERS.map(([v, l]) => {
+          const n = v === 'all' ? creators.length : creators.filter((c) => catOf(c) === v).length;
+          if (v !== 'all' && n === 0) return null;
+          return (
+            <button key={v} onClick={() => setFCat(v)}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                fCat === v ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
+              {l} · {n}
+            </button>
+          );
+        })}
+      </div>
+
+      {view.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{creators.length === 0 ? 'No hay creadoras todavía.' : 'Ninguna creadora coincide con tu búsqueda.'}</p>}
       {active.length > 0 && (
         <>
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Activas · {active.length} — entra para ver su biblioteca y subirle</div>
@@ -289,11 +348,10 @@ function CreadorasTab({ creators, me, flash }) {
       )}
       {others.length > 0 && (
         <>
-          <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">En proceso · {others.length}</div>
+          <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{active.length > 0 ? 'En proceso' : 'Resultados'} · {others.length}</div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{others.map(card)}</div>
         </>
       )}
-      {creators.length === 0 && <p className="text-sm text-paper-dim">No hay creadoras todavía.</p>}
     </div>
   );
 }
@@ -644,6 +702,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
 function KycTab({ flash }) {
   const [list, setList] = useState(null);
   const [busy, setBusy] = useState(null);
+  const [q, setQ] = useState('');
 
   const load = useCallback(async () => {
     const supabase = getSupabase();
@@ -682,11 +741,25 @@ function KycTab({ flash }) {
   const DOC_LABEL = { id_front: 'ID frente', id_back: 'ID reverso', selfie_id: 'Selfie con ID' };
   if (list === null) return <p className="mt-6 text-sm text-paper-dim">Cargando…</p>;
 
+  const t = q.trim().toLowerCase();
+  const view = list.filter((u) => !t || `${u.legal_first_name || ''} ${u.legal_last_name || ''} ${u.full_name || ''} ${u.stage_name || ''} ${u.country || ''}`.toLowerCase().includes(t));
+
   return (
     <div className="mt-6 space-y-4">
-      <p className="text-sm text-paper-mute">Identidades por revisar. Aprueba para que la creadora pueda pagar, o rechaza con un motivo.</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-paper-mute">Identidades por revisar. Aprueba o rechaza con un motivo.</p>
+        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">{list.length} en cola</span>
+      </div>
+      {list.length > 0 && (
+        <div className="relative">
+          <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre, alias o país…"
+            className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        </div>
+      )}
       {list.length === 0 && <p className="rounded-2xl border border-line bg-card p-8 text-center text-sm text-paper-dim">No hay identidades pendientes. Todo al día. 🎉</p>}
-      {list.map((u) => (
+      {list.length > 0 && view.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">Ninguna coincide con tu búsqueda.</p>}
+      {view.map((u) => (
         <div key={u.id} className="rounded-2xl border border-line bg-card p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -859,6 +932,8 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
 /* ── Feedback de creadoras ──────────────────────────────────────────────── */
 function FeedbackTab({ creators, flash }) {
   const [items, setItems] = useState(null);
+  const [q, setQ] = useState('');
+  const [fKind, setFKind] = useState('all');
   const nameOf = (id) => creators.find((c) => c.id === id)?.full_name || '—';
 
   const load = useCallback(async () => {
@@ -894,11 +969,41 @@ function FeedbackTab({ creators, flash }) {
     load();
   }
 
+  const t = q.trim().toLowerCase();
+  const view = (items || []).filter((f) => {
+    if (fKind === 'love' && f.kind !== 'love') return false;
+    if (fKind === 'change' && f.kind === 'love') return false;
+    if (fKind === 'open' && (f.resolved || f.kind === 'love')) return false;
+    if (t && !(`${nameOf(f.creator_id)} ${f.message || ''} ${f._asset?.title || ''}`.toLowerCase().includes(t))) return false;
+    return true;
+  });
+
   return (
     <div className="mt-6 space-y-3">
+      <div className="relative">
+        <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar en feedback por creadora, mensaje o pieza…"
+          className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {[['all', 'Todo'], ['open', 'Cambios sin resolver'], ['change', 'Piden cambio'], ['love', 'Les encantó']].map(([v, l]) => {
+          const n = v === 'all' ? (items || []).length
+            : v === 'open' ? (items || []).filter((f) => !f.resolved && f.kind !== 'love').length
+            : v === 'change' ? (items || []).filter((f) => f.kind !== 'love').length
+            : (items || []).filter((f) => f.kind === 'love').length;
+          return (
+            <button key={v} onClick={() => setFKind(v)}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                fKind === v ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
+              {l} · {n}
+            </button>
+          );
+        })}
+      </div>
       {items === null && <p className="text-paper-dim">Cargando…</p>}
       {items?.length === 0 && <p className="rounded-2xl border border-line bg-card p-8 text-center text-paper-dim">Sin feedback todavía.</p>}
-      {(items || []).map((f) => (
+      {items?.length > 0 && view.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">Nada coincide con tu búsqueda.</p>}
+      {view.map((f) => (
         <div key={f.id} className={`flex items-start justify-between gap-3 rounded-2xl border p-4 ${f.resolved ? 'border-line bg-card/50 opacity-70' : f.kind !== 'love' ? 'border-amber-500/25 bg-card' : 'border-line bg-card'}`}>
           <div className="flex min-w-0 items-start gap-3">
             {/* La foto exacta a la que le dio love / pidió el cambio */}
@@ -935,51 +1040,123 @@ function FeedbackTab({ creators, flash }) {
 }
 
 /* ── Métricas: embudo de creadoras + pedidos (función 'metrics') ────────── */
-function MetricasTab({ creators }) {
-  const [reqs, setReqs] = useState(null);
-  useEffect(() => {
-    (async () => {
-      const { data } = await getSupabase().from('requests').select('id, status');
-      setReqs(data || []);
-    })();
-  }, []);
-
-  const funnel = [
-    ['Registrada', creators.filter((c) => c.onboarding_status === 'registered').length],
-    ['Falta ID', creators.filter((c) => ['info'].includes(c.onboarding_status)).length],
-    ['ID en revisión', creators.filter((c) => c.onboarding_status === 'id_pending').length],
-    ['ID rechazado', creators.filter((c) => c.onboarding_status === 'id_rejected').length],
-    ['Falta pago', creators.filter((c) => ['id_approved', 'authorized'].includes(c.onboarding_status)).length],
-    ['Activa', creators.filter((c) => ['active', 'paid'].includes(c.onboarding_status)).length],
-  ];
-  const rq = [
-    ['Pendientes', (reqs || []).filter((r) => r.status === 'pending').length],
-    ['En producción', (reqs || []).filter((r) => r.status === 'in_progress').length],
-    ['Entregados', (reqs || []).filter((r) => r.status === 'delivered').length],
-  ];
-
+// Small stat tile with an optional month-over-month delta chip.
+function Stat({ icon: Icon, label, value, sub, delta }) {
   return (
-    <div className="mt-6 space-y-6">
+    <div className="rounded-2xl border border-line bg-card p-4">
+      <div className="flex items-center justify-between">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand/10 text-brand"><Icon size={17} /></span>
+        {delta !== undefined && delta !== null && (
+          <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${delta >= 0 ? 'text-brand' : 'text-rose-300'}`}>
+            {delta >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{delta >= 0 ? '+' : ''}{delta}%
+          </span>
+        )}
+      </div>
+      <div className="mt-3 font-display text-2xl font-semibold leading-none text-paper">{value}</div>
+      <div className="mt-1.5 text-sm font-medium text-paper">{label}</div>
+      {sub && <div className="mt-0.5 text-[11px] text-paper-dim">{sub}</div>}
+    </div>
+  );
+}
+
+function AgencyRow({ r, total }) {
+  const share = total > 0 ? Math.round((Number(r.revenue) / total) * 100) : 0;
+  return (
+    <div className="rounded-2xl border border-line bg-card p-4">
+      <div className="flex items-center gap-3">
+        <Avatar src={r.avatar_url} name={r.name} size="md" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-semibold text-paper">{r.name}</span>
+            {r.handle && <span className="truncate text-[11px] text-paper-dim">@{r.handle}</span>}
+          </div>
+          <div className="mt-0.5 text-[11px] text-paper-dim">{nf(r.models)} modelos · {nf(r.pieces)} piezas</div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-brand/15"><span className="block h-full rounded-full bg-brand" style={{ width: `${share}%` }} /></span>
+            <span className="text-[10px] font-semibold text-paper-dim">{share}%</span>
+          </div>
+        </div>
+        <div className="shrink-0 text-right font-display text-lg font-semibold text-paper">{money(r.revenue)}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Producción: cuánto ha producido la empresa (fotos + videos) ────────── */
+function ProduccionTab({ books }) {
+  if (!books) return <p className="mt-6 text-sm text-paper-dim">Cargando…</p>;
+  const delta = books.prev_pieces > 0 ? Math.round(((books.month_pieces - books.prev_pieces) / books.prev_pieces) * 100) : null;
+  const top = [...(books.top_creators || [])].filter((c) => c.pieces > 0).sort((a, b) => b.pieces - a.pieces);
+  const max = top[0]?.pieces || 1;
+  return (
+    <div className="mt-6 space-y-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat icon={ImageIcon} label="Piezas producidas" value={nf(books.pieces)} sub="histórico de la empresa" />
+        <Stat icon={ImageIcon} label="Fotos" value={nf(books.photos)} sub={`${nf(books.videos)} videos`} />
+        <Stat icon={BarChart3} label="Este mes" value={nf(books.month_pieces)} sub={`vs. ${nf(books.prev_pieces)} el mes pasado`} delta={delta} />
+        <Stat icon={Film} label="Videos" value={nf(books.videos)} sub="clips entregados" />
+      </div>
       <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Creadoras · embudo</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {funnel.map(([l, n]) => (
-            <div key={l} className="rounded-2xl border border-line bg-card p-4">
-              <p className="text-[11px] font-medium text-paper-dim">{l}</p>
-              <p className="mt-1 font-display text-2xl font-semibold text-paper">{n}</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Producción por modelo · quién genera más contenido</p>
+        <div className="space-y-2">
+          {top.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Aún no hay producción.</p>}
+          {top.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3.5">
+              <Avatar src={c.avatar_url} name={c.name} size="sm" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2"><span className="truncate text-sm font-semibold text-paper">{c.name}</span>{c.handle && <span className="truncate text-[11px] text-paper-dim">@{c.handle}</span>}</div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-brand/15"><span className="block h-full rounded-full bg-brand" style={{ width: `${(c.pieces / max) * 100}%` }} /></div>
+              </div>
+              <div className="shrink-0 text-right"><span className="font-display text-base font-semibold text-paper">{nf(c.pieces)}</span><span className="block text-[10px] text-paper-dim">piezas</span></div>
             </div>
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Pagos: ingresos de la plataforma (total, mes, por agencia) ─────────── */
+function PagosTab({ books }) {
+  if (!books) return <p className="mt-6 text-sm text-paper-dim">Cargando…</p>;
+  const delta = Number(books.prev_revenue) > 0 ? Math.round(((Number(books.month_revenue) - Number(books.prev_revenue)) / Number(books.prev_revenue)) * 100) : null;
+  const rows = [...(books.agency_rows || [])].sort((a, b) => Number(b.revenue) - Number(a.revenue));
+  return (
+    <div className="mt-6 space-y-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat icon={DollarSign} label="Ingresos totales" value={money(books.revenue)} sub="histórico de la plataforma" />
+        <Stat icon={DollarSign} label="Este mes" value={money(books.month_revenue)} sub={`vs. ${money(books.prev_revenue)} el mes pasado`} delta={delta} />
+        <Stat icon={ShoppingBag} label="Piezas vendidas" value={nf(books.sales)} sub="unidades cobradas" />
+        <Stat icon={Building2} label="Agencias" value={nf(books.agencies)} sub="que facturan" />
+      </div>
       <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Pedidos</p>
-        <div className="grid grid-cols-3 gap-3">
-          {rq.map(([l, n]) => (
-            <div key={l} className="rounded-2xl border border-line bg-card p-4">
-              <p className="text-[11px] font-medium text-paper-dim">{l}</p>
-              <p className="mt-1 font-display text-2xl font-semibold text-paper">{reqs === null ? '…' : n}</p>
-            </div>
-          ))}
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Ingresos por agencia</p>
+        <div className="space-y-2">
+          {rows.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Aún no hay ingresos registrados.</p>}
+          {rows.map((r) => <AgencyRow key={r.id} r={r} total={Number(books.revenue)} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Agencias: cuántas hay y qué gestiona cada una ──────────────────────── */
+function AgenciasTab({ books }) {
+  if (!books) return <p className="mt-6 text-sm text-paper-dim">Cargando…</p>;
+  const rows = [...(books.agency_rows || [])];
+  return (
+    <div className="mt-6 space-y-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat icon={Building2} label="Agencias" value={nf(books.agencies)} sub="en la plataforma" />
+        <Stat icon={Users} label="Creadoras" value={nf(books.creators)} sub="en la plataforma" />
+        <Stat icon={ImageIcon} label="Contenido" value={nf(books.pieces)} sub="piezas producidas" />
+        <Stat icon={DollarSign} label="Ingresos" value={money(books.revenue)} sub="generados en total" />
+      </div>
+      <div>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Cada agencia · modelos, contenido e ingresos</p>
+        <div className="space-y-2">
+          {rows.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Aún no hay agencias.</p>}
+          {rows.map((r) => <AgencyRow key={r.id} r={r} total={Number(books.revenue)} />)}
         </div>
       </div>
     </div>
