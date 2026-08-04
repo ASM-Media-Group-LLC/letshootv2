@@ -175,8 +175,8 @@ export default function TrabajoPage() {
     ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} ❤`, alert: (counts?.fbOpen || 0) > 0 }] : []),
   ];
   const BIZ_CARDS = [
-    ...(can('metrics') ? [{ id: 'produccion', icon: ImageIcon, label: 'Producción', value: nf(books?.pieces || 0), sub: `piezas creadas · ${nf(books?.month_pieces || 0)} este mes` }] : []),
-    ...(can('metrics') ? [{ id: 'pagos', icon: DollarSign, label: 'Pagos', value: money(books?.revenue || 0), sub: `ingresos totales · ${money(books?.month_revenue || 0)} este mes` }] : []),
+    ...(can('metrics') ? [{ id: 'produccion', icon: ImageIcon, label: 'Producción', value: nf(books?.pieces || 0), sub: `piezas creadas en total` }] : []),
+    ...(can('metrics') ? [{ id: 'pagos', icon: DollarSign, label: 'Ventas', value: money(books?.revenue || 0), sub: `${nf(books?.sales || 0)} piezas vendidas` }] : []),
     ...(can('metrics') ? [{ id: 'agencias', icon: Building2, label: 'Agencias', value: nf(books?.agencies || 0), sub: `${nf(books?.creators || 0)} creadoras en total` }] : []),
     ...(can('team') ? [{ id: 'equipo', icon: UserCog, label: 'Equipo', value: nf(staff.length), sub: staffPend ? `${staffPend} por aprobar` : 'todos con acceso', alert: staffPend > 0 }] : []),
   ];
@@ -238,21 +238,39 @@ export default function TrabajoPage() {
       <main className="mx-auto max-w-6xl px-5 py-8">
         <h1 className="font-display text-2xl font-semibold sm:text-3xl">Espacio de trabajo</h1>
         <p className="mt-1 text-sm text-paper-mute">
-          Todo tu trabajo en un vistazo. Toca una tarjeta para abrir esa área.
+          {tab ? 'Toca la barra de arriba para volver al panel.' : 'Todo tu trabajo en un vistazo. Toca una tarjeta para abrir esa área.'}
         </p>
 
-        {OPS_CARDS.length > 0 && (
+        {/* Panel cerrado: todas las tarjetas. Al abrir una, las demás desaparecen
+            y solo queda una barra activa arriba + el área — sin huecos. */}
+        {!tab && OPS_CARDS.length > 0 && (
           <>
             <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Operación · tu trabajo del día</div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{OPS_CARDS.map(cardBtn)}</div>
           </>
         )}
-        {BIZ_CARDS.length > 0 && (
+        {!tab && BIZ_CARDS.length > 0 && (
           <>
             <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Empresa · cómo vamos</div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{BIZ_CARDS.map(cardBtn)}</div>
           </>
         )}
+
+        {tab && (() => {
+          const k = [...OPS_CARDS, ...BIZ_CARDS].find((c) => c.id === tab);
+          if (!k) return null;
+          return (
+            <button onClick={() => setTab(null)}
+              className="mt-6 flex w-full items-center gap-3 rounded-2xl border border-brand/40 bg-brand/[0.06] px-4 py-3 text-left transition-colors hover:bg-brand/[0.1]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand text-on-accent"><k.icon size={17} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-paper">{k.label}</span>
+                <span className="block truncate text-[11px] text-paper-dim">{k.value} · {k.sub}</span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-brand"><ChevronDown size={15} className="rotate-180" /> Cerrar</span>
+            </button>
+          );
+        })()}
 
         {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
         {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
@@ -369,6 +387,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   const [lora, setLora] = useState(null); // {total, groups: [{key,label,slug,items:[{url,ext}]}]}
   const [showLora, setShowLora] = useState(false);
   const [downloading, setDownloading] = useState('');
+  const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -406,15 +425,21 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     setNewName(''); load(); flash('Carpeta creada');
   }
 
+  // Bulk-friendly: uploads in a small concurrency pool, survives per-file
+  // failures (reports how many), and only closes the pedido if something landed.
   async function uploadFiles(list) {
     if (!folderSel) { flash('Elige primero una carpeta.'); return; }
     const files = Array.from(list).filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
-    if (!files.length) return;
+    if (!files.length) { flash('Solo se aceptan fotos o videos.'); return; }
     const supabase = getSupabase();
-    try {
-      for (let i = 0; i < files.length; i++) {
-        setUploading(`${i + 1}/${files.length}`);
-        const file = files[i];
+    const purposeNow = purpose.trim() || null;
+    const reqNow = reqSel;
+    const total = files.length;
+    let done = 0, failed = 0;
+    setUploading(`0/${total}`);
+
+    async function uploadOne(file) {
+      try {
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
         const path = `${creator.id}/${crypto.randomUUID()}.${ext}`;
         const { error: upErr } = await supabase.storage.from('deliveries').upload(path, file, { contentType: file.type });
@@ -422,31 +447,39 @@ function CreatorDetail({ creator, me, flash, onBack }) {
         const { error: dbErr } = await supabase.from('assets').insert({
           creator_id: creator.id, folder_id: folderSel, storage_path: path,
           type: file.type.startsWith('video/') ? 'video' : 'photo', uploaded_by: me.id,
-          added_by: me.full_name || null, purpose: purpose.trim() || null,
+          added_by: me.full_name || null, purpose: purposeNow,
         });
         if (dbErr) throw dbErr;
-      }
+      } catch { failed++; }
+      finally { done++; setUploading(`${done}/${total}`); }
+    }
+
+    const queue = [...files];
+    const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+      while (queue.length) { const f = queue.shift(); if (f) await uploadOne(f); }
+    });
+    await Promise.all(workers);
+
+    const ok = total - failed;
+    if (ok > 0) {
       const folderName = (folders || []).find((f) => f.id === folderSel)?.name || '';
       sendEmail('delivery', creator.id, folderName);
       await supabase.from('notifications').insert({ user_id: creator.id, kind: 'delivery', meta: { folder: folderName } });
-      // Entrega amarrada a un pedido → se marca entregado automáticamente.
-      if (reqSel) {
+      if (reqNow) {
         await supabase.from('requests').update({
           status: 'delivered', delivered_at: new Date().toISOString(), producer_id: me.id,
-        }).eq('id', reqSel);
-        flash('Entrega subida · pedido marcado como entregado');
-      } else {
-        flash('Entrega subida');
+        }).eq('id', reqNow);
       }
-      setPurpose('');
-      setReqSel('');
-      load();
-    } catch (err) {
-      flash('Error: ' + err.message);
-    } finally {
-      setUploading('');
-      if (fileRef.current) fileRef.current.value = '';
     }
+    setUploading('');
+    if (fileRef.current) fileRef.current.value = '';
+    setPurpose('');
+    setReqSel('');
+    await load();
+    flash(failed
+      ? `${ok} subidas · ${failed} fallaron, reinténtalas`
+      : reqNow ? `${ok} ${ok === 1 ? 'pieza subida' : 'piezas subidas'} · pedido entregado`
+      : `${ok} ${ok === 1 ? 'pieza subida' : 'piezas subidas'}`);
   }
 
   async function toggleLora() {
@@ -655,18 +688,24 @@ function CreatorDetail({ creator, me, flash, onBack }) {
               </label>
             </div>
             <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading}
-              className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-brand/30 bg-ink-2 py-8 transition-colors hover:border-brand/60 disabled:opacity-50">
+              onDragOver={(e) => { e.preventDefault(); if (!uploading) setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!uploading && e.dataTransfer?.files?.length) uploadFiles(e.dataTransfer.files); }}
+              className={`mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-10 transition-colors disabled:opacity-60 ${
+                dragOver ? 'border-brand bg-brand/10' : 'border-brand/30 bg-ink-2 hover:border-brand/60'}`}>
               {uploading ? (
-                <span className="flex items-center gap-2 text-sm text-paper"><Loader2 size={17} className="animate-spin" /> Subiendo {uploading} para {creator.full_name}…</span>
+                <>
+                  <span className="flex items-center gap-2 text-sm font-medium text-paper"><Loader2 size={17} className="animate-spin" /> Subiendo {uploading} para {creator.full_name}…</span>
+                  <span className="text-[11px] text-paper-dim">No cierres esta ventana hasta que termine</span>
+                </>
               ) : (
                 <>
+                  <span className={`grid h-11 w-11 place-items-center rounded-full ${dragOver ? 'bg-brand text-on-accent' : 'bg-brand/10 text-brand'}`}><Upload size={20} /></span>
                   <span className="flex items-center gap-2">
                     <Avatar src={creator.avatar_url} name={creator.full_name} size="xs" />
-                    <span className="text-sm font-medium text-paper">Subir fotos o videos a «{folder.name}» de <span className="text-brand">{creator.full_name}</span></span>
+                    <span className="text-sm font-medium text-paper">{dragOver ? 'Suelta para subir' : <>Arrastra aquí o haz clic — «{folder.name}» de <span className="text-brand">{creator.full_name}</span></>}</span>
                   </span>
-                  <span className="flex items-center gap-1.5 text-[11px] text-paper-dim">
-                    <Upload size={12} /> Le llega al instante a ella{creator.handle ? ` (@${creator.handle})` : ''} y a su agencia
-                  </span>
+                  <span className="text-[11px] text-paper-dim">Puedes soltar muchas fotos o videos a la vez · le llega al instante a ella{creator.handle ? ` (@${creator.handle})` : ''} y a su agencia</span>
                 </>
               )}
             </button>
@@ -1082,21 +1121,46 @@ function AgencyRow({ r, total }) {
   );
 }
 
-/* ── Producción: cuánto ha producido la empresa (fotos + videos) ────────── */
+/* ── Producción: seccionado — este mes · histórico · por modelo ─────────── */
 function ProduccionTab({ books }) {
   if (!books) return <p className="mt-6 text-sm text-paper-dim">Cargando…</p>;
   const delta = books.prev_pieces > 0 ? Math.round(((books.month_pieces - books.prev_pieces) / books.prev_pieces) * 100) : null;
   const top = [...(books.top_creators || [])].filter((c) => c.pieces > 0).sort((a, b) => b.pieces - a.pieces);
   const max = top[0]?.pieces || 1;
   return (
-    <div className="mt-6 space-y-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat icon={ImageIcon} label="Piezas producidas" value={nf(books.pieces)} sub="histórico de la empresa" />
-        <Stat icon={ImageIcon} label="Fotos" value={nf(books.photos)} sub={`${nf(books.videos)} videos`} />
-        <Stat icon={BarChart3} label="Este mes" value={nf(books.month_pieces)} sub={`vs. ${nf(books.prev_pieces)} el mes pasado`} delta={delta} />
-        <Stat icon={Film} label="Videos" value={nf(books.videos)} sub="clips entregados" />
-      </div>
-      <div>
+    <div className="mt-6 space-y-6">
+      {/* Este mes */}
+      <section>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Este mes</p>
+        <div className="rounded-2xl border border-brand/25 bg-brand/[0.05] p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="font-display text-3xl font-semibold text-paper">{nf(books.month_pieces)}</div>
+              <div className="mt-1 text-xs text-paper-dim">piezas producidas este mes</div>
+            </div>
+            <div className="text-right">
+              {delta !== null && (
+                <span className={`inline-flex items-center gap-1 text-sm font-semibold ${delta >= 0 ? 'text-brand' : 'text-rose-300'}`}>
+                  {delta >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}{delta >= 0 ? '+' : ''}{delta}%
+                </span>
+              )}
+              <div className="mt-0.5 text-[11px] text-paper-dim">vs. {nf(books.prev_pieces)} el mes pasado</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Histórico */}
+      <section>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Histórico de la empresa</p>
+        <div className="grid grid-cols-3 gap-3">
+          <Stat icon={ImageIcon} label="Piezas totales" value={nf(books.pieces)} sub="creadas desde el inicio" />
+          <Stat icon={ImageIcon} label="Fotos" value={nf(books.photos)} sub="entregadas" />
+          <Stat icon={Film} label="Videos" value={nf(books.videos)} sub="clips entregados" />
+        </div>
+      </section>
+
+      <section>
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Producción por modelo · quién genera más contenido</p>
         <div className="space-y-2">
           {top.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Aún no hay producción.</p>}
@@ -1111,31 +1175,60 @@ function ProduccionTab({ books }) {
             </div>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-/* ── Pagos: ingresos de la plataforma (total, mes, por agencia) ─────────── */
+/* ── Ventas: seccionado — este mes · histórico · por agencia ────────────── */
 function PagosTab({ books }) {
   if (!books) return <p className="mt-6 text-sm text-paper-dim">Cargando…</p>;
-  const delta = Number(books.prev_revenue) > 0 ? Math.round(((Number(books.month_revenue) - Number(books.prev_revenue)) / Number(books.prev_revenue)) * 100) : null;
+  const monthRev = Number(books.month_revenue), prevRev = Number(books.prev_revenue);
+  const delta = prevRev > 0 ? Math.round(((monthRev - prevRev) / prevRev) * 100) : null;
   const rows = [...(books.agency_rows || [])].sort((a, b) => Number(b.revenue) - Number(a.revenue));
+  const total = Number(books.revenue);
+
   return (
-    <div className="mt-6 space-y-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat icon={DollarSign} label="Ingresos totales" value={money(books.revenue)} sub="histórico de la plataforma" />
-        <Stat icon={DollarSign} label="Este mes" value={money(books.month_revenue)} sub={`vs. ${money(books.prev_revenue)} el mes pasado`} delta={delta} />
-        <Stat icon={ShoppingBag} label="Piezas vendidas" value={nf(books.sales)} sub="unidades cobradas" />
-        <Stat icon={Building2} label="Agencias" value={nf(books.agencies)} sub="que facturan" />
-      </div>
-      <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Ingresos por agencia</p>
-        <div className="space-y-2">
-          {rows.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Aún no hay ingresos registrados.</p>}
-          {rows.map((r) => <AgencyRow key={r.id} r={r} total={Number(books.revenue)} />)}
+    <div className="mt-6 space-y-6">
+      {/* Este mes */}
+      <section>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Este mes</p>
+        <div className="rounded-2xl border border-brand/25 bg-brand/[0.05] p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="font-display text-3xl font-semibold text-paper">{money(monthRev)}</div>
+              <div className="mt-1 text-xs text-paper-dim">vendido este mes · {nf(books.month_pieces)} piezas entregadas</div>
+            </div>
+            <div className="text-right">
+              {delta !== null && (
+                <span className={`inline-flex items-center gap-1 text-sm font-semibold ${delta >= 0 ? 'text-brand' : 'text-rose-300'}`}>
+                  {delta >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}{delta >= 0 ? '+' : ''}{delta}%
+                </span>
+              )}
+              <div className="mt-0.5 text-[11px] text-paper-dim">vs. {money(prevRev)} el mes pasado</div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
+
+      {/* Histórico */}
+      <section>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Histórico de la plataforma</p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <Stat icon={DollarSign} label="Ventas totales" value={money(total)} sub="desde el inicio" />
+          <Stat icon={ShoppingBag} label="Piezas vendidas" value={nf(books.sales)} sub="unidades cobradas" />
+          <Stat icon={ImageIcon} label="Ticket por pieza" value={money(books.sales > 0 ? total / Number(books.sales) : 0)} sub="promedio por venta" />
+        </div>
+      </section>
+
+      {/* Por agencia */}
+      <section>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Ventas por agencia</p>
+        <div className="space-y-2">
+          {rows.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Aún no hay ventas registradas.</p>}
+          {rows.map((r) => <AgencyRow key={r.id} r={r} total={total} />)}
+        </div>
+      </section>
     </div>
   );
 }
