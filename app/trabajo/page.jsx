@@ -11,7 +11,7 @@ import Link from 'next/link';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
   Check, RefreshCw, Sparkles, ChevronRight, ChevronDown, ShieldCheck, X, Download,
-  BarChart3, UserCog, Plus, UserPlus, Clock,
+  BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -51,6 +51,7 @@ const OB_LABEL = {
 };
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
 const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
 
 export default function TrabajoPage() {
   const router = useRouter();
@@ -171,7 +172,7 @@ export default function TrabajoPage() {
     ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
     ...(can('requests') ? [{ id: 'pedidos', icon: Inbox, label: 'Pedidos', value: nf((counts?.reqPend || 0) + (counts?.reqProg || 0)), sub: `${counts?.reqPend || 0} pendientes · ${counts?.reqProg || 0} en producción`, alert: (counts?.reqPend || 0) > 0 }] : []),
     ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} ❤`, alert: (counts?.fbOpen || 0) > 0 }] : []),
-    ...(can('metrics') ? [{ id: 'metricas', icon: BarChart3, label: 'Este mes', value: money(counts?.monthRev || 0), sub: `${nf(counts?.monthPieces || 0)} piezas entregadas` }] : []),
+    ...(can('metrics') ? [{ id: 'metricas', icon: BarChart3, label: 'Producción', value: nf(counts?.monthPieces || 0), sub: `piezas este mes · ${money(counts?.monthRev || 0)} vendidos` }] : []),
     ...(can('team') ? [{ id: 'equipo', icon: UserCog, label: 'Equipo', value: nf(staff.length), sub: staffPend ? `${staffPend} por aprobar` : 'todos con acceso', alert: staffPend > 0 }] : []),
   ];
 
@@ -259,42 +260,48 @@ function CreadorasTab({ creators, me, flash }) {
   const active = creators.filter((c) => ['active', 'paid'].includes(c.onboarding_status));
   const others = creators.filter((c) => !['active', 'paid'].includes(c.onboarding_status));
 
-  const row = (c) => (
+  // Inside a creator you get her full-width library; back returns to the roster.
+  if (sel) return <CreatorDetail key={sel.id} creator={sel} me={me} flash={flash} onBack={() => setSel(null)} />;
+
+  const card = (c) => (
     <button key={c.id} onClick={() => setSel(c)}
-      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
-        sel?.id === c.id ? 'border-brand/50 bg-brand/10 text-paper' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
-      <Avatar src={c.avatar_url} name={c.full_name} size="sm" />
+      className="group flex items-center gap-3.5 rounded-2xl border border-line bg-card p-4 text-left transition-colors hover:border-brand/40">
+      <Avatar src={c.avatar_url} name={c.full_name} size="lg" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-paper">{c.full_name || '—'}</span>
-        {c.handle && <span className="block truncate text-[11px] text-paper-dim">@{c.handle}</span>}
+        <span className="block truncate font-display text-base font-semibold text-paper">{c.full_name || '—'}</span>
+        {c.handle && <span className="block truncate text-xs text-paper-dim">@{c.handle}</span>}
+        <span className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+          ['active', 'paid'].includes(c.onboarding_status) ? 'bg-brand/15 text-brand' : 'bg-amber-500/10 text-amber-300'}`}>
+          {OB_LABEL[c.onboarding_status] || c.onboarding_status}
+        </span>
       </span>
-      <span className="shrink-0 rounded-full bg-hair/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper-dim">
-        {OB_LABEL[c.onboarding_status] || c.onboarding_status}
-      </span>
+      <ChevronRight size={17} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
     </button>
   );
 
   return (
-    <div className="mt-6 grid gap-6 lg:grid-cols-[280px_1fr]">
-      <aside className="space-y-2">
-        {active.length > 0 && <div className="px-1 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Activas · {active.length} — súbeles contenido</div>}
-        {active.map(row)}
-        {others.length > 0 && <div className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">En proceso · {others.length}</div>}
-        {others.map(row)}
-        {creators.length === 0 && <p className="text-sm text-paper-dim">No hay creadoras todavía.</p>}
-      </aside>
-      {sel ? <CreatorDetail key={sel.id} creator={sel} me={me} flash={flash} /> : (
-        <div className="grid place-items-center rounded-2xl border border-dashed border-line p-16 text-paper-dim">
-          <span className="flex items-center gap-2 text-sm"><ChevronRight size={16} /> Elige una creadora</span>
-        </div>
+    <div className="mt-6">
+      {active.length > 0 && (
+        <>
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Activas · {active.length} — entra para ver su biblioteca y subirle</div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{active.map(card)}</div>
+        </>
       )}
+      {others.length > 0 && (
+        <>
+          <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">En proceso · {others.length}</div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{others.map(card)}</div>
+        </>
+      )}
+      {creators.length === 0 && <p className="text-sm text-paper-dim">No hay creadoras todavía.</p>}
     </div>
   );
 }
 
-function CreatorDetail({ creator, me, flash }) {
+function CreatorDetail({ creator, me, flash, onBack }) {
   const [folders, setFolders] = useState(null);
-  const [folderSel, setFolderSel] = useState(null);
+  const [folderSel, setFolderSel] = useState(null); // null = biblioteca (carpetas); id = dentro de la carpeta
+  const [urls, setUrls] = useState({});             // storage_path -> signed url (miniaturas)
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState('');
@@ -309,12 +316,25 @@ function CreatorDetail({ creator, me, flash }) {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     const [{ data }, { data: reqs }] = await Promise.all([
-      supabase.from('folders').select('id, name, kind, assets(id)').eq('creator_id', creator.id).order('created_at'),
+      supabase.from('folders')
+        .select('id, name, kind, assets(id, storage_path, type, title, deliver_date, created_at)')
+        .eq('creator_id', creator.id).order('created_at'),
       supabase.from('requests').select('id, title, status').eq('creator_id', creator.id).neq('status', 'delivered').order('created_at', { ascending: false }),
     ]);
-    setFolders(data || []);
+    const fols = data || [];
+    // Sign private storage paths so thumbnails render (demo mixes /public paths).
+    const toSign = [...new Set(fols.flatMap((f) => f.assets || []).filter((a) => !isDirect(a.storage_path)).map((a) => a.storage_path))];
+    if (toSign.length) {
+      const { data: signed } = await supabase.storage.from('deliveries').createSignedUrls(toSign, 3600);
+      const map = {};
+      (signed || []).forEach((s, i) => { if (s?.signedUrl) map[toSign[i]] = s.signedUrl; });
+      setUrls(map);
+    }
+    setFolders(fols);
     setOpenReqs(reqs || []);
   }, [creator.id]);
+
+  const srcOf = (a) => (isDirect(a.storage_path) ? a.storage_path : (urls[a.storage_path] || ''));
 
   useEffect(() => { load(); }, [load]);
 
@@ -422,13 +442,19 @@ function CreatorDetail({ creator, me, flash }) {
     flash(`${lora.total} fotos descargadas — organizadas por categoría, listas para Higgsfield`);
   }
 
+  const folder = (folders || []).find((f) => f.id === folderSel) || null;
+
   return (
-    <section className="min-w-0">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <section className="mt-6 min-w-0">
+      <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-paper-mute transition-colors hover:text-paper">
+        <ArrowLeft size={15} /> Todas las creadoras
+      </button>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Avatar src={creator.avatar_url} name={creator.full_name} size="md" />
+          <Avatar src={creator.avatar_url} name={creator.full_name} size="lg" />
           <div className="min-w-0">
-            <h2 className="font-display text-lg font-semibold leading-tight">{creator.full_name}</h2>
+            <h2 className="font-display text-xl font-semibold leading-tight">{creator.full_name}</h2>
             {creator.handle && <p className="text-xs text-paper-dim">@{creator.handle}</p>}
           </div>
         </div>
@@ -498,78 +524,118 @@ function CreatorDetail({ creator, me, flash }) {
         </div>
       )}
 
-      {/* Entrega simple: carpeta → pedido → subir. Nada más. */}
-      <div className="mt-5 rounded-2xl border border-line bg-card p-5">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-paper">
-          <Upload size={15} className="text-brand" /> Entregar contenido a {creator.full_name}
-        </h3>
-
-        {/* 1 · Carpeta */}
-        <div className="mt-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">1 · ¿En qué carpeta va?</div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {(folders || []).map((f) => (
-              <button key={f.id} type="button" onClick={() => setFolderSel(f.id)}
-                className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition-colors ${
-                  folderSel === f.id ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
-                <Folder size={14} /> {f.name}
-                <span className="font-mono text-[10px] text-paper-dim">{f.assets?.length || 0}</span>
-              </button>
-            ))}
-            <form onSubmit={createFolder} className="flex items-center gap-1.5">
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="+ Nueva carpeta…"
-                className="w-40 rounded-full border border-dashed border-line bg-transparent px-3.5 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-              {newName.trim() && (
-                <button type="submit" disabled={creating}
-                  className="grid h-9 w-9 place-items-center rounded-full border border-brand/40 bg-brand/10 text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
-                  {creating ? <Loader2 size={14} className="animate-spin" /> : <FolderPlus size={14} />}
+      {/* ── Su biblioteca: carpetas con portada → dentro, subir + ver fotos ── */}
+      {!folder ? (
+        <div className="mt-5">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+            Biblioteca de {creator.full_name} · {(folders || []).length} carpetas — toca una para ver y subir
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {(folders || []).map((f) => {
+              const cover = (f.assets || []).find((a) => a.type !== 'video' && srcOf(a)) || (f.assets || [])[0];
+              return (
+                <button key={f.id} onClick={() => setFolderSel(f.id)}
+                  className="group overflow-hidden rounded-2xl border border-line bg-card text-left transition-colors hover:border-brand/40">
+                  <div className="relative aspect-[4/3] w-full bg-ink-2">
+                    {cover && srcOf(cover) ? (
+                      cover.type === 'video'
+                        ? <video src={srcOf(cover)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                        // eslint-disable-next-line @next/next/no-img-element
+                        : <img src={srcOf(cover)} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center text-paper-dim"><Folder size={26} /></div>
+                    )}
+                    <span className="absolute bottom-1.5 right-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-paper backdrop-blur">{(f.assets || []).length}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-2.5">
+                    <Folder size={13} className="shrink-0 text-brand" />
+                    <span className="truncate text-sm font-medium text-paper">{f.name}</span>
+                  </div>
                 </button>
-              )}
+              );
+            })}
+            {/* Nueva carpeta */}
+            <form onSubmit={createFolder} className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2/50 p-4">
+              <FolderPlus size={20} className="text-paper-dim" />
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nueva carpeta…"
+                className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-center text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              <button type="submit" disabled={creating || !newName.trim()}
+                className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-40">
+                {creating ? 'Creando…' : 'Crear'}
+              </button>
             </form>
           </div>
         </div>
-
-        {/* 2 · Pedido (solo si tiene abiertos) */}
-        {openReqs.length > 0 && (
-          <div className="mt-4">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">2 · ¿Responde a un pedido? <span className="normal-case text-paper-dim/80">— se marcará entregado solo</span></div>
-            <select value={reqSel} onChange={(e) => setReqSel(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
-              <option value="">No — entrega libre</option>
-              {openReqs.map((r) => <option key={r.id} value={r.id}>{r.title} · {REQ_STATUS[r.status]?.l || r.status}</option>)}
-            </select>
+      ) : (
+        <div className="mt-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button onClick={() => setFolderSel(null)} className="inline-flex items-center gap-1.5 text-sm text-paper-mute transition-colors hover:text-paper">
+              <ArrowLeft size={15} /> Carpetas de {creator.full_name}
+            </button>
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-paper">
+              <Folder size={14} className="text-brand" /> {folder.name} · {(folder.assets || []).length} piezas
+            </div>
           </div>
-        )}
 
-        {/* 3 · Para qué */}
-        <div className="mt-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">{openReqs.length > 0 ? '3' : '2'} · ¿Para qué se hizo? <span className="normal-case text-paper-dim/80">— la creadora lo ve en cada foto</span></div>
-          <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Ej. Pack PPV de bienvenida para la lista"
-            className="mt-2 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-        </div>
+          {/* Subida comodísima — la carpeta ya está elegida */}
+          <div className="mt-3 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {openReqs.length > 0 && (
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">¿Responde a un pedido? — se marca entregado solo</span>
+                  <select value={reqSel} onChange={(e) => setReqSel(e.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
+                    <option value="">No — entrega libre</option>
+                    {openReqs.map((r) => <option key={r.id} value={r.id}>{r.title} · {REQ_STATUS[r.status]?.l || r.status}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className={`block ${openReqs.length > 0 ? '' : 'sm:col-span-2'}`}>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">¿Para qué se hizo? — la creadora lo ve</span>
+                <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Ej. Pack PPV de bienvenida para la lista"
+                  className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              </label>
+            </div>
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading}
+              className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-brand/30 bg-ink-2 py-8 transition-colors hover:border-brand/60 disabled:opacity-50">
+              {uploading ? (
+                <span className="flex items-center gap-2 text-sm text-paper"><Loader2 size={17} className="animate-spin" /> Subiendo {uploading} para {creator.full_name}…</span>
+              ) : (
+                <>
+                  <span className="flex items-center gap-2">
+                    <Avatar src={creator.avatar_url} name={creator.full_name} size="xs" />
+                    <span className="text-sm font-medium text-paper">Subir fotos o videos a «{folder.name}» de <span className="text-brand">{creator.full_name}</span></span>
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[11px] text-paper-dim">
+                    <Upload size={12} /> Le llega al instante a ella{creator.handle ? ` (@${creator.handle})` : ''} y a su agencia
+                  </span>
+                </>
+              )}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => e.target.files && uploadFiles(e.target.files)} />
+          </div>
 
-        <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading || !folderSel}
-          className="mt-4 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2 py-8 transition-colors hover:border-brand/40 disabled:opacity-50">
-          {uploading ? (
-            <span className="flex items-center gap-2 text-sm text-paper"><Loader2 size={17} className="animate-spin" /> Subiendo {uploading} para {creator.full_name}…</span>
+          {/* Lo que ya vive en la carpeta */}
+          {(folder.assets || []).length > 0 ? (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {[...(folder.assets || [])].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || '')).map((a) => (
+                <div key={a.id} className="group relative overflow-hidden rounded-xl border border-line bg-card">
+                  {a.type === 'video'
+                    ? <video src={srcOf(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
+                    // eslint-disable-next-line @next/next/no-img-element
+                    : <img src={srcOf(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/60 to-transparent p-2 pt-6">
+                    <p className="truncate text-[11px] font-medium text-paper">{a.title || 'Sin título'}</p>
+                    {a.deliver_date && <p className="text-[10px] text-paper-dim">{new Date(a.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
-            <>
-              <span className="flex items-center gap-2">
-                <Avatar src={creator.avatar_url} name={creator.full_name} size="xs" />
-                <span className="text-sm font-medium text-paper">
-                  {folderSel
-                    ? <>Subir fotos o videos → «{(folders || []).find((f) => f.id === folderSel)?.name}» de <span className="text-brand">{creator.full_name}</span></>
-                    : <>Elige la carpeta del paso 1 para subirle a <span className="text-brand">{creator.full_name}</span></>}
-                </span>
-              </span>
-              <span className="flex items-center gap-1.5 text-[11px] text-paper-dim">
-                <Upload size={12} /> La entrega le llega al instante a ella{creator.handle ? ` (@${creator.handle})` : ''} y a su agencia
-              </span>
-            </>
+            <p className="mt-4 rounded-xl border border-dashed border-line p-6 text-center text-sm text-paper-dim">Carpeta vacía — sube las primeras fotos arriba.</p>
           )}
-        </button>
-        <input ref={fileRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => e.target.files && uploadFiles(e.target.files)} />
-      </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -665,6 +731,9 @@ function KycTab({ flash }) {
 /* ── Pedidos: entrantes de agencias/creadoras · el equipo toma/entrega ──── */
 function PedidosTab({ creators, staff, me, flash, ping }) {
   const [requests, setRequests] = useState(null);
+  const [q, setQ] = useState('');            // buscador
+  const [fStatus, setFStatus] = useState('all');
+  const [fModel, setFModel] = useState('all');
   const nameOf = (id) => creators.find((c) => c.id === id)?.full_name
     || staff.find((s) => s.id === id)?.full_name || '—';
 
@@ -695,17 +764,47 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
     load();
   }
 
+  // Buscador + filtros: por texto, estado y modelo.
+  const view = (requests || []).filter((r) => {
+    if (fStatus !== 'all' && r.status !== fStatus) return false;
+    if (fModel !== 'all' && r.creator_id !== fModel) return false;
+    const t = q.trim().toLowerCase();
+    if (t && !(`${r.title} ${r.description || ''} ${nameOf(r.creator_id)}`.toLowerCase().includes(t))) return false;
+    return true;
+  });
+
   return (
-    <div className="mt-6 space-y-6">
-      <div className="flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-3 text-sm text-paper-mute">
-        <Inbox size={16} className="shrink-0 text-brand" />
-        Pedidos entrantes de las agencias y creadoras. Tómalos y márcalos como entregados cuando subas el contenido.
+    <div className="mt-6 space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar pedido, detalle o modelo…"
+            className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        </div>
+        <select value={fModel} onChange={(e) => setFModel(e.target.value)}
+          className="rounded-full border border-line bg-card px-3.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
+          <option value="all">Todas las modelos</option>
+          {creators.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+        </select>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {[['all', 'Todos'], ['pending', 'Pendientes'], ['in_progress', 'En producción'], ['delivered', 'Entregados']].map(([v, l]) => {
+          const n = v === 'all' ? (requests || []).length : (requests || []).filter((r) => r.status === v).length;
+          return (
+            <button key={v} onClick={() => setFStatus(v)}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                fStatus === v ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
+              {l} · {n}
+            </button>
+          );
+        })}
       </div>
 
       <div className="space-y-3">
         {requests === null && <p className="text-paper-dim">Cargando…</p>}
         {requests?.length === 0 && <p className="rounded-2xl border border-line bg-card p-8 text-center text-paper-dim">No hay pedidos entrantes todavía.</p>}
-        {(requests || []).map((r) => {
+        {requests?.length > 0 && view.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">Ningún pedido coincide con tu búsqueda.</p>}
+        {view.map((r) => {
           const st = REQ_STATUS[r.status] || REQ_STATUS.pending;
           return (
             <div key={r.id} className="rounded-2xl border border-line bg-card p-4">
@@ -763,10 +862,24 @@ function FeedbackTab({ creators, flash }) {
   const nameOf = (id) => creators.find((c) => c.id === id)?.full_name || '—';
 
   const load = useCallback(async () => {
-    const { data } = await getSupabase().from('feedback')
+    const supabase = getSupabase();
+    const { data } = await supabase.from('feedback')
       .select('id, creator_id, kind, message, resolved, created_at, asset_id')
       .order('created_at', { ascending: false });
-    setItems(data || []);
+    // Connect each feedback to ITS photo so the worker sees exactly which piece.
+    const ids = [...new Set((data || []).map((f) => f.asset_id).filter(Boolean))];
+    const assetMap = {};
+    if (ids.length) {
+      const { data: as } = await supabase.from('assets').select('id, storage_path, type, title').in('id', ids);
+      const toSign = (as || []).filter((a) => !isDirect(a.storage_path)).map((a) => a.storage_path);
+      const urlMap = {};
+      if (toSign.length) {
+        const { data: signed } = await supabase.storage.from('deliveries').createSignedUrls(toSign, 3600);
+        (signed || []).forEach((s, i) => { if (s?.signedUrl) urlMap[toSign[i]] = s.signedUrl; });
+      }
+      (as || []).forEach((a) => { assetMap[a.id] = { ...a, url: isDirect(a.storage_path) ? a.storage_path : (urlMap[a.storage_path] || '') }; });
+    }
+    setItems((data || []).map((f) => ({ ...f, _asset: assetMap[f.asset_id] || null })));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -786,17 +899,29 @@ function FeedbackTab({ creators, flash }) {
       {items === null && <p className="text-paper-dim">Cargando…</p>}
       {items?.length === 0 && <p className="rounded-2xl border border-line bg-card p-8 text-center text-paper-dim">Sin feedback todavía.</p>}
       {(items || []).map((f) => (
-        <div key={f.id} className={`flex items-start justify-between gap-3 rounded-2xl border p-4 ${f.resolved ? 'border-line bg-card/50 opacity-70' : 'border-line bg-card'}`}>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium text-paper">{nameOf(f.creator_id)}</span>
-              {f.kind === 'love' ? (
-                <span className="rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] text-brand">Le encantó</span>
-              ) : (
-                <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">Pide cambio</span>
-              )}
+        <div key={f.id} className={`flex items-start justify-between gap-3 rounded-2xl border p-4 ${f.resolved ? 'border-line bg-card/50 opacity-70' : f.kind !== 'love' ? 'border-amber-500/25 bg-card' : 'border-line bg-card'}`}>
+          <div className="flex min-w-0 items-start gap-3">
+            {/* La foto exacta a la que le dio love / pidió el cambio */}
+            {f._asset?.url && (
+              f._asset.type === 'video'
+                ? <video src={f._asset.url} className="h-20 w-16 shrink-0 rounded-lg border border-line object-cover" muted playsInline preload="metadata" />
+                // eslint-disable-next-line @next/next/no-img-element
+                : <img src={f._asset.url} alt={f._asset.title || ''} className="h-20 w-16 shrink-0 rounded-lg border border-line object-cover" />
+            )}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium text-paper">{nameOf(f.creator_id)}</span>
+                {f.kind === 'love' ? (
+                  <span className="rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] text-brand">❤ Le encantó</span>
+                ) : (
+                  <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">✎ Pide cambio</span>
+                )}
+                <span className="text-[11px] text-paper-dim">
+                  {f._asset?.title ? `«${f._asset.title}» · ` : ''}{new Date(f.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}
+                </span>
+              </div>
+              {f.message && <p className="mt-1.5 text-sm text-paper-mute">{f.message}</p>}
             </div>
-            {f.message && <p className="mt-1.5 text-sm text-paper-mute">{f.message}</p>}
           </div>
           <button onClick={() => toggle(f)}
             className={`shrink-0 rounded-full border px-3 py-2.5 text-xs font-semibold transition-colors ${
@@ -874,7 +999,9 @@ const TEAM_CAPS = [
 ];
 
 function EquipoTab({ staff, me, flash, reload }) {
+  const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ full_name: '', job_title: '', email: '', password: '' });
+  const [newCaps, setNewCaps] = useState([]); // accesos elegidos AL crear la cuenta
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState('');
   const [expanded, setExpanded] = useState(null);
@@ -884,18 +1011,20 @@ function EquipoTab({ staff, me, flash, reload }) {
     setErr('');
     if (!form.email || !form.password) { setErr('Completa correo y contraseña.'); return; }
     if (form.password.length < 8) { setErr('La contraseña debe tener al menos 8 caracteres.'); return; }
+    if (!newCaps.length) { setErr('Elige al menos una función para este puesto.'); return; }
     setCreating(true);
-    // Create the puesto first with NO access; then expand its card to grant it.
+    // The account is born WITH its accesses — you pick them function by function below.
     const { data, error } = await getSupabase().functions.invoke('create-user', {
-      body: { ...form, role: 'supervisor', capabilities: [] },
+      body: { ...form, role: 'supervisor', capabilities: newCaps },
     });
     setCreating(false);
     let out = data;
     if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
-    if (!out?.ok) { setErr(out?.error || 'No se pudo crear el puesto.'); return; }
+    if (!out?.ok) { setErr(out?.error || 'No se pudo crear la cuenta.'); return; }
     setForm({ full_name: '', job_title: '', email: '', password: '' });
-    flash('Puesto creado — ábrelo para dar accesos');
-    if (out.id) setExpanded(out.id);
+    setNewCaps([]);
+    setShowCreate(false);
+    flash(`Cuenta creada con ${newCaps.length} acceso${newCaps.length === 1 ? '' : 's'}`);
     reload();
   }
 
@@ -913,29 +1042,62 @@ function EquipoTab({ staff, me, flash, reload }) {
 
   return (
     <div className="mt-6 space-y-6">
-      <form onSubmit={createPuesto} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
-        <div className="mb-1 flex items-center gap-2 font-display font-semibold text-paper">
-          <UserPlus size={18} className="text-brand" /> Crear puesto del equipo
-        </div>
-        <p className="mb-3 text-xs text-paper-dim">Tú le pones el nombre. Al crearlo, ábrelo abajo para darle acceso función por función.</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <input value={form.full_name} onChange={(e) => setForm((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre (ej. Camila)"
-            className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-          <input value={form.job_title} onChange={(e) => setForm((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (ej. Verificación)"
-            className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-          <input type="email" value={form.email} onChange={(e) => setForm((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
-            className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-          <input type="text" value={form.password} onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
-            className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+      {!showCreate ? (
+        <button onClick={() => setShowCreate(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand/10 px-5 py-4 font-display font-semibold text-brand transition-colors hover:bg-brand/20">
+          <UserPlus size={18} /> Crear cuenta de empleado
+        </button>
+      ) : (
+        <form onSubmit={createPuesto} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-display font-semibold text-paper">
+              <UserPlus size={18} className="text-brand" /> Crear cuenta de empleado
+            </div>
+            <button type="button" onClick={() => { setShowCreate(false); setErr(''); }}
+              className="grid h-8 w-8 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={15} /></button>
+          </div>
+          <p className="mb-3 text-xs text-paper-dim">Tú creas el puesto: nombre, cargo y sus accesos función por función. La cuenta nace lista para trabajar.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input value={form.full_name} onChange={(e) => setForm((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre (ej. Camila)"
+              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            <input value={form.job_title} onChange={(e) => setForm((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (ej. Verificación)"
+              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            <input type="email" value={form.email} onChange={(e) => setForm((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
+              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            <input type="text" value={form.password} onChange={(e) => setForm((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
+              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          </div>
+
+          <div className="mt-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Accesos de este puesto — función por función</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {TEAM_CAPS.map((c) => {
+                const on = newCaps.includes(c.v);
+                return (
+                  <button type="button" key={c.v}
+                    onClick={() => setNewCaps((v) => (on ? v.filter((x) => x !== c.v) : [...v, c.v]))}
+                    className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
+                    <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
+                      {on ? <Check size={13} /> : <Plus size={13} />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
+                      <span className="block text-[11px] text-paper-dim">{c.hint}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <button type="submit" disabled={creating}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
-            {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Crear
+            className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
+            {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+            Crear cuenta con {newCaps.length} acceso{newCaps.length === 1 ? '' : 's'}
           </button>
-        </div>
-        {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
-      </form>
+          {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
+        </form>
+      )}
 
       <div className="space-y-3">
         {admins.map((u) => (
