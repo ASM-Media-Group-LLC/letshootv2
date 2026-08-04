@@ -21,13 +21,10 @@ const USER = { email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' };
 const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
 // Agency / manager — manages its models, makes requests, records sales.
 const AGENCY = { email: 'agencia@letshoot.ai', password: 'LetShoot!agencia' };
-// Internal team personas — puestos with granular functions. No "SAC/chatter":
-// requests come from the agency/manager or the creator; the team fulfills them.
-const STAFF = [
-  { key: 'manager', label: 'Supervisor 1 (todas)', desc: 'IDs · Entregas · Pedidos · Feedback · Métricas · Equipo', acct: { email: 'manager@letshoot.ai', password: 'LetShoot!manager' } },
-  { key: 'fotos', label: 'Producción', desc: 'Entregas · Pedidos · Feedback', acct: { email: 'fotos@letshoot.ai', password: 'LetShoot!fotos' } },
-  { key: 'ids', label: 'Verificación', desc: 'Solo Verificar IDs', acct: { email: 'ids@letshoot.ai', password: 'LetShoot!ids' } },
-];
+// Internal team — ONE account with every function. There are no prebaked roles:
+// from this account (Equipo tab) or from Admin you create the puestos you want,
+// name them, and grant access function by function.
+const EQUIPO = { email: 'manager@letshoot.ai', password: 'LetShoot!manager' };
 
 export default function OwnerPage() {
   const router = useRouter();
@@ -155,26 +152,25 @@ export default function OwnerPage() {
           </button>
         </div>
 
-        {/* Equipo — roles dinámicos, cada uno con su función */}
-        <div className="mt-4 rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+        {/* Equipo interno — UNA cuenta con acceso total; los puestos los creas tú */}
+        <div className="mt-4 flex flex-col rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
           <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/12 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
-            <ClipboardList size={14} /> Cuentas de ejemplo (equipo)
+            <ClipboardList size={14} /> Equipo interno · acceso total
           </span>
-          <p className="mb-4 text-sm text-paper-mute">
-            Solo para probar. Estos <strong className="text-paper-mute">no son roles fijos</strong>: en Admin → «Equipo interno» tú creas los puestos que quieras, les pones nombre y les das acceso función por función.
+          <p className="text-sm text-paper-mute">
+            La cuenta del equipo con <strong className="text-paper">todas las funciones</strong>: sube las
+            entregas a cada modelo, recibe los pedidos, revisa IDs, ve métricas y desde su pestaña
+            «Equipo» <strong className="text-paper">crea los puestos</strong> — tú les pones nombre y les das
+            acceso función por función. No hay roles prehechos.
           </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {STAFF.map((s) => (
-              <button key={s.key} onClick={() => enter(s.acct, s.key)} disabled={!!busy}
-                className="group flex items-center justify-between gap-2 rounded-xl border border-line bg-ink-2 px-4 py-3 text-left transition-colors hover:border-brand/40 disabled:opacity-60">
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-paper">{s.label}</span>
-                  <span className="block truncate text-xs text-paper-dim">{s.desc} · {s.acct.email}</span>
-                </span>
-                {busy === s.key ? <Loader2 size={16} className="shrink-0 animate-spin text-brand" /> : <ArrowRight size={16} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-1 group-hover:text-brand" />}
-              </button>
-            ))}
+          <div className="mt-3 inline-flex w-fit flex-col gap-0.5 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
+            <div>{EQUIPO.email}</div>
+            <div>{EQUIPO.password}</div>
           </div>
+          <button onClick={() => enter(EQUIPO, 'equipo')} disabled={!!busy}
+            className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+            {busy === 'equipo' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Equipo <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+          </button>
         </div>
 
         {error && (

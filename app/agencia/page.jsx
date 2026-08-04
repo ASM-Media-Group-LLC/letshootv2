@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
-  ChevronLeft, Send, CheckCircle2, NotebookPen,
+  ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -28,12 +28,6 @@ const REQ_STATUS = {
   in_progress: { label: 'En proceso', cls: 'text-sky border-sky/30 bg-sky/10' },
   delivered: { label: 'Entregado', cls: 'text-brand border-brand/30 bg-brand/10' },
 };
-
-const AGENCY_TABS = [
-  { id: 'modelos', label: 'Modelos', Ic: Users },
-  { id: 'contenido', label: 'Contenido', Ic: ImageIcon },
-  { id: 'ingresos', label: 'Ingresos', Ic: DollarSign },
-];
 
 // Completion checklist for a model (agency sees status only, mirrors admin/staff).
 // Reads the same creator_profile fields the detail view uses.
@@ -64,7 +58,7 @@ export default function AgenciaPage() {
   const [toast, setToast] = useState('');
   const [reqOpen, setReqOpen] = useState(false);
   const [modelProfile, setModelProfile] = useState(null); // creator_profile of the selected model (status only)
-  const [atab, setAtab] = useState('modelos');    // modelos | contenido | ingresos
+  const [atab, setAtab] = useState(null);         // null (cerrado) | modelos | contenido | ingresos
   const [checklists, setChecklists] = useState({}); // creator_id -> creator_profile (roster glance)
   const [invites, setInvites] = useState([]);      // pending model-invite links
   const [addOpen, setAddOpen] = useState(false);   // "agregar modelo" modal
@@ -236,11 +230,12 @@ export default function AgenciaPage() {
   const prevVideos = prevAssets.filter((a) => a.type === 'video').length;
   const modelRequests = model ? requests.filter((r) => r.creator_id === model.id) : requests;
 
+  // The summary cards ARE the navigation: tap one to open its view (closed by default).
   const BOOK_KPIS = [
-    { icon: Users, label: 'Modelos', value: nf(books.models), sub: 'que gestionas' },
-    { icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo' },
-    { icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades' },
-    { icon: DollarSign, label: 'Ingresos generados', value: money(books.revenue), sub: 'total histórico' },
+    { icon: Users, label: 'Modelos', value: nf(books.models), sub: 'que gestionas', view: 'modelos' },
+    { icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo', view: 'contenido' },
+    { icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades', view: 'ingresos' },
+    { icon: DollarSign, label: 'Ingresos generados', value: money(books.revenue), sub: 'total histórico', view: 'ingresos' },
   ];
 
   return (
@@ -270,37 +265,39 @@ export default function AgenciaPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-5 py-8">
-        <h1 className="font-display text-2xl font-semibold sm:text-3xl">Tus cuentas</h1>
-        <p className="mt-1 text-sm text-paper-mute">Gestiona a tus modelos, revisa el contenido entregado, registra ventas y haz pedidos.</p>
-
-        {/* Agency books */}
-        <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen de tu agencia · histórico</div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {BOOK_KPIS.map((k) => (
-            <div key={k.label} className="rounded-2xl border border-line bg-card p-4">
-              <div className="flex items-center gap-2 text-paper-dim">
-                <k.icon size={15} className="text-brand" />
-                <span className="text-xs font-medium">{k.label}</span>
-              </div>
-              <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{k.value}</div>
-              {k.sub && <div className="mt-0.5 text-[11px] text-paper-dim">{k.sub}</div>}
-            </div>
-          ))}
-        </div>
-
-        {/* Views */}
-        <div className="mt-8 flex flex-wrap items-center gap-2">
-          {AGENCY_TABS.map((tb) => (
-            <button key={tb.id} onClick={() => { setAtab(tb.id); if (tb.id !== 'modelos') setSel(null); }}
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
-                atab === tb.id ? 'border-brand/50 bg-brand text-on-accent shadow-glow-sm' : 'border-line bg-card text-paper-mute hover:border-brand/30 hover:text-paper'}`}>
-              <tb.Ic size={15} /> {tb.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="font-display text-2xl font-semibold sm:text-3xl">Tus cuentas</h1>
+            <p className="mt-1 text-sm text-paper-mute">Gestiona a tus modelos, revisa el contenido entregado, registra ventas y haz pedidos.</p>
+          </div>
           <button onClick={() => { setNewLink(''); setAddOpen(true); }}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
+            className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
             <Plus size={15} /> Agregar modelo
           </button>
+        </div>
+
+        {/* Agency books — each card opens its own view; tap again to close. */}
+        <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen de tu agencia · histórico — toca una tarjeta para abrirla</div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {BOOK_KPIS.map((k) => {
+            const open = atab === k.view;
+            return (
+              <button key={k.label}
+                onClick={() => { const next = open ? null : k.view; setAtab(next); if (next !== 'modelos') setSel(null); }}
+                className={`rounded-2xl border p-4 text-left transition-colors ${
+                  open ? 'border-brand/50 bg-brand/[0.07] shadow-glow-sm' : 'border-line bg-card hover:border-brand/30'}`}>
+                <div className="flex items-center justify-between gap-2 text-paper-dim">
+                  <span className="flex items-center gap-2">
+                    <k.icon size={15} className="text-brand" />
+                    <span className="text-xs font-medium">{k.label}</span>
+                  </span>
+                  <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180 text-brand' : ''}`} />
+                </div>
+                <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{k.value}</div>
+                <div className="mt-0.5 text-[11px] text-paper-dim">{k.sub}</div>
+              </button>
+            );
+          })}
         </div>
 
         {atab === 'modelos' && (
@@ -548,33 +545,10 @@ export default function AgenciaPage() {
         </div>
         )}
 
-        {/* ── Ingresos: per-model roll-up with detail ──────────────────────── */}
+        {/* ── Ingresos: per-model roll-up with detail (los totales ya están arriba) ── */}
         {atab === 'ingresos' && (
         <div className="mt-6">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-2xl border border-brand/25 bg-brand/[0.06] p-4">
-              <div className="flex items-center gap-2 text-paper-dim"><DollarSign size={15} className="text-brand" /><span className="text-xs font-medium">Ingresos totales</span></div>
-              <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{money(income.total)}</div>
-              <div className="mt-0.5 text-[11px] text-paper-dim">de todas tus modelos</div>
-            </div>
-            <div className="rounded-2xl border border-line bg-card p-4">
-              <div className="flex items-center gap-2 text-paper-dim"><ShoppingBag size={15} className="text-brand" /><span className="text-xs font-medium">Piezas vendidas</span></div>
-              <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{nf(books.sales)}</div>
-              <div className="mt-0.5 text-[11px] text-paper-dim">unidades cobradas</div>
-            </div>
-            <div className="rounded-2xl border border-line bg-card p-4">
-              <div className="flex items-center gap-2 text-paper-dim"><ImageIcon size={15} className="text-brand" /><span className="text-xs font-medium">Contenido</span></div>
-              <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{nf(books.delivered)}</div>
-              <div className="mt-0.5 text-[11px] text-paper-dim">piezas entregadas</div>
-            </div>
-            <div className="rounded-2xl border border-line bg-card p-4">
-              <div className="flex items-center gap-2 text-paper-dim"><Users size={15} className="text-brand" /><span className="text-xs font-medium">Modelos</span></div>
-              <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{nf(books.models)}</div>
-              <div className="mt-0.5 text-[11px] text-paper-dim">en tu agencia</div>
-            </div>
-          </div>
-
-          <div className="mt-6 mb-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">Ingresos por modelo</div>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">Ingresos por modelo · quién genera qué</div>
           {income.rows.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-line bg-card p-8 text-center text-sm text-paper-dim">Aún no hay ventas registradas.</p>
           ) : (

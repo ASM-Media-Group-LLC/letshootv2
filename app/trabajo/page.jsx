@@ -393,6 +393,22 @@ function CreatorDetail({ creator, me, flash }) {
         </button>
       </div>
 
+      {/* Lo que ella tiene pendiente — el trabajador lo ve de entrada */}
+      {openReqs.length > 0 && (
+        <div className="mt-3 rounded-2xl border border-amber-500/25 bg-amber-500/[0.04] p-3.5">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-200">
+            <Inbox size={13} /> Pedidos abiertos de {creator.full_name} · {openReqs.length} — súbele la entrega y márcalo abajo
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {openReqs.map((r) => (
+              <span key={r.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${REQ_STATUS[r.status]?.cls || 'border-line text-paper-mute'}`}>
+                {r.title} · {REQ_STATUS[r.status]?.l || r.status}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {showLora && (
         <div className="mt-3 rounded-2xl border border-line bg-card p-4">
           {!lora ? <p className="text-sm text-paper-dim">Cargando…</p> : lora.total === 0 ? (
@@ -481,11 +497,20 @@ function CreatorDetail({ creator, me, flash }) {
         <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading || !folderSel}
           className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2 py-8 transition-colors hover:border-brand/40 disabled:opacity-50">
           {uploading ? (
-            <span className="flex items-center gap-2 text-sm text-paper"><Loader2 size={17} className="animate-spin" /> Subiendo {uploading}…</span>
+            <span className="flex items-center gap-2 text-sm text-paper"><Loader2 size={17} className="animate-spin" /> Subiendo {uploading} para {creator.full_name}…</span>
           ) : (
             <>
-              <Upload size={24} className="text-paper-dim" />
-              <span className="text-sm font-medium text-paper">{folderSel ? 'Subir fotos o videos a la carpeta' : 'Elige una carpeta para subir'}</span>
+              <span className="flex items-center gap-2">
+                <Avatar src={creator.avatar_url} name={creator.full_name} size="xs" />
+                <span className="text-sm font-medium text-paper">
+                  {folderSel
+                    ? <>Subir fotos o videos → «{(folders || []).find((f) => f.id === folderSel)?.name}» de <span className="text-brand">{creator.full_name}</span></>
+                    : <>Elige arriba una carpeta de <span className="text-brand">{creator.full_name}</span> para subirle</>}
+                </span>
+              </span>
+              <span className="flex items-center gap-1.5 text-[11px] text-paper-dim">
+                <Upload size={12} /> La entrega le llega al instante a ella{creator.handle ? ` (@${creator.handle})` : ''} y a su agencia
+              </span>
             </>
           )}
         </button>
