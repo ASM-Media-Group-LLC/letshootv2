@@ -71,6 +71,7 @@ export default function AdminPage() {
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
   const [nu, setNu] = useState({ full_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
+  const [nuCaps, setNuCaps] = useState([]); // accesos del puesto, elegidos AL crear
   const [selCreator, setSelCreator] = useState(null); // creator id whose profile drawer is open
   const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
@@ -82,7 +83,7 @@ export default function AdminPage() {
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
   const [creating, setCreating] = useState(false);
   const [nuError, setNuError] = useState('');
-  const [regFilter, setRegFilter] = useState('all'); // all | id_pending | proceso | activas
+  const [regFilter, setRegFilter] = useState(null);  // null = cerrado (solo cajitas) | all | id_pending | proceso | activas
   const [regQuery, setRegQuery] = useState('');       // buscador de registros
 
   const loadKyc = useCallback(async () => {
@@ -164,13 +165,14 @@ export default function AdminPage() {
     setNuError('');
     if (!nu.email || !nu.password || !nu.role) { setNuError('Completa correo, contraseña y rol.'); return; }
     if (nu.password.length < 8) { setNuError('La contraseña debe tener al menos 8 caracteres.'); return; }
+    if (nu.role === 'supervisor' && nuCaps.length === 0) { setNuError('Marca al menos una función para este puesto.'); return; }
     setCreating(true);
     // Supabase Edge Function 'create-user' runs with the service role (injected
     // by Supabase) and verifies the caller is admin. functions.invoke sends the
-    // signed-in user's JWT automatically.
-    // Create the puesto first with NO functions; the admin then expands the
-    // card below to grant access one by one. (Edge fn v3 accepts capabilities.)
-    const { data, error } = await getSupabase().functions.invoke('create-user', { body: { ...nu, capabilities: [] } });
+    // signed-in user's JWT automatically. The puesto is born WITH the accesses
+    // the admin checks below — no "empty then configure" dance.
+    const caps = nu.role === 'supervisor' ? nuCaps : [];
+    const { data, error } = await getSupabase().functions.invoke('create-user', { body: { ...nu, capabilities: caps } });
     setCreating(false);
     let out = data;
     if (error && !out) {
@@ -179,10 +181,10 @@ export default function AdminPage() {
     if (!out?.ok) { setNuError(out?.error || 'No se pudo crear el usuario.'); return; }
     const createdRole = nu.role;
     setNu({ full_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
-    flash(createdRole === 'supervisor' ? 'Puesto creado — ábrelo para dar accesos' : 'Cuenta creada');
+    setNuCaps([]);
+    setEquipoPanel(null);
+    flash(createdRole === 'supervisor' ? `Puesto creado con ${caps.length} acceso${caps.length === 1 ? '' : 's'}` : 'Cuenta creada');
     await load();
-    // Open the freshly created team member's profile so the admin configures access.
-    if (createdRole === 'supervisor' && out.id) { setTab('equipo'); setSelStaff(out.id); }
   }
 
   // ── Team invitations ──────────────────────────────────────────────────
@@ -311,61 +313,68 @@ export default function AdminPage() {
                 .filter((p) => !q || `${p.full_name || ''} ${p.handle || ''} ${p.email || ''} ${p.stage_name || ''}`.toLowerCase().includes(q));
               return (
                 <>
+                  {/* Dashboard limpio: solo las cajitas. Tocas una → se abre su lista; tocas de nuevo → se cierra. */}
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {stats.map((s) => {
                       const active = regFilter === s.key;
                       return (
-                        <button key={s.key} onClick={() => setRegFilter(active && s.key !== 'all' ? 'all' : s.key)}
+                        <button key={s.key} onClick={() => { setRegFilter(active ? null : s.key); if (active) setRegQuery(''); }}
                           className={`rounded-2xl border p-4 text-left transition-all ${TONE[s.tone]} ${active ? 'ring-2 ring-brand/60 ring-offset-2 ring-offset-ink' : 'opacity-90 hover:opacity-100'}`}>
-                          <div className="font-display text-3xl font-bold">{s.value}</div>
+                          <div className="flex items-start justify-between">
+                            <div className="font-display text-3xl font-bold">{s.value}</div>
+                            <span className={`mt-1 text-[10px] transition-transform ${active ? 'rotate-180' : ''}`}>▾</span>
+                          </div>
                           <div className="text-xs opacity-80">{s.label}</div>
                         </button>
                       );
                     })}
                   </div>
+                  {!regFilter && <p className="mt-3 text-xs text-paper-dim">Toca una tarjeta para ver esas creadoras.</p>}
 
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <div className="relative min-w-[220px] flex-1">
-                      <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-                      <input value={regQuery} onChange={(e) => setRegQuery(e.target.value)} placeholder="Buscar por nombre, @ o correo…"
-                        className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                    </div>
-                    {(regFilter !== 'all' || q) && (
-                      <button onClick={() => { setRegFilter('all'); setRegQuery(''); }}
-                        className="rounded-full border border-line px-3.5 py-2 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">Limpiar filtro</button>
-                    )}
-                    <span className="text-xs text-paper-dim">{shown.length} de {cr.length}</span>
-                  </div>
+                  {regFilter && (
+                    <>
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <div className="relative min-w-[220px] flex-1">
+                          <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                          <input value={regQuery} onChange={(e) => setRegQuery(e.target.value)} placeholder="Buscar por nombre, @ o correo…"
+                            className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                        </div>
+                        <button onClick={() => { setRegFilter(null); setRegQuery(''); }}
+                          className="rounded-full border border-line px-3.5 py-2 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">Cerrar</button>
+                        <span className="text-xs text-paper-dim">{shown.length} de {cr.length}</span>
+                      </div>
 
-                  <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
-                  <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-                    <div className="grid min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-                      <span>Creadora</span><span>Correo</span><span>Estado</span><span></span>
-                    </div>
-                    {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
-                    {cr.length > 0 && shown.length === 0 && <p className="px-5 py-6 text-paper-dim">Ninguna creadora coincide con el filtro.</p>}
-                    {shown.map((u) => {
-                      const st = OB[u.onboarding_status] || OB.registered;
-                      return (
-                        <button key={u.id} onClick={() => setSelCreator(u.id)}
-                          className="grid w-full min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
-                          <span className="flex min-w-0 items-center gap-2.5">
-                            <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium text-paper">{u.full_name || '—'}</span>
-                              {u.handle && <span className="block truncate text-[11px] text-paper-dim">@{u.handle}</span>}
-                            </span>
-                          </span>
-                          <span className="truncate text-paper-mute">{u.email}</span>
-                          <span><span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span></span>
-                          <span className="flex items-center justify-end gap-1.5 text-xs font-semibold text-brand">
-                            {u.onboarding_status === 'id_pending' && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">Revisar</span>}
-                            Abrir →
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                      <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
+                      <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
+                        <div className="grid min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                          <span>Creadora</span><span>Correo</span><span>Estado</span><span></span>
+                        </div>
+                        {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
+                        {cr.length > 0 && shown.length === 0 && <p className="px-5 py-6 text-paper-dim">Ninguna creadora coincide con el filtro.</p>}
+                        {shown.map((u) => {
+                          const st = OB[u.onboarding_status] || OB.registered;
+                          return (
+                            <button key={u.id} onClick={() => setSelCreator(u.id)}
+                              className="grid w-full min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+                              <span className="flex min-w-0 items-center gap-2.5">
+                                <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium text-paper">{u.full_name || '—'}</span>
+                                  {u.handle && <span className="block truncate text-[11px] text-paper-dim">@{u.handle}</span>}
+                                </span>
+                              </span>
+                              <span className="truncate text-paper-mute">{u.email}</span>
+                              <span><span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span></span>
+                              <span className="flex items-center justify-end gap-1.5 text-xs font-semibold text-brand">
+                                {u.onboarding_status === 'id_pending' && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">Revisar</span>}
+                                Abrir →
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </>
               );
             })()}
@@ -527,7 +536,7 @@ export default function AdminPage() {
                       className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                   ) : <div className="hidden sm:block" />}
                 </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
                   <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                   <input type="text" value={nu.password} onChange={(e) => setNu((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
@@ -536,13 +545,39 @@ export default function AdminPage() {
                     className="rounded-xl border border-line bg-ink-2 px-2.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
                     {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
                   </select>
-                  <button type="submit" disabled={creating}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
-                    {creating ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear
-                  </button>
                 </div>
+
+                {/* Las funciones de la plataforma, desmenuzadas — marcas qué puede hacer ESTE puesto */}
+                {nu.role === 'supervisor' && (
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Accesos de este puesto — función por función</div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {CAPS.map((c) => {
+                        const on = nuCaps.includes(c.v);
+                        return (
+                          <button type="button" key={c.v}
+                            onClick={() => setNuCaps((v) => (on ? v.filter((x) => x !== c.v) : [...v, c.v]))}
+                            className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
+                            <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
+                              {on ? <Check size={13} /> : <Plus size={13} />}
+                            </span>
+                            <span className="min-w-0">
+                              <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
+                              <span className="block text-[11px] text-paper-dim">{c.hint}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <button type="submit" disabled={creating}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
+                  {creating ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />}
+                  {nu.role === 'supervisor' ? `Crear puesto con ${nuCaps.length} acceso${nuCaps.length === 1 ? '' : 's'}` : 'Crear cuenta'}
+                </button>
                 {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
-                <p className="mt-3 text-xs text-paper-dim">Arranca sin accesos: al crearlo se abre su perfil para darle acceso función por función.</p>
               </form>
             )}
 
