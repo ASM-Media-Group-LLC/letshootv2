@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -82,6 +82,8 @@ export default function AdminPage() {
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
   const [creating, setCreating] = useState(false);
   const [nuError, setNuError] = useState('');
+  const [regFilter, setRegFilter] = useState('all'); // all | id_pending | proceso | activas
+  const [regQuery, setRegQuery] = useState('');       // buscador de registros
 
   const loadKyc = useCallback(async () => {
     const supabase = getSupabase();
@@ -294,31 +296,55 @@ export default function AdminPage() {
           <div className="mt-6">
             {(() => {
               const cr = profiles.filter((p) => p.role === 'creator');
-              const n = (s) => cr.filter((p) => (p.onboarding_status || 'registered') === s).length;
+              const inCat = (p, cat) => cat === 'all' ? true
+                : cat === 'id_pending' ? p.onboarding_status === 'id_pending'
+                : cat === 'proceso' ? ['info', 'id_rejected', 'id_approved', 'authorized'].includes(p.onboarding_status)
+                : cat === 'activas' ? ['active', 'paid'].includes(p.onboarding_status) : true;
               const stats = [
-                { label: 'Registradas', value: cr.length, tone: 'zinc' },
-                { label: 'Por revisar', value: n('id_pending'), tone: 'amber' },
-                { label: 'En proceso', value: cr.filter((p) => ['info','id_rejected','id_approved','authorized'].includes(p.onboarding_status)).length, tone: 'sky' },
-                { label: 'Activas', value: cr.filter((p) => ['active','paid'].includes(p.onboarding_status)).length, tone: 'brand' },
+                { key: 'all', label: 'Registradas', value: cr.length, tone: 'zinc' },
+                { key: 'id_pending', label: 'Por revisar', value: cr.filter((p) => inCat(p, 'id_pending')).length, tone: 'amber' },
+                { key: 'proceso', label: 'En proceso', value: cr.filter((p) => inCat(p, 'proceso')).length, tone: 'sky' },
+                { key: 'activas', label: 'Activas', value: cr.filter((p) => inCat(p, 'activas')).length, tone: 'brand' },
               ];
+              const q = regQuery.trim().toLowerCase();
+              const shown = cr.filter((p) => inCat(p, regFilter))
+                .filter((p) => !q || `${p.full_name || ''} ${p.handle || ''} ${p.email || ''} ${p.stage_name || ''}`.toLowerCase().includes(q));
               return (
                 <>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {stats.map((s) => (
-                      <div key={s.label} className={`rounded-2xl border p-4 ${TONE[s.tone]}`}>
-                        <div className="font-display text-3xl font-bold">{s.value}</div>
-                        <div className="text-xs opacity-80">{s.label}</div>
-                      </div>
-                    ))}
+                    {stats.map((s) => {
+                      const active = regFilter === s.key;
+                      return (
+                        <button key={s.key} onClick={() => setRegFilter(active && s.key !== 'all' ? 'all' : s.key)}
+                          className={`rounded-2xl border p-4 text-left transition-all ${TONE[s.tone]} ${active ? 'ring-2 ring-brand/60 ring-offset-2 ring-offset-ink' : 'opacity-90 hover:opacity-100'}`}>
+                          <div className="font-display text-3xl font-bold">{s.value}</div>
+                          <div className="text-xs opacity-80">{s.label}</div>
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  <p className="mt-4 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <div className="relative min-w-[220px] flex-1">
+                      <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                      <input value={regQuery} onChange={(e) => setRegQuery(e.target.value)} placeholder="Buscar por nombre, @ o correo…"
+                        className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                    </div>
+                    {(regFilter !== 'all' || q) && (
+                      <button onClick={() => { setRegFilter('all'); setRegQuery(''); }}
+                        className="rounded-full border border-line px-3.5 py-2 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">Limpiar filtro</button>
+                    )}
+                    <span className="text-xs text-paper-dim">{shown.length} de {cr.length}</span>
+                  </div>
+
+                  <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
                   <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
                     <div className="grid min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
                       <span>Creadora</span><span>Correo</span><span>Estado</span><span></span>
                     </div>
                     {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
-                    {cr.map((u) => {
+                    {cr.length > 0 && shown.length === 0 && <p className="px-5 py-6 text-paper-dim">Ninguna creadora coincide con el filtro.</p>}
+                    {shown.map((u) => {
                       const st = OB[u.onboarding_status] || OB.registered;
                       return (
                         <button key={u.id} onClick={() => setSelCreator(u.id)}

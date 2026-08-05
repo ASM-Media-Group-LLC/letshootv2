@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  DollarSign, ShoppingBag, Clock, Search, Plus, X, Loader2,
+  DollarSign, ShoppingBag, Clock, Search, Plus, X, Loader2, Trash2,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { centsOf, sumCents, moneyCents } from '@/lib/money';
@@ -105,6 +105,15 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
     if (error) { setErr(error.message); return; }
     setForm(blank); setOpen(false);
     flash?.('Venta registrada');
+    await load();
+    onChange?.();
+  }
+
+  async function remove(r) {
+    if (!window.confirm(`¿Borrar esta venta?\n\n${r.model_name} · ${moneyCents(centsOf(r.amount))} · ${fmtDate(r.sold_on)}\n\nEsto la quita del libro y reajusta los totales. No se puede deshacer.`)) return;
+    const { error } = await getSupabase().from('manual_sales').delete().eq('id', r.id);
+    if (error) { flash?.('No se pudo borrar: ' + error.message); return; }
+    flash?.('Venta borrada');
     await load();
     onChange?.();
   }
@@ -228,6 +237,10 @@ export default function ManualSalesLedger({ creators = [], me, flash, onChange }
                       </div>
                     </div>
                     <div className="shrink-0 font-display text-base font-semibold text-paper">{moneyCents(centsOf(r.amount))}</div>
+                    <button onClick={() => remove(r)} title="Borrar venta"
+                      className="shrink-0 grid h-8 w-8 place-items-center rounded-lg border border-line text-paper-dim transition-colors hover:border-rose-500/50 hover:text-rose-300">
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 ))}
               </div>
