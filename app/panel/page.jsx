@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, User, Bell,
+  LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, MessageSquare, User, Bell,
   X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
   ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity,
 } from 'lucide-react';
@@ -36,6 +36,7 @@ function notifText(t, n) {
     case 'approved': return t.panel.notifApproved;
     case 'rejected': return t.panel.notifRejected(m.reason || '');
     case 'feedback_resolved': return t.panel.notifFeedback;
+    case 'request_msg': return `💬 ${(t.panel.reqMsgFrom || {})[m.from] || m.from}: «${m.title || ''}» — ${m.body || ''}`;
     default: return m.text || t.panel.notifGeneric;
   }
 }
@@ -73,7 +74,10 @@ export default function PanelPage() {
       const { data: signed } = await supabase.storage.from('deliveries').createSignedUrls(toSign.map((a) => a.storage_path), 3600);
       const map = {}; (signed || []).forEach((s, i) => { if (s?.signedUrl) map[toSign[i].id] = s.signedUrl; }); setUrls(map);
     }
-    setNotifs(nots || []); setRequests(reqs || []);
+    // Request threads: team questions + replies (copy always reaches her).
+    const { data: reqMsgs } = await supabase.from('request_messages').select('*').order('created_at');
+    const msgsByReq = {}; (reqMsgs || []).forEach((m) => { (msgsByReq[m.request_id] = msgsByReq[m.request_id] || []).push(m); });
+    setNotifs(nots || []); setRequests((reqs || []).map((r) => ({ ...r, _msgs: msgsByReq[r.id] || [] })));
     // Activity feed — the agency's notes across all her content (with thumbs).
     const ids = assets.map((a) => a.id);
     if (ids.length) {
@@ -118,10 +122,25 @@ export default function PanelPage() {
     const opening = !bellOpen; setBellOpen(opening);
     if (opening && unread > 0) { setNotifs((ns) => ns.map((n) => ({ ...n, read: true }))); await getSupabase().from('notifications').update({ read: true }).eq('user_id', state.profile.id).eq('read', false); }
   }
+  // Ella decide: salirse de su agencia (borra el vínculo; avisa a la agencia).
+  async function leaveAgency() {
+    if (!window.confirm(t.panel.leaveAgencyConfirm)) return;
+    const supabase = getSupabase();
+    const { data: link } = await supabase.from('agency_creators').select('agency_id').eq('creator_id', state.profile.id).maybeSingle();
+    const { error } = await supabase.from('agency_creators').delete().eq('creator_id', state.profile.id);
+    if (error) { flash(t.common.error); return; }
+    if (link?.agency_id) {
+      // Best-effort: la agencia se entera de que algo cambió.
+      await supabase.from('notifications').insert({ user_id: link.agency_id, kind: 'agency_left', meta: { creator: state.profile.stage_name || state.profile.full_name || '' } }).then(() => {}, () => {});
+    }
+    setAgency(null);
+    flash('✓');
+  }
+
   async function sendFeedback(asset, kind) {
     let message = null;
     if (kind === 'change') { message = window.prompt(t.panel.changePrompt, ''); if (message === null) return; }
-    const { error } = await getSupabase().from('feedback').insert({ asset_id: asset.id, creator_id: state.profile.id, kind, message });
+    const { error } = await getSupabase().from('feedback').insert({ asset_id: asset.id, creator_id: state.profile.id, kind, message, author_id: state.profile.id, author_role: 'creator' });
     if (error) { flash(t.common.error); return; }
     // Reflect it for her; a DB trigger notifies the team (pop-up + dashboard).
     setMyFeedback((m) => ({ ...m, [asset.id]: kind }));
@@ -216,7 +235,14 @@ export default function PanelPage() {
             <h1 className="font-display text-2xl font-semibold sm:text-3xl">{t.panel.hello} {(state.profile?.stage_name || state.profile?.full_name || '').split(' ')[0]}</h1>
             {state.profile?.handle && <p className="text-sm text-paper-dim">@{state.profile.handle}</p>}
             <p className="mt-1 text-sm text-paper-mute">{t.panel.greeting}</p>
-            {agency && <p className="mt-1.5 flex items-center gap-1.5 text-xs text-paper-dim"><Building2 size={12} className="text-brand" /> {t.panel.managedBy} <span className="font-medium text-paper-mute">{agency}</span></p>}
+            {agency && (
+              <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-paper-dim">
+                <Building2 size={12} className="text-brand" /> {t.panel.managedBy} <span className="font-medium text-paper-mute">{agency}</span>
+                <button onClick={leaveAgency} className="ml-1 rounded-full border border-line px-2 py-0.5 text-[10px] text-paper-dim transition-colors hover:border-rose-500/40 hover:text-rose-300">
+                  {t.panel.leaveAgency}
+                </button>
+              </p>
+            )}
           </div>
         </div>
 
@@ -348,9 +374,12 @@ export default function PanelPage() {
                   : r.status === 'in_progress' ? { l: t.panel.reqProgress, cls: 'border-sky/40 bg-sky/10 text-sky' }
                   : { l: t.panel.reqPending, cls: 'border-amber-400/40 bg-amber-400/10 text-amber-300' };
                 return (
-                  <div key={r.id} className="flex items-start justify-between gap-3 rounded-2xl border border-line bg-card px-4 py-3">
-                    <div className="min-w-0"><p className="text-sm font-medium text-paper">{r.title}</p>{r.description && <p className="mt-0.5 text-xs text-paper-dim">{r.description}</p>}</div>
-                    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${st.cls}`}>{st.l}</span>
+                  <div key={r.id} className="rounded-2xl border border-line bg-card px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0"><p className="text-sm font-medium text-paper">{r.title}</p>{r.description && <p className="mt-0.5 text-xs text-paper-dim">{r.description}</p>}</div>
+                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${st.cls}`}>{st.l}</span>
+                    </div>
+                    <CreatorReqThread req={r} t={t} locale={locale} onSent={refresh} flash={flash} />
                   </div>
                 );
               })}
@@ -361,6 +390,56 @@ export default function PanelPage() {
 
       {detail && <AssetDetail asset={detail} src={srcFor(detail)} t={t} locale={locale} folderName={state.folders[detail.folder_id]} feedback={myFeedback[detail.id]} onClose={() => setDetail(null)} onFeedback={sendFeedback} />}
       {toast && <div className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-sm font-medium text-brand backdrop-blur">{toast}</div>}
+    </div>
+  );
+}
+
+// Request thread: team questions land here (and at her agency); she replies.
+function CreatorReqThread({ req, t, locale, onSent, flash }) {
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const n = req._msgs?.length || 0;
+  if (!n && req.status === 'delivered') return null;
+
+  async function send(e) {
+    e.preventDefault();
+    if (!body.trim()) return;
+    setSending(true);
+    const { error } = await getSupabase().rpc('post_request_message', { rid: req.id, body_text: body.trim() });
+    setSending(false);
+    if (error) { flash(t.common.error); return; }
+    setBody('');
+    onSent?.();
+  }
+
+  return (
+    <div className="mt-2.5 border-t border-line pt-2.5">
+      <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-paper-mute transition-colors hover:text-paper">
+        <MessageSquare size={11} className={n ? 'text-brand' : ''} />
+        {t.panel.reqMsgTitle}{n ? ` · ${n}` : ''} {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          {(req._msgs || []).map((m) => (
+            <div key={m.id} className={`rounded-lg border p-2 text-xs ${m.author_role === 'creator' ? 'border-brand/25 bg-brand/[0.05]' : 'border-line bg-ink-2'}`}>
+              <div className="mb-0.5 text-[10px] text-paper-dim">
+                <span className="font-semibold text-paper-mute">{(t.panel.reqMsgFrom || {})[m.author_role] || m.author_role}</span>
+                {m.author_name ? ` · ${m.author_name}` : ''} · {new Date(m.created_at).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+              </div>
+              <p className="text-paper-mute">{m.body}</p>
+            </div>
+          ))}
+          <form className="flex gap-2" onSubmit={send}>
+            <input value={body} onChange={(e) => setBody(e.target.value)} placeholder={t.panel.reqMsgPlaceholder}
+              className="min-w-0 flex-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-xs text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            <button type="submit" disabled={sending || !body.trim()}
+              className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-on-accent disabled:opacity-50">
+              {sending ? '…' : t.panel.reqMsgSend}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

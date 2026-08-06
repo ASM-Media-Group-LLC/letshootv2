@@ -42,11 +42,14 @@ const LORA_CATS = {
   nude: { label: 'Sin ropa', slug: '11-sin-ropa' },
   face: { label: 'Rostro', slug: '00-rostro' },
 };
+// Estados del pedido — el mismo lenguaje en las tres experiencias:
+// la modelo/agencia lo manda (Enviado) → el equipo lo toma (En proceso) → Completado.
 const REQ_STATUS = {
-  pending: { l: 'Pendiente', cls: 'border-amber-500/40 bg-amber-500/10 text-amber-300' },
-  in_progress: { l: 'En producción', cls: 'border-sky-500/40 bg-sky-500/10 text-sky-300' },
-  delivered: { l: 'Entregado', cls: 'border-brand/40 bg-brand/10 text-brand' },
+  pending: { l: 'Enviado', cls: 'border-amber-500/40 bg-amber-500/10 text-amber-300' },
+  in_progress: { l: 'En proceso', cls: 'border-sky-500/40 bg-sky-500/10 text-sky-300' },
+  delivered: { l: 'Completado', cls: 'border-brand/40 bg-brand/10 text-brand' },
 };
+const MSG_FROM = { team: 'Equipo LetShoot', creator: 'Modelo', agency: 'Agencia' };
 const OB_LABEL = {
   registered: 'Registrada', info: 'Falta ID', id_pending: 'ID en revisión',
   id_rejected: 'ID rechazado', id_approved: 'Falta pago', authorized: 'Falta pago',
@@ -144,6 +147,11 @@ export default function TrabajoPage() {
             setToast(`${fk}${n.meta?.creator ? ` · ${n.meta.creator}` : ''}: ${n.meta?.asset || ''}`);
             setTimeout(() => setToast(''), 6000);
             load();
+          } else if (n?.kind === 'request_msg') {
+            const who = n.meta?.from === 'creator' ? 'La modelo' : n.meta?.from === 'agency' ? 'La agencia' : 'El equipo';
+            setToast(`💬 ${who} respondió en «${n.meta?.title || 'un pedido'}»`);
+            setTimeout(() => setToast(''), 6000);
+            setReqPing((x) => x + 1);
           }
         })
       .subscribe();
@@ -861,9 +869,12 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
 
   const load = useCallback(async () => {
     const supabase = getSupabase();
-    const { data } = await supabase.from('requests')
-      .select('id, creator_id, chatter_id, producer_id, title, description, status, due_date, created_at, ref_images')
-      .order('created_at', { ascending: false });
+    const [{ data }, { data: msgs }] = await Promise.all([
+      supabase.from('requests')
+        .select('id, creator_id, chatter_id, producer_id, title, description, status, due_date, created_at, ref_images')
+        .order('created_at', { ascending: false }),
+      supabase.from('request_messages').select('*').order('created_at'),
+    ]);
     const rows = data || [];
     // Sign reference photos so the worker can see the examples.
     const allPaths = rows.flatMap((r) => r.ref_images || []);
@@ -872,7 +883,9 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
       const { data: signed } = await supabase.storage.from('request-refs').createSignedUrls(allPaths, 3600);
       (signed || []).forEach((s) => { if (s.signedUrl) urlMap[s.path] = s.signedUrl; });
     }
-    setRequests(rows.map((r) => ({ ...r, _refUrls: (r.ref_images || []).map((p) => urlMap[p]).filter(Boolean) })));
+    const byReq = {};
+    (msgs || []).forEach((m) => { (byReq[m.request_id] = byReq[m.request_id] || []).push(m); });
+    setRequests(rows.map((r) => ({ ...r, _refUrls: (r.ref_images || []).map((p) => urlMap[p]).filter(Boolean), _msgs: byReq[r.id] || [] })));
   }, []);
 
   useEffect(() => { load(); }, [load, ping]);
@@ -883,6 +896,18 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
     if (status === 'delivered') patch.delivered_at = new Date().toISOString();
     const { error } = await getSupabase().from('requests').update(patch).eq('id', req.id);
     if (error) { flash('Error: ' + error.message); return; }
+    // La modelo (y su agencia) ven el cambio de estado al instante en sus cuentas.
+    flash(status === 'in_progress' ? 'Pedido tomado — ella lo ve «En proceso»' : 'Pedido completado — ella lo ve «Completado»');
+    load();
+  }
+
+  // Pregunta/mensaje del equipo → copia a la modelo Y su agencia (RPC notifica).
+  async function sendMsg(req, body, clear) {
+    if (!body.trim()) return;
+    const { error } = await getSupabase().rpc('post_request_message', { rid: req.id, body_text: body.trim() });
+    if (error) { flash('Error: ' + error.message); return; }
+    clear();
+    flash('Enviado a la modelo y su agencia');
     load();
   }
 
@@ -955,25 +980,68 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
                     </div>
                   )}
                 </div>
-                {r.status !== 'delivered' && (
-                  <div className="flex shrink-0 gap-2">
-                    {r.status === 'pending' && (
-                      <button onClick={() => setStatus(r, 'in_progress')}
-                        className="rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-2.5 text-xs font-semibold text-sky-300 hover:bg-sky-500/20">
-                        Tomar pedido
-                      </button>
-                    )}
-                    <button onClick={() => setStatus(r, 'delivered')}
-                      className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-2.5 text-xs font-semibold text-on-accent shadow-glow-sm hover:scale-[1.03]">
-                      <Check size={13} /> Entregado
-                    </button>
-                  </div>
+                {/* Un solo botón por etapa — imposible confundirse:
+                    Enviado → Tomar pedido · En proceso → Marcar completado · Completado → nada */}
+                {r.status === 'pending' && (
+                  <button onClick={() => setStatus(r, 'in_progress')}
+                    className="shrink-0 rounded-full bg-sky-500/90 px-4 py-2.5 text-xs font-semibold text-ink shadow-glow-sm transition-transform hover:scale-[1.03]">
+                    Tomar pedido →
+                  </button>
+                )}
+                {r.status === 'in_progress' && (
+                  <button onClick={() => setStatus(r, 'delivered')}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand px-4 py-2.5 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
+                    <Check size={13} /> Marcar completado
+                  </button>
                 )}
               </div>
+
+              {r.status === 'in_progress' && r.producer_id && (
+                <p className="mt-2 text-[11px] text-sky-300">En manos de {nameOf(r.producer_id)} — al completarlo, súbele el contenido desde Creadoras y amárralo a este pedido.</p>
+              )}
+
+              {/* Mensajes del pedido — llegan a la modelo Y a su agencia, siempre */}
+              <ReqThread req={r} onSend={sendMsg} />
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// Hilo de mensajes de un pedido: preguntas del equipo y respuestas de la
+// modelo/agencia. Cada mensaje notifica a todas las partes (RPC).
+function ReqThread({ req, onSend }) {
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState('');
+  const n = req._msgs?.length || 0;
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1.5 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">
+        <MessageSquare size={13} className={n ? 'text-brand' : ''} />
+        {n ? `${n} mensaje${n === 1 ? '' : 's'}` : 'Preguntar a la modelo y su agencia'} {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          {(req._msgs || []).map((m) => (
+            <div key={m.id} className={`rounded-xl border p-2.5 text-sm ${m.author_role === 'team' ? 'border-brand/25 bg-brand/[0.05]' : 'border-line bg-ink-2'}`}>
+              <div className="mb-0.5 flex items-center gap-2 text-[11px] text-paper-dim">
+                <span className="font-semibold text-paper-mute">{MSG_FROM[m.author_role] || m.author_role}</span>
+                {m.author_name && <span>· {m.author_name}</span>}
+                <span>· {new Date(m.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span>
+              </div>
+              <p className="text-paper-mute">{m.body}</p>
+            </div>
+          ))}
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); onSend(req, body, () => setBody('')); }}>
+            <input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Pregunta o aclaración — le llega a la modelo y a su agencia…"
+              className="min-w-0 flex-1 rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            <button type="submit" disabled={!body.trim()}
+              className="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm disabled:opacity-50">Enviar</button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
@@ -988,7 +1056,7 @@ function FeedbackTab({ creators, flash }) {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     const { data } = await supabase.from('feedback')
-      .select('id, creator_id, kind, message, resolved, created_at, asset_id')
+      .select('id, creator_id, kind, message, resolved, created_at, asset_id, author_role')
       .order('created_at', { ascending: false });
     // Connect each feedback to ITS photo so the worker sees exactly which piece.
     const ids = [...new Set((data || []).map((f) => f.asset_id).filter(Boolean))];
@@ -1070,6 +1138,7 @@ function FeedbackTab({ creators, flash }) {
                 ) : (
                   <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">✎ Pide cambio</span>
                 )}
+                <span className="rounded-full bg-hair/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper-dim">{f.author_role === 'agency' ? 'Agencia' : 'Modelo'}</span>
                 <span className="text-[11px] text-paper-dim">
                   {f._asset?.title ? `«${f._asset.title}» · ` : ''}{new Date(f.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}
                 </span>

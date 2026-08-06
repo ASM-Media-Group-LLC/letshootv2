@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
-  ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen,
+  ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -23,11 +23,13 @@ function isDirect(path) { return !path || path.startsWith('http') || path.starts
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
 const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
+// Mismo lenguaje que la modelo y el equipo: Enviado → En proceso → Completado.
 const REQ_STATUS = {
-  pending: { label: 'Pendiente', cls: 'text-amber-300 border-amber-400/30 bg-amber-400/10' },
+  pending: { label: 'Enviado', cls: 'text-amber-300 border-amber-400/30 bg-amber-400/10' },
   in_progress: { label: 'En proceso', cls: 'text-sky border-sky/30 bg-sky/10' },
-  delivered: { label: 'Entregado', cls: 'text-brand border-brand/30 bg-brand/10' },
+  delivered: { label: 'Completado', cls: 'text-brand border-brand/30 bg-brand/10' },
 };
+const MSG_FROM = { team: 'Equipo LetShoot', creator: 'Modelo', agency: 'Agencia' };
 
 // Completion checklist for a model (agency sees status only, mirrors admin/staff).
 // Reads the same creator_profile fields the detail view uses.
@@ -97,10 +99,14 @@ export default function AgenciaPage() {
         .select('id, creator_id, folder_id, type, storage_path, deliver_date, title, purpose, sales_count, revenue, reach, interactions')
         .in('creator_id', ids),
       supabase.from('folders').select('id, name').in('creator_id', ids),
+      // TODOS los pedidos de tus modelos — los tuyos y los que ellas hacen.
       supabase.from('requests')
-        .select('id, creator_id, title, description, status, due_date, created_at')
-        .eq('chatter_id', agencyId).order('created_at', { ascending: false }),
+        .select('id, creator_id, chatter_id, title, description, status, due_date, created_at')
+        .in('creator_id', ids).order('created_at', { ascending: false }),
     ]);
+    const { data: reqMsgs } = await supabase.from('request_messages').select('*').order('created_at');
+    const msgsByReq = {};
+    (reqMsgs || []).forEach((m) => { (msgsByReq[m.request_id] = msgsByReq[m.request_id] || []).push(m); });
 
     const folderMap = {};
     (fols || []).forEach((f) => { folderMap[f.id] = f.name; });
@@ -131,7 +137,7 @@ export default function AgenciaPage() {
 
     setFolders(folderMap);
     setModels(list);
-    setRequests(reqs || []);
+    setRequests((reqs || []).map((r) => ({ ...r, _msgs: msgsByReq[r.id] || [] })));
     setInvites(invs || []);
   }, []);
 
@@ -421,8 +427,8 @@ export default function AgenciaPage() {
                     {modelRequests.length === 0 && <p className="rounded-xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Sin pedidos. Usa «Pedir contenido» para crear uno.</p>}
                     {[
                       { key: 'in_progress', title: 'En proceso', hint: 'El equipo ya está trabajando en esto' },
-                      { key: 'pending', title: 'Pendientes', hint: 'El equipo ya lo sabe, aún no empieza' },
-                      { key: 'delivered', title: 'Entregados', hint: 'Listos y subidos' },
+                      { key: 'pending', title: 'Enviados', hint: 'El equipo ya lo recibió, aún no empieza' },
+                      { key: 'delivered', title: 'Completados', hint: 'Listos y subidos' },
                     ].map((grp) => {
                       const rows = modelRequests.filter((r) => (r.status || 'pending') === grp.key);
                       if (!rows.length) return null;
@@ -440,8 +446,10 @@ export default function AgenciaPage() {
                                   <p className="text-sm font-semibold text-paper">{r.title}</p>
                                   <span className="shrink-0 text-[11px] text-paper-dim">{new Date(r.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span>
                                 </div>
+                                <p className="mt-0.5 text-[11px] text-paper-dim">{r.chatter_id === r.creator_id ? 'Lo pidió ella' : 'Lo pediste tú'}</p>
                                 {r.description && <p className="mt-1 text-xs leading-relaxed text-paper-mute">{r.description}</p>}
                                 {r.due_date && <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-paper-dim"><Clock size={11} /> para el {r.due_date}</p>}
+                                <AgencyReqThread req={r} onSent={refresh} flash={flash} />
                               </div>
                             ))}
                           </div>
@@ -699,6 +707,57 @@ function StatCard({ icon: Icon, label, value, d }) {
 
 // New content request from the agency to the team — what you want, how you need
 // it, and reference photos. No date (delivery timing is automatic).
+// Hilo del pedido: la agencia ve las preguntas del equipo y responde.
+// Cada mensaje llega también a la modelo (copia siempre, transparencia).
+function AgencyReqThread({ req, onSent, flash }) {
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const n = req._msgs?.length || 0;
+
+  async function send(e) {
+    e.preventDefault();
+    if (!body.trim()) return;
+    setSending(true);
+    const { error } = await getSupabase().rpc('post_request_message', { rid: req.id, body_text: body.trim() });
+    setSending(false);
+    if (error) { flash('Error: ' + error.message); return; }
+    setBody('');
+    flash('Respuesta enviada — el equipo y la modelo la ven');
+    onSent?.();
+  }
+
+  return (
+    <div className="mt-2.5 border-t border-line pt-2.5">
+      <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-paper-mute transition-colors hover:text-paper">
+        <Send size={11} className={n ? 'text-brand' : ''} />
+        {n ? `${n} mensaje${n === 1 ? '' : 's'} con el equipo` : 'Escribir al equipo'} {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          {(req._msgs || []).map((m) => (
+            <div key={m.id} className={`rounded-lg border p-2 text-xs ${m.author_role === 'agency' ? 'border-brand/25 bg-brand/[0.05]' : 'border-line bg-ink-2'}`}>
+              <div className="mb-0.5 text-[10px] text-paper-dim">
+                <span className="font-semibold text-paper-mute">{MSG_FROM[m.author_role] || m.author_role}</span>
+                {m.author_name ? ` · ${m.author_name}` : ''} · {new Date(m.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}
+              </div>
+              <p className="text-paper-mute">{m.body}</p>
+            </div>
+          ))}
+          <form className="flex gap-2" onSubmit={send}>
+            <input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Responde o aclara — lo ven el equipo y la modelo…"
+              className="min-w-0 flex-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-xs text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            <button type="submit" disabled={sending || !body.trim()}
+              className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-on-accent disabled:opacity-50">
+              {sending ? '…' : 'Enviar'}
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NewRequest({ creatorId, agencyId, onDone }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -775,6 +834,17 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+  const [loved, setLoved] = useState(false);
+
+  // Like de la agencia sobre la pieza — el trigger de feedback avisa al equipo.
+  async function sendLove() {
+    if (loved) return;
+    const { error } = await getSupabase().from('feedback').insert({
+      creator_id: asset.creator_id, asset_id: asset.id, kind: 'love',
+      author_id: agencyId, author_role: 'agency',
+    });
+    if (!error) setLoved(true);
+  }
 
   const loadNotes = useCallback(async () => {
     const { data } = await getSupabase().from('asset_notes')
@@ -841,6 +911,12 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
                 </span>
               )}
               {asset.title && <h3 className="mt-2 font-display text-xl font-semibold text-paper">{asset.title}</h3>}
+              {/* Like de la agencia — el equipo lo ve en Feedback como «Agencia» */}
+              <button onClick={sendLove} disabled={loved}
+                className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  loved ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
+                <Heart size={13} className={loved ? 'fill-current' : ''} /> {loved ? 'Le diste like — el equipo lo ve' : 'Nos encantó'}
+              </button>
             </div>
             <div className="rounded-2xl border border-line bg-ink-2 p-3.5">
               <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand"><Target size={12} /> Por qué se hizo</div>
