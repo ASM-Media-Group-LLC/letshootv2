@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
-  Check, RefreshCw, Sparkles, ChevronRight, ChevronDown, ShieldCheck, X, Download,
+  Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
   ImageIcon, DollarSign, Building2, Film, ShoppingBag, TrendingUp, TrendingDown,
 } from 'lucide-react';
@@ -193,21 +193,18 @@ export default function TrabajoPage() {
   ];
 
   const cardBtn = (k) => {
-    const open = tab === k.id;
+    // Every card CHANGES SCREEN — either a real route (href) or the in-page
+    // area view (setTab). The arrow signals "enter", never "expand".
     return (
-      <button key={k.id} onClick={() => (k.href ? router.push(k.href) : setTab(open ? null : k.id))}
+      <button key={k.id} onClick={() => (k.href ? router.push(k.href) : setTab(k.id))}
         className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition-all ${
-          open ? 'border-brand/60 bg-brand/[0.08] shadow-glow-sm'
-          : k.alert ? 'border-amber-500/30 bg-amber-500/[0.04] hover:border-amber-400/50'
+          k.alert ? 'border-amber-500/30 bg-amber-500/[0.04] hover:border-amber-400/50'
           : 'border-line bg-card hover:border-brand/40 hover:bg-card/80'}`}>
         <div className="flex items-center justify-between">
-          <span className={`grid h-9 w-9 place-items-center rounded-xl ${
-            open ? 'bg-brand text-on-accent' : k.alert ? 'bg-amber-500/15 text-amber-300' : 'bg-brand/10 text-brand'}`}>
+          <span className={`grid h-9 w-9 place-items-center rounded-xl ${k.alert ? 'bg-amber-500/15 text-amber-300' : 'bg-brand/10 text-brand'}`}>
             <k.icon size={17} />
           </span>
-          {k.href
-            ? <ChevronRight size={15} className="shrink-0 text-paper-dim" />
-            : <ChevronDown size={15} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180 text-brand' : ''}`} />}
+          <ChevronRight size={15} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
         </div>
         <div className="mt-3 font-display text-2xl font-semibold leading-none text-paper">{k.value}</div>
         <div className="mt-1.5 text-sm font-medium text-paper">{k.label}</div>
@@ -249,34 +246,50 @@ export default function TrabajoPage() {
       </header>
 
       <main className="mx-auto max-w-6xl px-5 py-8">
-        <h1 className="font-display text-2xl font-semibold sm:text-3xl">Espacio de trabajo</h1>
-        <p className="mt-1 text-sm text-paper-mute">
-          Todo tu trabajo en un vistazo. Toca una tarjeta para abrir su área; tócala de nuevo para cerrarla.
-        </p>
-
-        {/* Las tarjetas quedan siempre visibles. La que abres se marca (flecha
-            arriba) y su área aparece abajo; tocarla de nuevo la cierra. Sin
-            botones extra de «cerrar» ni «regresar». */}
-        {OPS_CARDS.length > 0 && (
+        {!tab ? (
+          /* ── PANEL: solo las tarjetas. Tocar una cambia de pantalla al área ── */
           <>
-            <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Operación · tu trabajo del día</div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{OPS_CARDS.map(cardBtn)}</div>
+            <h1 className="font-display text-2xl font-semibold sm:text-3xl">Espacio de trabajo</h1>
+            <p className="mt-1 text-sm text-paper-mute">Todo tu trabajo en un vistazo. Toca una tarjeta para entrar a esa área.</p>
+
+            {OPS_CARDS.length > 0 && (
+              <>
+                <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Operación · tu trabajo del día</div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{OPS_CARDS.map(cardBtn)}</div>
+              </>
+            )}
+            {BIZ_CARDS.length > 0 && (
+              <>
+                <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Empresa · cómo vamos</div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{BIZ_CARDS.map(cardBtn)}</div>
+              </>
+            )}
+          </>
+        ) : (
+          /* ── PANTALLA DEL ÁREA: reemplaza el panel; "Panel" arriba para volver ── */
+          <>
+            {(() => {
+              const k = [...OPS_CARDS, ...BIZ_CARDS].find((c) => c.id === tab);
+              return (
+                <>
+                  <button onClick={() => setTab(null)} className="inline-flex items-center gap-1.5 text-sm text-paper-mute transition-colors hover:text-paper">
+                    <ArrowLeft size={15} /> Panel
+                  </button>
+                  <h1 className="mt-2 flex items-center gap-2.5 font-display text-2xl font-semibold sm:text-3xl">
+                    {k?.icon && <k.icon size={24} className="text-brand" />} {k?.label || ''}
+                  </h1>
+                </>
+              );
+            })()}
+            {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
+            {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
+            {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
+            {tab === 'feedback' && can('feedback') && <FeedbackTab creators={creators} flash={flash} />}
+            {tab === 'produccion' && can('metrics') && <ProduccionTab books={books} />}
+            {tab === 'agencias' && can('metrics') && <AgenciasTab books={books} />}
+            {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
           </>
         )}
-        {BIZ_CARDS.length > 0 && (
-          <>
-            <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Empresa · cómo vamos</div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{BIZ_CARDS.map(cardBtn)}</div>
-          </>
-        )}
-
-        {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
-        {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
-        {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
-        {tab === 'feedback' && can('feedback') && <FeedbackTab creators={creators} flash={flash} />}
-        {tab === 'produccion' && can('metrics') && <ProduccionTab books={books} />}
-        {tab === 'agencias' && can('metrics') && <AgenciasTab books={books} />}
-        {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
       </main>
 
       {toast && (
