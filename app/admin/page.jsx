@@ -7,6 +7,7 @@ import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
+import { CAPS, CAP_SECTIONS } from '@/lib/caps';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -24,18 +25,9 @@ const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), produc
 // Only the admin has all functions implicitly. There is NO "servicio al
 // cliente": los pedidos los hacen la agencia/manager o la propia creadora.
 // You build the puesto and grant access function by function. 'datos' and 'kyc'
-// are split on purpose: 'datos' = see the creator's profile/legal data WITHOUT
-// her ID documents; 'kyc' = also see + verify the identity documents. So
+// The platform functions live in lib/caps.js — mapped by SECTION → function
+// (single source of truth for /admin and /trabajo).
 // "datos con identificación" = datos + kyc, "datos sin identificación" = datos.
-const CAPS = [
-  { v: 'datos', l: 'Ver datos de la creadora', hint: 'Perfil y datos (sin documentos de ID)' },
-  { v: 'kyc', l: 'Verificar identidad', hint: 'Ver documentos de ID + aprobar / rechazar' },
-  { v: 'content', l: 'Subir entregas', hint: 'Entregar fotos y videos' },
-  { v: 'requests', l: 'Atender pedidos', hint: 'Tomar y entregar pedidos' },
-  { v: 'feedback', l: 'Responder feedback', hint: 'Contestar el feedback de la creadora' },
-  { v: 'metrics', l: 'Ver métricas', hint: 'Embudo y estados' },
-  { v: 'team', l: 'Gestionar equipo', hint: 'Crear puestos y dar accesos' },
-];
 const LORA_MIN = 50; // house minimum clone photos
 const MANAGER_ROLES = ['admin'];
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
@@ -547,28 +539,32 @@ export default function AdminPage() {
                   </select>
                 </div>
 
-                {/* Las funciones de la plataforma, desmenuzadas — marcas qué puede hacer ESTE puesto */}
+                {/* Las funciones de la plataforma, por SECCIÓN → función — marcas qué puede hacer ESTE puesto */}
                 {nu.role === 'supervisor' && (
-                  <div className="mt-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Accesos de este puesto — función por función</div>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      {CAPS.map((c) => {
-                        const on = nuCaps.includes(c.v);
-                        return (
-                          <button type="button" key={c.v}
-                            onClick={() => setNuCaps((v) => (on ? v.filter((x) => x !== c.v) : [...v, c.v]))}
-                            className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
-                            <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
-                              {on ? <Check size={13} /> : <Plus size={13} />}
-                            </span>
-                            <span className="min-w-0">
-                              <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
-                              <span className="block text-[11px] text-paper-dim">{c.hint}</span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                  <div className="mt-4 space-y-4">
+                    {CAP_SECTIONS.map((sec) => (
+                      <div key={sec.id}>
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-brand/80">{sec.name}</div>
+                        <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+                          {sec.caps.map((c) => {
+                            const on = nuCaps.includes(c.v);
+                            return (
+                              <button type="button" key={c.v}
+                                onClick={() => setNuCaps((v) => (on ? v.filter((x) => x !== c.v) : [...v, c.v]))}
+                                className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
+                                <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
+                                  {on ? <Check size={13} /> : <Plus size={13} />}
+                                </span>
+                                <span className="min-w-0">
+                                  <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
+                                  <span className="block text-[11px] text-paper-dim">{c.hint}</span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -969,22 +965,29 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, sa
             ) : (
               <>
                 <p className="mb-3 text-[11px] text-paper-dim">Enciende solo lo que este puesto puede hacer. «Ver datos» + «Verificar identidad» = acceso a datos con identificación.</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {CAPS.map((c) => {
-                    const on = caps.includes(c.v);
-                    return (
-                      <button key={c.v} onClick={() => onToggleCap(staff.id, c.v, !on)} disabled={isSelf && c.v === 'team'}
-                        className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors disabled:opacity-50 ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink hover:border-hair'}`}>
-                        <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
-                          {on ? <Check size={13} /> : <Plus size={13} />}
-                        </span>
-                        <span className="min-w-0">
-                          <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
-                          <span className="block text-[11px] text-paper-dim">{c.hint}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
+                <div className="space-y-3">
+                  {CAP_SECTIONS.map((sec) => (
+                    <div key={sec.id}>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-brand/80">{sec.name}</div>
+                      <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+                        {sec.caps.map((c) => {
+                          const on = caps.includes(c.v);
+                          return (
+                            <button key={c.v} onClick={() => onToggleCap(staff.id, c.v, !on)} disabled={isSelf && c.v === 'team'}
+                              className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors disabled:opacity-50 ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink hover:border-hair'}`}>
+                              <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
+                                {on ? <Check size={13} /> : <Plus size={13} />}
+                              </span>
+                              <span className="min-w-0">
+                                <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
+                                <span className="block text-[11px] text-paper-dim">{c.hint}</span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </>
             )}

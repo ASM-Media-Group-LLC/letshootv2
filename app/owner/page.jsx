@@ -21,10 +21,8 @@ const USER = { email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' };
 const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
 // Agency / manager — manages its models, makes requests, records sales.
 const AGENCY = { email: 'agencia@letshoot.ai', password: 'LetShoot!agencia' };
-// Internal team — ONE account with every function. There are no prebaked roles:
-// from this account (Equipo tab) or from Admin you create the puestos you want,
-// name them, and grant access function by function.
-const EQUIPO = { email: 'manager@letshoot.ai', password: 'LetShoot!manager' };
+// Internal team: no demo accounts. Real people are created from Admin →
+// «Equipo interno» (Crear puesto picks the functions) or invited by link.
 
 export default function OwnerPage() {
   const router = useRouter();
@@ -152,25 +150,15 @@ export default function OwnerPage() {
           </button>
         </div>
 
-        {/* Equipo interno — UNA cuenta con acceso total; los puestos los creas tú */}
-        <div className="mt-4 flex flex-col rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
-          <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/12 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
-            <ClipboardList size={14} /> Equipo interno · acceso total
+        {/* Equipo interno — sin cuentas demo: la gente real se crea en Admin → Equipo interno */}
+        <div className="mt-4 rounded-3xl border border-dashed border-line bg-card/50 p-6">
+          <span className="mb-2 inline-flex w-fit items-center gap-2 rounded-full bg-hair/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-paper-mute">
+            <ClipboardList size={14} /> Equipo interno
           </span>
           <p className="text-sm text-paper-mute">
-            La cuenta del equipo con <strong className="text-paper">todas las funciones</strong>: sube las
-            entregas a cada modelo, recibe los pedidos, revisa IDs, ve métricas y desde su pestaña
-            «Equipo» <strong className="text-paper">crea los puestos</strong> — tú les pones nombre y les das
-            acceso función por función. No hay roles prehechos.
+            Sin cuentas de prueba. A tu gente real la creas desde <strong className="text-paper">Admin → «Equipo interno» → Crear puesto</strong> (eliges
+            sus funciones sección por sección) o la invitas por link. Cada quien entra a <span className="font-mono text-xs">/trabajo</span> con su propia cuenta.
           </p>
-          <div className="mt-3 inline-flex w-fit flex-col gap-0.5 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
-            <div>{EQUIPO.email}</div>
-            <div>{EQUIPO.password}</div>
-          </div>
-          <button onClick={() => enter(EQUIPO, 'equipo')} disabled={!!busy}
-            className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-            {busy === 'equipo' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Equipo <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
-          </button>
         </div>
 
         {error && (

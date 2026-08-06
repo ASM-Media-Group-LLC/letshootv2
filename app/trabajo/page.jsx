@@ -18,6 +18,7 @@ import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import { sumCents, moneyCents } from '@/lib/money';
+import { CAPS, CAP_SECTIONS } from '@/lib/caps';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
 
@@ -1216,15 +1217,9 @@ function AgenciasTab({ books }) {
 
 /* ── Equipo: crear puestos y asignar funciones (función 'team') ─────────── */
 // 'datos' = ver perfil/datos SIN documentos; 'kyc' = ver ID + verificar.
-const TEAM_CAPS = [
-  { v: 'datos', l: 'Ver datos de la creadora', hint: 'Perfil y datos (sin documentos de ID)' },
-  { v: 'kyc', l: 'Verificar identidad', hint: 'Ver documentos de ID + aprobar / rechazar' },
-  { v: 'content', l: 'Subir entregas', hint: 'Entregar fotos y videos' },
-  { v: 'requests', l: 'Atender pedidos', hint: 'Tomar y entregar pedidos' },
-  { v: 'feedback', l: 'Responder feedback', hint: 'Contestar el feedback' },
-  { v: 'metrics', l: 'Ver métricas', hint: 'Embudo y estados' },
-  { v: 'team', l: 'Gestionar equipo', hint: 'Crear puestos y dar accesos' },
-];
+// Platform functions, mapped by SECTION → function (lib/caps.js is the single
+// source of truth shared with /admin).
+const TEAM_CAPS = CAPS;
 
 function EquipoTab({ staff, me, flash, reload }) {
   const [showCreate, setShowCreate] = useState(false);
@@ -1296,26 +1291,30 @@ function EquipoTab({ staff, me, flash, reload }) {
               className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
           </div>
 
-          <div className="mt-4">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Accesos de este puesto — función por función</div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {TEAM_CAPS.map((c) => {
-                const on = newCaps.includes(c.v);
-                return (
-                  <button type="button" key={c.v}
-                    onClick={() => setNewCaps((v) => (on ? v.filter((x) => x !== c.v) : [...v, c.v]))}
-                    className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
-                    <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
-                      {on ? <Check size={13} /> : <Plus size={13} />}
-                    </span>
-                    <span className="min-w-0">
-                      <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
-                      <span className="block text-[11px] text-paper-dim">{c.hint}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="mt-4 space-y-4">
+            {CAP_SECTIONS.map((sec) => (
+              <div key={sec.id}>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-brand/80">{sec.name}</div>
+                <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+                  {sec.caps.map((c) => {
+                    const on = newCaps.includes(c.v);
+                    return (
+                      <button type="button" key={c.v}
+                        onClick={() => setNewCaps((v) => (on ? v.filter((x) => x !== c.v) : [...v, c.v]))}
+                        className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
+                        <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
+                          {on ? <Check size={13} /> : <Plus size={13} />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className={`block text-sm font-medium ${on ? 'text-brand' : 'text-paper'}`}>{c.l}</span>
+                          <span className="block text-[11px] text-paper-dim">{c.hint}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           <button type="submit" disabled={creating}
