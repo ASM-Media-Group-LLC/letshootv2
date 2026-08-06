@@ -272,11 +272,11 @@ export default function TrabajoPage() {
               const k = [...OPS_CARDS, ...BIZ_CARDS].find((c) => c.id === tab);
               return (
                 <>
-                  <button onClick={() => setTab(null)} className="inline-flex items-center gap-1.5 text-sm text-paper-mute transition-colors hover:text-paper">
-                    <ArrowLeft size={15} /> Panel
+                  <button onClick={() => setTab(null)} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-paper-mute transition-colors hover:text-paper">
+                    <ArrowLeft size={14} /> Panel
                   </button>
-                  <h1 className="mt-2 flex items-center gap-2.5 font-display text-2xl font-semibold sm:text-3xl">
-                    {k?.icon && <k.icon size={24} className="text-brand" />} {k?.label || ''}
+                  <h1 className="mt-1.5 flex items-center gap-2 font-display text-lg font-semibold sm:text-xl">
+                    {k?.icon && <k.icon size={18} className="text-brand" />} {k?.label || ''}
                   </h1>
                 </>
               );
