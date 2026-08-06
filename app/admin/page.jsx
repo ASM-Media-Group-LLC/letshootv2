@@ -331,9 +331,7 @@ export default function AdminPage() {
                           <input value={regQuery} onChange={(e) => setRegQuery(e.target.value)} placeholder="Buscar por nombre, @ o correo…"
                             className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                         </div>
-                        <button onClick={() => { setRegFilter(null); setRegQuery(''); }}
-                          className="rounded-full border border-line px-3.5 py-2 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">Cerrar</button>
-                        <span className="text-xs text-paper-dim">{shown.length} de {cr.length}</span>
+                        <span className="text-xs text-paper-dim">{shown.length} de {cr.length} · toca la tarjeta para cerrar</span>
                       </div>
 
                       <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>

@@ -251,39 +251,24 @@ export default function TrabajoPage() {
       <main className="mx-auto max-w-6xl px-5 py-8">
         <h1 className="font-display text-2xl font-semibold sm:text-3xl">Espacio de trabajo</h1>
         <p className="mt-1 text-sm text-paper-mute">
-          {tab ? 'Toca la barra de arriba para volver al panel.' : 'Todo tu trabajo en un vistazo. Toca una tarjeta para abrir esa área.'}
+          Todo tu trabajo en un vistazo. Toca una tarjeta para abrir su área; tócala de nuevo para cerrarla.
         </p>
 
-        {/* Panel cerrado: todas las tarjetas. Al abrir una, las demás desaparecen
-            y solo queda una barra activa arriba + el área — sin huecos. */}
-        {!tab && OPS_CARDS.length > 0 && (
+        {/* Las tarjetas quedan siempre visibles. La que abres se marca (flecha
+            arriba) y su área aparece abajo; tocarla de nuevo la cierra. Sin
+            botones extra de «cerrar» ni «regresar». */}
+        {OPS_CARDS.length > 0 && (
           <>
             <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Operación · tu trabajo del día</div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{OPS_CARDS.map(cardBtn)}</div>
           </>
         )}
-        {!tab && BIZ_CARDS.length > 0 && (
+        {BIZ_CARDS.length > 0 && (
           <>
             <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Empresa · cómo vamos</div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{BIZ_CARDS.map(cardBtn)}</div>
           </>
         )}
-
-        {tab && (() => {
-          const k = [...OPS_CARDS, ...BIZ_CARDS].find((c) => c.id === tab);
-          if (!k) return null;
-          return (
-            <button onClick={() => setTab(null)}
-              className="mt-6 flex w-full items-center gap-3 rounded-2xl border border-brand/40 bg-brand/[0.06] px-4 py-3 text-left transition-colors hover:bg-brand/[0.1]">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand text-on-accent"><k.icon size={17} /></span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-paper">{k.label}</span>
-                <span className="block truncate text-[11px] text-paper-dim">{k.value} · {k.sub}</span>
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-brand"><ChevronDown size={15} className="rotate-180" /> Cerrar</span>
-            </button>
-          );
-        })()}
 
         {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
         {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
