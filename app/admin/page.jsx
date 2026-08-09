@@ -76,10 +76,10 @@ export default function AdminPage() {
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
   const [creating, setCreating] = useState(false);
   const [nuError, setNuError] = useState('');
-  const [regFilter, setRegFilter] = useState(null);  // null = cerrado (solo cajitas) | all | id_pending | proceso | activas
+  const [regFilter, setRegFilter] = useState('all'); // abierto por defecto | null = cerrado | id_pending | proceso | activas
   const [regQuery, setRegQuery] = useState('');       // buscador de registros
   const [regSort, setRegSort] = useState('recent');   // recent | oldest | photos | plan — cómo ordenar el registro
-  const [regSub, setRegSub] = useState('all');        // all | active | inactive | id_pending | falta_pago — filtro extra
+  const [regSub, setRegSub] = useState('active');     // por defecto: solo suscripción activa | all | inactive | id_pending | falta_pago
   const [newCreator, setNewCreator] = useState(null); // null | {full_name, email, password} — modal de alta manual
   const [ncBusy, setNcBusy] = useState(false);
   const [ncErr, setNcErr] = useState('');
