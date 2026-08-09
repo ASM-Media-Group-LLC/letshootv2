@@ -77,6 +77,7 @@ export default function AdminPage() {
   const [nuError, setNuError] = useState('');
   const [regFilter, setRegFilter] = useState(null);  // null = cerrado (solo cajitas) | all | id_pending | proceso | activas
   const [regQuery, setRegQuery] = useState('');       // buscador de registros
+  const [regSort, setRegSort] = useState('recent');   // recent | oldest | photos | plan — cómo ordenar el registro
 
   const loadKyc = useCallback(async () => {
     const supabase = getSupabase();
@@ -301,8 +302,19 @@ export default function AdminPage() {
                 { key: 'activas', label: 'Activas', value: cr.filter((p) => inCat(p, 'activas')).length, tone: 'brand' },
               ];
               const q = regQuery.trim().toLowerCase();
+              // Fotos por creadora — assetStats ya trae una fila por foto con su creator_id.
+              const photoCount = {};
+              for (const a of assetStats) photoCount[a.creator_id] = (photoCount[a.creator_id] || 0) + 1;
+              const planRankOf = (p) => ({ pro: 3, core: 2, test: 1 }[p.plan] || 0);
+              const sorters = {
+                recent: (a, b) => new Date(b.created_at) - new Date(a.created_at),
+                oldest: (a, b) => new Date(a.created_at) - new Date(b.created_at),
+                photos: (a, b) => (photoCount[b.id] || 0) - (photoCount[a.id] || 0) || new Date(b.created_at) - new Date(a.created_at),
+                plan:   (a, b) => planRankOf(b) - planRankOf(a) || (photoCount[b.id] || 0) - (photoCount[a.id] || 0),
+              };
               const shown = cr.filter((p) => inCat(p, regFilter))
-                .filter((p) => !q || `${p.full_name || ''} ${p.handle || ''} ${p.email || ''} ${p.stage_name || ''}`.toLowerCase().includes(q));
+                .filter((p) => !q || `${p.full_name || ''} ${p.handle || ''} ${p.email || ''} ${p.stage_name || ''}`.toLowerCase().includes(q))
+                .sort(sorters[regSort] || sorters.recent);
               return (
                 <>
                   {/* Dashboard limpio: solo las cajitas. Tocas una → se abre su lista; tocas de nuevo → se cierra. */}
@@ -334,27 +346,50 @@ export default function AdminPage() {
                         <span className="text-xs text-paper-dim">{shown.length} de {cr.length} · toca la tarjeta para cerrar</span>
                       </div>
 
+                      {/* Ordenar — lo que más necesita ver el dueño de un vistazo. */}
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-paper-dim">Ordenar:</span>
+                        {[
+                          { key: 'recent', label: 'Más recientes' },
+                          { key: 'oldest', label: 'Más antiguas' },
+                          { key: 'photos', label: 'Más fotos' },
+                          { key: 'plan',   label: 'Suscripción más alta' },
+                        ].map((s) => (
+                          <button key={s.key} onClick={() => setRegSort(s.key)}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${regSort === s.key ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+
                       <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
                       <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-                        <div className="grid min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-                          <span>Creadora</span><span>Correo</span><span>Estado</span><span></span>
+                        <div className="grid min-w-[620px] grid-cols-[1.5fr_0.7fr_0.6fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                          <span>Creadora</span><span>Entró</span><span>Fotos</span><span>Estado</span><span></span>
                         </div>
                         {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
                         {cr.length > 0 && shown.length === 0 && <p className="px-5 py-6 text-paper-dim">Ninguna creadora coincide con el filtro.</p>}
                         {shown.map((u) => {
                           const st = OB[u.onboarding_status] || OB.registered;
+                          const nFotos = photoCount[u.id] || 0;
+                          const joined = u.created_at ? new Date(u.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' }) : '—';
+                          const planLabel = u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : null;
                           return (
                             <button key={u.id} onClick={() => setSelCreator(u.id)}
-                              className="grid w-full min-w-[540px] grid-cols-[1.3fr_1.2fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+                              className="grid w-full min-w-[620px] grid-cols-[1.5fr_0.7fr_0.6fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
                               <span className="flex min-w-0 items-center gap-2.5">
                                 <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                                 <span className="min-w-0">
-                                  <span className="block truncate font-medium text-paper">{u.full_name || '—'}</span>
-                                  {u.handle && <span className="block truncate text-[11px] text-paper-dim">@{u.handle}</span>}
+                                  <span className="block truncate font-medium text-paper">{u.full_name || 'Sin nombre aún'}</span>
+                                  <span className="block truncate text-[11px] text-paper-dim">{u.handle ? `@${u.handle}` : u.email}</span>
                                 </span>
                               </span>
-                              <span className="truncate text-paper-mute">{u.email}</span>
-                              <span><span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span></span>
+                              <span className="text-paper-mute">{joined}</span>
+                              <span className={nFotos ? 'font-medium text-paper' : 'text-paper-dim'}>{nFotos}</span>
+                              <span className="flex flex-wrap items-center gap-1.5">
+                                <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span>
+                                {planLabel && <span className="inline-block rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{planLabel}</span>}
+                              </span>
                               <span className="flex items-center justify-end gap-1.5 text-xs font-semibold text-brand">
                                 {u.onboarding_status === 'id_pending' && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">Revisar</span>}
                                 Abrir →
