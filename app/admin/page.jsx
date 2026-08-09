@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2 } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -79,6 +79,7 @@ export default function AdminPage() {
   const [regFilter, setRegFilter] = useState(null);  // null = cerrado (solo cajitas) | all | id_pending | proceso | activas
   const [regQuery, setRegQuery] = useState('');       // buscador de registros
   const [regSort, setRegSort] = useState('recent');   // recent | oldest | photos | plan — cómo ordenar el registro
+  const [regSub, setRegSub] = useState('all');        // all | active | inactive | id_pending | falta_pago — filtro extra
   const [newCreator, setNewCreator] = useState(null); // null | {full_name, email, password} — modal de alta manual
   const [ncBusy, setNcBusy] = useState(false);
   const [ncErr, setNcErr] = useState('');
@@ -344,7 +345,15 @@ export default function AdminPage() {
                 photos: (a, b) => (photoCount[b.id] || 0) - (photoCount[a.id] || 0) || new Date(b.created_at) - new Date(a.created_at),
                 plan:   (a, b) => planRankOf(b) - planRankOf(a) || (photoCount[b.id] || 0) - (photoCount[a.id] || 0),
               };
+              const isPaying = (p) => p.payment_status === 'paid' || ['active', 'paid'].includes(p.onboarding_status);
+              const subOk = (p) => regSub === 'all' ? true
+                : regSub === 'active' ? isPaying(p)
+                : regSub === 'inactive' ? !isPaying(p)
+                : regSub === 'id_pending' ? p.onboarding_status === 'id_pending'
+                : regSub === 'falta_pago' ? (['id_approved', 'authorized'].includes(p.onboarding_status) && !isPaying(p))
+                : true;
               const shown = cr.filter((p) => inCat(p, regFilter))
+                .filter(subOk)
                 .filter((p) => !q || `${p.full_name || ''} ${p.handle || ''} ${p.email || ''} ${p.stage_name || ''}`.toLowerCase().includes(q))
                 .sort(sorters[regSort] || sorters.recent);
               return (
@@ -378,20 +387,26 @@ export default function AdminPage() {
                         <span className="text-xs text-paper-dim">{shown.length} de {cr.length} · toca la tarjeta para cerrar</span>
                       </div>
 
-                      {/* Ordenar — lo que más necesita ver el dueño de un vistazo. */}
+                      {/* Filtrar + Ordenar — dropdowns compactos, no botones abiertos. */}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-medium text-paper-dim">Ordenar:</span>
-                        {[
-                          { key: 'recent', label: 'Más recientes' },
-                          { key: 'oldest', label: 'Más antiguas' },
-                          { key: 'photos', label: 'Más fotos' },
-                          { key: 'plan',   label: 'Suscripción más alta' },
-                        ].map((s) => (
-                          <button key={s.key} onClick={() => setRegSort(s.key)}
-                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${regSort === s.key ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
-                            {s.label}
-                          </button>
-                        ))}
+                        <Dropdown icon={SlidersHorizontal} label="Filtrar" value={regSub} onChange={setRegSub}
+                          options={[
+                            { value: 'all', label: 'Todas' },
+                            { value: 'active', label: 'Suscripción activa' },
+                            { value: 'inactive', label: 'Sin suscripción' },
+                            { value: 'falta_pago', label: 'Aprobada · falta pago' },
+                            { value: 'id_pending', label: 'ID por revisar' },
+                          ]} />
+                        <Dropdown icon={ArrowUpDown} label="Ordenar" value={regSort} onChange={setRegSort}
+                          options={[
+                            { value: 'recent', label: 'Más recientes' },
+                            { value: 'oldest', label: 'Más antiguas' },
+                            { value: 'photos', label: 'Más fotos' },
+                            { value: 'plan', label: 'Suscripción más alta' },
+                          ]} />
+                        {regSub !== 'all' && (
+                          <button onClick={() => setRegSub('all')} className="text-xs font-medium text-paper-dim hover:text-paper">Limpiar filtro</button>
+                        )}
                       </div>
 
                       <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
@@ -823,6 +838,38 @@ const TONE2 = {
   sky:   'border-sky-500/40 bg-sky-500/10 text-sky-300',
   brand: 'border-brand/40 bg-brand/10 text-brand',
 };
+
+// Dropdown compacto (filtrar / ordenar) — un botón que abre su menú.
+function Dropdown({ icon: Icon, label, value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const cur = options.find((o) => o.value === value);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-medium transition-colors ${open ? 'border-brand/60 text-paper' : 'border-line text-paper-mute hover:text-paper'}`}>
+        {Icon && <Icon size={14} />}
+        <span className="text-paper-dim">{label}:</span>
+        <span className="font-semibold text-paper">{cur?.label || '—'}</span>
+        <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 z-20 mt-1.5 min-w-[210px] overflow-hidden rounded-2xl border border-line bg-card p-1 shadow-glow-sm">
+            {options.map((o) => (
+              <button key={o.value} onClick={() => { onChange(o.value); setOpen(false); }}
+                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                  value === o.value ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:bg-hair/[0.06] hover:text-paper'}`}>
+                {o.label}
+                {value === o.value && <Check size={14} />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
