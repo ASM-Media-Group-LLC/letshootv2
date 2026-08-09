@@ -185,8 +185,9 @@ export default function AdminPage() {
     await load();
   }
 
-  // Dar de alta una creadora a mano — nace "Solo registrada"; el equipo puede
-  // subirle contenido de inmediato y ella completa su onboarding después.
+  // Dar de alta una creadora a mano — el equipo la deja lista con TODOS los
+  // datos que ya tiene (plan, artístico, teléfono, país, nombre legal,
+  // nacimiento). Si activate=true nace ya con la suscripción activa.
   async function createCreator(e) {
     e.preventDefault();
     setNcErr('');
@@ -194,15 +195,36 @@ export default function AdminPage() {
     if (!f.full_name?.trim() || !f.email?.trim() || !f.password) { setNcErr('Completa nombre, correo y contraseña.'); return; }
     if (f.password.length < 8) { setNcErr('La contraseña debe tener al menos 8 caracteres.'); return; }
     setNcBusy(true);
+    // 1) Crear cuenta auth + perfil base vía la edge function (role creator).
     const { data, error } = await getSupabase().functions.invoke('create-user', {
       body: { full_name: f.full_name.trim(), email: f.email.trim().toLowerCase(), password: f.password, role: 'creator' },
     });
-    setNcBusy(false);
     let out = data;
     if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
-    if (!out?.ok) { setNcErr(out?.error || 'No se pudo dar de alta la creadora.'); return; }
+    if (!out?.ok) { setNcBusy(false); setNcErr(out?.error || 'No se pudo dar de alta la creadora.'); return; }
+
+    // 2) Llenar el resto del perfil con lo que ya tenemos (admin puede update).
+    const patch = {};
+    if (f.stage_name?.trim())        patch.stage_name = f.stage_name.trim();
+    if (f.handle?.trim())            patch.handle = f.handle.trim().replace(/^@/, '');
+    if (f.phone?.trim())             patch.phone = f.phone.trim();
+    if (f.country?.trim())           patch.country = f.country.trim();
+    if (f.legal_first_name?.trim())  patch.legal_first_name = f.legal_first_name.trim();
+    if (f.legal_last_name?.trim())   patch.legal_last_name = f.legal_last_name.trim();
+    if (f.date_of_birth)             patch.date_of_birth = f.date_of_birth;
+    if (f.plan)                      patch.plan = f.plan;
+    if (f.activate) {
+      patch.payment_status = 'paid';
+      patch.onboarding_status = 'active';
+      if (!patch.plan) patch.plan = 'core';
+    }
+    if (Object.keys(patch).length) {
+      const { error: upErr } = await getSupabase().from('profiles').update(patch).eq('id', out.id);
+      if (upErr) { setNcBusy(false); setNcErr('Cuenta creada, pero fallaron los datos extra: ' + upErr.message); await load(); return; }
+    }
+    setNcBusy(false);
     setNewCreator(null);
-    flash('Creadora dada de alta — ya puedes subirle contenido');
+    flash(f.activate ? 'Creadora dada de alta y ACTIVA — lista para trabajar' : 'Creadora dada de alta — ya puedes subirle contenido');
     await load();
   }
 
@@ -317,7 +339,7 @@ export default function AdminPage() {
           <div className="mt-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-paper-mute">Toca una tarjeta para ver esas creadoras, o da de alta una nueva.</p>
-              <button onClick={() => { setNewCreator({ full_name: '', email: '', password: '' }); setNcErr(''); }}
+              <button onClick={() => { setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false }); setNcErr(''); }}
                 className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
                 <UserPlus size={15} /> Add creator
               </button>
@@ -749,36 +771,121 @@ export default function AdminPage() {
       </main>
 
       {newCreator && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/70 px-5 backdrop-blur-sm" onClick={() => !ncBusy && setNewCreator(null)}>
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/70 py-8 backdrop-blur-sm" onClick={() => !ncBusy && setNewCreator(null)}>
           <form onClick={(e) => e.stopPropagation()} onSubmit={createCreator}
-            className="w-full max-w-md rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+            className="mx-5 w-full max-w-2xl rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><UserPlus size={18} className="text-brand" /> Add creator</h3>
-                <p className="mt-1 text-sm text-paper-mute">Nace lista para trabajar. El equipo puede subirle contenido de una; ella completa sus datos, identidad y pago después.</p>
+                <p className="mt-1 text-sm text-paper-mute">Deja la cuenta lista con lo que ya sepas: acceso, contacto, identidad y suscripción. Todo es opcional menos el acceso.</p>
               </div>
               <button type="button" onClick={() => setNewCreator(null)} className="rounded-full p-1 text-paper-dim hover:text-paper"><X size={18} /></button>
             </div>
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-paper-dim">Nombre</label>
-                <input autoFocus value={newCreator.full_name} onChange={(e) => setNewCreator((v) => ({ ...v, full_name: e.target.value }))}
-                  placeholder="Ej. Valentina Ríos" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+
+            {/* Acceso — lo único obligatorio */}
+            <div className="mt-5 space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Acceso a la plataforma</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Nombre <span className="text-rose-300">*</span></label>
+                  <input autoFocus value={newCreator.full_name} onChange={(e) => setNewCreator((v) => ({ ...v, full_name: e.target.value }))}
+                    placeholder="Ej. Valentina Ríos" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Correo <span className="text-rose-300">*</span></label>
+                  <input type="email" value={newCreator.email} onChange={(e) => setNewCreator((v) => ({ ...v, email: e.target.value }))}
+                    placeholder="correo@ejemplo.com" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Contraseña temporal <span className="text-rose-300">*</span></label>
+                  <input value={newCreator.password} onChange={(e) => setNewCreator((v) => ({ ...v, password: e.target.value }))}
+                    placeholder="Mínimo 8 caracteres" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-paper-dim">Correo</label>
-                <input type="email" value={newCreator.email} onChange={(e) => setNewCreator((v) => ({ ...v, email: e.target.value }))}
-                  placeholder="correo@ejemplo.com" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-paper-dim">Contraseña temporal</label>
-                <input value={newCreator.password} onChange={(e) => setNewCreator((v) => ({ ...v, password: e.target.value }))}
-                  placeholder="Mínimo 8 caracteres" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                <p className="mt-1 text-[11px] text-paper-dim">Se la compartes para que entre. Podrá cambiarla desde su cuenta.</p>
-              </div>
-              {ncErr && <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{ncErr}</p>}
             </div>
-            <div className="mt-5 flex justify-end gap-2">
+
+            {/* Perfil público */}
+            <div className="mt-5 space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Perfil público</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Nombre artístico</label>
+                  <input value={newCreator.stage_name} onChange={(e) => setNewCreator((v) => ({ ...v, stage_name: e.target.value }))}
+                    placeholder="Como se hace llamar" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Usuario (@)</label>
+                  <input value={newCreator.handle} onChange={(e) => setNewCreator((v) => ({ ...v, handle: e.target.value }))}
+                    placeholder="valentina.rios" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Teléfono</label>
+                  <input value={newCreator.phone} onChange={(e) => setNewCreator((v) => ({ ...v, phone: e.target.value }))}
+                    placeholder="+1 555…" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">País</label>
+                  <input value={newCreator.country} onChange={(e) => setNewCreator((v) => ({ ...v, country: e.target.value }))}
+                    placeholder="US, MX, CO…" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+              </div>
+            </div>
+
+            {/* Identidad (opcional en este paso) */}
+            <div className="mt-5 space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Identidad</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Nombre legal</label>
+                  <input value={newCreator.legal_first_name} onChange={(e) => setNewCreator((v) => ({ ...v, legal_first_name: e.target.value }))}
+                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Apellido legal</label>
+                  <input value={newCreator.legal_last_name} onChange={(e) => setNewCreator((v) => ({ ...v, legal_last_name: e.target.value }))}
+                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Nacimiento</label>
+                  <input type="date" value={newCreator.date_of_birth} onChange={(e) => setNewCreator((v) => ({ ...v, date_of_birth: e.target.value }))}
+                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
+                </div>
+              </div>
+              <p className="text-[11px] text-paper-dim">La foto del ID se sube después desde su perfil (pestaña Identidad).</p>
+            </div>
+
+            {/* Suscripción — conectada al pricing */}
+            <div className="mt-5 space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Suscripción</div>
+              <div className="grid grid-cols-3 gap-2">
+                {PACKS.map((p) => {
+                  const on = newCreator.plan === p.key;
+                  return (
+                    <button key={p.key} type="button" onClick={() => setNewCreator((v) => ({ ...v, plan: on ? '' : p.key }))}
+                      className={`rounded-xl border p-3 text-left transition-colors ${on ? 'border-brand bg-brand/10' : 'border-line hover:border-brand/40'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{p.name}</span>
+                        {on && <Check size={13} className="text-brand" />}
+                      </div>
+                      <div className="mt-1 font-display text-lg font-bold text-paper">${p.m}<span className="text-[10px] font-normal text-paper-dim">/mes</span></div>
+                      <div className="text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-ink-2 p-3">
+                <input type="checkbox" checked={!!newCreator.activate} onChange={(e) => setNewCreator((v) => ({ ...v, activate: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-brand focus:ring-brand" />
+                <span className="min-w-0 text-sm text-paper">
+                  Activar suscripción ya <span className="text-paper-dim">(ya pagó a mano)</span>
+                  <span className="mt-0.5 block text-[11px] text-paper-dim">La cuenta nace «Activa» y la ve la modelo, la agencia y los uploaders. Si no, queda esperando pago.</span>
+                </span>
+              </label>
+            </div>
+
+            {ncErr && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{ncErr}</p>}
+
+            <div className="mt-6 flex justify-end gap-2">
               <button type="button" onClick={() => setNewCreator(null)} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
               <button type="submit" disabled={ncBusy}
                 className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
