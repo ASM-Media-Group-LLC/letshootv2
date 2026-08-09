@@ -13,6 +13,7 @@ import {
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
   ImageIcon, DollarSign, Building2, Film, ShoppingBag, TrendingUp, TrendingDown,
+  CreditCard,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -320,6 +321,25 @@ const CREATOR_FILTERS = [
   ['id_rejected', 'Rechazado'], ['falta_pago', 'Falta pago'], ['registered', 'Registrada'],
 ];
 
+// ¿La creadora tiene suscripción activa (está pagando)?
+function isPaying(c) {
+  return c?.payment_status === 'paid' || ['active', 'paid'].includes(c?.onboarding_status);
+}
+function SubBadge({ creator, size = 'sm' }) {
+  const paying = isPaying(creator);
+  const plan = creator?.plan ? creator.plan.charAt(0).toUpperCase() + creator.plan.slice(1) : null;
+  const pad = size === 'lg' ? 'px-2.5 py-1 text-[11px]' : 'px-2 py-0.5 text-[10px]';
+  return paying ? (
+    <span className={`inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 font-semibold uppercase tracking-wide text-emerald-300 ${pad}`}>
+      <CreditCard size={11} /> Suscripción activa{plan ? ` · ${plan}` : ''}
+    </span>
+  ) : (
+    <span className={`inline-flex items-center gap-1 rounded-full border border-line bg-hair/5 font-semibold uppercase tracking-wide text-paper-dim ${pad}`}>
+      <CreditCard size={11} /> Sin suscripción
+    </span>
+  );
+}
+
 function CreadorasTab({ creators, me, flash }) {
   const [sel, setSel] = useState(null);
   const [q, setQ] = useState('');
@@ -345,9 +365,12 @@ function CreadorasTab({ creators, me, flash }) {
       <span className="min-w-0 flex-1">
         <span className="block truncate font-display text-base font-semibold text-paper">{c.full_name || '—'}</span>
         {c.handle && <span className="block truncate text-xs text-paper-dim">@{c.handle}</span>}
-        <span className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-          ['active', 'paid'].includes(c.onboarding_status) ? 'bg-brand/15 text-brand' : 'bg-amber-500/10 text-amber-300'}`}>
-          {OB_LABEL[c.onboarding_status] || c.onboarding_status}
+        <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+            ['active', 'paid'].includes(c.onboarding_status) ? 'bg-brand/15 text-brand' : 'bg-amber-500/10 text-amber-300'}`}>
+            {OB_LABEL[c.onboarding_status] || c.onboarding_status}
+          </span>
+          <SubBadge creator={c} />
         </span>
       </span>
       <ChevronRight size={17} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
@@ -397,6 +420,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   const [folderSel, setFolderSel] = useState(null); // null = biblioteca (carpetas); id = dentro de la carpeta
   const [urls, setUrls] = useState({});             // storage_path -> signed url (miniaturas)
   const [newName, setNewName] = useState('');
+  const [newKind, setNewKind] = useState('photo'); // 'photo' | 'video' — separar fotos y videos
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState('');
   const [purpose, setPurpose] = useState(''); // "por qué se hizo" — se guarda en cada foto de la entrega
@@ -437,7 +461,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     e.preventDefault();
     if (!newName.trim()) return;
     setCreating(true);
-    const { error } = await getSupabase().from('folders').insert({ creator_id: creator.id, name: newName.trim(), kind: 'photo' });
+    const { error } = await getSupabase().from('folders').insert({ creator_id: creator.id, name: newName.trim(), kind: newKind });
     setCreating(false);
     if (error) { flash('Error: ' + error.message); return; }
     setNewName(''); load(); flash('Carpeta creada');
@@ -447,8 +471,13 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   // failures (reports how many), and only closes the pedido if something landed.
   async function uploadFiles(list) {
     if (!folderSel) { flash('Elige primero una carpeta.'); return; }
-    const files = Array.from(list).filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
-    if (!files.length) { flash('Solo se aceptan fotos o videos.'); return; }
+    const folderKind = (folders || []).find((f) => f.id === folderSel)?.kind || 'photo';
+    const wantVideo = folderKind === 'video';
+    const all = Array.from(list).filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
+    // Cada carpeta es de fotos o de videos — mantenlas separadas.
+    const files = all.filter((f) => wantVideo ? f.type.startsWith('video/') : f.type.startsWith('image/'));
+    const wrong = all.length - files.length;
+    if (!files.length) { flash(wantVideo ? 'Esta carpeta es de videos — arrastra videos.' : 'Esta carpeta es de fotos — arrastra fotos.'); return; }
     const supabase = getSupabase();
     const purposeNow = purpose.trim() || null;
     const reqNow = reqSel;
@@ -494,10 +523,11 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     setPurpose('');
     setReqSel('');
     await load();
+    const skipped = wrong ? ` · ${wrong} de otro tipo se ignoraron` : '';
     flash(failed
-      ? `${ok} subidas · ${failed} fallaron, reinténtalas`
-      : reqNow ? `${ok} ${ok === 1 ? 'pieza subida' : 'piezas subidas'} · pedido entregado`
-      : `${ok} ${ok === 1 ? 'pieza subida' : 'piezas subidas'}`);
+      ? `${ok} subidas · ${failed} fallaron, reinténtalas${skipped}`
+      : reqNow ? `${ok} ${ok === 1 ? 'pieza subida' : 'piezas subidas'} · pedido entregado${skipped}`
+      : `${ok} ${ok === 1 ? 'pieza subida' : 'piezas subidas'}${skipped}`);
   }
 
   async function toggleLora() {
@@ -565,6 +595,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
           <div className="min-w-0">
             <h2 className="font-display text-xl font-semibold leading-tight">{creator.full_name}</h2>
             {creator.handle && <p className="text-xs text-paper-dim">@{creator.handle}</p>}
+            <div className="mt-1.5"><SubBadge creator={creator} /></div>
           </div>
         </div>
         <button onClick={toggleLora}
@@ -641,7 +672,10 @@ function CreatorDetail({ creator, me, flash, onBack }) {
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {(folders || []).map((f) => {
-              const cover = (f.assets || []).find((a) => a.type !== 'video' && srcOf(a)) || (f.assets || [])[0];
+              const isVid = f.kind === 'video';
+              const cover = isVid
+                ? ((f.assets || []).find((a) => a.type === 'video' && srcOf(a)) || (f.assets || [])[0])
+                : ((f.assets || []).find((a) => a.type !== 'video' && srcOf(a)) || (f.assets || [])[0]);
               return (
                 <button key={f.id} onClick={() => setFolderSel(f.id)}
                   className="group overflow-hidden rounded-2xl border border-line bg-card text-left transition-colors hover:border-brand/40">
@@ -652,21 +686,32 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                         // eslint-disable-next-line @next/next/no-img-element
                         : <img src={srcOf(cover)} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                     ) : (
-                      <div className="grid h-full w-full place-items-center text-paper-dim"><Folder size={26} /></div>
+                      <div className="grid h-full w-full place-items-center text-paper-dim">{isVid ? <Film size={26} /> : <Folder size={26} />}</div>
                     )}
+                    <span className={`absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide backdrop-blur ${isVid ? 'bg-fuchsia-500/25 text-fuchsia-100' : 'bg-sky-500/25 text-sky-100'}`}>
+                      {isVid ? <><Film size={10} /> Videos</> : <><ImageIcon size={10} /> Fotos</>}
+                    </span>
                     <span className="absolute bottom-1.5 right-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-paper backdrop-blur">{(f.assets || []).length}</span>
                   </div>
                   <div className="flex items-center gap-1.5 px-3 py-2.5">
-                    <Folder size={13} className="shrink-0 text-brand" />
+                    {isVid ? <Film size={13} className="shrink-0 text-fuchsia-300" /> : <ImageIcon size={13} className="shrink-0 text-sky-300" />}
                     <span className="truncate text-sm font-medium text-paper">{f.name}</span>
                   </div>
                 </button>
               );
             })}
-            {/* Nueva carpeta */}
+            {/* Nueva carpeta — elige si es de fotos o de videos */}
             <form onSubmit={createFolder} className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2/50 p-4">
               <FolderPlus size={20} className="text-paper-dim" />
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nueva carpeta…"
+              <div className="flex w-full gap-1 rounded-lg border border-line bg-ink-2 p-1">
+                {[['photo', 'Fotos', ImageIcon], ['video', 'Videos', Film]].map(([k, l, Ic]) => (
+                  <button key={k} type="button" onClick={() => setNewKind(k)}
+                    className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors ${newKind === k ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>
+                    <Ic size={12} /> {l}
+                  </button>
+                ))}
+              </div>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={newKind === 'video' ? 'Carpeta de videos…' : 'Carpeta de fotos…'}
                 className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-center text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               <button type="submit" disabled={creating || !newName.trim()}
                 className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-40">
@@ -681,8 +726,11 @@ function CreatorDetail({ creator, me, flash, onBack }) {
             <button onClick={() => setFolderSel(null)} className="inline-flex items-center gap-1.5 text-sm text-paper-mute transition-colors hover:text-paper">
               <ArrowLeft size={15} /> Carpetas de {creator.full_name}
             </button>
-            <div className="flex items-center gap-1.5 text-sm font-semibold text-paper">
-              <Folder size={14} className="text-brand" /> {folder.name} · {(folder.assets || []).length} piezas
+            <div className="flex items-center gap-2 text-sm font-semibold text-paper">
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${folder.kind === 'video' ? 'bg-fuchsia-500/15 text-fuchsia-200' : 'bg-sky-500/15 text-sky-200'}`}>
+                {folder.kind === 'video' ? <><Film size={11} /> Videos</> : <><ImageIcon size={11} /> Fotos</>}
+              </span>
+              {folder.name} · {(folder.assets || []).length} piezas
             </div>
           </div>
 
@@ -721,13 +769,13 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                   <span className={`grid h-11 w-11 place-items-center rounded-full ${dragOver ? 'bg-brand text-on-accent' : 'bg-brand/10 text-brand'}`}><Upload size={20} /></span>
                   <span className="flex items-center gap-2">
                     <Avatar src={creator.avatar_url} name={creator.full_name} size="xs" />
-                    <span className="text-sm font-medium text-paper">{dragOver ? 'Suelta para subir' : <>Arrastra aquí o haz clic — «{folder.name}» de <span className="text-brand">{creator.full_name}</span></>}</span>
+                    <span className="text-sm font-medium text-paper">{dragOver ? 'Suelta para subir' : <>Arrastra {folder.kind === 'video' ? 'videos' : 'fotos'} aquí o haz clic — «{folder.name}» de <span className="text-brand">{creator.full_name}</span></>}</span>
                   </span>
-                  <span className="text-[11px] text-paper-dim">Puedes soltar muchas fotos o videos a la vez · le llega al instante a ella{creator.handle ? ` (@${creator.handle})` : ''} y a su agencia</span>
+                  <span className="text-[11px] text-paper-dim">{folder.kind === 'video' ? 'Solo videos en esta carpeta' : 'Solo fotos en esta carpeta'} · puedes soltar muchos a la vez · le llega al instante a ella{creator.handle ? ` (@${creator.handle})` : ''} y a su agencia</span>
                 </>
               )}
             </button>
-            <input ref={fileRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => e.target.files && uploadFiles(e.target.files)} />
+            <input ref={fileRef} type="file" accept={folder.kind === 'video' ? 'video/*' : 'image/*'} multiple hidden onChange={(e) => e.target.files && uploadFiles(e.target.files)} />
           </div>
 
           {/* Lo que ya vive en la carpeta */}

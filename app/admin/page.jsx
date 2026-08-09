@@ -780,6 +780,7 @@ export default function AdminPage() {
           onReview={reviewKyc}
           savingId={savingId}
           flash={flash}
+          onSaved={load}
         />
       )}
 
@@ -822,11 +823,38 @@ const TONE2 = {
   brand: 'border-brand/40 bg-brand/10 text-brand',
 };
 
-function CreatorProfile({ creator, onClose, onReview, savingId, flash }) {
+function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
   const [loraCount, setLoraCount] = useState(null);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);       // editar datos personales
+  const [form, setForm] = useState(null);              // borrador de datos al editar
+
+  // Actualiza el perfil (admin puede escribir cualquier campo) y refresca la lista.
+  async function patch(fields, msg) {
+    setSaving(true);
+    const { error } = await getSupabase().from('profiles').update(fields).eq('id', creator.id);
+    setSaving(false);
+    if (error) { flash('Error: ' + error.message); return false; }
+    if (msg) flash(msg);
+    onSaved && onSaved();
+    return true;
+  }
+  async function saveData() {
+    const ok = await patch({
+      full_name: form.full_name?.trim() || null,
+      stage_name: form.stage_name?.trim() || null,
+      handle: form.handle?.trim().replace(/^@/, '') || null,
+      legal_first_name: form.legal_first_name?.trim() || null,
+      legal_last_name: form.legal_last_name?.trim() || null,
+      date_of_birth: form.date_of_birth || null,
+      country: form.country?.trim() || null,
+      phone: form.phone?.trim() || null,
+    }, 'Datos guardados');
+    if (ok) setEditing(false);
+  }
 
   useEffect(() => {
     if (!creator) return;
@@ -906,17 +934,68 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash }) {
         </div>
 
         <div className="space-y-3 p-5">
-          {/* 1 · Datos */}
+          {/* 1 · Datos — el admin puede llenarlos/editarlos por ella */}
           <Row done={datosDone} icon={Users} title="Datos personales">
-            {datosDone ? (
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nombre legal</dt><dd className="text-paper">{creator.legal_first_name} {creator.legal_last_name}</dd></div>
-                <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nacimiento</dt><dd className="text-paper">{fmtDate(creator.date_of_birth)}</dd></div>
-                <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">País</dt><dd className="text-paper">{creator.country || '—'}</dd></div>
-                <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Teléfono</dt><dd className="text-paper">{creator.phone || '—'}</dd></div>
-              </dl>
-            ) : <p className="text-sm text-paper-dim">La creadora aún no completó sus datos personales.</p>}
+            {editing ? (
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-2 gap-2.5">
+                  {[
+                    ['full_name', 'Nombre', 'text'], ['stage_name', 'Nombre artístico', 'text'],
+                    ['handle', 'Usuario (@)', 'text'], ['phone', 'Teléfono', 'text'],
+                    ['legal_first_name', 'Nombre legal', 'text'], ['legal_last_name', 'Apellido legal', 'text'],
+                    ['date_of_birth', 'Nacimiento', 'date'], ['country', 'País', 'text'],
+                  ].map(([k, l, tp]) => (
+                    <label key={k} className="block">
+                      <span className="mb-1 block text-[10px] uppercase tracking-wide text-paper-dim">{l}</span>
+                      <input type={tp} value={form?.[k] || ''} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))}
+                        className="w-full rounded-lg border border-line bg-ink-2 px-2.5 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+                    </label>
+                  ))}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setEditing(false)} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+                  <button onClick={saveData} disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-60">
+                    {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Guardar datos
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nombre legal</dt><dd className="text-paper">{creator.legal_first_name || creator.legal_last_name ? `${creator.legal_first_name || ''} ${creator.legal_last_name || ''}` : '—'}</dd></div>
+                  <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nacimiento</dt><dd className="text-paper">{fmtDate(creator.date_of_birth)}</dd></div>
+                  <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">País</dt><dd className="text-paper">{creator.country || '—'}</dd></div>
+                  <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Teléfono</dt><dd className="text-paper">{creator.phone || '—'}</dd></div>
+                </dl>
+                <button onClick={() => { setForm({
+                  full_name: creator.full_name || '', stage_name: creator.stage_name || '', handle: creator.handle || '',
+                  phone: creator.phone || '', legal_first_name: creator.legal_first_name || '', legal_last_name: creator.legal_last_name || '',
+                  date_of_birth: creator.date_of_birth || '', country: creator.country || '',
+                }); setEditing(true); }}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+                  <UserPlus size={13} /> Editar / llenar datos
+                </button>
+              </>
+            )}
           </Row>
+
+          {/* Estado de la cuenta — el admin la mueve por los pasos manualmente */}
+          <div className="rounded-2xl border border-line bg-ink-2 p-4">
+            <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-paper"><Clock size={15} className="text-brand" /> Paso de la cuenta</h4>
+            <p className="mb-3 text-[11px] text-paper-dim">Muévela manualmente. «Activa» se maneja abajo en Suscripción.</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                ['registered', 'Registrada'], ['info', 'Datos'], ['id_pending', 'ID por revisar'], ['id_approved', 'ID aprobada'],
+              ].map(([v, l]) => (
+                <button key={v} onClick={() => patch({ onboarding_status: v }, `Movida a «${l}»`)} disabled={saving}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                    creator.onboarding_status === v ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* 2 · Identidad + professional review */}
           <Row done={idApproved} warn={idRejected} icon={IdCard} title="Identidad">
@@ -982,9 +1061,46 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash }) {
             )}
           </Row>
 
-          {/* 3 · Suscripción */}
+          {/* 3 · Suscripción — control MANUAL (cobramos a mano por ahora) */}
           <Row done={paid} icon={CreditCard} title="Suscripción">
-            <p className="text-sm text-paper">{paid ? <>Plan <span className="font-medium">{creator.plan || '—'}</span> · pago al día</> : <span className="text-paper-dim">Aún no ha pagado{creator.plan ? ` (eligió ${creator.plan})` : ''}.</span>}</p>
+            <div className="space-y-3">
+              <div className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium ${paid ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-line bg-hair/5 text-paper-dim'}`}>
+                <CreditCard size={15} />
+                {paid ? <>Suscripción <strong>activa</strong>{creator.plan ? <> · plan {creator.plan}</> : ''}</> : 'Sin suscripción activa — no ha pagado'}
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-paper-dim">Plan</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[['test', 'Test'], ['core', 'Core'], ['pro', 'Pro']].map(([v, l]) => (
+                    <button key={v} onClick={() => patch({ plan: v }, `Plan puesto en ${l}`)} disabled={saving}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                        creator.plan === v ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+                      {l}
+                    </button>
+                  ))}
+                  {creator.plan && (
+                    <button onClick={() => patch({ plan: null }, 'Plan quitado')} disabled={saving}
+                      className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-dim hover:text-paper disabled:opacity-50">Sin plan</button>
+                  )}
+                </div>
+              </div>
+
+              {paid ? (
+                <button onClick={() => patch({ payment_status: 'unpaid', onboarding_status: ['active', 'paid'].includes(creator.onboarding_status) ? 'id_approved' : creator.onboarding_status }, 'Suscripción marcada INACTIVA')}
+                  disabled={saving}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 py-2.5 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-60">
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : <X size={15} />} Marcar inactiva (dejó de pagar)
+                </button>
+              ) : (
+                <button onClick={() => patch({ payment_status: 'paid', plan: creator.plan || 'core', onboarding_status: 'active' }, 'Suscripción ACTIVADA')}
+                  disabled={saving}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Activar suscripción (pagó a mano)
+                </button>
+              )}
+              <p className="text-[11px] text-paper-dim">Cobro manual por ahora. Al activarla, su cuenta queda «Activa» y se ve en la modelo, la agencia y los uploaders.</p>
+            </div>
           </Row>
 
           {/* 4 · Fotos del clon */}
