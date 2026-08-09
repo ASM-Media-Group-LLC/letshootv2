@@ -8,6 +8,7 @@ import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import { CAPS, CAP_SECTIONS } from '@/lib/caps';
+import { PACKS } from '@/lib/packs';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -831,6 +832,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);       // editar datos personales
   const [form, setForm] = useState(null);              // borrador de datos al editar
+  const [tab, setTab] = useState('datos');             // datos | identidad | suscripcion | clon
 
   // Actualiza el perfil (admin puede escribir cualquier campo) y refresca la lista.
   async function patch(fields, msg) {
@@ -933,8 +935,27 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
           <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
         </div>
 
-        <div className="space-y-3 p-5">
-          {/* 1 · Datos — el admin puede llenarlos/editarlos por ella */}
+        {/* Pestañas — entra solo a lo que quieres, sin congestión */}
+        <div className="sticky top-[73px] z-10 flex gap-1 overflow-x-auto border-b border-line bg-ink/90 px-3 py-2 backdrop-blur">
+          {[
+            { id: 'datos', label: 'Datos', icon: Users, state: datosDone ? 'ok' : 'todo' },
+            { id: 'identidad', label: 'Identidad', icon: IdCard, state: idApproved ? 'ok' : idRejected ? 'bad' : idPending ? 'warn' : 'todo' },
+            { id: 'suscripcion', label: 'Suscripción', icon: CreditCard, state: paid ? 'ok' : 'todo' },
+            { id: 'clon', label: 'Clon', icon: Sparkles, state: lc >= LORA_MIN ? 'ok' : 'todo' },
+          ].map((tb) => (
+            <button key={tb.id} onClick={() => setTab(tb.id)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium transition-colors ${
+                tab === tb.id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:text-paper'}`}>
+              <tb.icon size={15} /> {tb.label}
+              <span className={`h-1.5 w-1.5 rounded-full ${tb.state === 'ok' ? 'bg-emerald-400' : tb.state === 'bad' ? 'bg-rose-400' : tb.state === 'warn' ? 'bg-amber-400' : 'bg-paper-dim/40'}`} />
+            </button>
+          ))}
+        </div>
+
+        <div className="p-5">
+          {/* ── DATOS ── */}
+          {tab === 'datos' && (
+          <div className="space-y-3">
           <Row done={datosDone} icon={Users} title="Datos personales">
             {editing ? (
               <div className="space-y-2.5">
@@ -996,8 +1017,12 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
               ))}
             </div>
           </div>
+          </div>
+          )}
 
-          {/* 2 · Identidad + professional review */}
+          {/* ── IDENTIDAD ── */}
+          {tab === 'identidad' && (
+          <div className="space-y-3">
           <Row done={idApproved} warn={idRejected} icon={IdCard} title="Identidad">
             <div className="mb-3 flex items-center gap-2">
               <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${TONE2[idState.tone]}`}>{idState.label}</span>
@@ -1061,49 +1086,77 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
             )}
           </Row>
 
-          {/* 3 · Suscripción — control MANUAL (cobramos a mano por ahora) */}
-          <Row done={paid} icon={CreditCard} title="Suscripción">
-            <div className="space-y-3">
-              <div className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium ${paid ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-line bg-hair/5 text-paper-dim'}`}>
-                <CreditCard size={15} />
-                {paid ? <>Suscripción <strong>activa</strong>{creator.plan ? <> · plan {creator.plan}</> : ''}</> : 'Sin suscripción activa — no ha pagado'}
-              </div>
+          </div>
+          )}
 
-              <div>
-                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-paper-dim">Plan</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {[['test', 'Test'], ['core', 'Core'], ['pro', 'Pro']].map(([v, l]) => (
-                    <button key={v} onClick={() => patch({ plan: v }, `Plan puesto en ${l}`)} disabled={saving}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                        creator.plan === v ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
-                      {l}
-                    </button>
-                  ))}
-                  {creator.plan && (
-                    <button onClick={() => patch({ plan: null }, 'Plan quitado')} disabled={saving}
-                      className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-dim hover:text-paper disabled:opacity-50">Sin plan</button>
-                  )}
+          {/* ── SUSCRIPCIÓN — conectada al pricing real (Test/Core/Pro) ── */}
+          {tab === 'suscripcion' && (() => {
+            const pack = PACKS.find((p) => p.key === creator.plan);
+            return (
+            <div className="space-y-4">
+              {/* Estado actual */}
+              <div className={`rounded-2xl border p-4 ${paid ? 'border-emerald-500/40 bg-emerald-500/[0.07]' : 'border-line bg-ink-2'}`}>
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <CreditCard size={16} className={paid ? 'text-emerald-300' : 'text-paper-dim'} />
+                  <span className={paid ? 'text-emerald-300' : 'text-paper-dim'}>{paid ? 'Suscripción activa' : 'Sin suscripción activa'}</span>
                 </div>
+                {paid ? (
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="font-display text-3xl font-bold text-paper">{pack ? `$${pack.m}` : '—'}</span>
+                    <span className="text-sm text-paper-mute">/mes · {pack ? pack.name : (creator.plan || 'sin plan')}</span>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-paper-dim">No ha pagado. Elige su plan y actívala cuando pague.</p>
+                )}
+                {pack && <p className="mt-1 text-[11px] text-paper-dim">Incluye {pack.photos} fotos · {pack.videos} video{pack.videos === 1 ? '' : 's'} al mes</p>}
               </div>
 
+              {/* Elegir plan — los mismos de la página de pricing */}
+              <div>
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-paper-dim">Plan que pagó</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {PACKS.map((p) => {
+                    const on = creator.plan === p.key;
+                    return (
+                      <button key={p.key} onClick={() => patch({ plan: p.key }, `Plan: ${p.name}`)} disabled={saving}
+                        className={`rounded-xl border p-3 text-left transition-colors disabled:opacity-50 ${on ? 'border-brand bg-brand/10' : 'border-line hover:border-brand/40'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{p.name}</span>
+                          {on && <Check size={13} className="text-brand" />}
+                        </div>
+                        <div className="mt-1 font-display text-lg font-bold text-paper">${p.m}<span className="text-[10px] font-normal text-paper-dim">/mes</span></div>
+                        <div className="text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {creator.plan && (
+                  <button onClick={() => patch({ plan: null }, 'Plan quitado')} disabled={saving}
+                    className="mt-2 text-[11px] font-medium text-paper-dim hover:text-paper disabled:opacity-50">Quitar plan</button>
+                )}
+              </div>
+
+              {/* Activar / desactivar */}
               {paid ? (
                 <button onClick={() => patch({ payment_status: 'unpaid', onboarding_status: ['active', 'paid'].includes(creator.onboarding_status) ? 'id_approved' : creator.onboarding_status }, 'Suscripción marcada INACTIVA')}
                   disabled={saving}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 py-2.5 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-60">
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 py-3 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-60">
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <X size={15} />} Marcar inactiva (dejó de pagar)
                 </button>
               ) : (
                 <button onClick={() => patch({ payment_status: 'paid', plan: creator.plan || 'core', onboarding_status: 'active' }, 'Suscripción ACTIVADA')}
                   disabled={saving}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Activar suscripción (pagó a mano)
                 </button>
               )}
-              <p className="text-[11px] text-paper-dim">Cobro manual por ahora. Al activarla, su cuenta queda «Activa» y se ve en la modelo, la agencia y los uploaders.</p>
+              <p className="text-[11px] text-paper-dim">Cobro manual por ahora. Al activarla queda «Activa» y se ve en la modelo, la agencia y los uploaders. Las ventas reales se llevan en <span className="font-mono">/sales</span>.</p>
             </div>
-          </Row>
+            );
+          })()}
 
-          {/* 4 · Fotos del clon */}
+          {/* ── CLON ── */}
+          {tab === 'clon' && (
           <Row done={lc >= LORA_MIN} icon={Sparkles} title="Fotos del clon">
             <div>
               <div className="mb-1.5 flex items-center justify-between text-sm">
@@ -1115,6 +1168,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
               </div>
             </div>
           </Row>
+          )}
         </div>
       </div>
     </div>
