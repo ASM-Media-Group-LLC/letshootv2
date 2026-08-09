@@ -110,7 +110,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at').order('role'),
+      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -217,6 +217,7 @@ export default function AdminPage() {
       patch.payment_status = 'paid';
       patch.onboarding_status = 'active';
       if (!patch.plan) patch.plan = 'core';
+      patch.subscription_ends_at = f.ends_at || new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
     }
     if (Object.keys(patch).length) {
       const { error: upErr } = await getSupabase().from('profiles').update(patch).eq('id', out.id);
@@ -339,7 +340,7 @@ export default function AdminPage() {
           <div className="mt-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-paper-mute">Toca una tarjeta para ver esas creadoras, o da de alta una nueva.</p>
-              <button onClick={() => { setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false }); setNcErr(''); }}
+              <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
                 className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
                 <UserPlus size={15} /> Add creator
               </button>
@@ -368,12 +369,23 @@ export default function AdminPage() {
                 plan:   (a, b) => planRankOf(b) - planRankOf(a) || (photoCount[b.id] || 0) - (photoCount[a.id] || 0),
               };
               const isPaying = (p) => p.payment_status === 'paid' || ['active', 'paid'].includes(p.onboarding_status);
-              const subOk = (p) => regSub === 'all' ? true
-                : regSub === 'active' ? isPaying(p)
-                : regSub === 'inactive' ? !isPaying(p)
-                : regSub === 'id_pending' ? p.onboarding_status === 'id_pending'
-                : regSub === 'falta_pago' ? (['id_approved', 'authorized'].includes(p.onboarding_status) && !isPaying(p))
-                : true;
+              const todayISO = new Date().toISOString().slice(0, 10);
+              const daysUntil = (p) => {
+                if (!p.subscription_ends_at) return null;
+                return Math.floor((new Date(p.subscription_ends_at + 'T00:00:00') - new Date(todayISO + 'T00:00:00')) / 864e5);
+              };
+              const dueSoonList = cr.filter((p) => { const d = daysUntil(p); return isPaying(p) && d !== null && d >= 0 && d <= 7; });
+              const overdueList = cr.filter((p) => { const d = daysUntil(p); return isPaying(p) && d !== null && d < 0; });
+              const subOk = (p) => {
+                if (regSub === 'all') return true;
+                if (regSub === 'active') return isPaying(p);
+                if (regSub === 'inactive') return !isPaying(p);
+                if (regSub === 'id_pending') return p.onboarding_status === 'id_pending';
+                if (regSub === 'falta_pago') return ['id_approved', 'authorized'].includes(p.onboarding_status) && !isPaying(p);
+                if (regSub === 'due_soon') { const d = daysUntil(p); return isPaying(p) && d !== null && d >= 0 && d <= 7; }
+                if (regSub === 'overdue') { const d = daysUntil(p); return isPaying(p) && d !== null && d < 0; }
+                return true;
+              };
               const shown = cr.filter((p) => inCat(p, regFilter))
                 .filter(subOk)
                 .filter((p) => !q || `${p.full_name || ''} ${p.handle || ''} ${p.email || ''} ${p.stage_name || ''}`.toLowerCase().includes(q))
@@ -409,12 +421,44 @@ export default function AdminPage() {
                         <span className="text-xs text-paper-dim">{shown.length} de {cr.length} · toca la tarjeta para cerrar</span>
                       </div>
 
+                      {/* Notificador de vencimientos — el dueño lo ve arriba y toca para ir a esa lista */}
+                      {(overdueList.length > 0 || dueSoonList.length > 0) && (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {overdueList.length > 0 && (
+                            <button onClick={() => setRegSub('overdue')}
+                              className="group flex items-center justify-between gap-3 rounded-2xl border border-rose-500/50 bg-rose-500/[0.08] p-3.5 text-left transition-colors hover:bg-rose-500/[0.14]">
+                              <div>
+                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-rose-300">
+                                  <AlertTriangle size={13} /> Vencidas
+                                </div>
+                                <p className="mt-1 text-sm text-paper">{overdueList.length} cuenta{overdueList.length === 1 ? '' : 's'} vencida{overdueList.length === 1 ? '' : 's'} — cobra o desactiva</p>
+                              </div>
+                              <span className="text-xs font-semibold text-rose-300">Ver →</span>
+                            </button>
+                          )}
+                          {dueSoonList.length > 0 && (
+                            <button onClick={() => setRegSub('due_soon')}
+                              className="group flex items-center justify-between gap-3 rounded-2xl border border-amber-500/50 bg-amber-500/[0.06] p-3.5 text-left transition-colors hover:bg-amber-500/[0.12]">
+                              <div>
+                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-300">
+                                  <Clock size={13} /> Vencen pronto
+                                </div>
+                                <p className="mt-1 text-sm text-paper">{dueSoonList.length} cuenta{dueSoonList.length === 1 ? '' : 's'} en ≤7 días — avisa y cobra</p>
+                              </div>
+                              <span className="text-xs font-semibold text-amber-300">Ver →</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+
                       {/* Filtrar + Ordenar — dropdowns compactos, no botones abiertos. */}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <Dropdown icon={SlidersHorizontal} label="Filtrar" value={regSub} onChange={setRegSub}
                           options={[
                             { value: 'all', label: 'Todas' },
                             { value: 'active', label: 'Suscripción activa' },
+                            { value: 'due_soon', label: 'Vencen en ≤7 días' },
+                            { value: 'overdue', label: 'Vencidas' },
                             { value: 'inactive', label: 'Sin suscripción' },
                             { value: 'falta_pago', label: 'Aprobada · falta pago' },
                             { value: 'id_pending', label: 'ID por revisar' },
@@ -433,8 +477,8 @@ export default function AdminPage() {
 
                       <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
                       <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-                        <div className="grid min-w-[620px] grid-cols-[1.5fr_0.7fr_0.6fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-                          <span>Creadora</span><span>Entró</span><span>Fotos</span><span>Estado</span><span></span>
+                        <div className="grid min-w-[720px] grid-cols-[1.4fr_0.6fr_0.5fr_0.9fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                          <span>Creadora</span><span>Entró</span><span>Fotos</span><span>Vence</span><span>Estado</span><span></span>
                         </div>
                         {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
                         {cr.length > 0 && shown.length === 0 && <p className="px-5 py-6 text-paper-dim">Ninguna creadora coincide con el filtro.</p>}
@@ -445,7 +489,7 @@ export default function AdminPage() {
                           const planLabel = u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : null;
                           return (
                             <button key={u.id} onClick={() => setSelCreator(u.id)}
-                              className="grid w-full min-w-[620px] grid-cols-[1.5fr_0.7fr_0.6fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+                              className="grid w-full min-w-[720px] grid-cols-[1.4fr_0.6fr_0.5fr_0.9fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
                               <span className="flex min-w-0 items-center gap-2.5">
                                 <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                                 <span className="min-w-0">
@@ -455,6 +499,16 @@ export default function AdminPage() {
                               </span>
                               <span className="text-paper-mute">{joined}</span>
                               <span className={nFotos ? 'font-medium text-paper' : 'text-paper-dim'}>{nFotos}</span>
+                              <span className="text-xs">
+                                {(() => {
+                                  const d = daysUntil(u);
+                                  if (!isPaying(u) || d === null) return <span className="text-paper-dim">—</span>;
+                                  const dateLabel = new Date(u.subscription_ends_at + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short' });
+                                  if (d < 0) return <span className="inline-block rounded-full border border-rose-500/50 bg-rose-500/10 px-2 py-0.5 font-semibold text-rose-300">Venció {dateLabel}</span>;
+                                  if (d <= 7) return <span className="inline-block rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-semibold text-amber-300">{d}d · {dateLabel}</span>;
+                                  return <span className="text-paper-mute">{dateLabel}</span>;
+                                })()}
+                              </span>
                               <span className="flex flex-wrap items-center gap-1.5">
                                 <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span>
                                 {planLabel && <span className="inline-block rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{planLabel}</span>}
@@ -881,6 +935,14 @@ export default function AdminPage() {
                   <span className="mt-0.5 block text-[11px] text-paper-dim">La cuenta nace «Activa» y la ve la modelo, la agencia y los uploaders. Si no, queda esperando pago.</span>
                 </span>
               </label>
+              {newCreator.activate && (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
+                  <label className="mb-1 block text-xs font-medium text-emerald-200">Vence el · próximo cobro</label>
+                  <input type="date" value={newCreator.ends_at || ''} onChange={(e) => setNewCreator((v) => ({ ...v, ends_at: e.target.value }))}
+                    className="w-full rounded-lg border border-emerald-500/40 bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-emerald-400" />
+                  <p className="mt-1 text-[11px] text-emerald-200/80">Te avisamos 7 y 3 días antes. Al vencer, la cuenta queda inactiva (no la puede ver la modelo ni la agencia hasta que vuelva a pagar).</p>
+                </div>
+              )}
             </div>
 
             {ncErr && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{ncErr}</p>}
@@ -904,6 +966,7 @@ export default function AdminPage() {
           savingId={savingId}
           flash={flash}
           onSaved={load}
+          isOwner={me?.role === 'admin'}
         />
       )}
 
@@ -978,7 +1041,7 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
   );
 }
 
-function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }) {
+function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, isOwner }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
   const [loraCount, setLoraCount] = useState(null);
   const [rejecting, setRejecting] = useState(false);
@@ -1243,37 +1306,65 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
           </div>
           )}
 
-          {/* ── SUSCRIPCIÓN — conectada al pricing real (Test/Core/Pro) ── */}
+          {/* ── SUSCRIPCIÓN — solo el dueño (admin) puede tocarla ── */}
           {tab === 'suscripcion' && (() => {
             const pack = PACKS.find((p) => p.key === creator.plan);
+            const ends = creator.subscription_ends_at ? new Date(creator.subscription_ends_at + 'T00:00:00') : null;
+            const daysLeft = ends ? Math.floor((ends - new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00')) / 864e5) : null;
+            const dueSoon = paid && daysLeft !== null && daysLeft <= 7 && daysLeft >= 0;
+            const overdue = paid && daysLeft !== null && daysLeft < 0;
+            const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
             return (
             <div className="space-y-4">
+              {!isOwner && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.07] p-3 text-xs text-amber-100">
+                  <ShieldCheck size={14} className="mt-0.5 shrink-0 text-amber-300" />
+                  <span>Solo el <strong>dueño</strong> puede cambiar la suscripción. Tú la ves en modo lectura.</span>
+                </div>
+              )}
+
               {/* Estado actual */}
-              <div className={`rounded-2xl border p-4 ${paid ? 'border-emerald-500/40 bg-emerald-500/[0.07]' : 'border-line bg-ink-2'}`}>
+              <div className={`rounded-2xl border p-4 ${overdue ? 'border-rose-500/50 bg-rose-500/[0.08]' : dueSoon ? 'border-amber-500/50 bg-amber-500/[0.07]' : paid ? 'border-emerald-500/40 bg-emerald-500/[0.07]' : 'border-line bg-ink-2'}`}>
                 <div className="flex items-center gap-2 text-sm font-semibold">
-                  <CreditCard size={16} className={paid ? 'text-emerald-300' : 'text-paper-dim'} />
-                  <span className={paid ? 'text-emerald-300' : 'text-paper-dim'}>{paid ? 'Suscripción activa' : 'Sin suscripción activa'}</span>
+                  <CreditCard size={16} className={overdue ? 'text-rose-300' : dueSoon ? 'text-amber-300' : paid ? 'text-emerald-300' : 'text-paper-dim'} />
+                  <span className={overdue ? 'text-rose-300' : dueSoon ? 'text-amber-300' : paid ? 'text-emerald-300' : 'text-paper-dim'}>
+                    {overdue ? `Vencida hace ${Math.abs(daysLeft)} día${Math.abs(daysLeft) === 1 ? '' : 's'}` : dueSoon ? `Vence en ${daysLeft} día${daysLeft === 1 ? '' : 's'}` : paid ? 'Suscripción activa' : 'Sin suscripción activa'}
+                  </span>
                 </div>
                 {paid ? (
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="font-display text-3xl font-bold text-paper">{pack ? `$${pack.m}` : '—'}</span>
-                    <span className="text-sm text-paper-mute">/mes · {pack ? pack.name : (creator.plan || 'sin plan')}</span>
-                  </div>
+                  <>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="font-display text-3xl font-bold text-paper">{pack ? `$${pack.m}` : '—'}</span>
+                      <span className="text-sm text-paper-mute">/mes · {pack ? pack.name : (creator.plan || 'sin plan')}</span>
+                    </div>
+                    {ends && <p className="mt-1 text-[11px] text-paper-dim">Próximo cobro: {ends.toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
+                  </>
                 ) : (
-                  <p className="mt-1 text-sm text-paper-dim">No ha pagado. Elige su plan y actívala cuando pague.</p>
+                  <p className="mt-1 text-sm text-paper-dim">No ha pagado. {isOwner ? 'Elige su plan y actívala cuando pague.' : 'Solo el dueño puede activarla.'}</p>
                 )}
                 {pack && <p className="mt-1 text-[11px] text-paper-dim">Incluye {pack.photos} fotos · {pack.videos} video{pack.videos === 1 ? '' : 's'} al mes</p>}
               </div>
 
-              {/* Elegir plan — los mismos de la página de pricing */}
+              {/* Fecha de vencimiento — solo si activa */}
+              {paid && (
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-paper-dim">Vence el · próximo cobro</label>
+                  <input type="date" value={creator.subscription_ends_at || ''} disabled={!isOwner || saving}
+                    onChange={(e) => patch({ subscription_ends_at: e.target.value || null }, 'Fecha de vencimiento actualizada')}
+                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60 disabled:cursor-not-allowed disabled:opacity-60" />
+                  <p className="mt-1 text-[11px] text-paper-dim">Te avisamos 7 y 3 días antes. Al vencer, la cuenta queda inactiva automáticamente (no la ve la modelo ni la agencia hasta que la reactives).</p>
+                </div>
+              )}
+
+              {/* Elegir plan — solo dueño */}
               <div>
                 <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-paper-dim">Plan que pagó</p>
                 <div className="grid grid-cols-3 gap-2">
                   {PACKS.map((p) => {
                     const on = creator.plan === p.key;
                     return (
-                      <button key={p.key} onClick={() => patch({ plan: p.key }, `Plan: ${p.name}`)} disabled={saving}
-                        className={`rounded-xl border p-3 text-left transition-colors disabled:opacity-50 ${on ? 'border-brand bg-brand/10' : 'border-line hover:border-brand/40'}`}>
+                      <button key={p.key} onClick={() => patch({ plan: p.key }, `Plan: ${p.name}`)} disabled={!isOwner || saving}
+                        className={`rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${on ? 'border-brand bg-brand/10' : 'border-line hover:border-brand/40'}`}>
                         <div className="flex items-center justify-between">
                           <span className={`text-xs font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{p.name}</span>
                           {on && <Check size={13} className="text-brand" />}
@@ -1284,26 +1375,27 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
                     );
                   })}
                 </div>
-                {creator.plan && (
+                {creator.plan && isOwner && (
                   <button onClick={() => patch({ plan: null }, 'Plan quitado')} disabled={saving}
                     className="mt-2 text-[11px] font-medium text-paper-dim hover:text-paper disabled:opacity-50">Quitar plan</button>
                 )}
               </div>
 
-              {/* Activar / desactivar */}
-              {paid ? (
-                <button onClick={() => patch({ payment_status: 'unpaid', onboarding_status: ['active', 'paid'].includes(creator.onboarding_status) ? 'id_approved' : creator.onboarding_status }, 'Suscripción marcada INACTIVA')}
+              {/* Activar / desactivar — solo dueño */}
+              {isOwner && (paid ? (
+                <button onClick={() => patch({ payment_status: 'unpaid', subscription_ends_at: null, onboarding_status: ['active', 'paid'].includes(creator.onboarding_status) ? 'id_approved' : creator.onboarding_status }, 'Suscripción marcada INACTIVA')}
                   disabled={saving}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 py-3 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-60">
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <X size={15} />} Marcar inactiva (dejó de pagar)
                 </button>
               ) : (
-                <button onClick={() => patch({ payment_status: 'paid', plan: creator.plan || 'core', onboarding_status: 'active' }, 'Suscripción ACTIVADA')}
+                <button onClick={() => patch({ payment_status: 'paid', plan: creator.plan || 'core', onboarding_status: 'active', subscription_ends_at: creator.subscription_ends_at || in30 }, 'Suscripción ACTIVADA')}
                   disabled={saving}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Activar suscripción (pagó a mano)
                 </button>
-              )}
+              ))}
+
               <p className="text-[11px] text-paper-dim">Cobro manual por ahora. Al activarla queda «Activa» y se ve en la modelo, la agencia y los uploaders. Las ventas reales se llevan en <span className="font-mono">/sales</span>.</p>
             </div>
             );
