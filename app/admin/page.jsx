@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2 } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -78,6 +78,9 @@ export default function AdminPage() {
   const [regFilter, setRegFilter] = useState(null);  // null = cerrado (solo cajitas) | all | id_pending | proceso | activas
   const [regQuery, setRegQuery] = useState('');       // buscador de registros
   const [regSort, setRegSort] = useState('recent');   // recent | oldest | photos | plan — cómo ordenar el registro
+  const [newCreator, setNewCreator] = useState(null); // null | {full_name, email, password} — modal de alta manual
+  const [ncBusy, setNcBusy] = useState(false);
+  const [ncErr, setNcErr] = useState('');
 
   const loadKyc = useCallback(async () => {
     const supabase = getSupabase();
@@ -177,6 +180,27 @@ export default function AdminPage() {
     setNuCaps([]);
     setEquipoPanel(null);
     flash(createdRole === 'supervisor' ? `Puesto creado con ${caps.length} acceso${caps.length === 1 ? '' : 's'}` : 'Cuenta creada');
+    await load();
+  }
+
+  // Dar de alta una creadora a mano — nace "Solo registrada"; el equipo puede
+  // subirle contenido de inmediato y ella completa su onboarding después.
+  async function createCreator(e) {
+    e.preventDefault();
+    setNcErr('');
+    const f = newCreator || {};
+    if (!f.full_name?.trim() || !f.email?.trim() || !f.password) { setNcErr('Completa nombre, correo y contraseña.'); return; }
+    if (f.password.length < 8) { setNcErr('La contraseña debe tener al menos 8 caracteres.'); return; }
+    setNcBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('create-user', {
+      body: { full_name: f.full_name.trim(), email: f.email.trim().toLowerCase(), password: f.password, role: 'creator' },
+    });
+    setNcBusy(false);
+    let out = data;
+    if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setNcErr(out?.error || 'No se pudo dar de alta la creadora.'); return; }
+    setNewCreator(null);
+    flash('Creadora dada de alta — ya puedes subirle contenido');
     await load();
   }
 
@@ -289,6 +313,13 @@ export default function AdminPage() {
           <p className="mt-8 text-paper-dim">Cargando datos…</p>
         ) : tab === 'registros' ? (
           <div className="mt-6">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-paper-mute">Toca una tarjeta para ver esas creadoras, o da de alta una nueva.</p>
+              <button onClick={() => { setNewCreator({ full_name: '', email: '', password: '' }); setNcErr(''); }}
+                className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+                <UserPlus size={15} /> Add creator
+              </button>
+            </div>
             {(() => {
               const cr = profiles.filter((p) => p.role === 'creator');
               const inCat = (p, cat) => cat === 'all' ? true
@@ -700,6 +731,47 @@ export default function AdminPage() {
           </div>
         ) : null}
       </main>
+
+      {newCreator && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/70 px-5 backdrop-blur-sm" onClick={() => !ncBusy && setNewCreator(null)}>
+          <form onClick={(e) => e.stopPropagation()} onSubmit={createCreator}
+            className="w-full max-w-md rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><UserPlus size={18} className="text-brand" /> Add creator</h3>
+                <p className="mt-1 text-sm text-paper-mute">Nace lista para trabajar. El equipo puede subirle contenido de una; ella completa sus datos, identidad y pago después.</p>
+              </div>
+              <button type="button" onClick={() => setNewCreator(null)} className="rounded-full p-1 text-paper-dim hover:text-paper"><X size={18} /></button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-paper-dim">Nombre</label>
+                <input autoFocus value={newCreator.full_name} onChange={(e) => setNewCreator((v) => ({ ...v, full_name: e.target.value }))}
+                  placeholder="Ej. Valentina Ríos" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-paper-dim">Correo</label>
+                <input type="email" value={newCreator.email} onChange={(e) => setNewCreator((v) => ({ ...v, email: e.target.value }))}
+                  placeholder="correo@ejemplo.com" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-paper-dim">Contraseña temporal</label>
+                <input value={newCreator.password} onChange={(e) => setNewCreator((v) => ({ ...v, password: e.target.value }))}
+                  placeholder="Mínimo 8 caracteres" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                <p className="mt-1 text-[11px] text-paper-dim">Se la compartes para que entre. Podrá cambiarla desde su cuenta.</p>
+              </div>
+              {ncErr && <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{ncErr}</p>}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setNewCreator(null)} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
+              <button type="submit" disabled={ncBusy}
+                className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+                {ncBusy ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={15} />} Add creator
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {selCreator && (
         <CreatorProfile
