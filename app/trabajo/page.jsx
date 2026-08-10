@@ -421,7 +421,6 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   const [folderSel, setFolderSel] = useState(null); // null = biblioteca (carpetas); id = dentro de la carpeta
   const [urls, setUrls] = useState({});             // storage_path -> signed url (miniaturas)
   const [newName, setNewName] = useState('');
-  const [newKind, setNewKind] = useState('photo'); // 'photo' | 'video' — separar fotos y videos
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState('');
   const [purpose, setPurpose] = useState(''); // "por qué se hizo" — se guarda en cada foto de la entrega
@@ -462,23 +461,21 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     e.preventDefault();
     if (!newName.trim()) return;
     setCreating(true);
-    const { error } = await getSupabase().from('folders').insert({ creator_id: creator.id, name: newName.trim(), kind: newKind });
+    const { error } = await getSupabase().from('folders').insert({ creator_id: creator.id, name: newName.trim() });
     setCreating(false);
     if (error) { flash('Error: ' + error.message); return; }
-    setNewName(''); load(); flash('Carpeta creada');
+    setNewName(''); load(); flash('Entrega creada');
   }
 
   // Bulk-friendly: uploads in a small concurrency pool, survives per-file
   // failures (reports how many), and only closes the pedido if something landed.
   async function uploadFiles(list) {
-    if (!folderSel) { flash('Elige primero una carpeta.'); return; }
-    const folderKind = (folders || []).find((f) => f.id === folderSel)?.kind || 'photo';
-    const wantVideo = folderKind === 'video';
-    const all = Array.from(list).filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
-    // Cada carpeta es de fotos o de videos — mantenlas separadas.
-    const files = all.filter((f) => wantVideo ? f.type.startsWith('video/') : f.type.startsWith('image/'));
-    const wrong = all.length - files.length;
-    if (!files.length) { flash(wantVideo ? 'Esta carpeta es de videos — arrastra videos.' : 'Esta carpeta es de fotos — arrastra fotos.'); return; }
+    if (!folderSel) { flash('Elige primero una entrega.'); return; }
+    // Fotos y videos JUNTOS: el sistema detecta el tipo de cada archivo y los separa solo.
+    const files = Array.from(list).filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
+    if (!files.length) { flash('Arrastra fotos o videos.'); return; }
+    const nPhotos = files.filter((f) => f.type.startsWith('image/')).length;
+    const nVideos = files.length - nPhotos;
     const supabase = getSupabase();
     const purposeNow = purpose.trim() || null;
     const reqNow = reqSel;
@@ -524,11 +521,11 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     setPurpose('');
     setReqSel('');
     await load();
-    const skipped = wrong ? ` · ${wrong} de otro tipo se ignoraron` : '';
+    const mix = [nPhotos && `${nPhotos} ${nPhotos === 1 ? 'foto' : 'fotos'}`, nVideos && `${nVideos} ${nVideos === 1 ? 'video' : 'videos'}`].filter(Boolean).join(' · ');
     flash(failed
-      ? `${ok} subidas · ${failed} fallaron, reinténtalas${skipped}`
-      : reqNow ? `${ok} ${ok === 1 ? 'pieza subida' : 'piezas subidas'} · pedido entregado${skipped}`
-      : `${ok} ${ok === 1 ? 'pieza subida' : 'piezas subidas'}${skipped}`);
+      ? `${ok} de ${total} subidas · ${failed} fallaron, reinténtalas`
+      : reqNow ? `Subido: ${mix} · pedido entregado`
+      : `Subido: ${mix} — separados solos`);
   }
 
   async function toggleLora() {
@@ -673,10 +670,10 @@ function CreatorDetail({ creator, me, flash, onBack }) {
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {(folders || []).map((f) => {
-              const isVid = f.kind === 'video';
-              const cover = isVid
-                ? ((f.assets || []).find((a) => a.type === 'video' && srcOf(a)) || (f.assets || [])[0])
-                : ((f.assets || []).find((a) => a.type !== 'video' && srcOf(a)) || (f.assets || [])[0]);
+              const as = f.assets || [];
+              const nV = as.filter((a) => a.type === 'video').length;
+              const nP = as.length - nV;
+              const cover = as.find((a) => a.type !== 'video' && srcOf(a)) || as.find((a) => srcOf(a)) || as[0];
               return (
                 <button key={f.id} onClick={() => setFolderSel(f.id)}
                   className="group overflow-hidden rounded-2xl border border-line bg-card text-left transition-colors hover:border-brand/40">
@@ -687,36 +684,29 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                         // eslint-disable-next-line @next/next/no-img-element
                         : <img src={srcOf(cover)} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                     ) : (
-                      <div className="grid h-full w-full place-items-center text-paper-dim">{isVid ? <Film size={26} /> : <Folder size={26} />}</div>
+                      <div className="grid h-full w-full place-items-center text-paper-dim"><Folder size={26} /></div>
                     )}
-                    <span className={`absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide backdrop-blur ${isVid ? 'bg-fuchsia-500/25 text-fuchsia-100' : 'bg-sky-500/25 text-sky-100'}`}>
-                      {isVid ? <><Film size={10} /> Videos</> : <><ImageIcon size={10} /> Fotos</>}
-                    </span>
-                    <span className="absolute bottom-1.5 right-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-paper backdrop-blur">{(f.assets || []).length}</span>
+                    <div className="absolute left-1.5 top-1.5 flex gap-1">
+                      {nP > 0 && <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/25 px-1.5 py-0.5 text-[10px] font-bold text-sky-100 backdrop-blur"><ImageIcon size={10} /> {nP}</span>}
+                      {nV > 0 && <span className="inline-flex items-center gap-1 rounded-md bg-fuchsia-500/25 px-1.5 py-0.5 text-[10px] font-bold text-fuchsia-100 backdrop-blur"><Film size={10} /> {nV}</span>}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1.5 px-3 py-2.5">
-                    {isVid ? <Film size={13} className="shrink-0 text-fuchsia-300" /> : <ImageIcon size={13} className="shrink-0 text-sky-300" />}
+                    <Folder size={13} className="shrink-0 text-brand" />
                     <span className="truncate text-sm font-medium text-paper">{f.name}</span>
                   </div>
                 </button>
               );
             })}
-            {/* Nueva carpeta — elige si es de fotos o de videos */}
+            {/* Nueva entrega — fotos y videos juntos, se separan solos */}
             <form onSubmit={createFolder} className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-ink-2/50 p-4">
               <FolderPlus size={20} className="text-paper-dim" />
-              <div className="flex w-full gap-1 rounded-lg border border-line bg-ink-2 p-1">
-                {[['photo', 'Fotos', ImageIcon], ['video', 'Videos', Film]].map(([k, l, Ic]) => (
-                  <button key={k} type="button" onClick={() => setNewKind(k)}
-                    className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors ${newKind === k ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>
-                    <Ic size={12} /> {l}
-                  </button>
-                ))}
-              </div>
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={newKind === 'video' ? 'Carpeta de videos…' : 'Carpeta de fotos…'}
+              <p className="flex items-center gap-1 text-[10px] font-medium text-paper-dim"><ImageIcon size={11} className="text-sky-300" /><Film size={11} className="text-fuchsia-300" /> Fotos y videos juntos</p>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nueva entrega…"
                 className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-center text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               <button type="submit" disabled={creating || !newName.trim()}
                 className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-40">
-                {creating ? 'Creando…' : 'Crear'}
+                {creating ? 'Creando…' : 'Crear entrega'}
               </button>
             </form>
           </div>
@@ -727,11 +717,14 @@ function CreatorDetail({ creator, me, flash, onBack }) {
             <button onClick={() => setFolderSel(null)} className="inline-flex items-center gap-1.5 text-sm text-paper-mute transition-colors hover:text-paper">
               <ArrowLeft size={15} /> Carpetas de {creator.full_name}
             </button>
-            <div className="flex items-center gap-2 text-sm font-semibold text-paper">
-              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${folder.kind === 'video' ? 'bg-fuchsia-500/15 text-fuchsia-200' : 'bg-sky-500/15 text-sky-200'}`}>
-                {folder.kind === 'video' ? <><Film size={11} /> Videos</> : <><ImageIcon size={11} /> Fotos</>}
-              </span>
-              {folder.name} · {(folder.assets || []).length} piezas
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-paper">
+              <span className="text-paper">{folder.name}</span>
+              {(() => { const as = folder.assets || []; const nV = as.filter((a) => a.type === 'video').length; const nP = as.length - nV; return (
+                <span className="flex items-center gap-2 text-[11px] font-medium text-paper-mute">
+                  <span className="inline-flex items-center gap-1"><ImageIcon size={12} className="text-sky-300" /> {nP} fotos</span>
+                  <span className="inline-flex items-center gap-1"><Film size={12} className="text-fuchsia-300" /> {nV} videos</span>
+                </span>
+              ); })()}
             </div>
           </div>
 
@@ -770,33 +763,46 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                   <span className={`grid h-11 w-11 place-items-center rounded-full ${dragOver ? 'bg-brand text-on-accent' : 'bg-brand/10 text-brand'}`}><Upload size={20} /></span>
                   <span className="flex items-center gap-2">
                     <Avatar src={creator.avatar_url} name={creator.full_name} size="xs" />
-                    <span className="text-sm font-medium text-paper">{dragOver ? 'Suelta para subir' : <>Arrastra {folder.kind === 'video' ? 'videos' : 'fotos'} aquí o haz clic — «{folder.name}» de <span className="text-brand">{creator.full_name}</span></>}</span>
+                    <span className="text-sm font-medium text-paper">{dragOver ? 'Suelta para subir' : <>Arrastra fotos y videos aquí o haz clic — «{folder.name}» de <span className="text-brand">{creator.full_name}</span></>}</span>
                   </span>
-                  <span className="text-[11px] text-paper-dim">{folder.kind === 'video' ? 'Solo videos en esta carpeta' : 'Solo fotos en esta carpeta'} · puedes soltar muchos a la vez · le llega al instante a ella{creator.handle ? ` (@${creator.handle})` : ''} y a su agencia</span>
+                  <span className="text-[11px] text-paper-dim">Fotos y videos JUNTOS · el sistema los separa solo · puedes soltar muchos a la vez · le llega al instante a ella{creator.handle ? ` (@${creator.handle})` : ''} y a su agencia</span>
                 </>
               )}
             </button>
-            <input ref={fileRef} type="file" accept={folder.kind === 'video' ? 'video/*' : 'image/*'} multiple hidden onChange={(e) => e.target.files && uploadFiles(e.target.files)} />
+            <input ref={fileRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => e.target.files && uploadFiles(e.target.files)} />
           </div>
 
-          {/* Lo que ya vive en la carpeta */}
-          {(folder.assets || []).length > 0 ? (
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {[...(folder.assets || [])].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || '')).map((a) => (
-                <div key={a.id} className="group relative overflow-hidden rounded-xl border border-line bg-card">
-                  {a.type === 'video'
-                    ? <video src={srcOf(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
-                    // eslint-disable-next-line @next/next/no-img-element
-                    : <img src={srcOf(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/60 to-transparent p-2 pt-6">
-                    <p className="truncate text-[11px] font-medium text-paper">{a.title || 'Sin título'}</p>
-                    {a.deliver_date && <p className="text-[10px] text-paper-dim">{new Date(a.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</p>}
-                  </div>
+          {/* Lo que ya vive en la entrega — separado en Fotos y Videos */}
+          {(folder.assets || []).length > 0 ? (() => {
+            const as = [...(folder.assets || [])].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || ''));
+            const photos = as.filter((a) => a.type !== 'video');
+            const videos = as.filter((a) => a.type === 'video');
+            const Grid = ({ label, Icon, items, color }) => items.length === 0 ? null : (
+              <div className="mt-4">
+                <div className={`mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider ${color}`}><Icon size={12} /> {label} · {items.length}</div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {items.map((a) => (
+                    <div key={a.id} className="group relative overflow-hidden rounded-xl border border-line bg-card">
+                      {a.type === 'video'
+                        ? <video src={srcOf(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
+                        // eslint-disable-next-line @next/next/no-img-element
+                        : <img src={srcOf(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
+                      {a.type === 'video' && <span className="pointer-events-none absolute right-1.5 top-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 text-[9px] font-bold uppercase text-fuchsia-200 backdrop-blur">Video</span>}
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/60 to-transparent p-2 pt-6">
+                        <p className="truncate text-[11px] font-medium text-paper">{a.title || 'Sin título'}</p>
+                        {a.deliver_date && <p className="text-[10px] text-paper-dim">{new Date(a.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</p>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-4 rounded-xl border border-dashed border-line p-6 text-center text-sm text-paper-dim">Carpeta vacía — sube las primeras fotos arriba.</p>
+              </div>
+            );
+            return (<>
+              <Grid label="Fotos" Icon={ImageIcon} items={photos} color="text-sky-300" />
+              <Grid label="Videos" Icon={Film} items={videos} color="text-fuchsia-300" />
+            </>);
+          })() : (
+            <p className="mt-4 rounded-xl border border-dashed border-line p-6 text-center text-sm text-paper-dim">Entrega vacía — sube fotos y videos arriba.</p>
           )}
         </div>
       )}
