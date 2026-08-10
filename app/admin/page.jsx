@@ -2,13 +2,14 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import { CAPS, CAP_SECTIONS } from '@/lib/caps';
 import { PACKS } from '@/lib/packs';
+import ReactionsDashboard from '@/components/ReactionsDashboard';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -321,6 +322,7 @@ export default function AdminPage() {
           {[
             { id: 'registros', label: 'Registros', icon: ClipboardList },
             { id: 'metricas', label: 'Métricas', icon: BarChart3 },
+            { id: 'reacciones', label: 'Reacciones', icon: Heart },
             { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
             { id: 'equipo', label: 'Equipo interno', icon: Users },
             { id: 'agencias', label: 'Agencias', icon: Building2 },
@@ -594,6 +596,8 @@ export default function AdminPage() {
               );
             })()}
           </div>
+        ) : tab === 'reacciones' ? (
+          <ReactionsDashboard creators={creators.map((c) => ({ id: c.id, name: c.stage_name || c.full_name, avatar_url: c.avatar_url }))} />
         ) : tab === 'verificaciones' ? (
           <div className="mt-6 space-y-4">
             {kyc.length === 0 && (

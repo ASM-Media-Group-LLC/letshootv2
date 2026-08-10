@@ -18,6 +18,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { ymOf, ymLabel, shiftYm, aggregate, pct, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
+import ReactionsDashboard from '@/components/ReactionsDashboard';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
@@ -60,7 +61,8 @@ export default function AgenciaPage() {
   const [toast, setToast] = useState('');
   const [reqOpen, setReqOpen] = useState(false);
   const [modelProfile, setModelProfile] = useState(null); // creator_profile of the selected model (status only)
-  const [atab, setAtab] = useState(null);         // null (cerrado) | modelos | contenido | ingresos
+  const [atab, setAtab] = useState(null);         // null (cerrado) | modelos | contenido | ingresos | reacciones
+  const [likeCount, setLikeCount] = useState(0);  // total ❤ + comentarios de sus modelos
   const [checklists, setChecklists] = useState({}); // creator_id -> creator_profile (roster glance)
   const [invites, setInvites] = useState([]);      // pending model-invite links
   const [addOpen, setAddOpen] = useState(false);   // "agregar modelo" modal
@@ -139,6 +141,8 @@ export default function AgenciaPage() {
     setModels(list);
     setRequests((reqs || []).map((r) => ({ ...r, _msgs: msgsByReq[r.id] || [] })));
     setInvites(invs || []);
+    const { count: fbCount } = await supabase.from('feedback').select('id', { count: 'exact', head: true });
+    setLikeCount(fbCount || 0);
   }, []);
 
   // Roster glance: load each model's completion checklist (status only).
@@ -242,6 +246,7 @@ export default function AgenciaPage() {
     { icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo', view: 'contenido' },
     { icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades', view: 'ingresos' },
     { icon: DollarSign, label: 'Ingresos generados', value: money(books.revenue), sub: 'total histórico', view: 'ingresos' },
+    { icon: Heart, label: 'Reacciones', value: nf(likeCount), sub: 'likes ❤ y comentarios', view: 'reacciones' },
   ];
 
   return (
@@ -284,7 +289,7 @@ export default function AgenciaPage() {
 
         {/* Agency books — each card opens its own view; tap again to close. */}
         <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen de tu agencia · histórico — toca una tarjeta para abrirla</div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {BOOK_KPIS.map((k) => {
             const open = atab === k.view;
             return (
@@ -551,6 +556,11 @@ export default function AgenciaPage() {
             </>
           )}
         </div>
+        )}
+
+        {/* ── Reacciones: likes ❤ + comentarios de las modelos, filtrable ── */}
+        {atab === 'reacciones' && (
+          <ReactionsDashboard creators={models.map((m) => ({ id: m.id, name: m.name, avatar_url: m.avatar_url }))} />
         )}
 
         {/* ── Ingresos: per-model roll-up with detail (los totales ya están arriba) ── */}
