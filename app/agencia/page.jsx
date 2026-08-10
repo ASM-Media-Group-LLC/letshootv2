@@ -281,10 +281,7 @@ export default function AgenciaPage() {
             <h1 className="font-display text-2xl font-semibold sm:text-3xl">Tus cuentas</h1>
             <p className="mt-1 text-sm text-paper-mute">Gestiona a tus modelos, revisa el contenido entregado, registra ventas y haz pedidos.</p>
           </div>
-          <button onClick={() => { setNewLink(''); setAddOpen(true); }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
-            <Plus size={15} /> Agregar modelo
-          </button>
+          {/* La agencia NO agrega modelos — el admin conecta modelo↔agencia. */}
         </div>
 
         {/* Resumen: solo las tarjetas. Tocar una CAMBIA de pantalla al área. */}
@@ -328,7 +325,7 @@ export default function AgenciaPage() {
           {/* Models list */}
           <aside className="space-y-1.5">
             <div className="mb-1 px-1 text-xs font-semibold uppercase tracking-wider text-paper-dim">Tus modelos · {models.length}</div>
-            {models.length === 0 && <p className="rounded-xl border border-line bg-card p-4 text-sm text-paper-dim">Aún no tienes modelos. Usa <span className="font-semibold text-paper">Agregar modelo</span> para invitar a una, o el administrador puede vincularla.</p>}
+            {models.length === 0 && <p className="rounded-xl border border-line bg-card p-4 text-sm text-paper-dim">Aún no tienes modelos. El administrador de LetShoot conecta cada modelo con tu agencia.</p>}
             {models.map((m) => {
               const sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
               const rev = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
