@@ -287,29 +287,41 @@ export default function AgenciaPage() {
           </button>
         </div>
 
-        {/* Agency books — each card opens its own view; tap again to close. */}
-        <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen de tu agencia · histórico — toca una tarjeta para abrirla</div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {BOOK_KPIS.map((k) => {
-            const open = atab === k.view;
-            return (
-              <button key={k.label}
-                onClick={() => { const next = open ? null : k.view; setAtab(next); if (next !== 'modelos') setSel(null); }}
-                className={`rounded-2xl border p-4 text-left transition-colors ${
-                  open ? 'border-brand/50 bg-brand/[0.07] shadow-glow-sm' : 'border-line bg-card hover:border-brand/30'}`}>
-                <div className="flex items-center justify-between gap-2 text-paper-dim">
-                  <span className="flex items-center gap-2">
-                    <k.icon size={15} className="text-brand" />
-                    <span className="text-xs font-medium">{k.label}</span>
-                  </span>
-                  <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180 text-brand' : ''}`} />
-                </div>
-                <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{k.value}</div>
-                <div className="mt-0.5 text-[11px] text-paper-dim">{k.sub}</div>
-              </button>
-            );
-          })}
-        </div>
+        {/* Resumen: solo las tarjetas. Tocar una CAMBIA de pantalla al área. */}
+        {!atab && (
+          <>
+            <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen de tu agencia · histórico — toca una tarjeta para abrirla</div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {BOOK_KPIS.map((k) => (
+                <button key={k.label}
+                  onClick={() => { setAtab(k.view); if (k.view !== 'modelos') setSel(null); }}
+                  className="group rounded-2xl border border-line bg-card p-4 text-left transition-colors hover:border-brand/40">
+                  <div className="flex items-center justify-between gap-2 text-paper-dim">
+                    <span className="flex items-center gap-2">
+                      <k.icon size={15} className="text-brand" />
+                      <span className="text-xs font-medium">{k.label}</span>
+                    </span>
+                    <ChevronRight size={15} className="shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+                  </div>
+                  <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{k.value}</div>
+                  <div className="mt-0.5 text-[11px] text-paper-dim">{k.sub}</div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Pantalla de área — reemplaza el resumen; "Resumen" arriba para volver. */}
+        {atab && (
+          <div className="mb-1 mt-6">
+            <button onClick={() => { setAtab(null); setSel(null); }} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-paper-mute transition-colors hover:text-paper">
+              <ChevronLeft size={15} /> Resumen
+            </button>
+            <h2 className="mt-1.5 flex items-center gap-2 font-display text-lg font-semibold sm:text-xl">
+              {(() => { const k = BOOK_KPIS.find((x) => x.view === atab); const Ic = k?.icon; return <>{Ic && <Ic size={18} className="text-brand" />} {k?.label || ''}</>; })()}
+            </h2>
+          </div>
+        )}
 
         {atab === 'modelos' && (
         <div className="mt-6 grid gap-6 md:grid-cols-[280px_1fr]">
