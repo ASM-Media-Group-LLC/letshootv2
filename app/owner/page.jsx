@@ -21,9 +21,9 @@ const USER = { email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' };
 const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
 // Agency / manager — manages its models, makes requests, records sales.
 const AGENCY = { email: 'agencia@letshoot.ai', password: 'LetShoot!agencia' };
-// Internal team worker (content manager): the person who uploads the product
-// (photos/videos) into each model's account. Real staff are still created from
-// Admin → «Equipo interno»; this is a demo puesto to preview that experience.
+// Uploader: the person who uploads the product (photos/videos) into each
+// model's account. Real staff are created from Admin → «Equipo interno»
+// (the Uploader preset comes ready); this is a demo puesto to preview it.
 const TEAM = { email: 'equipo@letshoot.ai', password: 'LetShoot!equipo' };
 
 export default function OwnerPage() {
@@ -152,15 +152,15 @@ export default function OwnerPage() {
           </button>
         </div>
 
-        {/* Equipo interno — el trabajador que sube el contenido a las modelos */}
+        {/* Uploaders — el trabajador que sube el contenido a las modelos */}
         <div className="mt-4 flex flex-col rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
           <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/12 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
-            <Upload size={14} /> Equipo · sube contenido
+            <Upload size={14} /> Uploaders · suben contenido
           </span>
           <p className="text-sm text-paper-mute">
-            El trabajador que <strong className="text-paper">carga el producto</strong>: entra a una modelo, sube sus
-            fotos y videos, les pone el propósito y los amarra a un pedido. Al subirlos aparecen al instante en la
-            cuenta de la modelo y en la de su agencia. Solo ve sus funciones (contenido, pedidos, feedback).
+            Los <strong className="text-paper">uploaders</strong> cargan el producto: entran a una modelo, suben sus
+            fotos y videos, les ponen el propósito y los amarran a un pedido. Al subirlos aparecen al instante en la
+            cuenta de la modelo y en la de su agencia. Solo ven sus funciones (contenido, pedidos, feedback).
           </p>
           <div className="mt-3 inline-flex w-fit flex-col gap-0.5 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
             <div>{TEAM.email}</div>
@@ -168,10 +168,10 @@ export default function OwnerPage() {
           </div>
           <button onClick={() => enter(TEAM, 'team')} disabled={!!busy}
             className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-            {busy === 'team' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Equipo (sube contenido) <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+            {busy === 'team' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Uploader <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
           </button>
           <p className="mt-3 text-[11px] leading-relaxed text-paper-dim">
-            <ClipboardList size={12} className="mr-1 inline" /> A tu gente real la creas en <strong className="text-paper-mute">Admin → «Equipo interno» → Crear puesto</strong> (eliges sus funciones) o por link de invitación.
+            <ClipboardList size={12} className="mr-1 inline" /> A tus uploaders reales los creas en <strong className="text-paper-mute">Admin → «Equipo interno» → Crear puesto</strong> (el preset «Uploader» ya viene armado; agregas o quitas accesos) o por link de invitación.
           </p>
         </div>
 

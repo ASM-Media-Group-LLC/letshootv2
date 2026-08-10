@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -676,6 +676,16 @@ export default function AdminPage() {
             {/* Create panel (collapsed by default) */}
             {equipoPanel === 'create' && (
               <form onSubmit={createUser} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
+                {/* Preset Uploader — el único rol pre-armado; luego agregas/quitas accesos igual */}
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/[0.06] p-2.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Preset</span>
+                  <button type="button"
+                    onClick={() => { setNu((v) => ({ ...v, role: 'supervisor', job_title: v.job_title || 'Uploader' })); setNuCaps(['content', 'requests', 'feedback']); }}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
+                    <Upload size={13} /> Uploader (sube contenido)
+                  </button>
+                  <span className="text-[11px] text-paper-dim">Marca contenido · pedidos · feedback. Puedes ajustar los accesos abajo.</span>
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <input value={nu.full_name} onChange={(e) => setNu((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre (ej. Camila)"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
