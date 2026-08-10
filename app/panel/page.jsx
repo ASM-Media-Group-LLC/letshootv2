@@ -55,7 +55,7 @@ export default function PanelPage() {
   const [requests, setRequests] = useState([]);
   const [reqOpen, setReqOpen] = useState(false);
   const [notesFeed, setNotesFeed] = useState([]);
-  const [view, setView] = useState('gallery');   // gallery | activity | requests
+  const [view, setView] = useState('contenido'); // contenido | numeros | activity | requests
   const [month, setMonth] = useState(null);
   const [openDays, setOpenDays] = useState([]);   // gallery day-folders expanded
   const [myFeedback, setMyFeedback] = useState({}); // asset_id -> 'love' | 'change'
@@ -185,8 +185,13 @@ export default function PanelPage() {
   });
   const fmtDay = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' }) : '');
 
+  const isEs = (locale || 'es').startsWith('es');
+  // Desglose de ingresos del mes — qué piezas vendieron (de más a menos).
+  const revenueBreakdown = [...monthAssets].filter((a) => Number(a.revenue) > 0 || (a.sales_count || 0) > 0)
+    .sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0));
   const NAV = [
-    { id: 'gallery', label: t.panel.navGallery, icon: Images },
+    { id: 'contenido', label: isEs ? 'Contenido' : 'Content', icon: Images },
+    { id: 'numeros', label: isEs ? 'Números' : 'Numbers', icon: DollarSign },
     { id: 'activity', label: t.panel.navActivity, icon: Activity },
     { id: 'requests', label: t.panel.navRequests, icon: Inbox },
   ];
@@ -255,24 +260,59 @@ export default function PanelPage() {
           ))}
         </div>
 
-        {view === 'gallery' && (
+        {/* ── Números: dashboard del mes + desglose de ingresos ── */}
+        {view === 'numeros' && (
           <div className="mt-6">
-            {/* Monthly accounting — fotos · videos · dinero (read-only mirror) */}
-            <div className="rounded-3xl border border-line bg-card p-4 sm:p-5">
-              <div className="flex items-center justify-between">
-                <button onClick={() => setMonth(shiftYm(month, -1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronLeft size={17} /></button>
-                <div className="font-display text-lg font-semibold">{ymLabel(month, locale)}</div>
-                <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={17} /></button>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-3">
-                {[{ icon: ImageIcon, label: t.panel.mPhotos, value: nf(acc.photos) }, { icon: Film, label: t.panel.mVideos, value: nf(acc.videos) }, { icon: DollarSign, label: t.panel.mRevenue, value: money(acc.revenue) }].map((k) => (
-                  <div key={k.label} className="rounded-2xl border border-line bg-ink-2 p-3.5 text-center sm:text-left">
-                    <div className="flex items-center justify-center gap-1.5 text-paper-dim sm:justify-start"><k.icon size={13} className="text-brand" /><span className="text-[11px] font-medium">{k.label}</span></div>
-                    <div className="mt-1 font-display text-xl font-semibold sm:text-2xl">{k.value}</div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2 text-[11px] text-paper-dim">{t.panel.statsNote}</p>
+            <div className="flex items-center justify-between rounded-2xl border border-line bg-card p-3">
+              <button onClick={() => setMonth(shiftYm(month, -1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronLeft size={17} /></button>
+              <div className="font-display text-lg font-semibold">{ymLabel(month, locale)}</div>
+              <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={17} /></button>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              {[{ icon: ImageIcon, label: t.panel.mPhotos, value: nf(acc.photos) }, { icon: Film, label: t.panel.mVideos, value: nf(acc.videos) }, { icon: DollarSign, label: t.panel.mRevenue, value: money(acc.revenue) }].map((k) => (
+                <div key={k.label} className="rounded-2xl border border-line bg-card p-3.5 text-center sm:text-left">
+                  <div className="flex items-center justify-center gap-1.5 text-paper-dim sm:justify-start"><k.icon size={13} className="text-brand" /><span className="text-[11px] font-medium">{k.label}</span></div>
+                  <div className="mt-1 font-display text-xl font-semibold sm:text-2xl">{k.value}</div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-paper-dim">{t.panel.statsNote}</p>
+
+            {/* Desglose de ingresos — qué piezas vendieron */}
+            <div className="mt-6">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{isEs ? 'Desglose de ingresos · qué se vendió' : 'Revenue breakdown · what sold'}</div>
+              {revenueBreakdown.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">{isEs ? 'Sin ventas registradas este mes.' : 'No sales recorded this month.'}</p>
+              ) : (
+                <div className="space-y-2">
+                  {revenueBreakdown.map((a) => (
+                    <button key={a.id} onClick={() => setDetail(a)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card p-2.5 text-left transition-colors hover:border-brand/40">
+                      <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line bg-ink-2">
+                        {a.type === 'video'
+                          ? <video src={srcFor(a)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                          // eslint-disable-next-line @next/next/no-img-element
+                          : <img src={srcFor(a)} alt="" className="h-full w-full object-cover" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-paper">{a.title || (isEs ? 'Pieza' : 'Piece')}</span>
+                        <span className="block text-[11px] text-paper-dim">{a.deliver_date ? new Date(a.deliver_date + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''} · {nf(a.sales_count || 0)} {isEs ? 'ventas' : 'sales'}</span>
+                      </span>
+                      <span className="shrink-0 font-display text-sm font-bold text-brand">{money(a.revenue)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Contenido: calendario de entregas por día ── */}
+        {view === 'contenido' && (
+          <div className="mt-6">
+            <div className="flex items-center justify-between rounded-2xl border border-line bg-card p-3">
+              <button onClick={() => setMonth(shiftYm(month, -1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronLeft size={17} /></button>
+              <div className="font-display text-lg font-semibold">{ymLabel(month, locale)}</div>
+              <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={17} /></button>
             </div>
 
             {/* Gallery — one folder per day; tap to open its photos */}
