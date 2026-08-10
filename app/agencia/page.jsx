@@ -830,6 +830,8 @@ function NewRequest({ creatorId, agencyId, onDone }) {
 function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle, agencyEmail, onClose, onSaved }) {
   const [sales, setSales] = useState(asset.sales_count || 0);
   const [revenue, setRevenue] = useState(asset.revenue || 0);
+  // Precio por venta (el promedio) — arranca con lo que ya se vio y se puede cambiar.
+  const [price, setPrice] = useState(asset.sales_count > 0 ? String(Math.round((asset.revenue || 0) / asset.sales_count)) : '');
   const [saving, setSaving] = useState(false);
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
@@ -856,17 +858,31 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
 
   const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 
-  async function save() {
+  const priceNum = () => Math.max(0, parseFloat(price) || 0);
+  const avg = sales > 0 ? `$${Math.round(revenue / sales).toLocaleString('en-US')}` : '—';
+  const money = (n) => `$${Number(n || 0).toLocaleString('en-US')}`;
+
+  // Persiste el conteo. Cada +1 / −1 es un récord real que la modelo y el admin ven.
+  async function persist(nSales, nRev) {
     setSaving(true);
-    const p_sales = Math.max(0, parseInt(sales, 10) || 0);
-    const p_revenue = Math.max(0, parseFloat(revenue) || 0);
     const { error } = await getSupabase().rpc('agency_set_stats', {
-      aid: asset.id, p_sales, p_revenue,
+      aid: asset.id, p_sales: nSales, p_revenue: nRev,
       p_reach: asset.reach || 0, p_interactions: asset.interactions || 0,
     });
     setSaving(false);
     if (error) { console.error(error); return; }
-    onSaved({ sales_count: p_sales, revenue: p_revenue });
+    onSaved({ sales_count: nSales, revenue: nRev });
+  }
+  function inc() {
+    const nS = sales + 1;
+    const nR = Math.round((Number(revenue) + priceNum()) * 100) / 100;
+    setSales(nS); setRevenue(nR); persist(nS, nR);
+  }
+  function dec() {
+    if (sales <= 0) return;
+    const nS = sales - 1;
+    const nR = Math.max(0, Math.round((Number(revenue) - priceNum()) * 100) / 100);
+    setSales(nS); setRevenue(nR); persist(nS, nR);
   }
 
   async function addNote() {
@@ -879,14 +895,6 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
     if (error) { console.error(error); return; }
     setNewNote(''); loadNotes();
   }
-
-  const STAT = (label, val, set, step = '1') => (
-    <label className="block">
-      <span className="text-[11px] font-medium text-paper-dim">{label}</span>
-      <input type="number" min="0" step={step} value={val} onChange={(e) => set(e.target.value)}
-        className="mt-1 w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/50" />
-    </label>
-  );
 
   return (
     <div className="fixed inset-0 z-[55] flex items-stretch justify-center overflow-y-auto bg-ink/85 backdrop-blur-sm sm:items-center sm:p-6">
@@ -924,16 +932,37 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
             </div>
             <div>
               <div className="text-sm font-semibold text-paper">Registrar venta</div>
-              <p className="mt-0.5 text-xs text-paper-dim">Conteo manual — la foto llega en cero y tú vas sumando lo que se venda.</p>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                {STAT('Ventas (unidades)', sales, setSales)}
-                {STAT('Ingresos ($)', revenue, setRevenue, '0.01')}
+              <p className="mt-0.5 text-xs text-paper-dim">Como una maquinita: cada vez que se vende en OnlyFans, le das <span className="font-semibold text-paper">+1</span>. Lleva el conteo y suma los ingresos solo.</p>
+
+              {/* Precio por venta — el promedio, editable */}
+              <label className="mt-3 block">
+                <span className="text-[11px] font-medium text-paper-dim">Precio por venta ($) — el promedio, lo puedes cambiar</span>
+                <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Ej. 15"
+                  className="mt-1 w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/50" />
+              </label>
+
+              {/* Contador — el récord real de esta pieza */}
+              <div className="mt-3 rounded-2xl border border-line bg-ink-2 p-4">
+                <div className="flex items-end justify-between">
+                  <div>
+                    <div className="font-display text-4xl font-bold leading-none text-paper">{sales}</div>
+                    <div className="mt-1 text-[11px] text-paper-dim">veces vendida</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-display text-2xl font-bold leading-none text-brand">{money(revenue)}</div>
+                    <div className="mt-1 text-[11px] text-paper-dim">ingresos · prom. {avg}</div>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <button onClick={dec} disabled={saving || sales <= 0} aria-label="Quitar una venta"
+                    className="grid h-11 w-12 shrink-0 place-items-center rounded-xl border border-line text-lg font-bold text-paper-mute transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-40">−1</button>
+                  <button onClick={inc} disabled={saving}
+                    className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-brand text-base font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={17} /> +1 venta</>}
+                  </button>
+                </div>
               </div>
-              <button onClick={save} disabled={saving}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-                {saving ? 'Guardando…' : <><TrendingUp size={15} /> Guardar en mis cuentas</>}
-              </button>
-              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-paper-dim"><CheckCircle2 size={12} className="text-brand" /> Se atribuye a tu agencia y la modelo lo ve.</p>
+              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-paper-dim"><CheckCircle2 size={12} className="text-brand" /> Cada venta es un récord — se atribuye a tu agencia y la ven la modelo y el admin.</p>
             </div>
 
             {/* Day-by-day notes journal */}
