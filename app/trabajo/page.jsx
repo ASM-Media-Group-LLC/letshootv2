@@ -13,7 +13,7 @@ import {
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
   ImageIcon, DollarSign, Building2, Film, ShoppingBag, TrendingUp, TrendingDown,
-  CreditCard,
+  CreditCard, ListChecks,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -68,6 +68,10 @@ export default function TrabajoPage() {
   const [creators, setCreators] = useState([]);
   const [staff, setStaff] = useState([]);
   const [counts, setCounts] = useState(null); // números reales de las tarjetas
+  const [reqRows, setReqRows] = useState([]); // pedidos (filas) para la Cola del día
+  const [fbRows, setFbRows] = useState([]);   // feedback (filas) para la Cola del día
+  const [mine, setMine] = useState([]);       // piezas subidas por MÍ (Mi producción)
+  const [focusCreator, setFocusCreator] = useState(null); // deep-link: abrir la biblioteca de una creadora
   const [books, setBooks] = useState(null);   // números de empresa (producción/agencias)
   const [ms, setMs] = useState(null);         // resumen del libro Manual Sales (centavos exactos)
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
@@ -90,17 +94,19 @@ export default function TrabajoPage() {
       ? ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team']
       : (profile.capabilities || []);
     const monthKey = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
-    const [{ data: cr }, { data: st }, rq, fb, bk, sales] = await Promise.all([
+    const [{ data: cr }, { data: st }, rq, fb, bk, sales, myAssets] = await Promise.all([
       supabase.rpc('team_creators'),
       supabase.rpc('team_staff'),
-      pcaps.includes('requests') ? supabase.from('requests').select('id, status') : Promise.resolve({ data: [] }),
-      pcaps.includes('feedback') ? supabase.from('feedback').select('id, kind, resolved') : Promise.resolve({ data: [] }),
+      pcaps.includes('requests') ? supabase.from('requests').select('id, status, title, creator_id, created_at') : Promise.resolve({ data: [] }),
+      pcaps.includes('feedback') ? supabase.from('feedback').select('id, kind, resolved, creator_id, message, asset_id, created_at') : Promise.resolve({ data: [] }),
       pcaps.includes('metrics') ? supabase.rpc('team_books') : Promise.resolve({ data: null }),
       pcaps.includes('metrics') ? supabase.from('manual_sales').select('amount, period_month') : Promise.resolve({ data: [] }),
+      pcaps.includes('content') ? supabase.from('assets').select('id, type, creator_id, created_at').eq('uploaded_by', profile.id) : Promise.resolve({ data: [] }),
     ]);
     setCreators(cr || []);
     setStaff(st || []);
     setBooks(bk.data || null);
+    setMine(myAssets.data || []);
     const srows = sales.data || [];
     setMs({
       totalC: sumCents(srows, (r) => r.amount),
@@ -108,6 +114,8 @@ export default function TrabajoPage() {
       monthC: sumCents(srows.filter((r) => r.period_month === monthKey), (r) => r.amount),
     });
     const reqs = rq.data || [], fbs = fb.data || [];
+    setReqRows(reqs);
+    setFbRows(fbs);
     setCounts({
       reqPend: reqs.filter((r) => r.status === 'pending').length,
       reqProg: reqs.filter((r) => r.status === 'in_progress').length,
@@ -189,11 +197,37 @@ export default function TrabajoPage() {
   const proc = creators.length - act;
   const idPend = creators.filter((c) => c.onboarding_status === 'id_pending').length;
   const staffPend = staff.filter((s) => s.staff_status === 'pending').length;
+
+  // ── Mi producción: piezas que subió ESTE trabajador ──
+  const weekAgoISO = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const myWeek = mine.filter((a) => (a.created_at || '').slice(0, 10) >= weekAgoISO).length;
+  const myMonth = mine.filter((a) => (a.created_at || '').slice(0, 7) === monthKey).length;
+
+  // ── Cola del día: lo más urgente primero (pedidos nuevos → cambios → en producción) ──
+  const nameById = {}; creators.forEach((c) => { nameById[c.id] = c.full_name || 'Creadora'; });
+  const queue = [];
+  if (can('requests')) reqRows.filter((r) => r.status === 'pending').forEach((r) => queue.push({ key: 'r' + r.id, prio: 1, kind: 'pedido', creatorId: r.creator_id, title: r.title, when: r.created_at }));
+  if (can('feedback')) fbRows.filter((f) => f.kind === 'change' && !f.resolved).forEach((f) => queue.push({ key: 'f' + f.id, prio: 2, kind: 'cambio', creatorId: f.creator_id, title: (f.message && f.message.trim()) || 'Pidió un cambio', when: f.created_at }));
+  if (can('requests')) reqRows.filter((r) => r.status === 'in_progress').forEach((r) => queue.push({ key: 'rp' + r.id, prio: 3, kind: 'produccion', creatorId: r.creator_id, title: r.title, when: r.created_at }));
+  queue.sort((a, b) => a.prio - b.prio || (b.when || '').localeCompare(a.when || ''));
+  const QMETA = {
+    pedido: { icon: Inbox, verb: 'Te pidieron', cls: 'bg-amber-500/15 text-amber-300', ring: 'border-amber-500/30' },
+    cambio: { icon: RefreshCw, verb: 'Cambio pedido', cls: 'bg-rose-500/15 text-rose-300', ring: 'border-rose-500/30' },
+    produccion: { icon: Clock, verb: 'En producción', cls: 'bg-sky-500/15 text-sky-300', ring: 'border-sky-500/30' },
+  };
+  function openQueueItem(it) {
+    if (can('content')) { setFocusCreator(it.creatorId); setTab('creadoras'); }
+    else if (it.kind === 'cambio' && can('feedback')) setTab('feedback');
+    else if (can('requests')) setTab('pedidos');
+  }
+
   const OPS_CARDS = [
     ...(can('content') ? [{ id: 'creadoras', icon: Users, label: 'Creadoras', value: nf(creators.length), sub: `${act} activas · ${proc} en proceso` }] : []),
     ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
     ...(can('requests') ? [{ id: 'pedidos', icon: Inbox, label: 'Pedidos', value: nf((counts?.reqPend || 0) + (counts?.reqProg || 0)), sub: `${counts?.reqPend || 0} pendientes · ${counts?.reqProg || 0} en producción`, alert: (counts?.reqPend || 0) > 0 }] : []),
     ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} ❤`, alert: (counts?.fbOpen || 0) > 0 }] : []),
+    ...(can('content') ? [{ id: 'miproduccion', icon: TrendingUp, label: 'Mi producción', value: nf(mine.length), sub: `${myWeek} en 7 días · ${myMonth} este mes` }] : []),
   ];
   const BIZ_CARDS = [
     ...(can('metrics') ? [{ id: 'produccion', icon: ImageIcon, label: 'Producción', value: nf(books?.pieces || 0), sub: `piezas creadas en total` }] : []),
@@ -206,7 +240,7 @@ export default function TrabajoPage() {
     // Every card CHANGES SCREEN — either a real route (href) or the in-page
     // area view (setTab). The arrow signals "enter", never "expand".
     return (
-      <button key={k.id} onClick={() => (k.href ? router.push(k.href) : setTab(k.id))}
+      <button key={k.id} onClick={() => { if (k.href) return router.push(k.href); setFocusCreator(null); setTab(k.id); }}
         className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition-all ${
           k.alert ? 'border-amber-500/30 bg-amber-500/[0.04] hover:border-amber-400/50'
           : 'border-line bg-card hover:border-brand/40 hover:bg-card/80'}`}>
@@ -262,9 +296,48 @@ export default function TrabajoPage() {
             <h1 className="font-display text-2xl font-semibold sm:text-3xl">Espacio de trabajo</h1>
             <p className="mt-1 text-sm text-paper-mute">Todo tu trabajo en un vistazo. Toca una tarjeta para entrar a esa área.</p>
 
+            {/* ── Cola del día: lo más urgente primero, un toque para ir a resolverlo ── */}
+            {(can('content') || can('requests') || can('feedback')) && (
+              <section className="mt-6">
+                <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+                  <ListChecks size={13} className="text-brand" /> Cola del día · lo más urgente primero
+                </div>
+                {queue.length === 0 ? (
+                  <div className="flex items-center gap-3 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand"><Check size={17} /></span>
+                    <div>
+                      <p className="text-sm font-medium text-paper">Estás al día ✓</p>
+                      <p className="text-[11px] text-paper-dim">Sin pedidos ni cambios pendientes.{can('content') ? ' Puedes adelantar contenido desde Creadoras.' : ''}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {queue.map((it) => {
+                      const m = QMETA[it.kind];
+                      return (
+                        <button key={it.key} onClick={() => openQueueItem(it)}
+                          className={`group flex w-full items-center gap-3 rounded-2xl border bg-card p-3 text-left transition-colors hover:border-brand/40 ${m.ring}`}>
+                          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${m.cls}`}><m.icon size={16} /></span>
+                          <span className="min-w-0 flex-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{m.verb}</span>
+                            <span className="block truncate text-sm font-medium text-paper">{it.title}</span>
+                            <span className="block truncate text-[11px] text-paper-dim">{nameById[it.creatorId] || 'Creadora'}{it.when ? ` · ${new Date(it.when).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}` : ''}</span>
+                          </span>
+                          <span className="hidden shrink-0 items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-3 py-1.5 text-[11px] font-semibold text-brand sm:inline-flex">
+                            <Upload size={12} /> {can('content') ? 'Subir' : 'Abrir'}
+                          </span>
+                          <ChevronRight size={16} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            )}
+
             {OPS_CARDS.length > 0 && (
               <>
-                <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Operación · tu trabajo del día</div>
+                <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Áreas · entra a trabajar</div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{OPS_CARDS.map(cardBtn)}</div>
               </>
             )}
@@ -291,7 +364,8 @@ export default function TrabajoPage() {
                 </>
               );
             })()}
-            {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
+            {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} />}
+            {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
             {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
             {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
             {tab === 'feedback' && can('feedback') && <ReactionsDashboard creators={creators.map((c) => ({ id: c.id, name: c.full_name, avatar_url: c.avatar_url }))} />}
@@ -341,8 +415,8 @@ function SubBadge({ creator, size = 'sm' }) {
   );
 }
 
-function CreadorasTab({ creators, me, flash }) {
-  const [sel, setSel] = useState(null);
+function CreadorasTab({ creators, me, flash, initialCreatorId }) {
+  const [sel, setSel] = useState(() => (initialCreatorId ? creators.find((c) => c.id === initialCreatorId) || null : null));
   const [q, setQ] = useState('');
   const [fCat, setFCat] = useState('all');
 
@@ -807,6 +881,57 @@ function CreatorDetail({ creator, me, flash, onBack }) {
         </div>
       )}
     </section>
+  );
+}
+
+/* ── Mi producción: cuánto ha subido ESTE uploader (rango + por creadora) ── */
+function MiProduccionTab({ mine, creators }) {
+  const [range, setRange] = useState('week'); // week | month | all
+  const nameById = {}; creators.forEach((c) => { nameById[c.id] = c.full_name || 'Creadora'; });
+  const weekAgoISO = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const rows = mine.filter((a) => {
+    const d = a.created_at || '';
+    if (range === 'week') return d.slice(0, 10) >= weekAgoISO;
+    if (range === 'month') return d.slice(0, 7) === monthKey;
+    return true;
+  });
+  const photos = rows.filter((a) => a.type !== 'video').length;
+  const videos = rows.length - photos;
+  const per = {};
+  rows.forEach((a) => { const k = a.creator_id; if (!per[k]) per[k] = { id: k, n: 0 }; per[k].n++; });
+  const perList = Object.values(per).sort((a, b) => b.n - a.n);
+  const rangeLabel = range === 'week' ? 'últimos 7 días' : range === 'month' ? 'este mes' : 'todo el histórico';
+
+  return (
+    <div className="mt-6">
+      <div className="mb-4 flex flex-wrap gap-2">
+        {[['week', '7 días'], ['month', 'Este mes'], ['all', 'Todo']].map(([v, l]) => (
+          <button key={v} onClick={() => setRange(v)}
+            className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${range === v ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>{l}</button>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <Stat icon={Sparkles} label="Piezas subidas" value={nf(rows.length)} sub={rangeLabel} />
+        <Stat icon={ImageIcon} label="Fotos" value={nf(photos)} />
+        <Stat icon={Film} label="Videos" value={nf(videos)} />
+      </div>
+      <div className="mt-6">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Por creadora · de más a menos</div>
+        {perList.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">Todavía no subiste nada en este rango.</p>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-line">
+            {perList.map((m, i) => (
+              <div key={m.id} className={`flex items-center justify-between gap-3 px-4 py-3 ${i > 0 ? 'border-t border-line' : ''}`}>
+                <span className="min-w-0 truncate text-sm font-medium text-paper">{nameById[m.id] || 'Creadora'}</span>
+                <span className="shrink-0 font-display text-sm font-bold text-brand">{nf(m.n)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
