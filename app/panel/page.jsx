@@ -66,7 +66,7 @@ export default function PanelPage() {
   const [requests, setRequests] = useState([]);
   const [reqOpen, setReqOpen] = useState(false);
   const [notesFeed, setNotesFeed] = useState([]);
-  const [view, setView] = useState('contenido'); // contenido | numeros | activity | requests
+  const [view, setView] = useState('numeros'); // numeros | contenido | activity | requests
   const [range, setRange] = useState('month'); // week (7 días) | month | all | custom — compartido Contenido/Números
   const [customFrom, setCustomFrom] = useState(''); // rango de fechas: desde
   const [customTo, setCustomTo] = useState('');     // rango de fechas: hasta
@@ -295,8 +295,8 @@ export default function PanelPage() {
     </div>
   );
   const NAV = [
-    { id: 'contenido', label: isEs ? 'Contenido' : 'Content', icon: Images },
     { id: 'numeros', label: isEs ? 'Números' : 'Numbers', icon: DollarSign },
+    { id: 'contenido', label: isEs ? 'Contenido' : 'Content', icon: Images },
     { id: 'activity', label: t.panel.navActivity, icon: Activity },
     { id: 'requests', label: t.panel.navRequests, icon: Inbox },
   ];
@@ -331,14 +331,20 @@ export default function PanelPage() {
                       ) : notifs.map((n) => {
                         const meta = NOTIF_META[n.kind] || NOTIF_META.default;
                         const fresh = justUnread.includes(n.id);
+                        const full = notifText(t, n);
+                        const sep = n.kind === 'request_msg' ? full.indexOf(': ') : -1;
+                        const sender = sep > -1 ? full.slice(0, sep) : null;
+                        const body = sep > -1 ? full.slice(sep + 2) : full;
                         return (
-                          <div key={n.id} className={`flex items-start gap-3 border-b border-line px-4 py-3.5 transition-colors last:border-0 hover:bg-ink-2/40 ${fresh ? 'bg-brand/[0.04]' : ''}`}>
-                            <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full ${meta.cls}`}><meta.icon size={15} /></span>
+                          <div key={n.id} className={`flex items-start gap-2.5 border-b border-line px-3.5 py-2.5 transition-colors last:border-0 hover:bg-ink-2/40 ${fresh ? 'bg-brand/[0.04]' : ''}`}>
+                            <span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${meta.cls}`}><meta.icon size={13} /></span>
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm leading-snug text-paper">{notifText(t, n)}</p>
-                              <p className="mt-1 text-[11px] text-paper-dim">{new Date(n.created_at).toLocaleDateString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
+                              <p className="text-[12.5px] leading-[1.35] text-paper-mute">
+                                {sender && <span className="font-semibold text-paper">{sender}: </span>}{body}
+                              </p>
+                              <p className="mt-0.5 text-[10.5px] text-paper-dim">{new Date(n.created_at).toLocaleDateString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
                             </div>
-                            {fresh && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden />}
+                            {fresh && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" aria-hidden />}
                           </div>
                         );
                       })}
