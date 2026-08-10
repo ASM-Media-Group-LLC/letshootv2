@@ -13,7 +13,7 @@ import {
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
   ImageIcon, DollarSign, Building2, Film, ShoppingBag, TrendingUp, TrendingDown,
-  CreditCard, ListChecks,
+  CreditCard, ListChecks, ChevronDown,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -72,6 +72,8 @@ export default function TrabajoPage() {
   const [fbRows, setFbRows] = useState([]);   // feedback (filas) para la Cola del día
   const [mine, setMine] = useState([]);       // piezas subidas por MÍ (Mi producción)
   const [focusCreator, setFocusCreator] = useState(null); // deep-link: abrir la biblioteca de una creadora
+  const [colaOpen, setColaOpen] = useState(false); // Cola del día: viene colapsada, el usuario la extiende
+  const [seenKeys, setSeenKeys] = useState(null);  // claves de la cola ya vistas (localStorage) — null = sin cargar
   const [books, setBooks] = useState(null);   // números de empresa (producción/agencias)
   const [ms, setMs] = useState(null);         // resumen del libro Manual Sales (centavos exactos)
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
@@ -168,6 +170,13 @@ export default function TrabajoPage() {
     return () => { supabase.removeChannel(ch); };
   }, [me?.id, load]);
 
+  // Cola del día: recordar qué ya vio este trabajador (para que palpite solo lo nuevo).
+  useEffect(() => {
+    if (!me?.id) return;
+    try { const raw = localStorage.getItem(`letshoot:cola-seen:${me.id}`); setSeenKeys(new Set(raw ? JSON.parse(raw) : [])); }
+    catch { setSeenKeys(new Set()); }
+  }, [me?.id]);
+
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
   // Invited staff waiting for the admin to approve them + assign access.
@@ -216,7 +225,19 @@ export default function TrabajoPage() {
     cambio: { icon: RefreshCw, verb: 'Cambio pedido', cls: 'bg-rose-500/15 text-rose-300', ring: 'border-rose-500/30' },
     produccion: { icon: Clock, verb: 'En producción', cls: 'bg-sky-500/15 text-sky-300', ring: 'border-sky-500/30' },
   };
+  // Lo que aún no ha visto/abierto (para que el header palpite).
+  const unseen = seenKeys ? queue.filter((q) => !seenKeys.has(q.key)).length : 0;
+  const pendCount = queue.filter((q) => q.kind !== 'produccion').length;
+  const prodCount = queue.length - pendCount;
+  function markColaSeen() {
+    if (!me?.id) return;
+    const next = new Set(queue.map((q) => q.key));
+    setSeenKeys(next);
+    try { localStorage.setItem(`letshoot:cola-seen:${me.id}`, JSON.stringify([...next])); } catch {}
+  }
+  function toggleCola() { const n = !colaOpen; setColaOpen(n); if (n) markColaSeen(); }
   function openQueueItem(it) {
+    markColaSeen();
     if (can('content')) { setFocusCreator(it.creatorId); setTab('creadoras'); }
     else if (it.kind === 'cambio' && can('feedback')) setTab('feedback');
     else if (can('requests')) setTab('pedidos');
@@ -296,41 +317,64 @@ export default function TrabajoPage() {
             <h1 className="font-display text-2xl font-semibold sm:text-3xl">Espacio de trabajo</h1>
             <p className="mt-1 text-sm text-paper-mute">Todo tu trabajo en un vistazo. Toca una tarjeta para entrar a esa área.</p>
 
-            {/* ── Cola del día: lo más urgente primero, un toque para ir a resolverlo ── */}
+            {/* ── Cola del día: viene colapsada; palpita si hay algo sin ver ── */}
             {(can('content') || can('requests') || can('feedback')) && (
               <section className="mt-6">
-                <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
-                  <ListChecks size={13} className="text-brand" /> Cola del día · lo más urgente primero
-                </div>
-                {queue.length === 0 ? (
-                  <div className="flex items-center gap-3 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand"><Check size={17} /></span>
-                    <div>
-                      <p className="text-sm font-medium text-paper">Estás al día ✓</p>
-                      <p className="text-[11px] text-paper-dim">Sin pedidos ni cambios pendientes.{can('content') ? ' Puedes adelantar contenido desde Creadoras.' : ''}</p>
+                <button onClick={toggleCola}
+                  className={`group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-colors ${
+                    unseen > 0 && !colaOpen ? 'border-brand/50 bg-brand/[0.06] shadow-glow-sm' : 'border-line bg-card hover:border-brand/40'}`}>
+                  <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand">
+                    <ListChecks size={17} />
+                    {unseen > 0 && !colaOpen && (
+                      <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-brand" />
+                      </span>
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-paper">
+                      Cola del día
+                      {unseen > 0 && !colaOpen && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold text-brand">{unseen} nuevo{unseen === 1 ? '' : 's'}</span>}
+                    </span>
+                    <span className="block truncate text-[11px] text-paper-dim">
+                      {queue.length === 0 ? 'estás al día ✓' : `${queue.length} por atender · ${pendCount} pedidos${prodCount ? ` · ${prodCount} en producción` : ''}`}
+                    </span>
+                  </span>
+                  <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform group-hover:text-paper ${colaOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {colaOpen && (
+                  queue.length === 0 ? (
+                    <div className="mt-2 flex items-center gap-3 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand"><Check size={17} /></span>
+                      <div>
+                        <p className="text-sm font-medium text-paper">Estás al día ✓</p>
+                        <p className="text-[11px] text-paper-dim">Sin pedidos ni cambios pendientes.{can('content') ? ' Puedes adelantar contenido desde Creadoras.' : ''}</p>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {queue.map((it) => {
-                      const m = QMETA[it.kind];
-                      return (
-                        <button key={it.key} onClick={() => openQueueItem(it)}
-                          className={`group flex w-full items-center gap-3 rounded-2xl border bg-card p-3 text-left transition-colors hover:border-brand/40 ${m.ring}`}>
-                          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${m.cls}`}><m.icon size={16} /></span>
-                          <span className="min-w-0 flex-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{m.verb}</span>
-                            <span className="block truncate text-sm font-medium text-paper">{it.title}</span>
-                            <span className="block truncate text-[11px] text-paper-dim">{nameById[it.creatorId] || 'Creadora'}{it.when ? ` · ${new Date(it.when).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}` : ''}</span>
-                          </span>
-                          <span className="hidden shrink-0 items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-3 py-1.5 text-[11px] font-semibold text-brand sm:inline-flex">
-                            <Upload size={12} /> {can('content') ? 'Subir' : 'Abrir'}
-                          </span>
-                          <ChevronRight size={16} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
-                        </button>
-                      );
-                    })}
-                  </div>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {queue.map((it) => {
+                        const m = QMETA[it.kind];
+                        return (
+                          <button key={it.key} onClick={() => openQueueItem(it)}
+                            className={`group flex w-full items-center gap-3 rounded-2xl border bg-card p-3 text-left transition-colors hover:border-brand/40 ${m.ring}`}>
+                            <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${m.cls}`}><m.icon size={16} /></span>
+                            <span className="min-w-0 flex-1">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{m.verb}</span>
+                              <span className="block truncate text-sm font-medium text-paper">{it.title}</span>
+                              <span className="block truncate text-[11px] text-paper-dim">{nameById[it.creatorId] || 'Creadora'}{it.when ? ` · ${new Date(it.when).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}` : ''}</span>
+                            </span>
+                            <span className="hidden shrink-0 items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-3 py-1.5 text-[11px] font-semibold text-brand sm:inline-flex">
+                              <Upload size={12} /> {can('content') ? 'Subir' : 'Abrir'}
+                            </span>
+                            <ChevronRight size={16} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )
                 )}
               </section>
             )}
