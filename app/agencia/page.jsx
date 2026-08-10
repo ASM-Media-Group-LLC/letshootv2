@@ -522,47 +522,79 @@ export default function AgenciaPage() {
           {allContent.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-line bg-card p-8 text-center text-sm text-paper-dim">Aún no hay contenido entregado para tus modelos.</p>
           ) : (
-            <>
-              <div className="mb-4 flex flex-wrap gap-2">
-                <button onClick={() => setCFilter('all')}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${cFilter === 'all' ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
-                  Todas · {allContent.length}
+            (() => {
+              const filtered = allContent.filter((a) => cFilter === 'all' || a.creator_id === cFilter);
+              // Agrupar por día (calendario) — allContent ya viene ordenado desc por fecha.
+              const groups = []; const idx = {};
+              for (const a of filtered) {
+                const key = a.deliver_date ? a.deliver_date.slice(0, 10) : 'sin';
+                if (idx[key] == null) { idx[key] = groups.length; groups.push({ key, items: [] }); }
+                groups[idx[key]].items.push(a);
+              }
+              const dayLabel = (k) => {
+                if (k === 'sin') return 'Sin fecha';
+                const s = new Date(k + 'T00:00:00').toLocaleDateString('es-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                return s.charAt(0).toUpperCase() + s.slice(1);
+              };
+              const Card = (a) => (
+                <button key={a.id} onClick={() => setDetail(a)}
+                  className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
+                  {a.type === 'video'
+                    ? <video src={srcFor(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
+                    // eslint-disable-next-line @next/next/no-img-element
+                    : <img src={srcFor(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
+                  <span className="pointer-events-none absolute right-1.5 top-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-paper backdrop-blur">{a.type === 'video' ? 'Video' : 'Foto'}</span>
+                  <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
+                    {a.sales_count > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><ShoppingBag size={10} className="text-brand" /> {nf(a.sales_count)}</span>
+                    )}
+                    {Number(a.revenue) > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
+                    )}
+                  </div>
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2.5 pt-8">
+                    <div className="flex items-center gap-1.5">
+                      <Avatar src={a.modelAvatar} name={a.modelName} size="xs" />
+                      <p className="truncate text-xs font-semibold text-paper">{a.modelName}</p>
+                    </div>
+                    {a.title && <p className="mt-0.5 truncate text-[11px] text-paper-mute">{a.title}</p>}
+                  </div>
                 </button>
-                {models.map((m) => (
-                  <button key={m.id} onClick={() => setCFilter(m.id)}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${cFilter === m.id ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
-                    <Avatar src={m.avatar_url} name={m.name} size="xs" /> {m.name}
-                  </button>
-                ))}
-              </div>
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">Toca una pieza para ponerle precio y ventas</div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {allContent.filter((a) => cFilter === 'all' || a.creator_id === cFilter).map((a) => (
-                  <button key={a.id} onClick={() => setDetail(a)}
-                    className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
-                    {a.type === 'video'
-                      ? <video src={srcFor(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
-                      // eslint-disable-next-line @next/next/no-img-element
-                      : <img src={srcFor(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
-                    <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
-                      {a.sales_count > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><ShoppingBag size={10} className="text-brand" /> {nf(a.sales_count)}</span>
-                      )}
-                      {Number(a.revenue) > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
-                      )}
+              );
+              return (
+                <>
+                  {/* Filtro por modelo — dropdown (escala con muchas modelos) */}
+                  <div className="mb-5 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-paper-dim">Modelo:</span>
+                    <div className="relative">
+                      <select value={cFilter} onChange={(e) => setCFilter(e.target.value)}
+                        className="appearance-none rounded-full border border-line bg-card py-2 pl-3.5 pr-9 text-xs font-medium text-paper outline-none focus:border-brand/60">
+                        <option value="all">Todas las modelos</option>
+                        {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                      <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-paper-dim" />
                     </div>
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2.5 pt-8">
-                      <div className="flex items-center gap-1.5">
-                        <Avatar src={a.modelAvatar} name={a.modelName} size="xs" />
-                        <p className="truncate text-xs font-semibold text-paper">{a.modelName}</p>
+                    <span className="text-xs text-paper-dim">{filtered.length} pieza{filtered.length === 1 ? '' : 's'} · toca una para precio y ventas</span>
+                  </div>
+
+                  {/* Calendario: agrupado por día, lo más reciente arriba */}
+                  <div className="space-y-6">
+                    {groups.map((g) => (
+                      <div key={g.key}>
+                        <div className="mb-2 flex items-center gap-2">
+                          <Clock size={13} className="text-brand" />
+                          <span className="text-sm font-semibold text-paper">{dayLabel(g.key)}</span>
+                          <span className="text-xs text-paper-dim">· {g.items.length} pieza{g.items.length === 1 ? '' : 's'}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                          {g.items.map(Card)}
+                        </div>
                       </div>
-                      <p className="mt-0.5 truncate text-[11px] text-paper-mute">{a.deliver_date ? new Date(a.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short' }) : ''}{a.title ? ` · ${a.title}` : ''}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </>
+                    ))}
+                  </div>
+                </>
+              );
+            })()
           )}
         </div>
         )}
