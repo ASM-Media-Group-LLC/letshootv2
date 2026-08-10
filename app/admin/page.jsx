@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -1023,6 +1023,52 @@ const TONE2 = {
   brand: 'border-brand/40 bg-brand/10 text-brand',
 };
 
+// Resetear contraseña — el admin le pone una temporal a la cuenta (edge fn).
+function ResetPasswordBox({ userId }) {
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  async function reset() {
+    setMsg('');
+    if (pw.length < 8) { setMsg('La contraseña debe tener al menos 8 caracteres.'); return; }
+    setBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('reset-password', { body: { user_id: userId, password: pw } });
+    setBusy(false);
+    let out = data;
+    if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setMsg(out?.error || 'No se pudo resetear.'); return; }
+    setMsg('ok'); setPw('');
+  }
+  return (
+    <div className="rounded-2xl border border-line bg-ink-2 p-4">
+      <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-paper"><KeyRound size={15} className="text-brand" /> Contraseña</h4>
+      <p className="mb-3 text-[11px] text-paper-dim">Ponle una temporal y compártesela. La persona podrá cambiarla desde su cuenta.</p>
+      {!open ? (
+        <button onClick={() => { setOpen(true); setMsg(''); }}
+          className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+          <KeyRound size={13} /> Resetear contraseña
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Nueva contraseña temporal (mín. 8)"
+            className="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          <div className="flex justify-end gap-2">
+            <button onClick={() => { setOpen(false); setPw(''); setMsg(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+            <button onClick={reset} disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-60">
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Guardar contraseña
+            </button>
+          </div>
+        </div>
+      )}
+      {msg === 'ok'
+        ? <p className="mt-2 flex items-center gap-1.5 text-[11px] text-brand"><Check size={12} /> Contraseña actualizada — compártesela.</p>
+        : msg && <p className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300">{msg}</p>}
+    </div>
+  );
+}
+
 // Dropdown compacto (filtrar / ordenar) — un botón que abre su menú.
 function Dropdown({ icon: Icon, label, value, options, onChange }) {
   const [open, setOpen] = useState(false);
@@ -1248,6 +1294,9 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
               ))}
             </div>
           </div>
+
+          {/* Contraseña — resetear */}
+          <ResetPasswordBox userId={creator.id} />
           </div>
           )}
 
@@ -1542,6 +1591,9 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, sa
               </div>
             </div>
           </div>
+
+          {/* Contraseña — resetear (no aplica a tu propia cuenta) */}
+          {!isSelf && <ResetPasswordBox userId={staff.id} />}
         </div>
       </div>
     </div>
