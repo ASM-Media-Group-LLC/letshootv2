@@ -13,7 +13,7 @@ import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, MessageSquare, User, Bell,
   X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
-  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity,
+  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -36,10 +36,20 @@ function notifText(t, n) {
     case 'approved': return t.panel.notifApproved;
     case 'rejected': return t.panel.notifRejected(m.reason || '');
     case 'feedback_resolved': return t.panel.notifFeedback;
-    case 'request_msg': return `💬 ${(t.panel.reqMsgFrom || {})[m.from] || m.from}: «${m.title || ''}» — ${m.body || ''}`;
+    case 'request_msg': return `${(t.panel.reqMsgFrom || {})[m.from] || m.from}: «${m.title || ''}» — ${m.body || ''}`;
     default: return m.text || t.panel.notifGeneric;
   }
 }
+
+// Estética por tipo de notificación: icono + color del avatar circular.
+const NOTIF_META = {
+  delivery: { icon: Sparkles, cls: 'bg-brand/15 text-brand' },
+  approved: { icon: Check, cls: 'bg-emerald-500/15 text-emerald-300' },
+  rejected: { icon: X, cls: 'bg-rose-500/15 text-rose-300' },
+  feedback_resolved: { icon: Heart, cls: 'bg-rose-500/15 text-rose-300' },
+  request_msg: { icon: MessageSquare, cls: 'bg-sky/15 text-sky' },
+  default: { icon: Bell, cls: 'bg-hair/10 text-paper-dim' },
+};
 
 export default function PanelPage() {
   const { t, lang } = usePortal();
@@ -50,6 +60,7 @@ export default function PanelPage() {
   const [toast, setToast] = useState('');
   const [notifs, setNotifs] = useState([]);
   const [bellOpen, setBellOpen] = useState(false);
+  const [justUnread, setJustUnread] = useState([]); // ids sin leer al abrir la campana
   const [detail, setDetail] = useState(null);
   const [agency, setAgency] = useState('');
   const [requests, setRequests] = useState([]);
@@ -125,7 +136,10 @@ export default function PanelPage() {
 
   async function openBell() {
     const opening = !bellOpen; setBellOpen(opening);
-    if (opening && unread > 0) { setNotifs((ns) => ns.map((n) => ({ ...n, read: true }))); await getSupabase().from('notifications').update({ read: true }).eq('user_id', state.profile.id).eq('read', false); }
+    if (opening) {
+      setJustUnread(notifs.filter((n) => !n.read).map((n) => n.id));
+      if (unread > 0) { setNotifs((ns) => ns.map((n) => ({ ...n, read: true }))); await getSupabase().from('notifications').update({ read: true }).eq('user_id', state.profile.id).eq('read', false); }
+    }
   }
   // Ella decide: salirse de su agencia (borra el vínculo; avisa a la agencia).
   async function leaveAgency() {
@@ -250,9 +264,11 @@ export default function PanelPage() {
   const rangeBar = () => (
     <div className="mb-4 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        {[['week', isEs ? '7 días' : '7 days'], ['month', isEs ? 'Este mes' : 'This month'], ['all', isEs ? 'Todo' : 'All'], ['custom', isEs ? 'Rango…' : 'Range…']].map(([v, l]) => (
+        {[['week', isEs ? '7 días' : '7 days'], ['month', isEs ? 'Este mes' : 'This month'], ['all', isEs ? 'Todo' : 'All'], ['custom', isEs ? 'Rango' : 'Range']].map(([v, l]) => (
           <button key={v} onClick={() => setRange(v)}
-            className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${range === v ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>{l}</button>
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${range === v ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
+            {v === 'custom' && <CalendarRange size={13} />}{l}
+          </button>
         ))}
         {range === 'month' && (
           <div className="ml-auto flex items-center gap-2">
@@ -301,16 +317,31 @@ export default function PanelPage() {
               {bellOpen && (
                 <>
                   <button className="fixed inset-0 z-40 cursor-default" onClick={() => setBellOpen(false)} aria-hidden />
-                  <div className="fixed inset-x-4 top-16 z-50 overflow-hidden rounded-2xl border border-line bg-card shadow-glow-sm sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80 sm:max-w-[calc(100vw-2rem)]">
-                    <div className="border-b border-line px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-paper-dim">{t.panel.notifications}</div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {notifs.length === 0 && <p className="px-4 py-6 text-center text-sm text-paper-dim">{t.panel.notifEmpty}</p>}
-                      {notifs.map((n) => (
-                        <div key={n.id} className="border-b border-line px-4 py-3 text-sm last:border-0">
-                          <p className="text-paper">{notifText(t, n)}</p>
-                          <p className="mt-0.5 text-[11px] text-paper-dim">{new Date(n.created_at).toLocaleDateString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
+                  <div className="fixed inset-x-4 top-16 z-50 overflow-hidden rounded-2xl border border-line bg-card shadow-glow-sm sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[23rem] sm:max-w-[calc(100vw-2rem)]">
+                    <div className="flex items-center justify-between gap-2 border-b border-line bg-ink-2/40 px-4 py-3">
+                      <span className="flex items-center gap-2 text-sm font-semibold text-paper"><Bell size={15} className="text-brand" /> {t.panel.notifications}</span>
+                      {justUnread.length > 0 && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold text-brand">{justUnread.length} {isEs ? 'nuevas' : 'new'}</span>}
+                    </div>
+                    <div className="max-h-[24rem] overflow-y-auto">
+                      {notifs.length === 0 ? (
+                        <div className="px-4 py-12 text-center">
+                          <span className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-line bg-ink-2 text-paper-dim"><BellOff size={19} /></span>
+                          <p className="mt-3 text-sm text-paper-dim">{t.panel.notifEmpty}</p>
                         </div>
-                      ))}
+                      ) : notifs.map((n) => {
+                        const meta = NOTIF_META[n.kind] || NOTIF_META.default;
+                        const fresh = justUnread.includes(n.id);
+                        return (
+                          <div key={n.id} className={`flex items-start gap-3 border-b border-line px-4 py-3.5 transition-colors last:border-0 hover:bg-ink-2/40 ${fresh ? 'bg-brand/[0.04]' : ''}`}>
+                            <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full ${meta.cls}`}><meta.icon size={15} /></span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm leading-snug text-paper">{notifText(t, n)}</p>
+                              <p className="mt-1 text-[11px] text-paper-dim">{new Date(n.created_at).toLocaleDateString(locale, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
+                            </div>
+                            {fresh && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-hidden />}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </>
