@@ -33,8 +33,17 @@ export default function ReactionsDashboard({ creators = [] }) {
       setRows(fb);
       const ids = [...new Set(fb.map((f) => f.asset_id).filter(Boolean))];
       if (ids.length) {
-        const { data: as } = await supabase.from('assets').select('id, title').in('id', ids);
-        const map = {}; (as || []).forEach((a) => { map[a.id] = a; }); setAssets(map);
+        const { data: as } = await supabase.from('assets').select('id, title, storage_path, type').in('id', ids);
+        const isDirect = (p) => !p || p.startsWith('/') || p.startsWith('http');
+        const toSign = (as || []).filter((a) => a.storage_path && !isDirect(a.storage_path)).map((a) => a.storage_path);
+        const signed = {};
+        if (toSign.length) {
+          const { data: s } = await supabase.storage.from('deliveries').createSignedUrls(toSign, 3600);
+          (s || []).forEach((x, i) => { if (x?.signedUrl) signed[toSign[i]] = x.signedUrl; });
+        }
+        const map = {};
+        (as || []).forEach((a) => { map[a.id] = { ...a, url: isDirect(a.storage_path) ? a.storage_path : (signed[a.storage_path] || '') }; });
+        setAssets(map);
       }
     })();
   }, []);
@@ -149,9 +158,24 @@ export default function ReactionsDashboard({ creators = [] }) {
           <div className="space-y-2">
             {filtered.map((f) => (
               <div key={f.id} className="flex items-start gap-3 rounded-xl border border-line bg-card p-3">
-                <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full ${f.kind === 'love' ? 'bg-rose-500/15 text-rose-300' : 'bg-brand/15 text-brand'}`}>
-                  {f.kind === 'love' ? <Heart size={15} className="fill-current" /> : <MessageSquare size={15} />}
-                </span>
+                {(() => {
+                  const a = assets[f.asset_id];
+                  const badge = (
+                    <span className={`absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full ring-2 ring-card ${f.kind === 'love' ? 'bg-rose-500 text-white' : 'bg-brand text-on-accent'}`}>
+                      {f.kind === 'love' ? <Heart size={10} className="fill-current" /> : <MessageSquare size={10} />}
+                    </span>
+                  );
+                  return (
+                    <span className="relative mt-0.5 block h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-line bg-ink-2">
+                      {a?.url ? (a.type === 'video'
+                        ? <video src={a.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                        // eslint-disable-next-line @next/next/no-img-element
+                        : <img src={a.url} alt="" className="h-full w-full object-cover" />)
+                        : <span className={`grid h-full w-full place-items-center ${f.kind === 'love' ? 'text-rose-300' : 'text-brand'}`}>{f.kind === 'love' ? <Heart size={16} className="fill-current" /> : <MessageSquare size={16} />}</span>}
+                      {badge}
+                    </span>
+                  );
+                })()}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
                     <span className="font-semibold text-paper">{nameOf[f.creator_id] || 'Modelo'}</span>

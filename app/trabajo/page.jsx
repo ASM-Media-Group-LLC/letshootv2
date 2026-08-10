@@ -22,6 +22,7 @@ import { sumCents, moneyCents } from '@/lib/money';
 import { CAPS, CAP_SECTIONS } from '@/lib/caps';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
+import ReactionsDashboard from '@/components/ReactionsDashboard';
 
 const ROLE_LABEL = { admin: 'Dueño', supervisor: 'Equipo', producer: 'Equipo', chatter: 'Equipo' };
 
@@ -293,7 +294,7 @@ export default function TrabajoPage() {
             {tab === 'creadoras' && can('content') && <CreadorasTab creators={creators} me={me} flash={flash} />}
             {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
             {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
-            {tab === 'feedback' && can('feedback') && <FeedbackTab creators={creators} flash={flash} />}
+            {tab === 'feedback' && can('feedback') && <ReactionsDashboard creators={creators.map((c) => ({ id: c.id, name: c.full_name, avatar_url: c.avatar_url }))} />}
             {tab === 'produccion' && can('metrics') && <ProduccionTab books={books} />}
             {tab === 'agencias' && can('metrics') && <AgenciasTab books={books} />}
             {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
