@@ -56,6 +56,11 @@ export default function PanelPage() {
   const [reqOpen, setReqOpen] = useState(false);
   const [notesFeed, setNotesFeed] = useState([]);
   const [view, setView] = useState('contenido'); // contenido | numeros | activity | requests
+  const [range, setRange] = useState('month'); // week (7 días) | month | all | custom — compartido Contenido/Números
+  const [customFrom, setCustomFrom] = useState(''); // rango de fechas: desde
+  const [customTo, setCustomTo] = useState('');     // rango de fechas: hasta
+  const [sortBy, setSortBy] = useState('revenue-desc'); // orden de las listas de detalle
+  const [numCard, setNumCard] = useState('revenue');  // photos | videos | revenue — qué detalle se ve
   const [month, setMonth] = useState(null);
   const [openDays, setOpenDays] = useState([]);   // gallery day-folders expanded
   const [myFeedback, setMyFeedback] = useState({}); // asset_id -> 'love' | 'change'
@@ -172,23 +177,107 @@ export default function PanelPage() {
   }
   function downloadMany(items) { items.forEach((a, i) => { const src = srcFor(a); if (!src) return; setTimeout(() => { const el = document.createElement('a'); el.href = src; el.download = ''; document.body.appendChild(el); el.click(); el.remove(); }, i * 350); }); }
 
-  // Selected-month accounting + deliveries grouped by date.
-  const monthAssets = state.assets.filter((a) => ymOf(a.deliver_date) === month);
+  const isEs = (locale || 'es').startsWith('es');
+  // Rango compartido (Contenido + Números): 7 días · mes · todo.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const weekAgoISO = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+  const rangeAssets = state.assets.filter((a) => {
+    const d = (a.deliver_date || '').slice(0, 10);
+    if (range === 'week') return d && d >= weekAgoISO && d <= todayISO;
+    if (range === 'all') return true;
+    if (range === 'custom') {
+      if (!d) return false;
+      if (customFrom && d < customFrom) return false;
+      if (customTo && d > customTo) return false;
+      return true;
+    }
+    return ymOf(a.deliver_date) === month; // month
+  });
   const acc = {
-    photos: monthAssets.filter((a) => a.type !== 'video').length,
-    videos: monthAssets.filter((a) => a.type === 'video').length,
-    revenue: monthAssets.reduce((s, a) => s + Number(a.revenue || 0), 0),
+    photos: rangeAssets.filter((a) => a.type !== 'video').length,
+    videos: rangeAssets.filter((a) => a.type === 'video').length,
+    revenue: rangeAssets.reduce((s, a) => s + Number(a.revenue || 0), 0),
   };
   const groups = [];
-  [...monthAssets].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || '')).forEach((a) => {
+  [...rangeAssets].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || '')).forEach((a) => {
     let g = groups.find((x) => x.date === a.deliver_date); if (!g) { g = { date: a.deliver_date, items: [] }; groups.push(g); } g.items.push(a);
   });
   const fmtDay = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' }) : '');
-
-  const isEs = (locale || 'es').startsWith('es');
-  // Desglose de ingresos del mes — qué piezas vendieron (de más a menos).
-  const revenueBreakdown = [...monthAssets].filter((a) => Number(a.revenue) > 0 || (a.sales_count || 0) > 0)
-    .sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0));
+  const fmtShort = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : '…');
+  const rangeLabel = range === 'week' ? (isEs ? 'últimos 7 días' : 'last 7 days')
+    : range === 'all' ? (isEs ? 'todo el histórico' : 'all time')
+    : range === 'custom' ? ((customFrom || customTo) ? `${fmtShort(customFrom)} → ${fmtShort(customTo)}` : (isEs ? 'rango de fechas' : 'date range'))
+    : ymLabel(month, locale);
+  // Ordenamiento de las listas de detalle — de más a menos y más opciones.
+  const SORT_OPTS = [
+    ['revenue-desc', isEs ? 'Ingresos: mayor a menor' : 'Revenue: high to low'],
+    ['revenue-asc', isEs ? 'Ingresos: menor a mayor' : 'Revenue: low to high'],
+    ['sales-desc', isEs ? 'Ventas: mayor a menor' : 'Sales: high to low'],
+    ['sales-asc', isEs ? 'Ventas: menor a mayor' : 'Sales: low to high'],
+    ['date-desc', isEs ? 'Más reciente primero' : 'Newest first'],
+    ['date-asc', isEs ? 'Más antiguo primero' : 'Oldest first'],
+    ['title-asc', isEs ? 'Título: A → Z' : 'Title: A → Z'],
+  ];
+  const sortAssets = (list) => {
+    const arr = [...list];
+    const num = (x, k) => Number(x[k] || 0);
+    switch (sortBy) {
+      case 'revenue-asc': return arr.sort((a, b) => num(a, 'revenue') - num(b, 'revenue'));
+      case 'sales-desc': return arr.sort((a, b) => num(b, 'sales_count') - num(a, 'sales_count'));
+      case 'sales-asc': return arr.sort((a, b) => num(a, 'sales_count') - num(b, 'sales_count'));
+      case 'date-desc': return arr.sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || ''));
+      case 'date-asc': return arr.sort((a, b) => (a.deliver_date || '').localeCompare(b.deliver_date || ''));
+      case 'title-asc': return arr.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      case 'revenue-desc':
+      default: return arr.sort((a, b) => num(b, 'revenue') - num(a, 'revenue'));
+    }
+  };
+  // Desglose de ingresos — qué piezas vendieron (ordenable, por defecto de más a menos).
+  const revenueBreakdown = sortAssets(rangeAssets.filter((a) => Number(a.revenue) > 0 || (a.sales_count || 0) > 0));
+  const rangePhotos = sortAssets(rangeAssets.filter((a) => a.type !== 'video'));
+  const rangeVideos = sortAssets(rangeAssets.filter((a) => a.type === 'video'));
+  // Dropdown de orden reutilizable en las listas de Números.
+  const sortSelect = () => (
+    <div className="relative shrink-0">
+      <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+        className="appearance-none rounded-full border border-line bg-card py-1.5 pl-3 pr-8 text-[11px] font-semibold text-paper-mute outline-none transition-colors focus:border-brand/60">
+        {SORT_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+    </div>
+  );
+  // Barra de rango reutilizable (chips + navegador de mes / rango de fechas).
+  const rangeBar = () => (
+    <div className="mb-4 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {[['week', isEs ? '7 días' : '7 days'], ['month', isEs ? 'Este mes' : 'This month'], ['all', isEs ? 'Todo' : 'All'], ['custom', isEs ? 'Rango…' : 'Range…']].map(([v, l]) => (
+          <button key={v} onClick={() => setRange(v)}
+            className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${range === v ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>{l}</button>
+        ))}
+        {range === 'month' && (
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setMonth(shiftYm(month, -1))} className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronLeft size={15} /></button>
+            <span className="min-w-[130px] text-center text-sm font-semibold">{ymLabel(month, locale)}</span>
+            <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={15} /></button>
+          </div>
+        )}
+      </div>
+      {range === 'custom' && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card px-3 py-2">
+          <span className="text-[11px] font-medium text-paper-dim">{isEs ? 'Desde' : 'From'}</span>
+          <input type="date" value={customFrom} max={customTo || todayISO} onChange={(e) => setCustomFrom(e.target.value)}
+            className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-xs text-paper outline-none [color-scheme:dark] focus:border-brand/60" />
+          <span className="text-[11px] font-medium text-paper-dim">{isEs ? 'Hasta' : 'To'}</span>
+          <input type="date" value={customTo} min={customFrom || undefined} max={todayISO} onChange={(e) => setCustomTo(e.target.value)}
+            className="rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-xs text-paper outline-none [color-scheme:dark] focus:border-brand/60" />
+          {(customFrom || customTo) && (
+            <button onClick={() => { setCustomFrom(''); setCustomTo(''); }}
+              className="ml-1 rounded-full border border-line px-2.5 py-1 text-[10px] font-medium text-paper-dim transition-colors hover:border-brand/40 hover:text-paper">{isEs ? 'Limpiar' : 'Clear'}</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
   const NAV = [
     { id: 'contenido', label: isEs ? 'Contenido' : 'Content', icon: Images },
     { id: 'numeros', label: isEs ? 'Números' : 'Numbers', icon: DollarSign },
@@ -263,45 +352,75 @@ export default function PanelPage() {
         {/* ── Números: dashboard del mes + desglose de ingresos ── */}
         {view === 'numeros' && (
           <div className="mt-6">
-            <div className="flex items-center justify-between rounded-2xl border border-line bg-card p-3">
-              <button onClick={() => setMonth(shiftYm(month, -1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronLeft size={17} /></button>
-              <div className="font-display text-lg font-semibold">{ymLabel(month, locale)}</div>
-              <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={17} /></button>
+            {rangeBar()}
+            {/* Cards = selector: cada una abre su detalle abajo */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { id: 'photos', icon: ImageIcon, label: t.panel.mPhotos, value: nf(acc.photos) },
+                { id: 'videos', icon: Film, label: t.panel.mVideos, value: nf(acc.videos) },
+                { id: 'revenue', icon: DollarSign, label: t.panel.mRevenue, value: money(acc.revenue) },
+              ].map((k) => {
+                const on = numCard === k.id;
+                return (
+                  <button key={k.id} onClick={() => setNumCard(k.id)}
+                    className={`rounded-2xl border p-3.5 text-center transition-colors sm:text-left ${on ? 'border-brand/60 bg-brand/[0.08] shadow-glow-sm' : 'border-line bg-card hover:border-brand/40'}`}>
+                    <div className="flex items-center justify-center gap-1.5 text-paper-dim sm:justify-start"><k.icon size={13} className={on ? 'text-brand' : 'text-brand'} /><span className="text-[11px] font-medium">{k.label}</span></div>
+                    <div className="mt-1 font-display text-xl font-semibold sm:text-2xl">{k.value}</div>
+                  </button>
+                );
+              })}
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              {[{ icon: ImageIcon, label: t.panel.mPhotos, value: nf(acc.photos) }, { icon: Film, label: t.panel.mVideos, value: nf(acc.videos) }, { icon: DollarSign, label: t.panel.mRevenue, value: money(acc.revenue) }].map((k) => (
-                <div key={k.label} className="rounded-2xl border border-line bg-card p-3.5 text-center sm:text-left">
-                  <div className="flex items-center justify-center gap-1.5 text-paper-dim sm:justify-start"><k.icon size={13} className="text-brand" /><span className="text-[11px] font-medium">{k.label}</span></div>
-                  <div className="mt-1 font-display text-xl font-semibold sm:text-2xl">{k.value}</div>
-                </div>
-              ))}
-            </div>
-            <p className="mt-2 text-[11px] text-paper-dim">{t.panel.statsNote}</p>
+            <p className="mt-2 text-[11px] text-paper-dim">{t.panel.statsNote} · {rangeLabel}</p>
 
-            {/* Desglose de ingresos — qué piezas vendieron */}
+            {/* Detalle del card seleccionado */}
             <div className="mt-6">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{isEs ? 'Desglose de ingresos · qué se vendió' : 'Revenue breakdown · what sold'}</div>
-              {revenueBreakdown.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">{isEs ? 'Sin ventas registradas este mes.' : 'No sales recorded this month.'}</p>
-              ) : (
-                <div className="space-y-2">
-                  {revenueBreakdown.map((a) => (
-                    <button key={a.id} onClick={() => setDetail(a)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card p-2.5 text-left transition-colors hover:border-brand/40">
-                      <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line bg-ink-2">
-                        {a.type === 'video'
-                          ? <video src={srcFor(a)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
-                          // eslint-disable-next-line @next/next/no-img-element
-                          : <img src={srcFor(a)} alt="" className="h-full w-full object-cover" />}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-paper">{a.title || (isEs ? 'Pieza' : 'Piece')}</span>
-                        <span className="block text-[11px] text-paper-dim">{a.deliver_date ? new Date(a.deliver_date + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''} · {nf(a.sales_count || 0)} {isEs ? 'ventas' : 'sales'}</span>
-                      </span>
-                      <span className="shrink-0 font-display text-sm font-bold text-brand">{money(a.revenue)}</span>
-                    </button>
-                  ))}
-                </div>
+              {numCard === 'revenue' && (
+                <>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{isEs ? 'Ingresos · qué se vendió' : 'Revenue · what sold'}</span>
+                    {revenueBreakdown.length > 1 && sortSelect()}
+                  </div>
+                  {revenueBreakdown.length === 0 ? (
+                    <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">{isEs ? 'Sin ventas en este rango.' : 'No sales in this range.'}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {revenueBreakdown.map((a) => (
+                        <button key={a.id} onClick={() => setDetail(a)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card p-2.5 text-left transition-colors hover:border-brand/40">
+                          <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line bg-ink-2">
+                            {a.type === 'video'
+                              ? <video src={srcFor(a)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                              // eslint-disable-next-line @next/next/no-img-element
+                              : <img src={srcFor(a)} alt="" className="h-full w-full object-cover" />}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-paper">{a.title || (isEs ? 'Pieza' : 'Piece')}</span>
+                            <span className="block text-[11px] text-paper-dim">{a.deliver_date ? new Date(a.deliver_date + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''} · {nf(a.sales_count || 0)} {isEs ? 'ventas' : 'sales'}</span>
+                          </span>
+                          <span className="shrink-0 font-display text-sm font-bold text-brand">{money(a.revenue)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
+              {(numCard === 'photos' || numCard === 'videos') && (() => {
+                const list = numCard === 'photos' ? rangePhotos : rangeVideos;
+                return (
+                  <>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{numCard === 'photos' ? (isEs ? 'Fotos' : 'Photos') : (isEs ? 'Videos' : 'Videos')} · {list.length}</span>
+                      {list.length > 1 && sortSelect()}
+                    </div>
+                    {list.length === 0 ? (
+                      <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">{isEs ? 'Nada en este rango.' : 'Nothing in this range.'}</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                        {list.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} />)}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -309,11 +428,7 @@ export default function PanelPage() {
         {/* ── Contenido: calendario de entregas por día ── */}
         {view === 'contenido' && (
           <div className="mt-6">
-            <div className="flex items-center justify-between rounded-2xl border border-line bg-card p-3">
-              <button onClick={() => setMonth(shiftYm(month, -1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronLeft size={17} /></button>
-              <div className="font-display text-lg font-semibold">{ymLabel(month, locale)}</div>
-              <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={17} /></button>
-            </div>
+            {rangeBar()}
 
             {/* Gallery — one folder per day; tap to open its photos */}
             {groups.length === 0 ? (
