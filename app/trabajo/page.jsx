@@ -73,7 +73,7 @@ export default function TrabajoPage() {
   const [mine, setMine] = useState([]);       // piezas subidas por MÍ (Mi producción)
   const [focusCreator, setFocusCreator] = useState(null); // deep-link: abrir la biblioteca de una creadora
   const [colaOpen, setColaOpen] = useState(false); // Cola del día: viene colapsada, el usuario la extiende
-  const [seenKeys, setSeenKeys] = useState(null);  // claves de la cola ya vistas (localStorage) — null = sin cargar
+  const [colaSeen, setColaSeen] = useState(false); // ¿ya abrió la cola en ESTA visita? (para dejar de palpitar)
   const [books, setBooks] = useState(null);   // números de empresa (producción/agencias)
   const [ms, setMs] = useState(null);         // resumen del libro Manual Sales (centavos exactos)
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
@@ -170,13 +170,6 @@ export default function TrabajoPage() {
     return () => { supabase.removeChannel(ch); };
   }, [me?.id, load]);
 
-  // Cola del día: recordar qué ya vio este trabajador (para que palpite solo lo nuevo).
-  useEffect(() => {
-    if (!me?.id) return;
-    try { const raw = localStorage.getItem(`letshoot:cola-seen:${me.id}`); setSeenKeys(new Set(raw ? JSON.parse(raw) : [])); }
-    catch { setSeenKeys(new Set()); }
-  }, [me?.id]);
-
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
   // Invited staff waiting for the admin to approve them + assign access.
@@ -225,19 +218,13 @@ export default function TrabajoPage() {
     cambio: { icon: RefreshCw, verb: 'Cambio pedido', cls: 'bg-rose-500/15 text-rose-300', ring: 'border-rose-500/30' },
     produccion: { icon: Clock, verb: 'En producción', cls: 'bg-sky-500/15 text-sky-300', ring: 'border-sky-500/30' },
   };
-  // Lo que aún no ha visto/abierto (para que el header palpite).
-  const unseen = seenKeys ? queue.filter((q) => !seenKeys.has(q.key)).length : 0;
   const pendCount = queue.filter((q) => q.kind !== 'produccion').length;
   const prodCount = queue.length - pendCount;
-  function markColaSeen() {
-    if (!me?.id) return;
-    const next = new Set(queue.map((q) => q.key));
-    setSeenKeys(next);
-    try { localStorage.setItem(`letshoot:cola-seen:${me.id}`, JSON.stringify([...next])); } catch {}
-  }
-  function toggleCola() { const n = !colaOpen; setColaOpen(n); if (n) markColaSeen(); }
+  // Palpita al LLEGAR si hay pendientes; se calma al abrirla en esta visita.
+  const colaPulse = queue.length > 0 && !colaSeen && !colaOpen;
+  function toggleCola() { const n = !colaOpen; setColaOpen(n); if (n) setColaSeen(true); }
   function openQueueItem(it) {
-    markColaSeen();
+    setColaSeen(true);
     if (can('content')) { setFocusCreator(it.creatorId); setTab('creadoras'); }
     else if (it.kind === 'cambio' && can('feedback')) setTab('feedback');
     else if (can('requests')) setTab('pedidos');
@@ -322,10 +309,10 @@ export default function TrabajoPage() {
               <section className="mt-6">
                 <button onClick={toggleCola}
                   className={`group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-colors ${
-                    unseen > 0 && !colaOpen ? 'border-brand/50 bg-brand/[0.06] shadow-glow-sm' : 'border-line bg-card hover:border-brand/40'}`}>
+                    colaPulse ? 'border-brand/50 bg-brand/[0.06] shadow-glow-sm' : 'border-line bg-card hover:border-brand/40'}`}>
                   <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand">
                     <ListChecks size={17} />
-                    {unseen > 0 && !colaOpen && (
+                    {colaPulse && (
                       <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75" />
                         <span className="relative inline-flex h-3 w-3 rounded-full bg-brand" />
@@ -335,7 +322,7 @@ export default function TrabajoPage() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2 text-sm font-semibold text-paper">
                       Cola del día
-                      {unseen > 0 && !colaOpen && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold text-brand">{unseen} nuevo{unseen === 1 ? '' : 's'}</span>}
+                      {colaPulse && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold text-brand">{queue.length} por atender</span>}
                     </span>
                     <span className="block truncate text-[11px] text-paper-dim">
                       {queue.length === 0 ? 'estás al día ✓' : `${queue.length} por atender · ${pendCount} pedidos${prodCount ? ` · ${prodCount} en producción` : ''}`}
