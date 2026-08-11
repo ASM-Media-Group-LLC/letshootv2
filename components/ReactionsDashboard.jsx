@@ -1,6 +1,6 @@
 'use client';
 
-// Dashboard de reacciones (❤ likes + 💬 comentarios) sobre el contenido.
+// Dashboard de reacciones (likes + comentarios) sobre el contenido.
 // Reutilizable: la agencia ve las suyas (RLS), el equipo/uploaders y el admin
 // ven todo. Muestra total, detalle por modelo (de más a menos) e historial
 // filtrable por modelo, por fecha y por tipo.

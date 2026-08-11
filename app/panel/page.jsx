@@ -22,6 +22,7 @@ import { ymOf, ymLabel, shiftYm, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
 import LangToggle from '@/components/LangToggle';
+import WelcomeTour from '@/components/WelcomeTour';
 import LoraUploader from '@/components/LoraUploader';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
@@ -162,7 +163,7 @@ export default function PanelPage() {
       await supabase.from('notifications').insert({ user_id: link.agency_id, kind: 'agency_left', meta: { creator: state.profile.stage_name || state.profile.full_name || '' } }).then(() => {}, () => {});
     }
     setAgency(null);
-    flash('✓');
+    flash(t.common?.saved || 'Listo');
   }
 
   async function sendFeedback(asset, kind) {
@@ -174,7 +175,7 @@ export default function PanelPage() {
     if (error) { flash(t.common.error); return; }
     // Reflect it for her; a DB trigger notifies the team (pop-up + dashboard).
     setMyFeedback((m) => ({ ...m, [asset.id]: kind }));
-    flash(kind === 'love' ? (t.panel.fbLoved || '❤ Le dijiste que te encantó') : (t.panel.fbChange || '✎ Pediste un cambio — el equipo ya lo sabe'));
+    flash(kind === 'love' ? (t.panel.fbLoved || 'Le dijiste que te encantó') : (t.panel.fbChange || 'Pediste un cambio — el equipo ya lo sabe'));
   }
   async function createRequest({ title, description, refFiles }) {
     if (!title.trim()) return false;
@@ -314,6 +315,12 @@ export default function PanelPage() {
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
+      <WelcomeTour storageKey="ls_tour_creator_v1" steps={[
+        { eyebrow: 'Bienvenida', title: 'Te damos la bienvenida', body: 'Aquí recibes tu contenido listo para vender, cada día. Te mostramos lo básico en 20 segundos.' },
+        { eyebrow: 'Calendario', title: 'Tu calendario', body: 'Los días que tu equipo sube contenido quedan marcados. Toca un día para ver y descargar lo de esa fecha.' },
+        { eyebrow: 'Galería', title: 'Toda tu galería', body: 'Todo tu contenido en un solo lugar, listo para descargar y vender donde quieras.' },
+        { eyebrow: 'Pedidos', title: 'Pide lo que necesites', body: '¿Quieres un set específico? Crea un pedido y tu equipo lo produce por ti.' },
+      ]} />
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
           <div className="flex items-center gap-3"><Logo size="sm" /><span className="hidden text-sm text-paper-dim sm:inline">· {(lang || 'es').startsWith('es') ? 'Tu portal' : 'Your portal'}</span></div>
@@ -796,7 +803,7 @@ function AssetDetail({ asset, src, dl, t, locale, folderName, feedback, onClose,
                 </button>
                 <a href={dl || src} download rel="noopener" className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand"><Download size={14} /> {t.panel.download}</a>
               </div>
-              {feedback && <p className="mt-2 text-[11px] text-paper-dim">{feedback === 'love' ? (t.panel.fbLoved || '❤ Le dijiste al equipo que te encantó.') : (t.panel.fbChange || '✎ Pediste un cambio — el equipo ya lo sabe.')}</p>}
+              {feedback && <p className="mt-2 text-[11px] text-paper-dim">{feedback === 'love' ? (t.panel.fbLoved || 'Le dijiste al equipo que te encantó.') : (t.panel.fbChange || 'Pediste un cambio — el equipo ya lo sabe.')}</p>}
             </div>
           </div>
         </div>

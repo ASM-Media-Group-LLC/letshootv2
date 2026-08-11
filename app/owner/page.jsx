@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 // PRIVATE OWNER SHORTCUT PAGE — for the owner's own testing only.
 // One-click sign-in as Admin or as User (creadora), credentials pre-filled.
-// ⚠️ This page exposes working credentials. Keep it unlinked and remove (or
+// WARNING: This page exposes working credentials. Keep it unlinked and remove (or
 // gate) it before a public launch.
 // ─────────────────────────────────────────────────────────────────────────
 

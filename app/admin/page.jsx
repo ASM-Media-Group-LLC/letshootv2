@@ -2,13 +2,16 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2 } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import { CAPS, CAP_SECTIONS } from '@/lib/caps';
 import { PACKS } from '@/lib/packs';
+
+// Format an integer amount of cents as USD, e.g. 12999 -> "$129.99".
+const moneyCents = (c) => `$${((Number(c) || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import Logo from '@/components/Logo';
 
@@ -22,6 +25,16 @@ const ROLES = [
   { v: 'creator', l: 'Creadora' },
 ];
 const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), producer: 'Equipo', chatter: 'Equipo' };
+
+// Presets de puesto: cada uno arma un rol de equipo listo (título + accesos). El admin
+// elige uno y puede ajustar los accesos abajo. «Personalizado» parte de cero.
+const TEAM_PRESETS = [
+  { id: 'uploader', label: 'Uploader', icon: Upload,        title: 'Uploader',            caps: ['content', 'requests', 'feedback'] },
+  { id: 'kyc',      label: 'Verificación', icon: IdCard,    title: 'Verificación',        caps: ['datos', 'kyc'] },
+  { id: 'soporte',  label: 'Servicio al cliente', icon: Users, title: 'Servicio al cliente', caps: ['requests', 'feedback'] },
+  { id: 'manager',  label: 'Manager (todo)', icon: ShieldCheck, title: 'Manager',          caps: ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team'] },
+  { id: 'custom',   label: 'Personalizado', icon: SlidersHorizontal, title: '',            caps: [] },
+];
 
 // Dynamic staff functions — assigned one by one to internal team members.
 // Only the admin has all functions implicitly. There is NO "servicio al
@@ -62,8 +75,10 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
-  const [nu, setNu] = useState({ full_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
-  const [nuCaps, setNuCaps] = useState([]); // accesos del puesto, elegidos AL crear
+  const [nu, setNu] = useState({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
+  const [nuCaps, setNuCaps] = useState(['content', 'requests', 'feedback']); // accesos del puesto (default: preset Uploader)
+  const [nuPreset, setNuPreset] = useState('uploader'); // preset de puesto seleccionado
+  const [createdCreds, setCreatedCreds] = useState(null); // { email, password } para mostrar tras crear
   const [selCreator, setSelCreator] = useState(null); // creator id whose profile drawer is open
   const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
@@ -72,6 +87,8 @@ export default function AdminPage() {
   const [audit, setAudit] = useState([]);             // bitácora (audit_log)
   const [invites, setInvites] = useState([]);         // pending staff invite links
   const [invBusy, setInvBusy] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState(''); // optional: email the invite link
+  const [teamQuery, setTeamQuery] = useState('');     // buscador del equipo interno
   const [copied, setCopied] = useState('');
   const [equipoPanel, setEquipoPanel] = useState(null); // null | 'invite' | 'create' — keep the tab calm
   const [metrics, setMetrics] = useState({ requests: [], lora: 0 });
@@ -165,17 +182,21 @@ export default function AdminPage() {
 
   async function createUser(e) {
     e.preventDefault();
-    setNuError('');
-    if (!nu.email || !nu.password || !nu.role) { setNuError('Completa correo, contraseña y rol.'); return; }
-    if (nu.password.length < 8) { setNuError('La contraseña debe tener al menos 8 caracteres.'); return; }
-    if (nu.role === 'supervisor' && nuCaps.length === 0) { setNuError('Marca al menos una función para este puesto.'); return; }
+    setNuError(''); setCreatedCreds(null);
+    // Only the essentials: name + (optional) company email. If no email, the backend
+    // mints an internal login. If no password, we generate one to hand over.
+    const fullName = [nu.first_name, nu.last_name].map((s) => s.trim()).filter(Boolean).join(' ');
+    if (!fullName) { setNuError('Pon al menos el nombre.'); return; }
+    if (nu.role === 'supervisor' && nuCaps.length === 0) { setNuError('Elige un preset o marca al menos una función.'); return; }
+    const pw = nu.password.trim() || `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
+    if (pw.length < 8) { setNuError('La contraseña debe tener al menos 8 caracteres.'); return; }
     setCreating(true);
-    // Supabase Edge Function 'create-user' runs with the service role (injected
-    // by Supabase) and verifies the caller is admin. functions.invoke sends the
-    // signed-in user's JWT automatically. The puesto is born WITH the accesses
-    // the admin checks below — no "empty then configure" dance.
+    // Supabase Edge Function 'create-user' runs with the service role and verifies the
+    // caller is admin. The puesto is born WITH the accesses the admin picked.
     const caps = nu.role === 'supervisor' ? nuCaps : [];
-    const { data, error } = await getSupabase().functions.invoke('create-user', { body: { ...nu, capabilities: caps } });
+    const { data, error } = await getSupabase().functions.invoke('create-user', {
+      body: { full_name: fullName, job_title: nu.job_title.trim(), email: nu.email.trim(), password: pw, role: nu.role, capabilities: caps },
+    });
     setCreating(false);
     let out = data;
     if (error && !out) {
@@ -183,10 +204,13 @@ export default function AdminPage() {
     }
     if (!out?.ok) { setNuError(out?.error || 'No se pudo crear el usuario.'); return; }
     const createdRole = nu.role;
-    setNu({ full_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
-    setNuCaps([]);
-    setEquipoPanel(null);
-    flash(createdRole === 'supervisor' ? `Puesto creado con ${caps.length} acceso${caps.length === 1 ? '' : 's'}` : 'Cuenta creada');
+    // Show the login + password to share when the admin didn't provide an email or password.
+    const showCreds = out.generated_email || !nu.password.trim();
+    if (showCreds) setCreatedCreds({ email: out.login_email || nu.email.trim(), password: pw, generated: !!out.generated_email });
+    setNu({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
+    setNuCaps(TEAM_PRESETS[0].caps); setNuPreset('uploader');
+    if (!showCreds) setEquipoPanel(null);
+    flash(createdRole === 'supervisor' ? 'Puesto creado' : 'Cuenta creada');
     await load();
   }
 
@@ -241,13 +265,24 @@ export default function AdminPage() {
   }
 
   // ── Team invitations ──────────────────────────────────────────────────
-  async function createInvite(targetRole = 'supervisor') {
+  async function createInvite(targetRole = 'supervisor', email = '') {
     setInvBusy(true);
     const token = (crypto.randomUUID?.() || `${Date.now()}-${Math.round(Math.random() * 1e9)}`).replace(/-/g, '');
     const { data, error } = await getSupabase().from('staff_invites').insert({ token, created_by: me.id, target_role: targetRole }).select().single();
-    setInvBusy(false);
-    if (error) { flash('Error: ' + error.message); return; }
+    if (error) { setInvBusy(false); flash('Error: ' + error.message); return; }
     setInvites((v) => [data, ...v]);
+    const em = (email || '').trim();
+    // If an email was given, send the branded invitation with the join link; otherwise copy it.
+    if (em) {
+      const roleLabel = targetRole === 'agency' ? 'Agencia' : 'Equipo';
+      const { data: out, error: mailErr } = await getSupabase().functions.invoke('send-email', {
+        body: { template: 'join', to: em, action_url: `https://letshoot.ai/unirse/${token}`, extra: roleLabel, lang: 'es' },
+      });
+      setInvBusy(false); setInviteEmail('');
+      if (!mailErr && out?.ok) { flash(`Invitación enviada a ${em}`); } else { flash('Link creado (no se pudo enviar el correo — cópialo abajo)'); }
+      return;
+    }
+    setInvBusy(false);
     const link = `${window.location.origin}/unirse/${token}`;
     try { await navigator.clipboard.writeText(link); setCopied(data.id); setTimeout(() => setCopied(''), 2000); flash('Link copiado'); } catch { flash('Link creado'); }
   }
@@ -677,18 +712,18 @@ export default function AdminPage() {
             {/* Invite panel (collapsed by default) */}
             {equipoPanel === 'invite' && (
               <div className="rounded-2xl border border-line bg-card p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-paper-mute">Genera un link y mándaselo. La persona se registra sola; luego la <strong className="text-paper">apruebas</strong>. Equipo: le das puesto y accesos. Agencia: entra a gestionar sus modelos.</p>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button onClick={() => createInvite('supervisor')} disabled={invBusy}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
-                      {invBusy ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Link de equipo
-                    </button>
-                    <button onClick={() => createInvite('agency')} disabled={invBusy}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
-                      <Building2 size={15} /> Link de agencia
-                    </button>
-                  </div>
+                <p className="text-sm text-paper-mute">Escribe un correo y te enviamos la invitación con diseño, o déjalo vacío para solo copiar el link. La persona se registra sola; luego la <strong className="text-paper">apruebas</strong>. Equipo: le das puesto y accesos. Agencia: entra a gestionar sus modelos.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} type="email" placeholder="Correo (opcional — para enviar la invitación)"
+                    className="min-w-[240px] flex-1 rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  <button onClick={() => createInvite('supervisor', inviteEmail)} disabled={invBusy}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+                    {invBusy ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} {inviteEmail.trim() ? 'Enviar a equipo' : 'Link de equipo'}
+                  </button>
+                  <button onClick={() => createInvite('agency', inviteEmail)} disabled={invBusy}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+                    <Building2 size={15} /> {inviteEmail.trim() ? 'Enviar a agencia' : 'Link de agencia'}
+                  </button>
                 </div>
                 {invites.length > 0 ? (
                   <div className="mt-4 space-y-2">
@@ -707,37 +742,57 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* Create panel (collapsed by default) */}
+            {/* Create panel — a focused modal so it never buries the roster below (edit). */}
             {equipoPanel === 'create' && (
-              <form onSubmit={createUser} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
-                {/* Preset Uploader — el único rol pre-armado; luego agregas/quitas accesos igual */}
-                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/[0.06] p-2.5">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Preset</span>
-                  <button type="button"
-                    onClick={() => { setNu((v) => ({ ...v, role: 'supervisor', job_title: v.job_title || 'Uploader' })); setNuCaps(['content', 'requests', 'feedback']); }}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
-                    <Upload size={13} /> Uploader (sube contenido)
-                  </button>
-                  <span className="text-[11px] text-paper-dim">Marca contenido · pedidos · feedback. Puedes ajustar los accesos abajo.</span>
+              <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto bg-ink/70 py-8 backdrop-blur-sm" onClick={() => !creating && setEquipoPanel(null)}>
+              <form onSubmit={createUser} onClick={(e) => e.stopPropagation()} className="mx-5 w-full max-w-2xl rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><UserPlus size={18} className="text-brand" /> Crear puesto / usuario</h3>
+                    <p className="mt-0.5 text-xs text-paper-dim">Solo lo esencial: nombre, apellido y (opcional) correo. Elige un preset y ajusta accesos.</p>
+                  </div>
+                  <button type="button" onClick={() => setEquipoPanel(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-paper-dim transition-colors hover:text-paper"><X size={16} /></button>
                 </div>
+                {/* Preset del puesto — elige uno; ajusta los accesos abajo si quieres. */}
+                {nu.role === 'supervisor' && (
+                  <div className="mb-4">
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Preset del puesto</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TEAM_PRESETS.map((p) => {
+                        const Icon = p.icon; const on = nuPreset === p.id;
+                        return (
+                          <button type="button" key={p.id}
+                            onClick={() => { setNuPreset(p.id); setNuCaps(p.caps); setNu((v) => ({ ...v, job_title: p.id === 'custom' ? v.job_title : p.title })); }}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${on ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:border-brand/30 hover:text-paper'}`}>
+                            <Icon size={13} /> {p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {/* Lo primordial: nombre, apellido, correo de empresa (opcional). */}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input value={nu.full_name} onChange={(e) => setNu((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre (ej. Camila)"
+                  <input value={nu.first_name} onChange={(e) => setNu((v) => ({ ...v, first_name: e.target.value }))} placeholder="Nombre"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                  {nu.role === 'supervisor' ? (
-                    <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (ej. Verificación)"
-                      className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                  ) : <div className="hidden sm:block" />}
+                  <input value={nu.last_name} onChange={(e) => setNu((v) => ({ ...v, last_name: e.target.value }))} placeholder="Apellido"
+                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 </div>
+                {nu.role === 'supervisor' && nuPreset === 'custom' && (
+                  <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (ej. Coordinación)"
+                    className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                )}
                 <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                  <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="correo@ejemplo.com"
+                  <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="Correo de empresa (opcional)"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                  <input type="text" value={nu.password} onChange={(e) => setNu((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (mín. 8)"
+                  <input type="text" value={nu.password} onChange={(e) => setNu((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (opcional, se genera)"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                   <select value={nu.role} onChange={(e) => setNu((v) => ({ ...v, role: e.target.value }))}
                     className="rounded-xl border border-line bg-ink-2 px-2.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
                     {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
                   </select>
                 </div>
+                <p className="mt-2 text-[11px] text-paper-dim">Solo lo esencial: nombre y apellido. El correo es opcional — si no lo pones, le generamos un login de empresa. La contraseña también: si la dejas vacía, la creamos y te la mostramos para compartir.</p>
 
                 {/* Las funciones de la plataforma, por SECCIÓN → función — marcas qué puede hacer ESTE puesto */}
                 {nu.role === 'supervisor' && (
@@ -774,7 +829,27 @@ export default function AdminPage() {
                   {nu.role === 'supervisor' ? `Crear puesto con ${nuCaps.length} acceso${nuCaps.length === 1 ? '' : 's'}` : 'Crear cuenta'}
                 </button>
                 {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
+                {createdCreds && (
+                  <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.06] p-3.5">
+                    <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-emerald-300"><Check size={14} /> Cuenta creada — comparte estos datos</p>
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-line bg-ink-2 px-3 py-2">
+                        <span className="text-paper-dim">Login</span>
+                        <span className="min-w-0 flex-1 truncate text-right font-medium text-paper">{createdCreds.email}</span>
+                        <button type="button" onClick={() => navigator.clipboard?.writeText(createdCreds.email)} className="shrink-0 text-paper-dim hover:text-brand"><Copy size={13} /></button>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-line bg-ink-2 px-3 py-2">
+                        <span className="text-paper-dim">Contraseña</span>
+                        <span className="min-w-0 flex-1 truncate text-right font-medium text-paper">{createdCreds.password}</span>
+                        <button type="button" onClick={() => navigator.clipboard?.writeText(createdCreds.password)} className="shrink-0 text-paper-dim hover:text-brand"><Copy size={13} /></button>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[11px] text-paper-dim">{createdCreds.generated ? 'Login de empresa generado (no hace falta correo real).' : 'Contraseña generada.'} La persona puede cambiar su clave luego desde su cuenta.</p>
+                    <button type="button" onClick={() => { setCreatedCreds(null); setEquipoPanel(null); }} className="mt-2 text-xs font-medium text-brand hover:underline">Listo, cerrar</button>
+                  </div>
+                )}
               </form>
+              </div>
             )}
 
             {/* Pending approval (only when there are any) */}
@@ -801,8 +876,21 @@ export default function AdminPage() {
                 </div>
               </div>
             )}
+            {/* Buscador del equipo — filtra por nombre, correo o puesto. */}
+            <div className="relative">
+              <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+              <input value={teamQuery} onChange={(e) => setTeamQuery(e.target.value)} placeholder="Buscar por nombre, correo o puesto…"
+                className="w-full rounded-xl border border-line bg-ink-2 py-2.5 pl-10 pr-3 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            </div>
+            {(() => {
+              const q = teamQuery.trim().toLowerCase();
+              const roster = profiles
+                .filter((u) => u.role !== 'creator' && u.role !== 'agency' && u.staff_status !== 'pending')
+                .filter((u) => !q || [u.full_name, u.email, u.job_title].some((f) => (f || '').toLowerCase().includes(q)));
+              if (roster.length === 0) return <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Nadie coincide con «{teamQuery}».</p>;
+              return (
             <div className="space-y-3">
-            {profiles.filter((u) => u.role !== 'creator' && u.role !== 'agency' && u.staff_status !== 'pending').map((u) => {
+            {roster.map((u) => {
               const isMgr = MANAGER_ROLES.includes(u.role);
               const caps = u.capabilities || [];
               const grantedLabels = CAPS.filter((c) => caps.includes(c.v)).map((c) => c.l);
@@ -827,6 +915,8 @@ export default function AdminPage() {
               );
             })}
             </div>
+              );
+            })()}
           </div>
         ) : tab === 'agencias' ? (
           <div className="mt-6 space-y-4">
@@ -889,15 +979,15 @@ export default function AdminPage() {
                       </div>
                     );
                   })()}
-                  <div className="mt-4"><ResetPasswordBox userId={ag.id} /></div>
+                  <div className="mt-4"><ResetPasswordBox userId={ag.id} email={ag.email} /></div>
                 </div>
               );
             })}
           </div>
         ) : tab === 'actividad' ? (
           <div className="mt-6">
-            <EmailTester defaultTo="rusin24@gmail.com" />
-            <p className="mb-3 text-sm text-paper-mute">Registro automático de acciones sensibles sobre las cuentas: quién y cuándo. Se guarda solo.</p>
+            <EmailStudio defaultTo="rusin24@gmail.com" />
+            <p className="mb-3 mt-8 text-sm text-paper-mute">Registro automático de acciones sensibles sobre las cuentas: quién y cuándo. Se guarda solo.</p>
             {audit.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">Sin actividad registrada todavía. Cuando actives/desactives una suscripción, cambies un plan o apruebes una identidad, aparecerá aquí.</p>
             ) : (
@@ -1075,6 +1165,8 @@ export default function AdminPage() {
           onClose={() => setSelStaff(null)}
           onToggleCap={toggleCap}
           onChangeRole={changeRole}
+          onSaved={load}
+          onDeleted={() => { setSelStaff(null); load(); }}
           savingId={savingId}
         />
       )}
@@ -1107,56 +1199,248 @@ const TONE2 = {
   brand: 'border-brand/40 bg-brand/10 text-brand',
 };
 
-// Resetear contraseña — el admin le pone una temporal a la cuenta (edge fn).
-// Probar el envío de correos: manda una plantilla real a un correo (solo admin).
-// Útil para verificar Resend/dominio sin esperar un evento del sistema.
-function EmailTester({ defaultTo = '' }) {
-  const [to, setTo] = useState(defaultTo);
+// Correos — the email dashboard: pick a template, see a live preview (desktop/phone),
+// manage the recipient list, send (one template or the whole test batch), and read the
+// history of everything that went out (email_log). Every send is branded via Resend.
+// scope: 'externo' (creadora/agencia) | 'interno' (equipo). who: quién lo recibe.
+const EMAIL_TEMPLATES = [
+  { id: 'welcome',  label: 'Bienvenida',              extra: '',                                      scope: 'externo', who: 'La creadora',       when: 'Al registrarse una creadora' },
+  { id: 'invite',   label: 'Invitación (crear clave)', extra: '',                                     scope: 'externo', who: 'Creadora o agencia', when: 'Al crearle la cuenta desde admin' },
+  { id: 'approved', label: 'ID aprobado',             extra: '',                                      scope: 'externo', who: 'La creadora',       when: 'Cuando aprueban su identidad' },
+  { id: 'rejected', label: 'ID rechazado',            extra: 'la foto de tu documento salió borrosa', scope: 'externo', who: 'La creadora',       when: 'Cuando rechazan su identidad' },
+  { id: 'delivery', label: 'Contenido nuevo',         extra: 'Set de agosto',                          scope: 'externo', who: 'La creadora',       when: 'Cuando le suben contenido' },
+  { id: 'expiring', label: 'Suscripción por vencer',  extra: '20 de agosto',                           scope: 'externo', who: 'La creadora',       when: 'Días antes de vencer su plan' },
+  { id: 'join',     label: 'Invitación a unirse',     extra: 'Equipo',                                 scope: 'interno', who: 'Equipo o agencia',  when: 'Al invitar por correo a unirse' },
+];
+const EMAIL_LABEL = (id) => EMAIL_TEMPLATES.find((t) => t.id === id)?.label || id;
+const EMAIL_EXTRA = (id) => EMAIL_TEMPLATES.find((t) => t.id === id)?.extra || '';
+const EMAIL_META = (id) => EMAIL_TEMPLATES.find((t) => t.id === id) || {};
+
+function EmailStudio({ defaultTo = '' }) {
   const [tpl, setTpl] = useState('welcome');
+  const [recips, setRecips] = useState(defaultTo ? [defaultTo] : []);
+  const [input, setInput] = useState('');
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewSubject, setPreviewSubject] = useState('');
+  const [pvBusy, setPvBusy] = useState(false);
+  const [device, setDevice] = useState('desktop');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
-  const TPLS = [['welcome', 'Bienvenida'], ['approved', 'ID aprobado'], ['rejected', 'ID rechazado'], ['delivery', 'Contenido nuevo']];
-  async function send() {
-    if (!to.trim()) { setMsg('Pon un correo.'); return; }
-    setBusy(true); setMsg('');
+  const [ok, setOk] = useState(false);
+  const [log, setLog] = useState([]);
+
+  const loadPreview = useCallback(async (id) => {
+    setPvBusy(true);
     const { data, error } = await getSupabase().functions.invoke('send-email', {
-      body: { template: tpl, to: to.trim(), lang: 'es', name: 'Álvaro', extra: 'Set de prueba' },
+      body: { template: id, lang: 'es', preview: true, name: 'Álvaro', extra: EMAIL_EXTRA(id) },
     });
-    setBusy(false);
-    let out = data;
-    if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
-    if (out?.ok && out?.id) setMsg('✓ Enviado — revisa la bandeja (id ' + String(out.id).slice(0, 8) + '…)');
-    else if (out?.skipped) setMsg('La función corre, pero falta configurar RESEND_API_KEY.');
-    else setMsg('No salió: ' + (out?.error || 'error desconocido') + (/(verify|verified|domain)/i.test(out?.error || '') ? ' — (el dominio letshoot.ai aún no está verificado en Resend)' : ''));
+    setPvBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = null; } }
+    if (out?.ok && out?.html) { setPreviewHtml(out.html); setPreviewSubject(out.subject || ''); }
+    else { setPreviewHtml(''); setPreviewSubject(''); }
+  }, []);
+
+  const loadLog = useCallback(async () => {
+    const { data } = await getSupabase().from('email_log').select('*').order('created_at', { ascending: false }).limit(40);
+    setLog(data || []);
+  }, []);
+
+  useEffect(() => { loadPreview(tpl); }, [tpl, loadPreview]);
+  useEffect(() => { loadLog(); }, [loadLog]);
+
+  function addRecip() {
+    const e = input.trim().toLowerCase();
+    if (!e) return;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setOk(false); setMsg('Ese correo no parece válido.'); return; }
+    if (!recips.includes(e)) setRecips((r) => [...r, e]);
+    setInput(''); setMsg('');
   }
+  const removeRecip = (e) => setRecips((r) => r.filter((x) => x !== e));
+
+  async function sendOne(id, to) {
+    const { data, error } = await getSupabase().functions.invoke('send-email', {
+      body: { template: id, to, lang: 'es', name: 'Álvaro', extra: EMAIL_EXTRA(id) },
+    });
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    return { ok: !!out?.ok, error: out?.error };
+  }
+
+  async function sendSelected() {
+    if (!recips.length) { setOk(false); setMsg('Agrega al menos un destinatario.'); return; }
+    setBusy(true); setMsg(''); setOk(false);
+    let good = 0; let lastErr = '';
+    for (const to of recips) { const r = await sendOne(tpl, to); if (r.ok) good++; else lastErr = r.error || ''; }
+    setBusy(false); setOk(good === recips.length);
+    setMsg(good === recips.length ? `Enviado «${EMAIL_LABEL(tpl)}» a ${good} destinatario(s).` : `Enviados ${good}/${recips.length}. ${lastErr}`);
+    loadLog();
+  }
+
+  async function sendBatch() {
+    if (!recips.length) { setOk(false); setMsg('Agrega un destinatario para la tanda.'); return; }
+    setBusy(true); setMsg(''); setOk(false);
+    let good = 0; const total = EMAIL_TEMPLATES.length * recips.length;
+    for (const t of EMAIL_TEMPLATES) { for (const to of recips) { const r = await sendOne(t.id, to); if (r.ok) good++; } }
+    setBusy(false); setOk(good === total);
+    setMsg(`Tanda de prueba: ${good}/${total} correos enviados (${EMAIL_TEMPLATES.length} plantillas).`);
+    loadLog();
+  }
+
   return (
-    <div className="mb-6 rounded-2xl border border-line bg-card p-4">
-      <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-paper"><Sparkles size={15} className="text-brand" /> Probar correo</div>
-      <p className="mb-3 text-[11px] text-paper-dim">Envía una plantilla real a un correo para verificar el diseño y que Resend esté bien conectado.</p>
-      <div className="flex flex-wrap items-center gap-2">
-        <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="correo@ejemplo.com"
-          className="min-w-[220px] flex-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-        <select value={tpl} onChange={(e) => setTpl(e.target.value)}
-          className="rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60">
-          {TPLS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-        <button onClick={send} disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Enviar prueba
-        </button>
+    <div className="mb-6">
+      <div className="mb-4 flex items-center gap-2">
+        <span className="grid h-8 w-8 place-items-center rounded-xl bg-brand/15 text-brand"><Mail size={16} /></span>
+        <div>
+          <h3 className="font-display text-lg font-semibold text-paper">Correos</h3>
+          <p className="text-[11px] text-paper-dim">Elige una plantilla, revisa el preview, arma la lista y envía. Todo sale con diseño desde letshoot.ai.</p>
+        </div>
       </div>
-      {msg && <p className={`mt-2 text-xs ${msg.startsWith('✓') ? 'text-emerald-300' : 'text-paper-mute'}`}>{msg}</p>}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(300px,380px)_1fr]">
+        {/* Compose */}
+        <div className="space-y-4 rounded-2xl border border-line bg-card p-4">
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">Plantilla · quién la recibe</div>
+            {[['externo', 'Externos · creadora / agencia'], ['interno', 'Internos · equipo']].map(([sc, lbl]) => (
+              <div key={sc} className="mb-3">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim/70">{lbl}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {EMAIL_TEMPLATES.filter((t) => t.scope === sc).map((t) => (
+                    <button key={t.id} onClick={() => setTpl(t.id)} title={`${t.who} — ${t.when}`}
+                      className={`rounded-xl border px-3 py-2 text-left transition-colors ${tpl === t.id ? 'border-brand/60 bg-brand/15' : 'border-line hover:border-brand/30'}`}>
+                      <span className={`block text-xs font-medium ${tpl === t.id ? 'text-brand' : 'text-paper'}`}>{t.label}</span>
+                      <span className="block text-[10px] text-paper-dim">{t.who}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">Destinatarios · {recips.length}</div>
+            {recips.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {recips.map((e) => (
+                  <span key={e} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-ink-2 py-1 pl-3 pr-1.5 text-xs text-paper">
+                    {e}
+                    <button onClick={() => removeRecip(e)} className="grid h-4 w-4 place-items-center rounded-full text-paper-dim hover:bg-hair/10 hover:text-rose-300"><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRecip(); } }}
+                type="email" placeholder="correo@ejemplo.com"
+                className="min-w-0 flex-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              <button onClick={addRecip} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-line px-3 py-2 text-xs font-medium text-paper-mute hover:border-brand/40 hover:text-paper"><Plus size={13} /> Agregar</button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+            <button onClick={sendSelected} disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Enviar «{EMAIL_LABEL(tpl)}»
+            </button>
+            <button onClick={sendBatch} disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+              <Sparkles size={14} /> Tanda de prueba ({EMAIL_TEMPLATES.length})
+            </button>
+          </div>
+          {msg && <p className={`text-xs ${ok ? 'text-emerald-300' : 'text-paper-mute'}`}>{msg}</p>}
+        </div>
+
+        {/* Preview */}
+        <div className="rounded-2xl border border-line bg-card p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Eye size={14} className="shrink-0 text-brand" />
+                <span className="truncate text-sm font-medium text-paper">{previewSubject || 'Vista previa'}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-6">
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${EMAIL_META(tpl).scope === 'interno' ? 'bg-hair/10 text-paper-dim' : 'bg-brand/10 text-brand'}`}>{EMAIL_META(tpl).scope === 'interno' ? 'Interno' : 'Externo'}</span>
+                <span className="text-[11px] text-paper-dim">Lo recibe: <span className="text-paper-mute">{EMAIL_META(tpl).who}</span> · {EMAIL_META(tpl).when}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 rounded-lg border border-line p-0.5">
+              <button onClick={() => setDevice('desktop')} title="Computadora"
+                className={`grid h-7 w-7 place-items-center rounded-md transition-colors ${device === 'desktop' ? 'bg-brand/15 text-brand' : 'text-paper-dim hover:text-paper'}`}><Monitor size={14} /></button>
+              <button onClick={() => setDevice('mobile')} title="Teléfono"
+                className={`grid h-7 w-7 place-items-center rounded-md transition-colors ${device === 'mobile' ? 'bg-brand/15 text-brand' : 'text-paper-dim hover:text-paper'}`}><Smartphone size={14} /></button>
+            </div>
+          </div>
+          <div className="flex justify-center rounded-xl border border-line bg-[#070a0f] p-3" style={{ minHeight: 420 }}>
+            {pvBusy && !previewHtml ? (
+              <div className="grid w-full place-items-center py-20 text-paper-dim"><Loader2 size={20} className="animate-spin" /></div>
+            ) : previewHtml ? (
+              device === 'mobile' ? (
+                // A real phone: narrow body + bezel so it never reads as a tablet.
+                <div style={{ width: 320, padding: 10, borderRadius: 34, background: '#0d1319', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 20px 50px rgba(0,0,0,0.45)' }}>
+                  <div style={{ position: 'relative', borderRadius: 26, overflow: 'hidden', background: '#070a0f' }}>
+                    <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', width: 90, height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.14)', zIndex: 2 }} />
+                    <iframe title="Vista previa del correo (teléfono)" srcDoc={previewHtml}
+                      style={{ width: 300, height: 600, border: 0, background: '#070a0f', display: 'block' }} />
+                  </div>
+                </div>
+              ) : (
+                <iframe title="Vista previa del correo" srcDoc={previewHtml}
+                  style={{ width: '100%', maxWidth: '100%', height: 620, border: 0, borderRadius: 12, background: '#070a0f' }} />
+              )
+            ) : (
+              <div className="grid w-full place-items-center py-20 text-center text-xs text-paper-dim">No se pudo cargar el preview.</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* History */}
+      <div className="mt-4 rounded-2xl border border-line bg-card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h4 className="flex items-center gap-2 text-sm font-semibold text-paper"><Clock size={14} className="text-brand" /> Historial de envíos</h4>
+          <button onClick={loadLog} className="inline-flex items-center gap-1 text-xs text-paper-dim hover:text-paper"><RefreshCw size={12} /> Actualizar</button>
+        </div>
+        {log.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-line bg-ink-2/40 p-6 text-center text-xs text-paper-dim">Todavía no se ha enviado ningún correo. Los que mandes desde aquí (y los automáticos) aparecerán en esta lista.</p>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-line">
+            {log.map((e, i) => (
+              <div key={e.id} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2.5 ${i > 0 ? 'border-t border-line' : ''}`}>
+                <div className="min-w-0">
+                  <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">{EMAIL_LABEL(e.template)}</span>
+                  <span className="ml-2 text-sm text-paper">{e.recipient}</span>
+                </div>
+                <span className="shrink-0 text-[11px] text-paper-dim">{new Date(e.created_at).toLocaleString('es-US', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function ResetPasswordBox({ userId }) {
+function ResetPasswordBox({ userId, email = '', allowEmail = true }) {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [okMsg, setOkMsg] = useState('');
+  // A real email can receive the self-serve reset; internal @equipo.letshoot.ai logins can't.
+  const realEmail = !!email && !email.endsWith('@equipo.letshoot.ai');
+  const canEmail = allowEmail && realEmail;
+
+  async function sendResetEmail() {
+    setMsg(''); setOkMsg(''); setEmailBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('reset-password', { body: { user_id: userId, send_email: true } });
+    setEmailBusy(false);
+    let out = data;
+    if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setMsg(out?.error || 'No se pudo enviar el correo.'); return; }
+    setOkMsg(`Correo enviado a ${out.email || email}. Pondrá su propia contraseña desde ese correo.`);
+  }
   async function reset() {
-    setMsg('');
+    setMsg(''); setOkMsg('');
     if (pw.length < 8) { setMsg('La contraseña debe tener al menos 8 caracteres.'); return; }
     setBusy(true);
     const { data, error } = await getSupabase().functions.invoke('reset-password', { body: { user_id: userId, password: pw } });
@@ -1164,19 +1448,32 @@ function ResetPasswordBox({ userId }) {
     let out = data;
     if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
     if (!out?.ok) { setMsg(out?.error || 'No se pudo resetear.'); return; }
-    setMsg('ok'); setPw('');
+    setOkMsg('Contraseña temporal lista — compártesela.'); setPw(''); setOpen(false);
   }
   return (
     <div className="rounded-2xl border border-line bg-ink-2 p-4">
       <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-paper"><KeyRound size={15} className="text-brand" /> Contraseña</h4>
-      <p className="mb-3 text-[11px] text-paper-dim">Ponle una temporal y compártesela. La persona podrá cambiarla desde su cuenta.</p>
-      {!open ? (
-        <button onClick={() => { setOpen(true); setMsg(''); }}
-          className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-          <KeyRound size={13} /> Resetear contraseña
-        </button>
-      ) : (
-        <div className="space-y-2">
+      <p className="mb-3 text-[11px] text-paper-dim">
+        {canEmail
+          ? 'Le enviamos un correo para que ponga su propia contraseña (recomendado). O ponle una temporal tú.'
+          : 'Esta cuenta no tiene un correo real, así que ponle una contraseña temporal y compártesela.'}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {canEmail && (
+          <button onClick={sendResetEmail} disabled={emailBusy}
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-2 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+            {emailBusy ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />} Enviar correo para que ponga su clave
+          </button>
+        )}
+        {!open && (
+          <button onClick={() => { setOpen(true); setMsg(''); setOkMsg(''); }}
+            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+            <KeyRound size={13} /> {canEmail ? 'Poner una temporal' : 'Resetear contraseña'}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-2 space-y-2">
           <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Nueva contraseña temporal (mín. 8)"
             className="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
           <div className="flex justify-end gap-2">
@@ -1188,9 +1485,8 @@ function ResetPasswordBox({ userId }) {
           </div>
         </div>
       )}
-      {msg === 'ok'
-        ? <p className="mt-2 flex items-center gap-1.5 text-[11px] text-brand"><Check size={12} /> Contraseña actualizada — compártesela.</p>
-        : msg && <p className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300">{msg}</p>}
+      {okMsg && <p className="mt-2 flex items-center gap-1.5 text-[11px] text-brand"><Check size={12} /> {okMsg}</p>}
+      {msg && <p className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-300">{msg}</p>}
     </div>
   );
 }
@@ -1422,7 +1718,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
           </div>
 
           {/* Contraseña — resetear */}
-          <ResetPasswordBox userId={creator.id} />
+          <ResetPasswordBox userId={creator.id} email={creator.email} />
           </div>
           )}
 
@@ -1604,8 +1900,36 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
 }
 
 /* ── Employee profile drawer — full staff view: identity, access, activity ── */
-function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, savingId }) {
+function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, onSaved, onDeleted, savingId }) {
   const [activity, setActivity] = useState(null); // { deliveries, idsReviewed }
+  const [editing, setEditing] = useState(false);
+  const [eName, setEName] = useState('');
+  const [eEmail, setEEmail] = useState('');
+  const [eBusy, setEBusy] = useState(false);
+  const [eErr, setEErr] = useState('');
+  // Danger zone — hard delete. Requires typing the confirm word so it can't be a misclick.
+  const [delOpen, setDelOpen] = useState(false);
+  const [delText, setDelText] = useState('');
+  const [delBusy, setDelBusy] = useState(false);
+  const [delErr, setDelErr] = useState('');
+  async function doDelete() {
+    setDelErr(''); setDelBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('delete-user', { body: { user_id: staff.id } });
+    setDelBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setDelErr(out?.error || 'No se pudo eliminar.'); return; }
+    onDeleted && onDeleted();
+  }
+  function openEdit() { setEName(staff.full_name || ''); setEEmail(staff.email || ''); setEErr(''); setEditing(true); }
+  async function saveEdit() {
+    setEErr(''); setEBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('update-user', { body: { user_id: staff.id, full_name: eName.trim(), email: eEmail.trim() } });
+    setEBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setEErr(out?.error || 'No se pudo guardar.'); return; }
+    setEditing(false);
+    onSaved && onSaved();
+  }
 
   useEffect(() => {
     if (!staff) return;
@@ -1642,13 +1966,41 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, sa
         <div className="space-y-3 p-5">
           {/* Identity */}
           <div className="rounded-2xl border border-line bg-ink-2 p-4">
-            <h4 className="mb-3 flex items-center gap-2 font-display font-semibold text-paper"><Users size={15} className="text-brand" /> Identidad</h4>
+            <div className="mb-3 flex items-center justify-between">
+              <h4 className="flex items-center gap-2 font-display font-semibold text-paper"><Users size={15} className="text-brand" /> Identidad</h4>
+              {!editing && !isMgr && (
+                <button onClick={openEdit} className="inline-flex items-center gap-1 text-xs font-medium text-paper-dim transition-colors hover:text-brand"><Pencil size={12} /> Editar</button>
+              )}
+            </div>
+            {editing ? (
+              <div className="space-y-2.5">
+                <div>
+                  <label className="text-[11px] uppercase tracking-wide text-paper-dim">Nombre</label>
+                  <input value={eName} onChange={(e) => setEName(e.target.value)} placeholder="Nombre y apellido"
+                    className="mt-1 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase tracking-wide text-paper-dim">Correo / login</label>
+                  <input type="email" value={eEmail} onChange={(e) => setEEmail(e.target.value)} placeholder="correo@empresa.com"
+                    className="mt-1 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  <p className="mt-1 text-[11px] text-paper-dim">Cambiar el correo también cambia con qué inicia sesión.</p>
+                </div>
+                {eErr && <p className="text-[11px] text-rose-300">{eErr}</p>}
+                <div className="flex justify-end gap-2 pt-1">
+                  <button onClick={() => setEditing(false)} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+                  <button onClick={saveEdit} disabled={eBusy} className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-60">
+                    {eBusy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Guardar
+                  </button>
+                </div>
+              </div>
+            ) : (
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nombre</dt><dd className="text-paper">{staff.full_name || '—'}</dd></div>
               <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Puesto</dt><dd className="text-paper">{isMgr ? 'Dueño' : (staff.job_title || '—')}</dd></div>
               <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Correo</dt><dd className="truncate text-paper">{staff.email}</dd></div>
               <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Miembro desde</dt><dd className="text-paper">{memberSince}</dd></div>
             </dl>
+            )}
             <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Tipo</span>
               <select value={isMgr ? 'admin' : 'supervisor'} onChange={(e) => onChangeRole(staff.id, e.target.value)} disabled={isSelf}
@@ -1659,6 +2011,9 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, sa
               {savingId === staff.id && <RefreshCw size={14} className="animate-spin text-brand" />}
             </div>
           </div>
+
+          {/* Contraseña — right under Identity so it's easy to find (no hay que bajar hasta abajo). */}
+          {!isSelf && <ResetPasswordBox userId={staff.id} email={staff.email} />}
 
           {/* Access */}
           <div className="rounded-2xl border border-line bg-ink-2 p-4">
@@ -1711,8 +2066,36 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, sa
             </div>
           </div>
 
-          {/* Contraseña — resetear (no aplica a tu propia cuenta) */}
-          {!isSelf && <ResetPasswordBox userId={staff.id} />}
+          {/* Danger zone — eliminar cuenta. No aparece para ti mismo. */}
+          {!isSelf && (
+            <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-4">
+              <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-rose-300"><Trash2 size={15} /> Eliminar cuenta</h4>
+              <p className="text-[11px] leading-relaxed text-paper-dim">
+                Borra esta cuenta para siempre, junto con todo lo que le pertenece (contenido, carpetas, identidad, pedidos, ventas y notificaciones). No se puede deshacer.
+              </p>
+              {!delOpen ? (
+                <button onClick={() => { setDelOpen(true); setDelText(''); setDelErr(''); }}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 px-3.5 py-2 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/10">
+                  <Trash2 size={13} /> Eliminar esta cuenta
+                </button>
+              ) : (
+                <div className="mt-3 space-y-2.5">
+                  <label className="block text-[11px] text-paper-dim">Para confirmar, escribe <span className="font-semibold text-rose-300">ELIMINAR</span>:</label>
+                  <input value={delText} onChange={(e) => setDelText(e.target.value)} placeholder="ELIMINAR" autoFocus
+                    className="w-full rounded-lg border border-rose-500/30 bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-rose-500/60" />
+                  {delErr && <p className="text-[11px] text-rose-300">{delErr}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => { setDelOpen(false); setDelText(''); setDelErr(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+                    <button onClick={doDelete} disabled={delBusy || delText.trim().toUpperCase() !== 'ELIMINAR'}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">
+                      {delBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Eliminar para siempre
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
     </div>

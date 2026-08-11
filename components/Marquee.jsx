@@ -20,7 +20,7 @@ export default function Marquee() {
               className={`headline mx-6 text-[clamp(2.25rem,6vw,4.5rem)] uppercase ${HUES[i % HUES.length]}`}
             >
               {w}
-              <span className="mx-6 align-middle text-brand">✦</span>
+              <span className="mx-6 inline-block h-2 w-2 rotate-45 rounded-[1px] bg-brand align-middle" aria-hidden="true" />
             </span>
           ))}
         </div>

@@ -23,6 +23,7 @@ import { CAPS, CAP_SECTIONS } from '@/lib/caps';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
+import WelcomeTour from '@/components/WelcomeTour';
 
 const ROLE_LABEL = { admin: 'Dueño', supervisor: 'Equipo', producer: 'Equipo', chatter: 'Equipo' };
 
@@ -150,20 +151,20 @@ export default function TrabajoPage() {
         (payload) => {
           const n = payload.new;
           if (n?.kind === 'request') {
-            setToast(`📥 Nuevo pedido${n.meta?.requester ? ` de ${n.meta.requester}` : ''}: ${n.meta?.title || ''}`);
+            setToast(`Nuevo pedido${n.meta?.requester ? ` de ${n.meta.requester}` : ''}: ${n.meta?.title || ''}`);
             setTimeout(() => setToast(''), 6000);
             setReqPing((x) => x + 1); // refresh the Pedidos inbox
             setColaSeen(false);       // algo nuevo llegó → la Cola vuelve a palpitar
             load();                   // refresh the card numbers too
           } else if (n?.kind === 'feedback') {
-            const fk = n.meta?.feedback_kind === 'love' ? '❤ Le encantó' : '✎ Pide un cambio';
+            const fk = n.meta?.feedback_kind === 'love' ? 'Le encantó' : 'Pide un cambio';
             setToast(`${fk}${n.meta?.creator ? ` · ${n.meta.creator}` : ''}: ${n.meta?.asset || ''}`);
             setTimeout(() => setToast(''), 6000);
             setColaSeen(false);       // cambio pedido → la Cola vuelve a palpitar
             load();
           } else if (n?.kind === 'request_msg') {
             const who = n.meta?.from === 'creator' ? 'La modelo' : n.meta?.from === 'agency' ? 'La agencia' : 'El equipo';
-            setToast(`💬 ${who} respondió en «${n.meta?.title || 'un pedido'}»`);
+            setToast(`${who} respondió en «${n.meta?.title || 'un pedido'}»`);
             setTimeout(() => setToast(''), 6000);
             setReqPing((x) => x + 1);
           }
@@ -247,7 +248,7 @@ export default function TrabajoPage() {
     ...(can('content') ? [{ id: 'creadoras', icon: Users, label: 'Creadoras', value: nf(creators.length), sub: `${act} activas · ${proc} en proceso` }] : []),
     ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
     ...(can('requests') ? [{ id: 'pedidos', icon: Inbox, label: 'Pedidos', value: nf((counts?.reqPend || 0) + (counts?.reqProg || 0)), sub: `${counts?.reqPend || 0} pendientes · ${counts?.reqProg || 0} en producción`, alert: (counts?.reqPend || 0) > 0 }] : []),
-    ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} ❤`, alert: (counts?.fbOpen || 0) > 0 }] : []),
+    ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} me encanta`, alert: (counts?.fbOpen || 0) > 0 }] : []),
     ...(can('content') ? [{ id: 'miproduccion', icon: TrendingUp, label: 'Mi producción', value: nf(mine.length), sub: `${myWeek} en 7 días · ${myMonth} este mes` }] : []),
   ];
   const BIZ_CARDS = [
@@ -280,6 +281,12 @@ export default function TrabajoPage() {
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
+      <WelcomeTour storageKey="ls_tour_team_v1" steps={[
+        { eyebrow: 'Bienvenido', title: 'Tu espacio de trabajo', body: 'Todo lo del día en un vistazo. Te mostramos por dónde empezar en 20 segundos.' },
+        { eyebrow: 'Cola del día', title: 'Lo de hoy', body: 'Pedidos, verificaciones y feedback pendientes se juntan en la Cola del día.' },
+        { eyebrow: 'Áreas', title: 'Entra a trabajar', body: 'Creadoras, Pedidos, Verificaciones… ves solo las áreas a las que tienes acceso.' },
+        { eyebrow: 'Entrega', title: 'Entrega en 3 pasos', body: 'Sube el contenido a la creadora correcta de forma simple y guiada.' },
+      ]} />
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
           <div className="flex min-w-0 items-center gap-3">
@@ -338,7 +345,7 @@ export default function TrabajoPage() {
                       {colaPulse && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold text-brand">{queue.length} por atender</span>}
                     </span>
                     <span className="block truncate text-[11px] text-paper-dim">
-                      {queue.length === 0 ? 'estás al día ✓' : `${queue.length} por atender · ${pendCount} pedidos${prodCount ? ` · ${prodCount} en producción` : ''}`}
+                      {queue.length === 0 ? 'estás al día' : `${queue.length} por atender · ${pendCount} pedidos${prodCount ? ` · ${prodCount} en producción` : ''}`}
                     </span>
                   </span>
                   <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform group-hover:text-paper ${colaOpen ? 'rotate-180' : ''}`} />
@@ -349,7 +356,7 @@ export default function TrabajoPage() {
                     <div className="mt-2 flex items-center gap-3 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand"><Check size={17} /></span>
                       <div>
-                        <p className="text-sm font-medium text-paper">Estás al día ✓</p>
+                        <p className="text-sm font-medium text-paper">Estás al día</p>
                         <p className="text-[11px] text-paper-dim">Sin pedidos ni cambios pendientes.{can('content') ? ' Puedes adelantar contenido desde Creadoras.' : ''}</p>
                       </div>
                     </div>
@@ -1075,7 +1082,7 @@ function KycTab({ flash }) {
             className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
         </div>
       )}
-      {list.length === 0 && <p className="rounded-2xl border border-line bg-card p-8 text-center text-sm text-paper-dim">No hay identidades pendientes. Todo al día. 🎉</p>}
+      {list.length === 0 && <p className="rounded-2xl border border-line bg-card p-8 text-center text-sm text-paper-dim">No hay identidades pendientes. Todo al día.</p>}
       {list.length > 0 && view.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">Ninguna coincide con tu búsqueda.</p>}
       {view.map((u) => (
         <div key={u.id} className="rounded-2xl border border-line bg-card p-5">
@@ -1084,7 +1091,7 @@ function KycTab({ flash }) {
               <p className="font-display font-semibold text-paper">{u.legal_first_name || u.full_name} {u.legal_last_name || ''}</p>
               <p className="mt-0.5 text-xs text-paper-dim">
                 {u.stage_name && <>«{u.stage_name}» · </>}{u.country || '—'}{u.date_of_birth ? ` · ${u.date_of_birth}` : ''}
-                {u.consent_at ? ' · Consentimiento ✓' : ' · Sin consentimiento'}
+                {u.consent_at ? ' · Consentimiento firmado' : ' · Sin consentimiento'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1395,9 +1402,9 @@ function FeedbackTab({ creators, flash }) {
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="font-medium text-paper">{nameOf(f.creator_id)}</span>
                 {f.kind === 'love' ? (
-                  <span className="rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] text-brand">❤ Le encantó</span>
+                  <span className="rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] text-brand">Le encantó</span>
                 ) : (
-                  <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">✎ Pide cambio</span>
+                  <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">Pide cambio</span>
                 )}
                 <span className="rounded-full bg-hair/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-paper-dim">{f.author_role === 'agency' ? 'Agencia' : 'Modelo'}</span>
                 <span className="text-[11px] text-paper-dim">

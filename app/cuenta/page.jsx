@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LogOut, User, ShieldCheck, ArrowLeft, Check } from 'lucide-react';
+import { LogOut, User, ShieldCheck, ArrowLeft, Check, Building2 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
@@ -57,6 +57,15 @@ export default function CuentaPage() {
     flash(t.cuenta.passwordChanged);
   }
 
+  async function convertToAgency() {
+    if (!window.confirm('¿Convertir tu cuenta en agencia? Pasarás al panel de agencia y podrás gestionar modelos. Mantienes tu correo y tu contraseña.')) return;
+    setSaving('convert'); setErr('');
+    const { data, error } = await getSupabase().rpc('become_agency');
+    setSaving('');
+    if (error || data !== 'ok') { setErr(t.common.error); return; }
+    router.replace('/agencia');
+  }
+
   const status = t.cuenta.states[me.profile?.onboarding_status] || me.profile?.onboarding_status || '—';
 
   return (
@@ -74,25 +83,25 @@ export default function CuentaPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-2xl px-5 py-8">
-        <Link href="/panel" className="inline-flex items-center gap-1.5 text-sm text-paper-dim transition-colors hover:text-brand">
-          <ArrowLeft size={15} /> {t.cuenta.backPanel}
+      <main className="mx-auto max-w-lg px-5 py-7">
+        <Link href="/panel" className="inline-flex items-center gap-1.5 text-xs text-paper-dim transition-colors hover:text-brand">
+          <ArrowLeft size={14} /> {t.cuenta.backPanel}
         </Link>
-        <h1 className="mt-3 font-display text-2xl font-semibold sm:text-3xl">{t.cuenta.title}</h1>
+        <h1 className="mt-2.5 font-display text-xl font-semibold">{t.cuenta.title}</h1>
         <p className="mt-1 text-sm text-paper-mute">{t.cuenta.sub}</p>
 
-        <form onSubmit={saveProfile} className="mt-8 rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
-          <div className="mb-4 flex items-center gap-2 font-display font-semibold"><User size={17} className="text-brand" /> {t.cuenta.profile}</div>
-          <div className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={saveProfile} className="mt-6 rounded-2xl border border-line bg-card p-5">
+          <div className="mb-3 flex items-center gap-2 text-sm font-display font-semibold"><User size={17} className="text-brand" /> {t.cuenta.profile}</div>
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.cuenta.stageName}</span>
               <input value={form.stage_name} onChange={(e) => setForm((f) => ({ ...f, stage_name: e.target.value }))}
-                className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-paper outline-none transition-colors focus:border-brand/60" />
+                className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none transition-colors focus:border-brand/60" />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.cuenta.phone}</span>
               <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-paper outline-none transition-colors focus:border-brand/60" />
+                className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none transition-colors focus:border-brand/60" />
             </label>
           </div>
           <div className="mt-4 grid gap-2 text-sm text-paper-mute sm:grid-cols-2">
@@ -100,30 +109,42 @@ export default function CuentaPage() {
             <div><span className="text-paper-dim">{t.cuenta.statusLabel}:</span> <span className="text-brand">{status}</span></div>
           </div>
           <button type="submit" disabled={saving === 'profile'}
-            className="mt-5 rounded-xl bg-brand px-6 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+            className="mt-4 rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-on-accent transition-transform hover:scale-[1.02] disabled:opacity-60">
             {saving === 'profile' ? t.common.saving : t.common.save}
           </button>
         </form>
 
-        <form onSubmit={changePassword} className="mt-5 rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
-          <div className="mb-4 flex items-center gap-2 font-display font-semibold"><ShieldCheck size={17} className="text-brand" /> {t.cuenta.security}</div>
-          <div className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={changePassword} className="mt-5 rounded-2xl border border-line bg-card p-5">
+          <div className="mb-3 flex items-center gap-2 text-sm font-display font-semibold"><ShieldCheck size={17} className="text-brand" /> {t.cuenta.security}</div>
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.cuenta.newPassword}</span>
               <input type="password" autoComplete="new-password" value={pw.a} onChange={(e) => setPw((p) => ({ ...p, a: e.target.value }))}
-                className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-paper outline-none transition-colors focus:border-brand/60" />
+                className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none transition-colors focus:border-brand/60" />
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.cuenta.confirmPassword}</span>
               <input type="password" autoComplete="new-password" value={pw.b} onChange={(e) => setPw((p) => ({ ...p, b: e.target.value }))}
-                className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-paper outline-none transition-colors focus:border-brand/60" />
+                className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none transition-colors focus:border-brand/60" />
             </label>
           </div>
           <button type="submit" disabled={saving === 'pw'}
-            className="mt-5 rounded-xl border border-brand/40 bg-brand/10 px-6 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+            className="mt-4 rounded-lg border border-brand/40 bg-brand/10 px-5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
             {saving === 'pw' ? t.common.saving : t.cuenta.changePassword}
           </button>
         </form>
+
+        {/* Self-service: a creator who is really an agency can convert here. */}
+        {me.profile?.role === 'creator' && (
+          <div className="mt-4 rounded-2xl border border-line bg-card p-5">
+            <div className="mb-1.5 flex items-center gap-2 font-display font-semibold"><Building2 size={17} className="text-brand" /> ¿Eres una agencia?</div>
+            <p className="mb-4 text-sm text-paper-mute">Si te registraste como creadora pero en realidad gestionas modelos, convierte tu cuenta en agencia. Mantienes tu mismo correo y contraseña; solo cambia tu panel.</p>
+            <button onClick={convertToAgency} disabled={saving === 'convert'}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-brand/40 bg-brand/10 px-5 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+              <Building2 size={15} /> {saving === 'convert' ? 'Convirtiendo…' : 'Convertir mi cuenta en agencia'}
+            </button>
+          </div>
+        )}
 
         {err && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
         {msg && (

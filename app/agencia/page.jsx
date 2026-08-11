@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
-  ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart,
+  ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart, KeyRound,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -19,6 +19,7 @@ import { ymOf, ymLabel, shiftYm, aggregate, pct, initials } from '@/lib/portal-s
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
+import WelcomeTour from '@/components/WelcomeTour';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
@@ -46,6 +47,49 @@ function completion(p) {
   return { done: oks.filter(Boolean).length, total: 4 };
 }
 
+// The agency can set a temporary password for one of ITS models (server verifies the
+// agency_creators link). She can change it later from her own account whenever she wants.
+function AgencyResetPasswordBox({ userId, name }) {
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [ok, setOk] = useState(false);
+  async function reset() {
+    setMsg(''); setOk(false);
+    if (pw.length < 8) { setMsg('Mínimo 8 caracteres.'); return; }
+    setBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('reset-password', { body: { user_id: userId, password: pw } });
+    setBusy(false);
+    let out = data;
+    if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setMsg(out?.error || 'No se pudo resetear.'); return; }
+    setOk(true); setMsg(`Contraseña actualizada. Compártesela a ${name || 'tu modelo'}.`); setPw('');
+  }
+  if (!open) return (
+    <button onClick={() => { setOpen(true); setMsg(''); setOk(false); }}
+      className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-sm font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+      <KeyRound size={15} /> Resetear contraseña
+    </button>
+  );
+  return (
+    <div className="w-full rounded-2xl border border-line bg-ink-2 p-4">
+      <h4 className="mb-1 flex items-center gap-2 text-sm font-semibold text-paper"><KeyRound size={15} className="text-brand" /> Contraseña de {name}</h4>
+      <p className="mb-3 text-[11px] text-paper-dim">Ponle una temporal y compártesela. Ella podrá cambiarla desde su cuenta cuando quiera.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={pw} onChange={(e) => setPw(e.target.value)} type="text" placeholder="Nueva contraseña (mín. 8)"
+          className="min-w-[220px] flex-1 rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        <button onClick={() => { setOpen(false); setPw(''); setMsg(''); }} className="rounded-lg border border-line px-3 py-2 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+        <button onClick={reset} disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-xs font-semibold text-on-accent disabled:opacity-60">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Guardar
+        </button>
+      </div>
+      {msg && <p className={`mt-2 text-[11px] ${ok ? 'text-emerald-300' : 'text-paper-mute'}`}>{msg}</p>}
+    </div>
+  );
+}
+
 export default function AgenciaPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -62,7 +106,7 @@ export default function AgenciaPage() {
   const [reqOpen, setReqOpen] = useState(false);
   const [modelProfile, setModelProfile] = useState(null); // creator_profile of the selected model (status only)
   const [atab, setAtab] = useState(null);         // null (cerrado) | modelos | contenido | ingresos | reacciones
-  const [likeCount, setLikeCount] = useState(0);  // total ❤ + comentarios de sus modelos
+  const [likeCount, setLikeCount] = useState(0);  // total de likes + comentarios de sus modelos
   const [checklists, setChecklists] = useState({}); // creator_id -> creator_profile (roster glance)
   const [invites, setInvites] = useState([]);      // pending model-invite links
   const [addOpen, setAddOpen] = useState(false);   // "agregar modelo" modal
@@ -268,11 +312,17 @@ export default function AgenciaPage() {
     { icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo', view: 'contenido' },
     { icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades', view: 'ingresos' },
     { icon: DollarSign, label: 'Ingresos generados', value: money(books.revenue), sub: 'total histórico', view: 'ingresos' },
-    { icon: Heart, label: 'Reacciones', value: nf(likeCount), sub: 'likes ❤ y comentarios', view: 'reacciones' },
+    { icon: Heart, label: 'Reacciones', value: nf(likeCount), sub: 'likes y comentarios', view: 'reacciones' },
   ];
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
+      <WelcomeTour storageKey="ls_tour_agency_v1" steps={[
+        { eyebrow: 'Bienvenida', title: 'Tu panel de agencia', body: 'Gestiona a todas tus modelos desde un solo lugar. Te mostramos lo básico en 20 segundos.' },
+        { eyebrow: 'Modelos', title: 'Tus modelos', body: 'Entra a cada modelo para ver su contenido, su estado y todo lo que le falta.' },
+        { eyebrow: 'Contenido e ingresos', title: 'Contenido y ventas', body: 'Revisa todo lo entregado y registra las ventas de cada modelo, mes a mes.' },
+        { eyebrow: 'Pedidos', title: 'Pide sets', body: 'Solicita contenido específico para una modelo y el equipo de LetShoot lo produce.' },
+      ]} />
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
           <div className="flex min-w-0 items-center gap-3">
@@ -303,7 +353,7 @@ export default function AgenciaPage() {
             <h1 className="font-display text-2xl font-semibold sm:text-3xl">Tus cuentas</h1>
             <p className="mt-1 text-sm text-paper-mute">Gestiona a tus modelos, revisa el contenido entregado, registra ventas y haz pedidos.</p>
           </div>
-          {/* La agencia NO agrega modelos — el admin conecta modelo↔agencia. */}
+          {/* La agencia NO agrega modelos — el admin conecta modelo con agencia. */}
         </div>
 
         {/* Resumen: solo las tarjetas. Tocar una CAMBIA de pantalla al área. */}
@@ -395,6 +445,9 @@ export default function AgenciaPage() {
                     <Plus size={15} /> Nueva petición
                   </button>
                 </div>
+
+                {/* La agencia puede resetear la clave de SU modelo cuando quiera. */}
+                <div className="mt-3"><AgencyResetPasswordBox userId={model.id} name={model.name} /></div>
 
                 {/* Account completion — what the model still needs (status only) */}
                 {modelProfile && (() => {
@@ -621,7 +674,7 @@ export default function AgenciaPage() {
         </div>
         )}
 
-        {/* ── Reacciones: likes ❤ + comentarios de las modelos, filtrable ── */}
+        {/* ── Reacciones: likes + comentarios de las modelos, filtrable ── */}
         {atab === 'reacciones' && (
           <ReactionsDashboard creators={models.map((m) => ({ id: m.id, name: m.name, avatar_url: m.avatar_url }))} />
         )}
