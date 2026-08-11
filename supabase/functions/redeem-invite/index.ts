@@ -1,8 +1,8 @@
-// Edge function: redeem-invite
-// Public join flow: an invited person opens /unirse/<token>, enters name + email
-// + password. This validates the invite token (service role) and creates their
-// internal-team account as role 'supervisor' with staff_status 'pending' and NO
-// access — the admin then approves and assigns puesto + accesos.
+// Edge function: redeem-invite (v3)
+// Public join flow via a token invite:
+//  - target_role 'creator'   -> role creator in onboarding, auto-linked to the agency (agency-invites-a-model).
+//  - target_role 'agency'    -> role agency, staff_status 'pending' (external agency self-applies, admin approves).
+//  - default ('supervisor')  -> internal team member, staff_status 'pending'.
 // Called with the anon key (verify_jwt passes); all authorization is the token.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
@@ -32,28 +32,26 @@ Deno.serve(async (req) => {
     if (!email || !password) return reply({ ok: false, error: 'Correo y contraseña son obligatorios.' });
     if (password.length < 8) return reply({ ok: false, error: 'La contraseña debe tener al menos 8 caracteres.' });
 
-    // Validate the invite.
     const { data: invite } = await svc.from('staff_invites').select('*').eq('token', token).maybeSingle();
     if (!invite) return reply({ ok: false, error: 'Esta invitación no existe.' });
     if (invite.status !== 'pending') return reply({ ok: false, error: 'Esta invitación ya fue usada o cancelada.' });
     if (invite.expires_at && new Date(invite.expires_at) < new Date()) return reply({ ok: false, error: 'Esta invitación expiró. Pide una nueva.' });
 
-    // Create the account (email auto-confirmed).
     const { data: created, error } = await svc.auth.admin.createUser({
       email, password, email_confirm: true, user_metadata: { full_name },
     });
     if (error) return reply({ ok: false, error: error.message });
 
     const isCreator = invite.target_role === 'creator';
+    const isAgency = invite.target_role === 'agency';
     const patch = isCreator
-      // A model invited by an agency: she registers and does her OWN onboarding.
       ? { role: 'creator', full_name, onboarding_status: 'registered' }
-      // Internal team member: pending admin approval, no access yet.
+      : isAgency
+      ? { role: 'agency', staff_status: 'pending', full_name, onboarding_status: 'active', capabilities: [] }
       : { role: 'supervisor', staff_status: 'pending', full_name, job_title: invite.job_title || null, capabilities: [], onboarding_status: 'active' };
     const { error: upErr } = await svc.from('profiles').update(patch).eq('id', created.user.id);
     if (upErr) return reply({ ok: false, error: upErr.message });
 
-    // Link the model to the inviting agency.
     if (isCreator && invite.agency_id) {
       await svc.from('agency_creators').insert({ agency_id: invite.agency_id, creator_id: created.user.id });
     }
@@ -62,7 +60,7 @@ Deno.serve(async (req) => {
       status: 'accepted', used_at: new Date().toISOString(), used_by: created.user.id,
     }).eq('id', invite.id);
 
-    return reply({ ok: true, target_role: isCreator ? 'creator' : 'supervisor' });
+    return reply({ ok: true, target_role: isCreator ? 'creator' : isAgency ? 'agency' : 'supervisor' });
   } catch (e) {
     return reply({ ok: false, error: String((e as Error)?.message || e) }, 500);
   }

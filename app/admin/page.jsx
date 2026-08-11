@@ -235,10 +235,10 @@ export default function AdminPage() {
   }
 
   // ── Team invitations ──────────────────────────────────────────────────
-  async function createInvite() {
+  async function createInvite(targetRole = 'supervisor') {
     setInvBusy(true);
     const token = (crypto.randomUUID?.() || `${Date.now()}-${Math.round(Math.random() * 1e9)}`).replace(/-/g, '');
-    const { data, error } = await getSupabase().from('staff_invites').insert({ token, created_by: me.id }).select().single();
+    const { data, error } = await getSupabase().from('staff_invites').insert({ token, created_by: me.id, target_role: targetRole }).select().single();
     setInvBusy(false);
     if (error) { flash('Error: ' + error.message); return; }
     setInvites((v) => [data, ...v]);
@@ -671,16 +671,23 @@ export default function AdminPage() {
             {equipoPanel === 'invite' && (
               <div className="rounded-2xl border border-line bg-card p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-paper-mute">Genera un link y mándaselo. La persona se registra sola; luego la <strong className="text-paper">apruebas</strong> y le das puesto y accesos.</p>
-                  <button onClick={createInvite} disabled={invBusy}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
-                    {invBusy ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Crear link
-                  </button>
+                  <p className="text-sm text-paper-mute">Genera un link y mándaselo. La persona se registra sola; luego la <strong className="text-paper">apruebas</strong>. Equipo: le das puesto y accesos. Agencia: entra a gestionar sus modelos.</p>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button onClick={() => createInvite('supervisor')} disabled={invBusy}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+                      {invBusy ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />} Link de equipo
+                    </button>
+                    <button onClick={() => createInvite('agency')} disabled={invBusy}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+                      <Building2 size={15} /> Link de agencia
+                    </button>
+                  </div>
                 </div>
                 {invites.length > 0 ? (
                   <div className="mt-4 space-y-2">
                     {invites.map((inv) => (
                       <div key={inv.id} className="flex items-center gap-2 rounded-xl border border-line bg-ink-2 px-3 py-2">
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${inv.target_role === 'agency' ? 'bg-brand/15 text-brand' : 'bg-hair/10 text-paper-dim'}`}>{inv.target_role === 'agency' ? 'Agencia' : 'Equipo'}</span>
                         <code className="min-w-0 flex-1 truncate text-xs text-paper-mute">/unirse/{inv.token}</code>
                         <button onClick={() => copyInvite(inv)} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs text-paper-mute hover:text-paper">
                           {copied === inv.id ? <Check size={13} className="text-brand" /> : <Copy size={13} />} {copied === inv.id ? 'Copiado' : 'Copiar'}
@@ -772,12 +779,15 @@ export default function AdminPage() {
                     <div key={u.id} className="flex items-center gap-3 rounded-xl border border-line bg-ink-2 p-3">
                       <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium text-paper">{u.full_name || '—'}</p>
+                        <p className="flex items-center gap-1.5 truncate font-medium text-paper">
+                          {u.full_name || '—'}
+                          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${u.role === 'agency' ? 'bg-brand/15 text-brand' : 'bg-hair/10 text-paper-dim'}`}>{u.role === 'agency' ? 'Agencia' : 'Equipo'}</span>
+                        </p>
                         <p className="truncate text-xs text-paper-mute">{u.email}{u.job_title ? ` · ${u.job_title}` : ''}</p>
                       </div>
-                      <button onClick={async () => { await approveStaff(u.id); setSelStaff(u.id); }} disabled={savingId === u.id}
+                      <button onClick={async () => { await approveStaff(u.id); if (u.role !== 'agency') setSelStaff(u.id); }} disabled={savingId === u.id}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-50">
-                        {savingId === u.id ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />} Aprobar y configurar
+                        {savingId === u.id ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />} {u.role === 'agency' ? 'Aprobar agencia' : 'Aprobar y configurar'}
                       </button>
                     </div>
                   ))}

@@ -165,6 +165,8 @@ export default function AgenciaPage() {
       const up = await getUserProfile();
       if (!up) { router.replace('/login'); return; }
       if (up.profile?.role !== 'agency') { router.replace(homeForRole(up.profile?.role)); return; }
+      // Agencia externa que se registró por link: espera aprobación del admin.
+      if (up.profile?.staff_status === 'pending') { setMe(up.profile); setLoading(false); return; }
       await load(up.user.id);
       setMe(up.profile);
       setLoading(false);
@@ -228,6 +230,26 @@ export default function AgenciaPage() {
   }, [models]);
 
   if (loading) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
+
+  // Agencia registrada por link, aún sin aprobar por el admin.
+  if (me?.staff_status === 'pending') {
+    return (
+      <div className="grid min-h-[100svh] place-items-center bg-ink px-5 text-center text-paper">
+        <div className="max-w-sm">
+          <Logo size="lg" />
+          <Clock className="mx-auto mt-8 mb-3 text-brand" size={38} />
+          <h1 className="font-display text-2xl font-semibold">Tu agencia está en revisión</h1>
+          <p className="mt-2 text-sm leading-relaxed text-paper-mute">
+            Ya quedaste registrada. El administrador debe <span className="text-paper">aprobar tu acceso</span> para que puedas gestionar a tus modelos. Te avisaremos en cuanto esté lista.
+          </p>
+          <button onClick={async () => { await signOut(); router.replace('/login'); }}
+            className="mt-6 inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">
+            <LogOut size={15} /> Salir
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const model = models.find((m) => m.id === sel) || null;
   const monthAssets = model ? model.assets.filter((a) => ymOf(a.deliver_date) === month) : [];
