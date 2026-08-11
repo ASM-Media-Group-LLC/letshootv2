@@ -29,7 +29,7 @@ const ROLES = [
 const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), producer: 'Empleado', chatter: 'Empleado' };
 // The owner account — shown as "Dueño", protected from role change and deletion. The rest
 // of the admins are just "Admin". No DB column needed (DDL is locked); the app designates it.
-const OWNER_EMAIL = 'admin@letshoot.ai';
+const OWNER_EMAIL = 'rusin24@gmail.com';
 const isOwnerAccount = (u) => !!u && u.email === OWNER_EMAIL;
 
 // Presets de puesto: cada uno arma un rol de equipo listo (título + accesos). El admin
@@ -82,7 +82,7 @@ export default function AdminPage() {
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
   const [nu, setNu] = useState({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
-  const [nuCaps, setNuCaps] = useState(['content', 'requests', 'feedback']); // accesos del puesto (default: preset Uploader)
+  const [nuCaps, setNuCaps] = useState([]); // accesos del puesto — se marcan a mano (sin preset)
   const [nuPreset, setNuPreset] = useState('uploader'); // preset de puesto seleccionado
   const [createdCreds, setCreatedCreds] = useState(null); // { email, password } para mostrar tras crear
   const [selCreator, setSelCreator] = useState(null); // creator id whose profile drawer is open
@@ -134,7 +134,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }, { data: agSales }, { data: auditRows }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at').order('role'),
+      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -189,13 +189,13 @@ export default function AdminPage() {
   async function createUser(e) {
     e.preventDefault();
     setNuError(''); setCreatedCreds(null);
-    // Only the essentials: name + (optional) company email. If no email, the backend
-    // mints an internal login. If no password, we generate one to hand over.
+    // Only the essentials: name + (optional) email. No password field — the person sets
+    // their own via the invitation email. We always mint a throwaway password internally
+    // (they'll replace it); if there's no real email we surface it as a temp login instead.
     const fullName = [nu.first_name, nu.last_name].map((s) => s.trim()).filter(Boolean).join(' ');
     if (!fullName) { setNuError('Pon al menos el nombre.'); return; }
-    if (nu.role === 'supervisor' && nuCaps.length === 0) { setNuError('Elige un preset o marca al menos una función.'); return; }
-    const pw = nu.password.trim() || `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
-    if (pw.length < 8) { setNuError('La contraseña debe tener al menos 8 caracteres.'); return; }
+    if (nu.role === 'supervisor' && nuCaps.length === 0) { setNuError('Marca al menos un acceso.'); return; }
+    const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
     setCreating(true);
     // Supabase Edge Function 'create-user' runs with the service role and verifies the
     // caller is admin. The puesto is born WITH the accesses the admin picked.
@@ -210,19 +210,22 @@ export default function AdminPage() {
     }
     if (!out?.ok) { setNuError(out?.error || 'No se pudo crear el usuario.'); return; }
     const createdRole = nu.role;
-    // Show the login + password to share when the admin didn't provide an email or password.
-    const showCreds = out.generated_email || !nu.password.trim();
-    if (showCreds) setCreatedCreds({ email: out.login_email || nu.email.trim(), password: pw, generated: !!out.generated_email });
+    // No real email → show the generated company login + temp password to hand over.
+    // Real email → an invitation went out; nothing to copy, just confirm.
+    const showCreds = out.generated_email;
+    if (showCreds) setCreatedCreds({ email: out.login_email || nu.email.trim(), password: pw, generated: true });
     setNu({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
-    setNuCaps(TEAM_PRESETS[0].caps); setNuPreset('uploader');
+    setNuCaps([]); setNuPreset('custom');
     if (!showCreds) setEquipoPanel(null);
-    // Tell the admin WHERE the new account landed — agency/creator don't live in this
-    // Equipo interno roster, so "created" would otherwise look like "nothing happened".
+    // Tell the admin exactly what happened + WHERE the account landed (agency/creator don't
+    // live in this Equipo interno roster, so "created" would otherwise look like nothing).
+    const invitedNote = out.invited ? ` — invitación enviada a ${out.login_email || nu.email.trim()}` : '';
     flash(
-      createdRole === 'supervisor' ? 'Empleado creado'
-      : createdRole === 'agency' ? 'Agencia creada — la ves en la pestaña «Agencias»'
-      : createdRole === 'creator' ? 'Creadora creada — la ves en «Registros» (quita el filtro si no aparece)'
-      : createdRole === 'admin' ? 'Admin creado'
+      showCreds ? 'Cuenta creada — comparte el login y la clave temporal'
+      : createdRole === 'supervisor' ? `Empleado creado${invitedNote}`
+      : createdRole === 'agency' ? `Agencia creada${invitedNote} — la ves en la pestaña «Agencias»`
+      : createdRole === 'creator' ? `Creadora creada${invitedNote} — la ves en «Registros» (quita el filtro si no aparece)`
+      : createdRole === 'admin' ? `Admin creado${invitedNote}`
       : 'Cuenta creada'
     );
     await load();
@@ -256,11 +259,21 @@ export default function AdminPage() {
     if (f.legal_last_name?.trim())   patch.legal_last_name = f.legal_last_name.trim();
     if (f.date_of_birth)             patch.date_of_birth = f.date_of_birth;
     if (f.plan)                      patch.plan = f.plan;
-    if (f.activate) {
+    if (f.billing_note?.trim())      patch.billing_note = f.billing_note.trim();
+    const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    if (f.comp) {
+      // Cortesía: nace activa, sin cobro, gratis hasta la fecha elegida (dinámica).
+      patch.comp_until = f.comp_until || in30;
       patch.payment_status = 'paid';
       patch.onboarding_status = 'active';
       if (!patch.plan) patch.plan = 'core';
-      patch.subscription_ends_at = f.ends_at || new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+      patch.subscription_ends_at = f.comp_until || in30;
+      if (!patch.billing_note) patch.billing_note = 'Cortesía (gratis)';
+    } else if (f.activate) {
+      patch.payment_status = 'paid';
+      patch.onboarding_status = 'active';
+      if (!patch.plan) patch.plan = 'core';
+      patch.subscription_ends_at = f.ends_at || in30;
     } else {
       // Armada por el admin pero aún sin pagar: la deja lista (no repite datos),
       // pendiente de pago. Sigue paywalled hasta que actives la suscripción.
@@ -272,7 +285,9 @@ export default function AdminPage() {
     }
     setNcBusy(false);
     setNewCreator(null);
-    flash(f.activate
+    flash(f.comp
+      ? 'Creadora dada de alta en CORTESÍA (gratis) — queda registrada'
+      : f.activate
       ? 'Creadora dada de alta y ACTIVA — lista para trabajar'
       : 'Creadora creada (inactiva) — actívala en Suscripción cuando pague para que la vea ella y su agencia');
     await load();
@@ -763,28 +778,10 @@ export default function AdminPage() {
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><UserPlus size={18} className="text-brand" /> Crear puesto / usuario</h3>
-                    <p className="mt-0.5 text-xs text-paper-dim">Solo lo esencial: nombre, apellido y (opcional) correo. Elige un preset y ajusta accesos.</p>
+                    <p className="mt-0.5 text-xs text-paper-dim">Nombre, apellido y (opcional) correo. Elige el tipo y marca sus accesos.</p>
                   </div>
                   <button type="button" onClick={() => setEquipoPanel(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-paper-dim transition-colors hover:text-paper"><X size={16} /></button>
                 </div>
-                {/* Preset del puesto — elige uno; ajusta los accesos abajo si quieres. */}
-                {nu.role === 'supervisor' && (
-                  <div className="mb-4">
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Preset del puesto</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {TEAM_PRESETS.map((p) => {
-                        const Icon = p.icon; const on = nuPreset === p.id;
-                        return (
-                          <button type="button" key={p.id}
-                            onClick={() => { setNuPreset(p.id); setNuCaps(p.caps); setNu((v) => ({ ...v, job_title: p.id === 'custom' ? v.job_title : p.title })); }}
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${on ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:border-brand/30 hover:text-paper'}`}>
-                            <Icon size={13} /> {p.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
                 {/* Lo primordial: nombre, apellido, correo de empresa (opcional). */}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <input value={nu.first_name} onChange={(e) => setNu((v) => ({ ...v, first_name: e.target.value }))} placeholder="Nombre"
@@ -792,21 +789,20 @@ export default function AdminPage() {
                   <input value={nu.last_name} onChange={(e) => setNu((v) => ({ ...v, last_name: e.target.value }))} placeholder="Apellido"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 </div>
-                {nu.role === 'supervisor' && nuPreset === 'custom' && (
-                  <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (ej. Coordinación)"
+                {nu.role === 'supervisor' && (
+                  <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (opcional, ej. Coordinación)"
                     className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 )}
-                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                  <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="Correo de empresa (opcional)"
-                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                  <input type="text" value={nu.password} onChange={(e) => setNu((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (opcional, se genera)"
+                {/* Sin campo de contraseña: la persona la pone ella misma por invitación (correo). */}
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="Correo (opcional)"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                   <select value={nu.role} onChange={(e) => setNu((v) => ({ ...v, role: e.target.value }))}
                     className="rounded-xl border border-line bg-ink-2 px-2.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
                     {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
                   </select>
                 </div>
-                <p className="mt-2 text-[11px] text-paper-dim">Solo lo esencial: nombre y apellido. El correo es opcional — si no lo pones, le generamos un login de empresa. La contraseña también: si la dejas vacía, la creamos y te la mostramos para compartir.</p>
+                <p className="mt-2 text-[11px] text-paper-dim">Con correo, le llega una <span className="text-paper-mute">invitación para poner su propia contraseña</span> — tú no la manejas. Sin correo, le generamos un login de empresa con una clave temporal para compartir.</p>
 
                 {/* Las funciones de la plataforma, por SECCIÓN → función — marcas qué puede hacer ESTE puesto */}
                 {nu.role === 'supervisor' && (
@@ -1139,7 +1135,7 @@ export default function AdminPage() {
                   <span className="mt-0.5 block text-[11px] text-paper-dim">La cuenta nace «Activa» y la ve la modelo, la agencia y los uploaders. Si no, queda esperando pago.</span>
                 </span>
               </label>
-              {newCreator.activate && (
+              {newCreator.activate && !newCreator.comp && (
                 <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
                   <label className="mb-1 block text-xs font-medium text-emerald-200">Vence el · próximo cobro</label>
                   <input type="date" value={newCreator.ends_at || ''} onChange={(e) => setNewCreator((v) => ({ ...v, ends_at: e.target.value }))}
@@ -1147,6 +1143,30 @@ export default function AdminPage() {
                   <p className="mt-1 text-[11px] text-emerald-200/80">El admin te avisa (banner) cuando esté por vencer o vencida. El cobro es manual: al vencer la marcas inactiva a mano y deja de verla la modelo y la agencia.</p>
                 </div>
               )}
+
+              {/* Cortesía dinámica — regalar acceso gratis hasta una fecha que tú eliges. */}
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.05] p-3">
+                <input type="checkbox" checked={!!newCreator.comp} onChange={(e) => setNewCreator((v) => ({ ...v, comp: e.target.checked, activate: e.target.checked ? true : v.activate }))}
+                  className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-amber-400 focus:ring-amber-400" />
+                <span className="min-w-0 text-sm text-paper">
+                  Cortesía <span className="text-paper-dim">(gratis — no pagó)</span>
+                  <span className="mt-0.5 block text-[11px] text-paper-dim">Nace activa sin cobro. Elige hasta cuándo es gratis; queda registrado que fue cortesía.</span>
+                </span>
+              </label>
+              {newCreator.comp && (
+                <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.05] p-3">
+                  <label className="mb-1 block text-xs font-medium text-amber-200">Gratis hasta</label>
+                  <input type="date" value={newCreator.comp_until || ''} onChange={(e) => setNewCreator((v) => ({ ...v, comp_until: e.target.value }))}
+                    className="w-full rounded-lg border border-amber-400/40 bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-amber-300" />
+                </div>
+              )}
+
+              {/* Nota de facturación — qué se le dio / por qué (visible en su perfil). */}
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-paper-dim">Nota (opcional) — ej. «1 mes gratis de cortesía»</label>
+                <input value={newCreator.billing_note || ''} onChange={(e) => setNewCreator((v) => ({ ...v, billing_note: e.target.value }))} placeholder="Qué se le dio / por qué"
+                  className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              </div>
             </div>
 
             {ncErr && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{ncErr}</p>}
@@ -1837,6 +1857,24 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
                   <p className="mt-1 text-sm text-paper-dim">No ha pagado. Elige su plan y actívala cuando pague.</p>
                 )}
                 {pack && <p className="mt-1 text-[11px] text-paper-dim">Incluye {pack.photos} fotos · {pack.videos} video{pack.videos === 1 ? '' : 's'} al mes</p>}
+              </div>
+
+              {/* Cortesía (gratis) + nota — para ver qué se le dio y por qué */}
+              <div className="rounded-2xl border border-line bg-ink-2 p-4">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-paper-dim"><Sparkles size={13} className="text-amber-300" /> Cortesía y nota</div>
+                {creator.comp_until && (
+                  <p className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">
+                    Cortesía (gratis) hasta {new Date(creator.comp_until + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                )}
+                <label className="mb-1 block text-[11px] text-paper-dim">Gratis hasta (cortesía) — vacío = no es cortesía</label>
+                <input type="date" defaultValue={creator.comp_until || ''} disabled={saving}
+                  onBlur={(e) => { const v = e.target.value || null; if (v !== (creator.comp_until || null)) patch(v ? { comp_until: v, payment_status: 'paid', onboarding_status: 'active', subscription_ends_at: v, plan: creator.plan || 'core' } : { comp_until: null }, 'Cortesía actualizada'); }}
+                  className="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none focus:border-amber-400/60" />
+                <label className="mb-1 mt-3 block text-[11px] text-paper-dim">Nota</label>
+                <input defaultValue={creator.billing_note || ''} disabled={saving} placeholder="ej. 1 mes gratis de cortesía"
+                  onBlur={(e) => { const v = e.target.value.trim() || null; if (v !== (creator.billing_note || null)) patch({ billing_note: v }, 'Nota guardada'); }}
+                  className="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               </div>
 
               {/* Fecha de vencimiento — solo si activa */}

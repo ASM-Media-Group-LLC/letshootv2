@@ -1,4 +1,4 @@
-// Edge function: create-user (v8 — friendly Spanish message on duplicate email)
+// Edge function: create-user (v9 — invitation to set own password for ANY role with real email)
 // Creates accounts with the service role. Who can create what:
 //  · admin → any role (admin, supervisor/Equipo, agency, creator) + capabilities
 //  · staff with the 'team' capability → ONLY role 'supervisor' (Equipo) + capabilities
@@ -81,11 +81,11 @@ Deno.serve(async (req) => {
     const { error: upErr } = await svc.from('profiles').update(patch).eq('id', created.user.id);
     if (upErr) return reply({ ok: false, error: upErr.message });
 
-    // External accounts (creator/agency) get a branded "set your password" email so they
-    // can onboard without the admin ever handling their password. Best-effort: a failed
-    // email must never fail the account creation. Uses a real recovery link + send-email.
+    // ANY account with a real email gets a branded "set your password" invitation so the
+    // person sets their own clave — the admin never handles a password. Best-effort: a
+    // failed email must never fail the account creation. Real recovery link + send-email.
     let invited = false;
-    if (emailProvided && body.send_invite !== false && (role === 'creator' || role === 'agency')) {
+    if (emailProvided && body.send_invite !== false) {
       try {
         const { data: linkData } = await svc.auth.admin.generateLink({
           type: 'recovery', email, options: { redirectTo: `${APP}/reset` },
