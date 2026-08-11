@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -69,6 +69,7 @@ export default function AdminPage() {
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
   const [assetStats, setAssetStats] = useState([]);   // per-creator sales/revenue for agency numbers
   const [agencySales, setAgencySales] = useState([]); // libro de ventas por venta (agency_sales)
+  const [audit, setAudit] = useState([]);             // bitácora (audit_log)
   const [invites, setInvites] = useState([]);         // pending staff invite links
   const [invBusy, setInvBusy] = useState(false);
   const [copied, setCopied] = useState('');
@@ -109,18 +110,20 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }, { data: agSales }] = await Promise.all([
+    const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }, { data: agSales }, { data: auditRows }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
       supabase.from('assets').select('creator_id, sales_count, revenue'),
       supabase.from('agency_sales').select('id, agency_id, creator_id, amount_cents, created_at').order('created_at', { ascending: false }).limit(400),
+      supabase.from('audit_log').select('id, actor_id, action, target_id, meta, created_at').order('created_at', { ascending: false }).limit(200),
     ]);
     setProfiles(profs || []);
     setAgencyLinks(agLinks || []);
     setAssetStats(assetRows || []);
     setAgencySales(agSales || []);
+    setAudit(auditRows || []);
     const { data: inv } = await supabase.from('staff_invites').select('*').eq('status', 'pending').order('created_at', { ascending: false });
     setInvites(inv || []);
     setMetrics({ requests: reqs || [], lora: loraCount || 0 });
@@ -333,6 +336,7 @@ export default function AdminPage() {
             { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
             { id: 'equipo', label: 'Equipo interno', icon: Users },
             { id: 'agencias', label: 'Agencias', icon: Building2 },
+            { id: 'actividad', label: 'Actividad', icon: Activity },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${tab === tb.id ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
@@ -889,6 +893,31 @@ export default function AdminPage() {
                 </div>
               );
             })}
+          </div>
+        ) : tab === 'actividad' ? (
+          <div className="mt-6">
+            <p className="mb-3 text-sm text-paper-mute">Registro automático de acciones sensibles sobre las cuentas: quién y cuándo. Se guarda solo.</p>
+            {audit.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">Sin actividad registrada todavía. Cuando actives/desactives una suscripción, cambies un plan o apruebes una identidad, aparecerá aquí.</p>
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-line">
+                {audit.map((a, i) => {
+                  const actor = profiles.find((p) => p.id === a.actor_id);
+                  const target = profiles.find((p) => p.id === a.target_id);
+                  const who = actor ? (actor.full_name || actor.email) : 'Sistema';
+                  const onWhom = target ? (target.stage_name || target.full_name || target.email) : '—';
+                  return (
+                    <div key={a.id} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 ${i > 0 ? 'border-t border-line' : ''}`}>
+                      <div className="min-w-0">
+                        <p className="text-sm text-paper"><span className="font-semibold">{who}</span> · {a.action} · <span className="text-paper-mute">{onWhom}</span></p>
+                        {a.meta?.old != null && <p className="text-[11px] text-paper-dim">{String(a.meta.old)} → {String(a.meta.new)}</p>}
+                      </div>
+                      <span className="shrink-0 text-[11px] text-paper-dim">{new Date(a.created_at).toLocaleString('es-US', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : null}
       </main>
