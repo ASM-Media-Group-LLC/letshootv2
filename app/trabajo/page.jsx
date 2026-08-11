@@ -632,7 +632,9 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     if (ok > 0) {
       const folderName = (folders || []).find((f) => f.id === folderSel)?.name || '';
       sendEmail('delivery', creator.id, folderName);
-      await supabase.from('notifications').insert({ user_id: creator.id, kind: 'delivery', meta: { folder: folderName } });
+      // Avisa a la modelo Y a su agencia (RPC SECURITY DEFINER: el uploader no
+      // puede leer agency_creators por RLS).
+      await supabase.rpc('notify_delivery', { p_creator: creator.id, p_folder: folderName });
       // Solo cerramos el pedido cuando TODO subió — si algo falló, queda abierto
       // para que puedas reintentar y amarrarlo, no se marca «Completado» a medias.
       if (reqNow && failed === 0) {
