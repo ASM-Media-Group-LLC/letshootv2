@@ -1,4 +1,4 @@
-// Edge function: create-user (v10 — invite link via token_hash to our /reset, robust)
+// Edge function: create-user (v11 — richer caps: add_creators/agencies/billing + per-cap creation)
 // Creates accounts with the service role. Who can create what:
 //  · admin → any role (admin, supervisor/Equipo, agency, creator) + capabilities
 //  · staff with the 'team' capability → ONLY role 'supervisor' (Equipo) + capabilities
@@ -11,7 +11,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const VALID_ROLES = ['admin', 'supervisor', 'chatter', 'producer', 'creator', 'agency'];
-const VALID_CAPS = ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team'];
+const VALID_CAPS = ['datos', 'kyc', 'add_creators', 'content', 'requests', 'feedback', 'metrics', 'billing', 'agencies', 'team'];
 const APP = 'https://letshoot.ai';
 
 function reply(obj: unknown, status = 200) {
@@ -34,8 +34,12 @@ Deno.serve(async (req) => {
     const { data: prof } = await caller.from('profiles').select('role, capabilities').eq('id', user.id).single();
 
     const isAdmin = prof?.role === 'admin';
-    const hasTeam = prof?.role === 'supervisor' && Array.isArray(prof?.capabilities) && prof.capabilities.includes('team');
-    if (!isAdmin && !hasTeam) return reply({ ok: false, error: 'No tienes permiso para crear usuarios.' });
+    const callerCaps = Array.isArray(prof?.capabilities) ? prof.capabilities : [];
+    const isSup = prof?.role === 'supervisor';
+    const canTeam = isSup && callerCaps.includes('team');            // crear empleados
+    const canAddCreators = isSup && callerCaps.includes('add_creators'); // dar de alta creadoras
+    const canAddAgencies = isSup && callerCaps.includes('agencies');     // crear agencias
+    if (!isAdmin && !canTeam && !canAddCreators && !canAddAgencies) return reply({ ok: false, error: 'No tienes permiso para crear usuarios.' });
 
     const body = await req.json().catch(() => ({}));
     const emailProvided = String(body.email || '').trim() !== '';
@@ -51,8 +55,13 @@ Deno.serve(async (req) => {
     if (!password || !role) return reply({ ok: false, error: 'Contrasena y rol son obligatorios.' });
     if (password.length < 8) return reply({ ok: false, error: 'La contrasena debe tener al menos 8 caracteres.' });
     if (!VALID_ROLES.includes(role)) return reply({ ok: false, error: 'Rol invalido.' });
-    // A team manager (non-admin) can only create Equipo positions.
-    if (!isAdmin && role !== 'supervisor') return reply({ ok: false, error: 'Solo puedes crear puestos de Equipo.' });
+    // A non-admin can create only the account types their accesses allow.
+    if (!isAdmin) {
+      const ok = (role === 'supervisor' && canTeam)
+        || (role === 'creator' && canAddCreators)
+        || (role === 'agency' && canAddAgencies);
+      if (!ok) return reply({ ok: false, error: 'No tienes permiso para crear ese tipo de cuenta.' });
+    }
 
     // Email is OPTIONAL — the admin can onboard someone who has no email. When blank we
     // mint an internal company login (name-based @equipo.letshoot.ai) so the auth user
