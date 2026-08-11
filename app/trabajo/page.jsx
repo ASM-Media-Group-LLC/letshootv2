@@ -225,9 +225,13 @@ export default function TrabajoPage() {
   function toggleCola() { const n = !colaOpen; setColaOpen(n); if (n) setColaSeen(true); }
   function openQueueItem(it) {
     setColaSeen(true);
-    if (can('content')) { setFocusCreator(it.creatorId); setTab('creadoras'); }
-    else if (it.kind === 'cambio' && can('feedback')) setTab('feedback');
-    else if (can('requests')) setTab('pedidos');
+    const inRoster = creators.some((c) => c.id === it.creatorId);
+    if (can('content') && inRoster) { setFocusCreator(it.creatorId); setTab('creadoras'); return; }
+    // La creadora del ítem no está en tu roster: en vez de caer en un roster mudo,
+    // te llevo al área donde SÍ puedes actuar sobre el ítem.
+    if (it.kind === 'cambio' && can('feedback')) { setTab('feedback'); return; }
+    if (can('requests')) { setTab('pedidos'); return; }
+    if (can('content')) { setFocusCreator(null); setTab('creadoras'); }
   }
 
   const OPS_CARDS = [
@@ -399,7 +403,7 @@ export default function TrabajoPage() {
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
             {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
             {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
-            {tab === 'feedback' && can('feedback') && <ReactionsDashboard creators={creators.map((c) => ({ id: c.id, name: c.full_name, avatar_url: c.avatar_url }))} />}
+            {tab === 'feedback' && can('feedback') && <ReactionsDashboard canResolve onResolved={load} creators={creators.map((c) => ({ id: c.id, name: c.full_name, avatar_url: c.avatar_url }))} />}
             {tab === 'produccion' && can('metrics') && <ProduccionTab books={books} />}
             {tab === 'agencias' && can('metrics') && <AgenciasTab books={books} />}
             {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
@@ -576,10 +580,22 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   // failures (reports how many), and only closes the pedido if something landed.
   async function uploadFiles(list) {
     if (!folderSel) { flash('Elige primero una entrega.'); return; }
-    // Fotos y videos JUNTOS: el sistema detecta el tipo de cada archivo y los separa solo.
-    const files = Array.from(list).filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
+    // Fotos y videos JUNTOS: clasifica por MIME y, si el navegador lo deja en
+    // blanco (típico en HEIC/MOV de iPhone), por la extensión del archivo.
+    const IMG_EXT = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'avif', 'bmp', 'tiff'];
+    const VID_EXT = ['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv', 'hevc', '3gp', 'qt'];
+    const kindOf = (f) => {
+      if (f.type.startsWith('image/')) return 'photo';
+      if (f.type.startsWith('video/')) return 'video';
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      if (IMG_EXT.includes(ext)) return 'photo';
+      if (VID_EXT.includes(ext)) return 'video';
+      return null;
+    };
+    const kinded = Array.from(list).map((f) => ({ f, k: kindOf(f) })).filter((x) => x.k);
+    const files = kinded.map((x) => x.f);
     if (!files.length) { flash('Arrastra fotos o videos.'); return; }
-    const nPhotos = files.filter((f) => f.type.startsWith('image/')).length;
+    const nPhotos = kinded.filter((x) => x.k === 'photo').length;
     const nVideos = files.length - nPhotos;
     const supabase = getSupabase();
     const purposeNow = purpose.trim() || null;
@@ -596,7 +612,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
         if (upErr) throw upErr;
         const { error: dbErr } = await supabase.from('assets').insert({
           creator_id: creator.id, folder_id: folderSel, storage_path: path,
-          type: file.type.startsWith('video/') ? 'video' : 'photo', uploaded_by: me.id,
+          type: kindOf(file) === 'video' ? 'video' : 'photo', uploaded_by: me.id,
           added_by: me.full_name || null, purpose: purposeNow,
         });
         if (dbErr) throw dbErr;
@@ -615,7 +631,9 @@ function CreatorDetail({ creator, me, flash, onBack }) {
       const folderName = (folders || []).find((f) => f.id === folderSel)?.name || '';
       sendEmail('delivery', creator.id, folderName);
       await supabase.from('notifications').insert({ user_id: creator.id, kind: 'delivery', meta: { folder: folderName } });
-      if (reqNow) {
+      // Solo cerramos el pedido cuando TODO subió — si algo falló, queda abierto
+      // para que puedas reintentar y amarrarlo, no se marca «Completado» a medias.
+      if (reqNow && failed === 0) {
         await supabase.from('requests').update({
           status: 'delivered', delivered_at: new Date().toISOString(), producer_id: me.id,
         }).eq('id', reqNow);
@@ -628,7 +646,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     await load();
     const mix = [nPhotos && `${nPhotos} ${nPhotos === 1 ? 'foto' : 'fotos'}`, nVideos && `${nVideos} ${nVideos === 1 ? 'video' : 'videos'}`].filter(Boolean).join(' · ');
     flash(failed
-      ? `${ok} de ${total} subidas · ${failed} fallaron, reinténtalas`
+      ? `${ok} de ${total} subidas · ${failed} fallaron${reqNow ? ' · el pedido sigue abierto, reintenta' : ', reinténtalas'}`
       : reqNow ? `Subido: ${mix} · pedido entregado`
       : `Subido: ${mix} — separados solos`);
   }

@@ -96,7 +96,7 @@ export default function AgenciaPage() {
     if (!ids.length) { setModels([]); setRequests([]); return; }
 
     const [{ data: profs }, { data: assets }, { data: fols }, { data: reqs }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, stage_name, onboarding_status, handle, avatar_url').in('id', ids),
+      supabase.from('profiles').select('id, full_name, stage_name, onboarding_status, payment_status, handle, avatar_url').in('id', ids),
       supabase.from('assets')
         .select('id, creator_id, folder_id, type, storage_path, deliver_date, title, purpose, sales_count, revenue, reach, interactions')
         .in('creator_id', ids),

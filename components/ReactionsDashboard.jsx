@@ -5,17 +5,20 @@
 // ven todo. Muestra total, detalle por modelo (de más a menos) e historial
 // filtrable por modelo, por fecha y por tipo.
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, MessageSquare, Filter, ChevronDown } from 'lucide-react';
+import { Heart, MessageSquare, Filter, ChevronDown, Check, Loader2 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 
 const ROLE_LABEL = { creator: 'Modelo', agency: 'Agencia', team: 'Equipo', supervisor: 'Equipo', admin: 'Dueño' };
 
-export default function ReactionsDashboard({ creators = [] }) {
+// canResolve: el equipo/uploaders puede marcar RESUELTO un cambio pedido.
+// onResolved: callback para que el padre refresque contadores/Cola tras resolver.
+export default function ReactionsDashboard({ creators = [], canResolve = false, onResolved }) {
   const [rows, setRows] = useState(null);       // feedback rows
   const [assets, setAssets] = useState({});     // asset_id -> {title}
   const [model, setModel] = useState('all');    // creator_id | all
   const [range, setRange] = useState('all');    // all | 30 | 7 | month
   const [kind, setKind] = useState('all');      // all | love | comment
+  const [resolving, setResolving] = useState('');
 
   const nameOf = useMemo(() => {
     const m = {};
@@ -27,7 +30,7 @@ export default function ReactionsDashboard({ creators = [] }) {
     (async () => {
       const supabase = getSupabase();
       const { data } = await supabase.from('feedback')
-        .select('id, creator_id, asset_id, kind, message, author_role, created_at')
+        .select('id, creator_id, asset_id, kind, message, author_role, created_at, resolved')
         .order('created_at', { ascending: false });
       const fb = data || [];
       setRows(fb);
@@ -80,6 +83,16 @@ export default function ReactionsDashboard({ creators = [] }) {
   }, [filtered]);
 
   const fmt = (d) => new Date(d).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  async function resolve(id) {
+    setResolving(id);
+    const { error } = await getSupabase().from('feedback').update({ resolved: true }).eq('id', id);
+    setResolving('');
+    if (!error) {
+      setRows((rs) => (rs || []).map((r) => (r.id === id ? { ...r, resolved: true } : r)));
+      onResolved?.();
+    }
+  }
 
   const Sel = ({ value, onChange, children }) => (
     <div className="relative">
@@ -184,9 +197,15 @@ export default function ReactionsDashboard({ creators = [] }) {
                     {assets[f.asset_id]?.title && <><span className="text-paper-dim">·</span><span className="truncate text-paper-mute">{assets[f.asset_id].title}</span></>}
                   </div>
                   {f.message && f.message.trim() && <p className="mt-1 text-sm text-paper">“{f.message}”</p>}
-                  <div className="mt-1 flex items-center gap-2 text-[11px] text-paper-dim">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-paper-dim">
                     <span className="rounded-full bg-hair/10 px-2 py-0.5">{ROLE_LABEL[f.author_role] || 'Modelo'}</span>
                     <span>{fmt(f.created_at)}</span>
+                    {f.kind === 'change' && (f.resolved
+                      ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-300"><Check size={11} /> Resuelto</span>
+                      : canResolve && <button onClick={() => resolve(f.id)} disabled={resolving === f.id}
+                          className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-0.5 font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-50">
+                          {resolving === f.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Marcar resuelto
+                        </button>)}
                   </div>
                 </div>
               </div>
