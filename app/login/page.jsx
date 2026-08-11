@@ -24,7 +24,9 @@ export default function LoginPage() {
     const res = await signIn(email, password);
     if (res.error || !res.profile) {
       if (res.error) console.error(res.error);
-      setError(res.error === 'Invalid login credentials' ? t.login.badCreds : t.login.generic);
+      setError(res.error === 'Invalid login credentials' ? t.login.badCreds
+        : /not confirmed/i.test(res.error || '') ? t.login.notConfirmed
+        : t.login.generic);
       setLoading(false);
       return;
     }

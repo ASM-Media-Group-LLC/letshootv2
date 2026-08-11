@@ -153,11 +153,13 @@ export default function TrabajoPage() {
             setToast(`📥 Nuevo pedido${n.meta?.requester ? ` de ${n.meta.requester}` : ''}: ${n.meta?.title || ''}`);
             setTimeout(() => setToast(''), 6000);
             setReqPing((x) => x + 1); // refresh the Pedidos inbox
+            setColaSeen(false);       // algo nuevo llegó → la Cola vuelve a palpitar
             load();                   // refresh the card numbers too
           } else if (n?.kind === 'feedback') {
             const fk = n.meta?.feedback_kind === 'love' ? '❤ Le encantó' : '✎ Pide un cambio';
             setToast(`${fk}${n.meta?.creator ? ` · ${n.meta.creator}` : ''}: ${n.meta?.asset || ''}`);
             setTimeout(() => setToast(''), 6000);
+            setColaSeen(false);       // cambio pedido → la Cola vuelve a palpitar
             load();
           } else if (n?.kind === 'request_msg') {
             const who = n.meta?.from === 'creator' ? 'La modelo' : n.meta?.from === 'agency' ? 'La agencia' : 'El equipo';

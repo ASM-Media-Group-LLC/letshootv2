@@ -892,10 +892,10 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
   // Like de la agencia sobre la pieza — el trigger de feedback avisa al equipo.
   async function sendLove() {
     if (loved) return;
-    const { error } = await getSupabase().from('feedback').insert({
+    const { error } = await getSupabase().from('feedback').upsert({
       creator_id: asset.creator_id, asset_id: asset.id, kind: 'love',
-      author_id: agencyId, author_role: 'agency',
-    });
+      author_id: agencyId, author_role: 'agency', resolved: true,
+    }, { onConflict: 'asset_id,author_id' });
     if (!error) setLoved(true);
   }
 

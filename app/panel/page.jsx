@@ -104,7 +104,7 @@ export default function PanelPage() {
       setNotesFeed((ns || []).map((n) => ({ ...n, asset: byId[n.asset_id] })).filter((n) => n.asset));
     } else setNotesFeed([]);
     // Her own feedback so the gallery/detail can reflect it.
-    const { data: fb } = await supabase.from('feedback').select('asset_id, kind').eq('creator_id', userId);
+    const { data: fb } = await supabase.from('feedback').select('asset_id, kind, created_at').eq('creator_id', userId).order('created_at', { ascending: true });
     const fbMap = {}; (fb || []).forEach((f) => { fbMap[f.asset_id] = f.kind; }); setMyFeedback(fbMap);
     return { assets, folders: folderMap };
   }, []);
@@ -113,8 +113,9 @@ export default function PanelPage() {
     (async () => {
       const up = await getUserProfile();
       if (!up) { router.replace('/login'); return; }
-      if (up.profile?.role !== 'creator') { router.replace(homeForRole(up.profile?.role)); return; }
-      if (up.profile?.onboarding_status !== 'active') { router.replace('/onboarding'); return; }
+      if (!up.profile?.role) { router.replace('/login'); return; }
+      if (up.profile.role !== 'creator') { router.replace(homeForRole(up.profile.role)); return; }
+      if (up.profile.onboarding_status !== 'active') { router.replace('/onboarding'); return; }
       const { assets, folders } = await load(up.user.id);
       const latest = assets.reduce((mx, a) => (a.deliver_date && a.deliver_date > mx ? a.deliver_date : mx), '');
       setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
@@ -167,7 +168,9 @@ export default function PanelPage() {
   async function sendFeedback(asset, kind) {
     let message = null;
     if (kind === 'change') { message = window.prompt(t.panel.changePrompt, ''); if (message === null) return; }
-    const { error } = await getSupabase().from('feedback').insert({ asset_id: asset.id, creator_id: state.profile.id, kind, message, author_id: state.profile.id, author_role: 'creator' });
+    const { error } = await getSupabase().from('feedback').upsert(
+      { asset_id: asset.id, creator_id: state.profile.id, kind, message, author_id: state.profile.id, author_role: 'creator', resolved: kind !== 'change' },
+      { onConflict: 'asset_id,author_id' });
     if (error) { flash(t.common.error); return; }
     // Reflect it for her; a DB trigger notifies the team (pop-up + dashboard).
     setMyFeedback((m) => ({ ...m, [asset.id]: kind }));
