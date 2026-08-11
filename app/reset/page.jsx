@@ -23,13 +23,25 @@ export default function ResetPage() {
   useEffect(() => {
     (async () => {
       const supabase = getSupabase();
-      const code = new URLSearchParams(window.location.search).get('code');
+      const params = new URLSearchParams(window.location.search);
+      // Custom-email pattern (most robust): the invite/reset email links straight to us with
+      // ?token_hash=…&type=recovery. We verify it here — no Supabase redirect to allow-list,
+      // and it survives inbox link-scanners better than the hosted verify redirect.
+      const tokenHash = params.get('token_hash');
+      const otpType = params.get('type');
+      if (tokenHash) {
+        const { error: err } = await supabase.auth.verifyOtp({ type: otpType || 'recovery', token_hash: tokenHash });
+        setPhase(err ? 'invalid' : 'ready');
+        return;
+      }
+      // PKCE flow: ?code=…
+      const code = params.get('code');
       if (code) {
         const { error: err } = await supabase.auth.exchangeCodeForSession(code);
         setPhase(err ? 'invalid' : 'ready');
         return;
       }
-      // Implicit flow: detectSessionInUrl already consumed the hash if present.
+      // Implicit flow: detectSessionInUrl already consumed the #access_token hash if present.
       const { data: { session } } = await supabase.auth.getSession();
       setPhase(session ? 'ready' : 'invalid');
     })();

@@ -1,4 +1,4 @@
-// Edge function: create-user (v9 — invitation to set own password for ANY role with real email)
+// Edge function: create-user (v10 — invite link via token_hash to our /reset, robust)
 // Creates accounts with the service role. Who can create what:
 //  · admin → any role (admin, supervisor/Equipo, agency, creator) + capabilities
 //  · staff with the 'team' capability → ONLY role 'supervisor' (Equipo) + capabilities
@@ -90,7 +90,13 @@ Deno.serve(async (req) => {
         const { data: linkData } = await svc.auth.admin.generateLink({
           type: 'recovery', email, options: { redirectTo: `${APP}/reset` },
         });
-        const actionUrl = linkData?.properties?.action_link || '';
+        // Link straight to OUR /reset with the token_hash (custom-email pattern). This avoids
+        // depending on Supabase's redirect allow-list and survives inbox link-scanners better
+        // than the hosted verify redirect. /reset calls verifyOtp with these params.
+        const hashed = linkData?.properties?.hashed_token || '';
+        const actionUrl = hashed
+          ? `${APP}/reset?token_hash=${encodeURIComponent(hashed)}&type=recovery`
+          : (linkData?.properties?.action_link || '');
         if (actionUrl) {
           const r = await fetch(`${url}/functions/v1/send-email`, {
             method: 'POST',

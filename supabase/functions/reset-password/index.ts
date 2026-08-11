@@ -1,4 +1,4 @@
-// Edge function: reset-password — two modes, service role.
+// Edge function: reset-password (v5) — two modes, service role.
 //  1) send_email:true  → generate a recovery link and email the person a branded
 //     "set your password" message so THEY choose it (admin/team only; needs a real email).
 //  2) password:"..."    → admin/team/agency set a temporary password directly (fallback,
@@ -64,7 +64,12 @@ Deno.serve(async (req) => {
         return reply({ ok: false, error: 'Esta cuenta no tiene un correo real. Ponle una contrasena temporal.' });
       }
       const { data: linkData } = await svc.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo: `${APP}/reset` } });
-      const actionUrl = linkData?.properties?.action_link || '';
+      // Link straight to OUR /reset with token_hash (custom-email pattern) — no dependency on
+      // Supabase's redirect allow-list and more robust against inbox link-scanners.
+      const hashed = linkData?.properties?.hashed_token || '';
+      const actionUrl = hashed
+        ? `${APP}/reset?token_hash=${encodeURIComponent(hashed)}&type=recovery`
+        : (linkData?.properties?.action_link || '');
       if (!actionUrl) return reply({ ok: false, error: 'No se pudo generar el link.' });
       const r = await fetch(`${url}/functions/v1/send-email`, {
         method: 'POST',
