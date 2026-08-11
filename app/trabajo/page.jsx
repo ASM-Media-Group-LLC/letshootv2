@@ -19,7 +19,7 @@ import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import { sumCents, moneyCents } from '@/lib/money';
-import { CAPS, CAP_SECTIONS } from '@/lib/caps';
+import { CAPS, CAP_SECTIONS, ALL_CAP_VALUES } from '@/lib/caps';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
@@ -84,7 +84,7 @@ export default function TrabajoPage() {
   // Only the admin has every function; other staff have exactly the functions
   // assigned to their puesto. Requests come from the agency/creator — the
   // internal team receives and fulfills them.
-  const ALL_CAPS = ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team'];
+  const ALL_CAPS = ALL_CAP_VALUES;
   const caps = !me ? [] : (me.role === 'admin' ? ALL_CAPS : (me.capabilities || []));
   const can = (c) => caps.includes(c);
 
@@ -246,6 +246,7 @@ export default function TrabajoPage() {
 
   const OPS_CARDS = [
     ...(can('content') ? [{ id: 'creadoras', icon: Users, label: 'Creadoras', value: nf(creators.length), sub: `${act} activas · ${proc} en proceso` }] : []),
+    ...(can('add_creators') ? [{ id: 'altas', icon: UserPlus, label: 'Creadoras', value: nf(creators.length), sub: 'Toca para dar de alta una nueva' }] : []),
     ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
     ...(can('requests') ? [{ id: 'pedidos', icon: Inbox, label: 'Pedidos', value: nf((counts?.reqPend || 0) + (counts?.reqProg || 0)), sub: `${counts?.reqPend || 0} pendientes · ${counts?.reqProg || 0} en producción`, alert: (counts?.reqPend || 0) > 0 }] : []),
     ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} me encanta`, alert: (counts?.fbOpen || 0) > 0 }] : []),
@@ -418,6 +419,7 @@ export default function TrabajoPage() {
                 </>
               );
             })()}
+            {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} />}
             {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} />}
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
             {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
@@ -466,6 +468,101 @@ function SubBadge({ creator, size = 'sm' }) {
     <span className={`inline-flex items-center gap-1 rounded-full border border-line bg-hair/5 font-semibold uppercase tracking-wide text-paper-dim ${pad}`}>
       <CreditCard size={11} /> Sin suscripción
     </span>
+  );
+}
+
+// Alta de creadoras para el equipo con el acceso «Dar de alta creadoras».
+// Nombre + (opcional) correo → create-user role creator → le llega la invitación
+// para poner su propia clave. Sin correo, se genera un login de empresa temporal.
+function AltasTab({ creators, flash, reload }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ first_name: '', last_name: '', email: '' });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [creds, setCreds] = useState(null); // { email, password } cuando no hay correo real
+
+  async function create(e) {
+    e.preventDefault();
+    setErr(''); setCreds(null);
+    const fullName = [f.first_name, f.last_name].map((s) => s.trim()).filter(Boolean).join(' ');
+    if (!fullName) { setErr('Pon al menos el nombre.'); return; }
+    const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
+    setBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('create-user', {
+      body: { full_name: fullName, email: f.email.trim(), password: pw, role: 'creator' },
+    });
+    setBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setErr(out?.error || 'No se pudo dar de alta.'); return; }
+    if (out.generated_email) setCreds({ email: out.login_email, password: pw });
+    else { flash(`Creadora dada de alta — invitación enviada a ${out.login_email || f.email.trim()}`); setOpen(false); }
+    setF({ first_name: '', last_name: '', email: '' });
+    reload && reload();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-paper">Creadoras</h2>
+          <p className="text-xs text-paper-dim">Da de alta una creadora nueva — le llega una invitación para poner su clave.</p>
+        </div>
+        {!open && (
+          <button onClick={() => { setOpen(true); setErr(''); setCreds(null); }}
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+            <UserPlus size={15} /> Dar de alta creadora
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <form onSubmit={create} className="rounded-2xl border border-line bg-card p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input value={f.first_name} onChange={(e) => setF((v) => ({ ...v, first_name: e.target.value }))} placeholder="Nombre" autoFocus
+              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            <input value={f.last_name} onChange={(e) => setF((v) => ({ ...v, last_name: e.target.value }))} placeholder="Apellido"
+              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          </div>
+          <input type="email" value={f.email} onChange={(e) => setF((v) => ({ ...v, email: e.target.value }))} placeholder="Correo (opcional)"
+            className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          <p className="mt-2 text-[11px] text-paper-dim">Con correo, le llega una invitación para poner su propia contraseña. Sin correo, le generamos un login de empresa con clave temporal.</p>
+          {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
+          {creds && (
+            <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.06] p-3.5 text-sm">
+              <p className="mb-2 flex items-center gap-1.5 font-semibold text-emerald-300"><Check size={14} /> Creadora creada — comparte estos datos</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-line bg-ink-2 px-3 py-2"><span className="text-paper-dim">Login</span><span className="truncate font-medium text-paper">{creds.email}</span></div>
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-line bg-ink-2 px-3 py-2"><span className="text-paper-dim">Contraseña</span><span className="truncate font-medium text-paper">{creds.password}</span></div>
+              </div>
+            </div>
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={() => { setOpen(false); setErr(''); setCreds(null); }} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cerrar</button>
+            <button type="submit" disabled={busy}
+              className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={15} />} Dar de alta
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Creadoras existentes (referencia) */}
+      <div className="rounded-2xl border border-line bg-card p-4">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Creadoras registradas · {creators.length}</p>
+        {creators.length === 0 ? (
+          <p className="text-sm text-paper-dim">Todavía no hay creadoras. Da de alta la primera.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {creators.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 rounded-xl border border-line bg-ink-2 px-3 py-2">
+                <Avatar src={c.avatar_url} name={c.full_name} size="sm" />
+                <div className="min-w-0"><p className="truncate text-sm text-paper">{c.stage_name || c.full_name || 'Creadora'}</p><p className="truncate text-[11px] text-paper-dim">{c.email}</p></div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
