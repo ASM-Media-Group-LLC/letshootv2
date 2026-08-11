@@ -896,6 +896,7 @@ export default function AdminPage() {
           </div>
         ) : tab === 'actividad' ? (
           <div className="mt-6">
+            <EmailTester defaultTo="rusin24@gmail.com" />
             <p className="mb-3 text-sm text-paper-mute">Registro automático de acciones sensibles sobre las cuentas: quién y cuándo. Se guarda solo.</p>
             {audit.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">Sin actividad registrada todavía. Cuando actives/desactives una suscripción, cambies un plan o apruebes una identidad, aparecerá aquí.</p>
@@ -1107,6 +1108,48 @@ const TONE2 = {
 };
 
 // Resetear contraseña — el admin le pone una temporal a la cuenta (edge fn).
+// Probar el envío de correos: manda una plantilla real a un correo (solo admin).
+// Útil para verificar Resend/dominio sin esperar un evento del sistema.
+function EmailTester({ defaultTo = '' }) {
+  const [to, setTo] = useState(defaultTo);
+  const [tpl, setTpl] = useState('welcome');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const TPLS = [['welcome', 'Bienvenida'], ['approved', 'ID aprobado'], ['rejected', 'ID rechazado'], ['delivery', 'Contenido nuevo']];
+  async function send() {
+    if (!to.trim()) { setMsg('Pon un correo.'); return; }
+    setBusy(true); setMsg('');
+    const { data, error } = await getSupabase().functions.invoke('send-email', {
+      body: { template: tpl, to: to.trim(), lang: 'es', name: 'Álvaro', extra: 'Set de prueba' },
+    });
+    setBusy(false);
+    let out = data;
+    if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (out?.ok && out?.id) setMsg('✓ Enviado — revisa la bandeja (id ' + String(out.id).slice(0, 8) + '…)');
+    else if (out?.skipped) setMsg('La función corre, pero falta configurar RESEND_API_KEY.');
+    else setMsg('No salió: ' + (out?.error || 'error desconocido') + (/(verify|verified|domain)/i.test(out?.error || '') ? ' — (el dominio letshoot.ai aún no está verificado en Resend)' : ''));
+  }
+  return (
+    <div className="mb-6 rounded-2xl border border-line bg-card p-4">
+      <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-paper"><Sparkles size={15} className="text-brand" /> Probar correo</div>
+      <p className="mb-3 text-[11px] text-paper-dim">Envía una plantilla real a un correo para verificar el diseño y que Resend esté bien conectado.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="correo@ejemplo.com"
+          className="min-w-[220px] flex-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        <select value={tpl} onChange={(e) => setTpl(e.target.value)}
+          className="rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60">
+          {TPLS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <button onClick={send} disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Enviar prueba
+        </button>
+      </div>
+      {msg && <p className={`mt-2 text-xs ${msg.startsWith('✓') ? 'text-emerald-300' : 'text-paper-mute'}`}>{msg}</p>}
+    </div>
+  );
+}
+
 function ResetPasswordBox({ userId }) {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
