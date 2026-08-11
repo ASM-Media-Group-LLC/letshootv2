@@ -15,7 +15,7 @@ import {
   X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
   ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff,
 } from 'lucide-react';
-import { getUserProfile, signOut } from '@/lib/supabase/session';
+import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
 import { ymOf, ymLabel, shiftYm, initials } from '@/lib/portal-stats';
@@ -113,7 +113,8 @@ export default function PanelPage() {
     (async () => {
       const up = await getUserProfile();
       if (!up) { router.replace('/login'); return; }
-      if (up.profile?.role === 'creator' && up.profile?.onboarding_status !== 'active') { router.replace('/onboarding'); return; }
+      if (up.profile?.role !== 'creator') { router.replace(homeForRole(up.profile?.role)); return; }
+      if (up.profile?.onboarding_status !== 'active') { router.replace('/onboarding'); return; }
       const { assets, folders } = await load(up.user.id);
       const latest = assets.reduce((mx, a) => (a.deliver_date && a.deliver_date > mx ? a.deliver_date : mx), '');
       setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
@@ -305,7 +306,7 @@ export default function PanelPage() {
     <div className="min-h-[100svh] bg-ink text-paper">
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
-          <div className="flex items-center gap-3"><Logo size="sm" /><span className="hidden text-sm text-paper-dim sm:inline">· Portal</span></div>
+          <div className="flex items-center gap-3"><Logo size="sm" /><span className="hidden text-sm text-paper-dim sm:inline">· {(lang || 'es').startsWith('es') ? 'Tu portal' : 'Your portal'}</span></div>
           <div className="flex items-center gap-2.5">
             <span className="hidden text-sm text-paper-mute md:inline">{t.panel.hello} {state.profile?.full_name || t.panel.creator}</span>
             <LangToggle />

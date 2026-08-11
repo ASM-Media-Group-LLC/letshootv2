@@ -13,7 +13,7 @@ import {
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
   ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart,
 } from 'lucide-react';
-import { getUserProfile, signOut } from '@/lib/supabase/session';
+import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { ymOf, ymLabel, shiftYm, aggregate, pct, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
@@ -164,7 +164,7 @@ export default function AgenciaPage() {
     (async () => {
       const up = await getUserProfile();
       if (!up) { router.replace('/login'); return; }
-      if (up.profile?.role !== 'agency') { router.replace('/login'); return; }
+      if (up.profile?.role !== 'agency') { router.replace(homeForRole(up.profile?.role)); return; }
       await load(up.user.id);
       setMe(up.profile);
       setLoading(false);

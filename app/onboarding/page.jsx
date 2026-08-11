@@ -11,7 +11,7 @@ import {
   LogOut, Check, ShieldCheck, IdCard, CreditCard, Upload, User, Plus,
   AlertTriangle, ArrowRight, Loader2, Sparkles, Clock, CheckCircle2, Circle,
 } from 'lucide-react';
-import { getUserProfile, signOut } from '@/lib/supabase/session';
+import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
 import Logo from '@/components/Logo';
@@ -30,7 +30,7 @@ export default function OnboardingPage() {
   const refresh = useCallback(async () => {
     const up = await getUserProfile();
     if (!up) { router.replace('/login'); return; }
-    if (up.profile?.role && up.profile.role !== 'creator') { router.replace('/admin'); return; }
+    if (up.profile?.role && up.profile.role !== 'creator') { router.replace(homeForRole(up.profile.role)); return; }
     if (up.profile?.onboarding_status === 'active') { router.replace('/panel'); return; }
     const { count } = await getSupabase().from('lora_photos')
       .select('id', { count: 'exact', head: true }).eq('user_id', up.user.id);

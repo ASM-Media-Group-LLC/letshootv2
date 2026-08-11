@@ -7,7 +7,7 @@
 // gate) it before a public launch.
 // ─────────────────────────────────────────────────────────────────────────
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles, Building2, ClipboardList, Upload } from 'lucide-react';
@@ -26,10 +26,18 @@ const AGENCY = { email: 'agencia@letshoot.ai', password: 'LetShoot!agencia' };
 // (the Uploader preset comes ready); this is a demo puesto to preview it.
 const TEAM = { email: 'equipo@letshoot.ai', password: 'LetShoot!equipo' };
 
+// El acceso rápido con credenciales SOLO existe en desarrollo/staging.
+// En producción (dominio público) no se sirve, salvo que se active
+// explícitamente con NEXT_PUBLIC_OWNER_ACCESS=1 en ese entorno.
+const OWNER_ENABLED = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_OWNER_ACCESS === '1';
+
 export default function OwnerPage() {
   const router = useRouter();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+
+  useEffect(() => { if (!OWNER_ENABLED) router.replace('/login'); }, [router]);
+  if (!OWNER_ENABLED) return null;
 
   async function enter(acct, tag) {
     setBusy(tag); setError('');
