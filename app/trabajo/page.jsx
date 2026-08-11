@@ -99,7 +99,7 @@ export default function TrabajoPage() {
     const [{ data: cr }, { data: st }, rq, fb, bk, sales, myAssets] = await Promise.all([
       supabase.rpc('team_creators'),
       supabase.rpc('team_staff'),
-      pcaps.includes('requests') ? supabase.from('requests').select('id, status, title, creator_id, created_at') : Promise.resolve({ data: [] }),
+      pcaps.includes('requests') ? supabase.from('requests').select('id, status, title, creator_id, created_at, producer_id') : Promise.resolve({ data: [] }),
       pcaps.includes('feedback') ? supabase.from('feedback').select('id, kind, resolved, creator_id, message, asset_id, created_at') : Promise.resolve({ data: [] }),
       pcaps.includes('metrics') ? supabase.rpc('team_books') : Promise.resolve({ data: null }),
       pcaps.includes('metrics') ? supabase.from('manual_sales').select('amount, period_month') : Promise.resolve({ data: [] }),
@@ -211,9 +211,9 @@ export default function TrabajoPage() {
   // ── Cola del día: lo más urgente primero (pedidos nuevos → cambios → en producción) ──
   const nameById = {}; creators.forEach((c) => { nameById[c.id] = c.full_name || 'Creadora'; });
   const queue = [];
-  if (can('requests')) reqRows.filter((r) => r.status === 'pending').forEach((r) => queue.push({ key: 'r' + r.id, prio: 1, kind: 'pedido', creatorId: r.creator_id, title: r.title, when: r.created_at }));
+  if (can('requests')) reqRows.filter((r) => r.status === 'pending').forEach((r) => queue.push({ key: 'r' + r.id, prio: 1, kind: 'pedido', creatorId: r.creator_id, title: r.title, when: r.created_at, reqId: r.id, claimedBy: r.producer_id }));
   if (can('feedback')) fbRows.filter((f) => f.kind === 'change' && !f.resolved).forEach((f) => queue.push({ key: 'f' + f.id, prio: 2, kind: 'cambio', creatorId: f.creator_id, title: (f.message && f.message.trim()) || 'Pidió un cambio', when: f.created_at }));
-  if (can('requests')) reqRows.filter((r) => r.status === 'in_progress').forEach((r) => queue.push({ key: 'rp' + r.id, prio: 3, kind: 'produccion', creatorId: r.creator_id, title: r.title, when: r.created_at }));
+  if (can('requests')) reqRows.filter((r) => r.status === 'in_progress').forEach((r) => queue.push({ key: 'rp' + r.id, prio: 3, kind: 'produccion', creatorId: r.creator_id, title: r.title, when: r.created_at, reqId: r.id, claimedBy: r.producer_id }));
   queue.sort((a, b) => a.prio - b.prio || (b.when || '').localeCompare(a.when || ''));
   const QMETA = {
     pedido: { icon: Inbox, verb: 'Te pidieron', cls: 'bg-amber-500/15 text-amber-300', ring: 'border-amber-500/30' },
@@ -224,9 +224,16 @@ export default function TrabajoPage() {
   const prodCount = queue.length - pendCount;
   // Palpita al LLEGAR si hay pendientes; se calma al abrirla en esta visita.
   const colaPulse = queue.length > 0 && !colaSeen && !colaOpen;
+  const staffName = {}; staff.forEach((s) => { staffName[s.id] = (s.full_name || '').split(' ')[0] || 'equipo'; });
   function toggleCola() { const n = !colaOpen; setColaOpen(n); if (n) setColaSeen(true); }
-  function openQueueItem(it) {
+  async function openQueueItem(it) {
     setColaSeen(true);
+    // Tomar el pedido: si nadie lo tiene, quedo yo como responsable (evita que
+    // dos uploaders dupliquen). Si ya lo tomó otro, no se lo quito.
+    if (it.reqId && !it.claimedBy && can('requests')) {
+      await getSupabase().from('requests').update({ producer_id: me.id, status: 'in_progress' }).eq('id', it.reqId).is('producer_id', null);
+      load();
+    }
     const inRoster = creators.some((c) => c.id === it.creatorId);
     if (can('content') && inRoster) { setFocusCreator(it.creatorId); setTab('creadoras'); return; }
     // La creadora del ítem no está en tu roster: en vez de caer en un roster mudo,
@@ -355,7 +362,10 @@ export default function TrabajoPage() {
                             className={`group flex w-full items-center gap-3 rounded-2xl border bg-card p-3 text-left transition-colors hover:border-brand/40 ${m.ring}`}>
                             <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${m.cls}`}><m.icon size={16} /></span>
                             <span className="min-w-0 flex-1">
-                              <span className="text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{m.verb}</span>
+                              <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">
+                                {m.verb}
+                                {it.claimedBy && <span className="rounded-full bg-sky-500/15 px-1.5 py-0.5 normal-case text-sky-300">{it.claimedBy === me.id ? 'Lo tomaste tú' : `En manos de ${staffName[it.claimedBy] || 'el equipo'}`}</span>}
+                              </span>
                               <span className="block truncate text-sm font-medium text-paper">{it.title}</span>
                               <span className="block truncate text-[11px] text-paper-dim">{nameById[it.creatorId] || 'Creadora'}{it.when ? ` · ${new Date(it.when).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}` : ''}</span>
                             </span>
@@ -565,6 +575,20 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   }, [creator.id]);
 
   const srcOf = (a) => (isDirect(a.storage_path) ? a.storage_path : (urls[a.storage_path] || ''));
+
+  // Borrar una pieza subida por error (staff). El asset cascadea feedback/notas;
+  // el objeto de storage se quita aparte. Con confirmación, no se puede deshacer.
+  const [delId, setDelId] = useState('');
+  async function delAsset(a) {
+    if (!window.confirm('¿Borrar esta pieza? No se puede deshacer.')) return;
+    setDelId(a.id);
+    const supabase = getSupabase();
+    if (!isDirect(a.storage_path)) { await supabase.storage.from('deliveries').remove([a.storage_path]); }
+    const { error } = await supabase.from('assets').delete().eq('id', a.id);
+    setDelId('');
+    if (error) { flash('No se pudo borrar: ' + error.message); return; }
+    flash('Pieza borrada'); await load();
+  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -914,7 +938,11 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                         ? <video src={srcOf(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
                         // eslint-disable-next-line @next/next/no-img-element
                         : <img src={srcOf(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
-                      {a.type === 'video' && <span className="pointer-events-none absolute right-1.5 top-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 text-[9px] font-bold uppercase text-fuchsia-200 backdrop-blur">Video</span>}
+                      {a.type === 'video' && <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 text-[9px] font-bold uppercase text-fuchsia-200 backdrop-blur">Video</span>}
+                      <button onClick={() => delAsset(a)} disabled={delId === a.id} title="Borrar pieza"
+                        className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-lg bg-ink/70 text-paper-dim opacity-0 backdrop-blur transition-all hover:bg-rose-500/80 hover:text-white group-hover:opacity-100 disabled:opacity-100">
+                        {delId === a.id ? <Loader2 size={13} className="animate-spin" /> : <X size={14} />}
+                      </button>
                       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/60 to-transparent p-2 pt-6">
                         <p className="truncate text-[11px] font-medium text-paper">{a.title || 'Sin título'}</p>
                         {a.deliver_date && <p className="text-[10px] text-paper-dim">{new Date(a.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</p>}

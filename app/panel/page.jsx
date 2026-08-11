@@ -81,7 +81,7 @@ export default function PanelPage() {
     const [{ data: folders }, { data: nots }, { data: reqs }] = await Promise.all([
       supabase.from('folders').select(`id, name, assets(${ASSET_COLS})`).eq('creator_id', userId).order('created_at'),
       supabase.from('notifications').select('id, kind, meta, read, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
-      supabase.from('requests').select('id, title, description, status, created_at').eq('creator_id', userId).order('created_at', { ascending: false }),
+      supabase.from('requests').select('id, title, description, status, created_at, chatter_id').eq('creator_id', userId).order('created_at', { ascending: false }),
     ]);
     const folderMap = {}; (folders || []).forEach((f) => { folderMap[f.id] = f.name; });
     const assets = (folders || []).flatMap((f) => f.assets || []);
@@ -579,7 +579,11 @@ export default function PanelPage() {
                 return (
                   <div key={r.id} className="rounded-2xl border border-line bg-card px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0"><p className="text-sm font-medium text-paper">{r.title}</p>{r.description && <p className="mt-0.5 text-xs text-paper-dim">{r.description}</p>}</div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-paper">{r.title}</p>
+                        <p className="mt-0.5 text-[11px] font-medium text-paper-dim">{r.chatter_id === state.profile.id ? (isEs ? 'Lo pediste tú' : 'Requested by you') : (isEs ? 'Pedido por tu agencia' : 'Requested by your agency')}</p>
+                        {r.description && <p className="mt-0.5 text-xs text-paper-dim">{r.description}</p>}
+                      </div>
                       <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${st.cls}`}>{st.l}</span>
                     </div>
                     <CreatorReqThread req={r} t={t} locale={locale} onSent={refresh} flash={flash} />
