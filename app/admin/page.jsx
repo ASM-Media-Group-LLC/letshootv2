@@ -32,8 +32,6 @@ const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), produc
 // "datos con identificación" = datos + kyc, "datos sin identificación" = datos.
 const LORA_MIN = 50; // house minimum clone photos
 const MANAGER_ROLES = ['admin'];
-const nf = (n) => Number(n || 0).toLocaleString('en-US');
-const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 // Creator onboarding status → human label + tone
 // Flow: registered → info → id_pending → id_approved → active (pago al final).

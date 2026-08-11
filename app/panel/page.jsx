@@ -132,6 +132,13 @@ export default function PanelPage() {
   if (state.loading) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">{t.common.loading}</div>;
 
   const srcFor = (a) => (isDirect(a.storage_path) ? a.storage_path : (urls[a.id] || ''));
+  // URL de DESCARGA: fuerza attachment (si no, la URL firmada cross-origin se abre en vez de bajar).
+  const dlFor = (a) => {
+    const u = srcFor(a); if (!u) return u;
+    const name = `${(a.title || 'letshoot').replace(/[^\w.-]+/g, '_')}.${(a.storage_path?.split('.').pop() || (a.type === 'video' ? 'mp4' : 'jpg'))}`;
+    if (isDirect(a.storage_path)) return u; // demo /public paths: same-origin, el attr download basta
+    return u + (u.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(name);
+  };
   const unread = notifs.filter((n) => !n.read).length;
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2600); }
 
@@ -190,7 +197,7 @@ export default function PanelPage() {
     supabase.functions.invoke('notify-request', { body: { request_id: reqId } }).catch(() => {});
     setReqOpen(false); flash(t.panel.reqSent); await refresh(); return true;
   }
-  function downloadMany(items) { items.forEach((a, i) => { const src = srcFor(a); if (!src) return; setTimeout(() => { const el = document.createElement('a'); el.href = src; el.download = ''; document.body.appendChild(el); el.click(); el.remove(); }, i * 350); }); }
+  function downloadMany(items) { items.forEach((a, i) => { const src = dlFor(a); if (!src) return; setTimeout(() => { const el = document.createElement('a'); el.href = src; el.download = ''; el.rel = 'noopener'; document.body.appendChild(el); el.click(); el.remove(); }, i * 350); }); }
 
   const isEs = (locale || 'es').startsWith('es');
   // Rango compartido (Contenido + Números): 7 días · mes · todo.
@@ -581,7 +588,7 @@ export default function PanelPage() {
         )}
       </main>
 
-      {detail && <AssetDetail asset={detail} src={srcFor(detail)} t={t} locale={locale} folderName={state.folders[detail.folder_id]} feedback={myFeedback[detail.id]} onClose={() => setDetail(null)} onFeedback={sendFeedback} />}
+      {detail && <AssetDetail asset={detail} src={srcFor(detail)} dl={dlFor(detail)} t={t} locale={locale} folderName={state.folders[detail.folder_id]} feedback={myFeedback[detail.id]} onClose={() => setDetail(null)} onFeedback={sendFeedback} />}
       {toast && <div className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-sm font-medium text-brand backdrop-blur">{toast}</div>}
     </div>
   );
@@ -700,7 +707,7 @@ function RequestForm({ t, onSubmit }) {
 
 // Read-only photo detail: when delivered, how much it sold, who added it,
 // the agency's notes journal (read-only), and the creator's own feedback.
-function AssetDetail({ asset, src, t, locale, folderName, feedback, onClose, onFeedback }) {
+function AssetDetail({ asset, src, dl, t, locale, folderName, feedback, onClose, onFeedback }) {
   const [notes, setNotes] = useState([]);
   useEffect(() => { (async () => { const { data } = await getSupabase().from('asset_notes').select('id, note, note_date, author_name, author_handle, author_email').eq('asset_id', asset.id).order('note_date', { ascending: false }).order('created_at', { ascending: false }); setNotes(data || []); })(); }, [asset.id]);
   const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) : '');
@@ -780,7 +787,7 @@ function AssetDetail({ asset, src, t, locale, folderName, feedback, onClose, onF
                   className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium transition-colors ${feedback === 'change' ? 'border-amber-400/50 bg-amber-500/15 text-amber-300' : 'border-line text-paper-mute hover:border-brand/40 hover:text-brand'}`}>
                   <MessageSquarePlus size={14} /> {feedback === 'change' ? (t.panel.fbChangeShort || 'Cambio pedido') : t.panel.change}
                 </button>
-                <a href={src} download className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand"><Download size={14} /> {t.panel.download}</a>
+                <a href={dl || src} download rel="noopener" className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand"><Download size={14} /> {t.panel.download}</a>
               </div>
               {feedback && <p className="mt-2 text-[11px] text-paper-dim">{feedback === 'love' ? (t.panel.fbLoved || '❤ Le dijiste al equipo que te encantó.') : (t.panel.fbChange || '✎ Pediste un cambio — el equipo ya lo sabe.')}</p>}
             </div>

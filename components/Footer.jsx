@@ -16,6 +16,16 @@ const LEGAL_LABELS = {
   zh: { terms: '服务条款', privacy: '隐私政策', usc2257: '18 U.S.C. § 2257', use: '可接受使用', dmca: 'DMCA', report: '内容删除', contact: '联系我们' },
 };
 
+// Destinos reales por columna/ítem (mismo orden en los 7 idiomas):
+// [Producto: Cómo funciona, Para creadores, Para agencias, Precios]
+// [Compañía: Sobre nosotros, Blog, Contacto]
+// [Legal: Términos, Privacidad, Cookies]
+const COL_HREFS = [
+  ['/#work', '/#pricing', '/#pricing', '/#pricing'],
+  ['/#por-que', '/#work', '/contacto'],
+  ['/terms', '/privacy', '/privacy'],
+];
+
 export default function Footer() {
   const { t, lang } = useLang();
   const f = t.footer;
@@ -44,13 +54,13 @@ export default function Footer() {
             </div>
           </div>
 
-          {f.cols.map((col) => (
+          {f.cols.map((col, ci) => (
             <div key={col.title}>
               <h4 className="font-mono text-[11px] uppercase tracking-wider text-paper-dim">{col.title}</h4>
               <ul className="mt-4 space-y-2.5">
-                {col.items.map((item) => (
+                {col.items.map((item, ii) => (
                   <li key={item}>
-                    <a href="#" className="text-sm text-paper-mute transition-colors hover:text-brand">
+                    <a href={COL_HREFS[ci]?.[ii] || '/'} className="text-sm text-paper-mute transition-colors hover:text-brand">
                       {item}
                     </a>
                   </li>

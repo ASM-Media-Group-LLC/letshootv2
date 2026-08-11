@@ -313,7 +313,7 @@ export default function Pricing() {
                 </ul>
 
                 <a
-                  href="#"
+                  href="/contacto"
                   className={`relative mt-6 inline-flex items-center justify-center rounded-full px-4 py-2.5 text-center text-sm font-bold transition-transform hover:scale-[1.03] ${
                     pack.popular ? 'bg-brand text-on-accent shadow-glow-sm' : 'border border-line text-paper hover:border-brand/60 hover:text-brand'
                   }`}
@@ -340,7 +340,7 @@ export default function Pricing() {
             </div>
             <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-paper-mute">{c.agencyDesc}</p>
           </div>
-          <a href="#" className="inline-flex shrink-0 items-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
+          <a href="/contacto" className="inline-flex shrink-0 items-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
             {c.agencyCta} <ArrowRight size={16} aria-hidden />
           </a>
         </motion.div>
