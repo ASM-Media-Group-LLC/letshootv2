@@ -68,6 +68,7 @@ export default function AdminPage() {
   const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
   const [assetStats, setAssetStats] = useState([]);   // per-creator sales/revenue for agency numbers
+  const [agencySales, setAgencySales] = useState([]); // libro de ventas por venta (agency_sales)
   const [invites, setInvites] = useState([]);         // pending staff invite links
   const [invBusy, setInvBusy] = useState(false);
   const [copied, setCopied] = useState('');
@@ -108,16 +109,18 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }] = await Promise.all([
+    const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }, { data: agSales }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
       supabase.from('assets').select('creator_id, sales_count, revenue'),
+      supabase.from('agency_sales').select('id, agency_id, creator_id, amount_cents, created_at').order('created_at', { ascending: false }).limit(400),
     ]);
     setProfiles(profs || []);
     setAgencyLinks(agLinks || []);
     setAssetStats(assetRows || []);
+    setAgencySales(agSales || []);
     const { data: inv } = await supabase.from('staff_invites').select('*').eq('status', 'pending').order('created_at', { ascending: false });
     setInvites(inv || []);
     setMetrics({ requests: reqs || [], lora: loraCount || 0 });
@@ -854,6 +857,34 @@ export default function AdminPage() {
                       );
                     })}
                   </div>
+                  {(() => {
+                    const rows = agencySales.filter((s) => s.agency_id === ag.id);
+                    const cents = rows.reduce((s, r) => s + (r.amount_cents || 0), 0);
+                    const nameOf = (cid) => { const c = profiles.find((p) => p.id === cid); return c?.stage_name || c?.full_name || 'Modelo'; };
+                    return (
+                      <div className="mt-4">
+                        <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+                          <CreditCard size={12} className="text-brand" /> Libro de ventas · {rows.length} registrada{rows.length === 1 ? '' : 's'} · {moneyCents(cents)}
+                        </div>
+                        {rows.length === 0 ? (
+                          <p className="rounded-xl border border-dashed border-line bg-ink-2/50 px-3 py-2 text-xs text-paper-dim">Aún sin ventas registradas por la maquinita. (Cada +1 deja una fila aquí.)</p>
+                        ) : (
+                          <div className="overflow-hidden rounded-xl border border-line">
+                            {rows.slice(0, 6).map((r, i) => (
+                              <div key={r.id} className={`flex items-center justify-between gap-3 px-3 py-2 text-xs ${i > 0 ? 'border-t border-line' : ''}`}>
+                                <span className="min-w-0 truncate text-paper">{nameOf(r.creator_id)}</span>
+                                <span className="flex shrink-0 items-center gap-3 text-paper-dim">
+                                  <span>{new Date(r.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span>
+                                  <span className="font-semibold text-brand">{moneyCents(r.amount_cents)}</span>
+                                </span>
+                              </div>
+                            ))}
+                            {rows.length > 6 && <div className="border-t border-line px-3 py-1.5 text-center text-[10px] text-paper-dim">+{rows.length - 6} más</div>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="mt-4"><ResetPasswordBox userId={ag.id} /></div>
                 </div>
               );

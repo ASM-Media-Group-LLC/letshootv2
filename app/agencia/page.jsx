@@ -950,12 +950,23 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
     const nS = sales + 1;
     const nR = Math.round((Number(revenue) + priceNum()) * 100) / 100;
     setSales(nS); setRevenue(nR); persist(nS, nR);
+    // Libro de ventas: cada +1 deja una fila auditable (fecha, pieza, precio, quién).
+    getSupabase().from('agency_sales').insert({
+      creator_id: asset.creator_id, agency_id: agencyId, asset_id: asset.id,
+      amount_cents: Math.round(priceNum() * 100), sold_by: agencyId,
+    }).then(() => {}, () => {});
   }
-  function dec() {
+  async function dec() {
     if (sales <= 0) return;
     const nS = sales - 1;
     const nR = Math.max(0, Math.round((Number(revenue) - priceNum()) * 100) / 100);
     setSales(nS); setRevenue(nR); persist(nS, nR);
+    // Deshacer: borra la última venta registrada de esta pieza por esta agencia.
+    const supabase = getSupabase();
+    const { data } = await supabase.from('agency_sales').select('id')
+      .eq('asset_id', asset.id).eq('agency_id', agencyId)
+      .order('created_at', { ascending: false }).limit(1);
+    if (data?.[0]) await supabase.from('agency_sales').delete().eq('id', data[0].id);
   }
 
   async function addNote() {
