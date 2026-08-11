@@ -789,19 +789,15 @@ export default function AdminPage() {
                   <input value={nu.last_name} onChange={(e) => setNu((v) => ({ ...v, last_name: e.target.value }))} placeholder="Apellido"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 </div>
-                {nu.role === 'supervisor' && (
-                  <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (opcional, ej. Coordinación)"
-                    className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                )}
+                {/* Este modal crea SOLO empleados (equipo interno). Agencias y creadoras se
+                    crean del otro lado (Registros / Agencias). Por eso no hay selector de rol:
+                    aquí solo pones el puesto y marcas sus accesos. Para volver a alguien Admin,
+                    se cambia después desde su perfil (Tipo). */}
+                <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (opcional, ej. Coordinación)"
+                  className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 {/* Sin campo de contraseña: la persona la pone ella misma por invitación (correo). */}
-                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
-                  <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="Correo (opcional)"
-                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                  <select value={nu.role} onChange={(e) => setNu((v) => ({ ...v, role: e.target.value }))}
-                    className="rounded-xl border border-line bg-ink-2 px-2.5 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
-                    {ROLES.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
-                  </select>
-                </div>
+                <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="Correo (opcional)"
+                  className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 <p className="mt-2 text-[11px] text-paper-dim">Con correo, le llega una <span className="text-paper-mute">invitación para poner su propia contraseña</span> — tú no la manejas. Sin correo, le generamos un login de empresa con una clave temporal para compartir.</p>
 
                 {/* Las funciones de la plataforma, por SECCIÓN → función — marcas qué puede hacer ESTE puesto */}
