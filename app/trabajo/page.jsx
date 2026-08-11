@@ -20,6 +20,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import { sumCents, moneyCents } from '@/lib/money';
 import { CAPS, CAP_SECTIONS, ALL_CAP_VALUES } from '@/lib/caps';
+import { PACKS } from '@/lib/packs';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
@@ -246,7 +247,7 @@ export default function TrabajoPage() {
 
   const OPS_CARDS = [
     ...(can('content') ? [{ id: 'creadoras', icon: Users, label: 'Creadoras', value: nf(creators.length), sub: `${act} activas · ${proc} en proceso` }] : []),
-    ...(can('add_creators') ? [{ id: 'altas', icon: UserPlus, label: 'Creadoras', value: nf(creators.length), sub: 'Toca para dar de alta una nueva' }] : []),
+    ...(can('add_creators') ? [{ id: 'altas', icon: UserPlus, label: can('content') ? 'Nueva creadora' : 'Creadoras', value: can('content') ? '+' : nf(creators.length), sub: 'Dar de alta una creadora' }] : []),
     ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
     ...(can('requests') ? [{ id: 'pedidos', icon: Inbox, label: 'Pedidos', value: nf((counts?.reqPend || 0) + (counts?.reqProg || 0)), sub: `${counts?.reqPend || 0} pendientes · ${counts?.reqProg || 0} en producción`, alert: (counts?.reqPend || 0) > 0 }] : []),
     ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} me encanta`, alert: (counts?.fbOpen || 0) > 0 }] : []),
@@ -472,40 +473,54 @@ function SubBadge({ creator, size = 'sm' }) {
 }
 
 // Alta de creadoras para el equipo con el acceso «Dar de alta creadoras».
-// Nombre + (opcional) correo → create-user role creator → le llega la invitación
-// para poner su propia clave. Sin correo, se genera un login de empresa temporal.
+// MISMO formulario completo que el admin: acceso, perfil público, identidad,
+// suscripción, cortesía y nota. Los campos extra los aplica create-user con
+// service role (el empleado no puede escribir el perfil directo por RLS).
 function AltasTab({ creators, flash, reload }) {
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ first_name: '', last_name: '', email: '' });
+  const blank = { full_name: '', email: '', stage_name: '', handle: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: '', comp: false, comp_until: '', billing_note: '' };
+  const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [creds, setCreds] = useState(null); // { email, password } cuando no hay correo real
+  const [creds, setCreds] = useState(null);
+  const upd = (k, v) => setF((s) => ({ ...s, [k]: v }));
 
   async function create(e) {
     e.preventDefault();
     setErr(''); setCreds(null);
-    const fullName = [f.first_name, f.last_name].map((s) => s.trim()).filter(Boolean).join(' ');
-    if (!fullName) { setErr('Pon al menos el nombre.'); return; }
+    if (!f.full_name.trim()) { setErr('Pon al menos el nombre.'); return; }
     const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
     setBusy(true);
     const { data, error } = await getSupabase().functions.invoke('create-user', {
-      body: { full_name: fullName, email: f.email.trim(), password: pw, role: 'creator' },
+      body: {
+        full_name: f.full_name.trim(), email: f.email.trim(), password: pw, role: 'creator',
+        profile: {
+          stage_name: f.stage_name, handle: f.handle, phone: f.phone, country: f.country,
+          legal_first_name: f.legal_first_name, legal_last_name: f.legal_last_name, date_of_birth: f.date_of_birth || undefined,
+          plan: f.plan, activate: f.activate, ends_at: f.ends_at || undefined,
+          comp: f.comp, comp_until: f.comp_until || undefined, billing_note: f.billing_note,
+        },
+      },
     });
     setBusy(false);
     let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
     if (!out?.ok) { setErr(out?.error || 'No se pudo dar de alta.'); return; }
     if (out.generated_email) setCreds({ email: out.login_email, password: pw });
-    else { flash(`Creadora dada de alta — invitación enviada a ${out.login_email || f.email.trim()}`); setOpen(false); }
-    setF({ first_name: '', last_name: '', email: '' });
+    else { flash(`Creadora dada de alta${out.invited ? ` — invitación enviada a ${out.login_email || f.email.trim()}` : ''}`); setOpen(false); }
+    setF(blank);
     reload && reload();
   }
+
+  const inputCls = 'w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60';
+  const lbl = 'mb-1 block text-[11px] font-medium text-paper-dim';
+  const sec = 'text-[11px] font-semibold uppercase tracking-wider text-brand/80';
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="font-display text-lg font-semibold text-paper">Creadoras</h2>
-          <p className="text-xs text-paper-dim">Da de alta una creadora nueva — le llega una invitación para poner su clave.</p>
+          <p className="text-xs text-paper-dim">Da de alta una creadora nueva — el mismo formulario completo del administrador.</p>
         </div>
         {!open && (
           <button onClick={() => { setOpen(true); setErr(''); setCreds(null); }}
@@ -516,19 +531,69 @@ function AltasTab({ creators, flash, reload }) {
       </div>
 
       {open && (
-        <form onSubmit={create} className="rounded-2xl border border-line bg-card p-5">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input value={f.first_name} onChange={(e) => setF((v) => ({ ...v, first_name: e.target.value }))} placeholder="Nombre" autoFocus
-              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-            <input value={f.last_name} onChange={(e) => setF((v) => ({ ...v, last_name: e.target.value }))} placeholder="Apellido"
-              className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        <form onSubmit={create} className="space-y-5 rounded-2xl border border-line bg-card p-5">
+          {/* Acceso */}
+          <div>
+            <p className={sec}>Acceso a la plataforma</p>
+            <div className="mt-2"><label className={lbl}>Nombre *</label>
+              <input value={f.full_name} onChange={(e) => upd('full_name', e.target.value)} placeholder="Ej. Valentina Ríos" autoFocus className={inputCls} /></div>
+            <div className="mt-3"><label className={lbl}>Correo (opcional — con correo le llega invitación)</label>
+              <input type="email" value={f.email} onChange={(e) => upd('email', e.target.value)} placeholder="correo@ejemplo.com" className={inputCls} /></div>
           </div>
-          <input type="email" value={f.email} onChange={(e) => setF((v) => ({ ...v, email: e.target.value }))} placeholder="Correo (opcional)"
-            className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-          <p className="mt-2 text-[11px] text-paper-dim">Con correo, le llega una invitación para poner su propia contraseña. Sin correo, le generamos un login de empresa con clave temporal.</p>
-          {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
+          {/* Perfil público */}
+          <div>
+            <p className={sec}>Perfil público</p>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <div><label className={lbl}>Nombre artístico</label><input value={f.stage_name} onChange={(e) => upd('stage_name', e.target.value)} placeholder="Como se hace llamar" className={inputCls} /></div>
+              <div><label className={lbl}>Usuario (@)</label><input value={f.handle} onChange={(e) => upd('handle', e.target.value)} placeholder="valentina.rios" className={inputCls} /></div>
+              <div><label className={lbl}>Teléfono</label><input value={f.phone} onChange={(e) => upd('phone', e.target.value)} placeholder="+1 555…" className={inputCls} /></div>
+              <div><label className={lbl}>País</label><input value={f.country} onChange={(e) => upd('country', e.target.value)} placeholder="US, MX, CO…" className={inputCls} /></div>
+            </div>
+          </div>
+          {/* Identidad */}
+          <div>
+            <p className={sec}>Identidad</p>
+            <div className="mt-2 grid gap-3 sm:grid-cols-3">
+              <div><label className={lbl}>Nombre legal</label><input value={f.legal_first_name} onChange={(e) => upd('legal_first_name', e.target.value)} className={inputCls} /></div>
+              <div><label className={lbl}>Apellido legal</label><input value={f.legal_last_name} onChange={(e) => upd('legal_last_name', e.target.value)} className={inputCls} /></div>
+              <div><label className={lbl}>Nacimiento</label><input type="date" value={f.date_of_birth} onChange={(e) => upd('date_of_birth', e.target.value)} className={inputCls} /></div>
+            </div>
+            <p className="mt-1 text-[11px] text-paper-dim">La foto del ID se sube después desde su perfil.</p>
+          </div>
+          {/* Suscripción */}
+          <div>
+            <p className={sec}>Suscripción</p>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {PACKS.map((p) => { const on = f.plan === p.key; return (
+                <button key={p.key} type="button" onClick={() => upd('plan', on ? '' : p.key)}
+                  className={`rounded-xl border p-3 text-left transition-colors ${on ? 'border-brand bg-brand/10' : 'border-line hover:border-brand/40'}`}>
+                  <div className="flex items-center justify-between"><span className={`text-xs font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{p.name}</span>{on && <Check size={13} className="text-brand" />}</div>
+                  <div className="mt-1 font-display text-lg font-bold text-paper">${p.m}<span className="text-[10px] font-normal text-paper-dim">/mes</span></div>
+                  <div className="text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid</div>
+                </button>
+              ); })}
+            </div>
+            <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-ink-2 p-3">
+              <input type="checkbox" checked={f.activate} onChange={(e) => upd('activate', e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-brand focus:ring-brand" />
+              <span className="text-sm text-paper">Activar suscripción ya <span className="text-paper-dim">(ya pagó a mano)</span></span>
+            </label>
+            {f.activate && !f.comp && (
+              <div className="mt-2"><label className={lbl}>Vence el · próximo cobro</label><input type="date" value={f.ends_at} onChange={(e) => upd('ends_at', e.target.value)} className={inputCls} /></div>
+            )}
+            <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.05] p-3">
+              <input type="checkbox" checked={f.comp} onChange={(e) => upd('comp', e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-amber-400 focus:ring-amber-400" />
+              <span className="text-sm text-paper">Cortesía <span className="text-paper-dim">(gratis — no pagó)</span></span>
+            </label>
+            {f.comp && (
+              <div className="mt-2"><label className={lbl}>Gratis hasta</label><input type="date" value={f.comp_until} onChange={(e) => upd('comp_until', e.target.value)} className={inputCls} /></div>
+            )}
+            <div className="mt-3"><label className={lbl}>Nota (opcional) — ej. «1 mes gratis de cortesía»</label>
+              <input value={f.billing_note} onChange={(e) => upd('billing_note', e.target.value)} placeholder="Qué se le dio / por qué" className={inputCls} /></div>
+          </div>
+
+          {err && <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
           {creds && (
-            <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.06] p-3.5 text-sm">
+            <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/[0.06] p-3.5 text-sm">
               <p className="mb-2 flex items-center gap-1.5 font-semibold text-emerald-300"><Check size={14} /> Creadora creada — comparte estos datos</p>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2 rounded-lg border border-line bg-ink-2 px-3 py-2"><span className="text-paper-dim">Login</span><span className="truncate font-medium text-paper">{creds.email}</span></div>
@@ -536,7 +601,7 @@ function AltasTab({ creators, flash, reload }) {
               </div>
             </div>
           )}
-          <div className="mt-4 flex justify-end gap-2">
+          <div className="flex justify-end gap-2">
             <button type="button" onClick={() => { setOpen(false); setErr(''); setCreds(null); }} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cerrar</button>
             <button type="submit" disabled={busy}
               className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">

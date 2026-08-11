@@ -1,4 +1,4 @@
-// Edge function: create-user (v11 — richer caps: add_creators/agencies/billing + per-cap creation)
+// Edge function: create-user (v12 — optional creator profile passthrough for full alta)
 // Creates accounts with the service role. Who can create what:
 //  · admin → any role (admin, supervisor/Equipo, agency, creator) + capabilities
 //  · staff with the 'team' capability → ONLY role 'supervisor' (Equipo) + capabilities
@@ -87,6 +87,41 @@ Deno.serve(async (req) => {
     const patch: Record<string, unknown> = { role, full_name, email };
     if (role !== 'creator') patch.onboarding_status = 'active';
     if (role === 'supervisor') { patch.capabilities = capabilities; if (job_title) patch.job_title = job_title; }
+    // Optional creator profile fields (perfil público, identidad, suscripción, cortesía,
+    // nota). Applied server-side so a non-admin with 'add_creators' can set them too
+    // (client-side they'd be blocked by RLS). Whitelisted — no arbitrary columns.
+    if (role === 'creator' && body.profile && typeof body.profile === 'object') {
+      const p = body.profile as Record<string, unknown>;
+      const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+      const set = (k: string, v: unknown) => { if (v !== undefined && v !== null && v !== '') patch[k] = v; };
+      set('stage_name', str(p.stage_name));
+      set('handle', str(p.handle) ? String(p.handle).replace(/^@/, '') : undefined);
+      set('phone', str(p.phone));
+      set('country', str(p.country));
+      set('legal_first_name', str(p.legal_first_name));
+      set('legal_last_name', str(p.legal_last_name));
+      set('date_of_birth', str(p.date_of_birth));
+      const plan = str(p.plan);
+      const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+      if (p.comp === true) { // cortesía: nace activa, gratis hasta la fecha
+        patch.comp_until = str(p.comp_until) || in30;
+        patch.payment_status = 'paid';
+        patch.onboarding_status = 'active';
+        patch.plan = plan || 'core';
+        patch.subscription_ends_at = str(p.comp_until) || in30;
+        patch.billing_note = str(p.billing_note) || 'Cortesía (gratis)';
+      } else if (p.activate === true) {
+        patch.payment_status = 'paid';
+        patch.onboarding_status = 'active';
+        patch.plan = plan || 'core';
+        patch.subscription_ends_at = str(p.ends_at) || in30;
+        set('billing_note', str(p.billing_note));
+      } else {
+        set('plan', plan);
+        patch.onboarding_status = 'authorized';
+        set('billing_note', str(p.billing_note));
+      }
+    }
     const { error: upErr } = await svc.from('profiles').update(patch).eq('id', created.user.id);
     if (upErr) return reply({ ok: false, error: upErr.message });
 
