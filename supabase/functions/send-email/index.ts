@@ -1,9 +1,7 @@
-// Transactional emails via Resend — dark, on-brand, table-based HTML that holds
-// up across Gmail / Outlook / Apple Mail. Caller must be signed-in STAFF (or the
-// event concerns the caller themselves, e.g. welcome). Admins may pass `to` to
-// send a test to any address. No-ops safely when RESEND_API_KEY isn't set.
-//
-// PROD config: RESEND_API_KEY secret + letshoot.ai verified in Resend.
+// Transactional emails via Resend — dark, on-brand, RESPONSIVE (desktop + phone)
+// table-based HTML that holds up across Gmail / Outlook / Apple Mail. Caller must
+// be signed-in STAFF (or the event concerns the caller, e.g. welcome). Admins may
+// pass `to` to send a test to any address. No-ops when RESEND_API_KEY isn't set.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const CORS = {
@@ -18,58 +16,78 @@ function reply(obj: unknown, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 }
 
-// Dark, brand-consistent shell. Bulletproof (tables + inline styles), with an
-// Outlook (VML) fallback for the CTA button and a hidden preheader.
+// Dark, brand-consistent, responsive shell. Fluid container (max 520 on desktop,
+// 100% on phone), media-query padding/type, MSO width lock for Outlook, VML CTA,
+// hidden preheader.
 function layout(o: { accent: string; emoji: string; title: string; body: string; cta: string; url: string; pre: string }) {
   return `<!doctype html>
-<html lang="es"><head>
+<html lang="es" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="color-scheme" content="dark">
 <meta name="supported-color-schemes" content="dark">
 <title>${o.title}</title>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+<style>
+  body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+  table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
+  a{text-decoration:none;}
+  body{margin:0;padding:0;width:100%!important;background-color:#05070a;}
+  @media only screen and (max-width:600px){
+    .container{width:100%!important;max-width:100%!important;}
+    .px{padding-left:22px!important;padding-right:22px!important;}
+    .pt{padding-top:28px!important;}
+    .h1{font-size:21px!important;line-height:1.3!important;}
+    .body{font-size:15px!important;}
+    .btn{display:block!important;width:100%!important;box-sizing:border-box!important;text-align:center!important;}
+    .badge{width:52px!important;height:52px!important;font-size:24px!important;}
+  }
+</style>
 </head>
 <body style="margin:0;padding:0;background-color:#05070a;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#05070a;font-size:1px;line-height:1px;">${o.pre}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#05070a;padding:32px 16px;">
-  <tr><td align="center">
-    <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:520px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#05070a" style="background-color:#05070a;">
+  <tr><td align="center" style="padding:32px 16px;">
+    <!--[if mso]><table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+    <table role="presentation" class="container" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:520px;margin:0 auto;">
       <!-- brand bar -->
-      <tr><td style="padding:8px 4px 20px 4px;">
+      <tr><td class="px" style="padding:8px 6px 18px 6px;">
         <span style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:bold;color:#ffffff;letter-spacing:-0.5px;">Let<span style="color:#00AFF0;">Shoot</span></span>
         <span style="font-family:Arial,Helvetica,sans-serif;font-size:10px;font-weight:bold;letter-spacing:1.5px;color:#4a5a68;text-transform:uppercase;">&nbsp;&nbsp;for OnlyFans creators</span>
       </td></tr>
       <!-- card -->
-      <tr><td style="background-color:#0e151c;border:1px solid #1b2732;border-radius:20px;padding:0;overflow:hidden;">
+      <tr><td style="background-color:#0e151c;border:1px solid #1b2732;border-radius:20px;overflow:hidden;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr><td style="height:4px;background-color:${o.accent};line-height:4px;font-size:4px;">&nbsp;</td></tr>
-          <tr><td style="padding:36px 36px 8px 36px;">
+          <tr><td height="4" style="height:4px;background-color:${o.accent};line-height:4px;font-size:4px;">&nbsp;</td></tr>
+          <tr><td class="px pt" style="padding:34px 34px 0 34px;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-              <td style="width:56px;height:56px;background-color:${o.accent}1f;border-radius:16px;text-align:center;vertical-align:middle;font-size:26px;">${o.emoji}</td>
+              <td class="badge" align="center" valign="middle" width="56" height="56" style="width:56px;height:56px;background-color:${o.accent}1f;border-radius:16px;text-align:center;font-size:26px;">${o.emoji}</td>
             </tr></table>
           </td></tr>
-          <tr><td style="padding:20px 36px 0 36px;">
-            <h1 style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:24px;line-height:1.25;font-weight:bold;color:#ffffff;">${o.title}</h1>
+          <tr><td class="px" style="padding:20px 34px 0 34px;">
+            <h1 class="h1" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:24px;line-height:1.25;font-weight:bold;color:#ffffff;">${o.title}</h1>
           </td></tr>
-          <tr><td style="padding:14px 36px 0 36px;">
-            <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#9db2c3;">${o.body}</p>
+          <tr><td class="px" style="padding:14px 34px 0 34px;">
+            <p class="body" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#9db2c3;">${o.body}</p>
           </td></tr>
-          <tr><td style="padding:28px 36px 40px 36px;">
-            <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${o.url}" style="height:46px;v-text-anchor:middle;width:220px;" arcsize="50%" fillcolor="${o.accent}" stroke="f"><w:anchorlock/><center style="color:#04151f;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">${o.cta}</center></v:roundrect><![endif]-->
+          <tr><td class="px" style="padding:28px 34px 38px 34px;">
+            <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${o.url}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="50%" fillcolor="${o.accent}" stroke="f"><w:anchorlock/><center style="color:#04151f;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">${o.cta}</center></v:roundrect><![endif]-->
             <!--[if !mso]><!-- -->
-            <a href="${o.url}" style="display:inline-block;background-color:${o.accent};color:#04151f;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;text-decoration:none;padding:14px 26px;border-radius:999px;">${o.cta} &nbsp;&rarr;</a>
+            <a class="btn" href="${o.url}" style="display:inline-block;background-color:${o.accent};color:#04151f;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;text-decoration:none;padding:15px 28px;border-radius:999px;">${o.cta} &nbsp;&rarr;</a>
             <!--<![endif]-->
           </td></tr>
         </table>
       </td></tr>
       <!-- footer -->
-      <tr><td style="padding:22px 8px 4px 8px;">
+      <tr><td class="px" style="padding:22px 10px 4px 10px;">
         <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.6;color:#4a5a68;">
           LetShoot &middot; tu fot&oacute;grafo IA &middot; <a href="${APP}" style="color:#5a6b7a;text-decoration:underline;">letshoot.ai</a><br>
           Recibiste este correo porque tienes una cuenta en LetShoot.
         </p>
       </td></tr>
     </table>
+    <!--[if mso]></td></tr></table><![endif]-->
   </td></tr>
 </table>
 </body></html>`;
@@ -107,7 +125,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const template = String(body.template || '');
     const toUserId = String(body.user_id || '');
-    const toEmailRaw = String(body.to || '').trim();       // admin-only direct recipient (test)
+    const toEmailRaw = String(body.to || '').trim();
     const extra = String(body.extra || '');
     const lang = body.lang === 'en' ? 'en' : 'es';
     if (!TEMPLATES[template]) return reply({ ok: false, error: 'template inválido.' });
@@ -117,7 +135,6 @@ Deno.serve(async (req) => {
     const isStaff = ['admin', 'supervisor', 'producer', 'chatter'].includes(callerProf?.role || '');
     const isAdmin = callerProf?.role === 'admin';
 
-    // Resolve recipient + name.
     let email = '', name = lang === 'es' ? 'creadora' : 'creator';
     if (toEmailRaw) {
       if (!isAdmin) return reply({ ok: false, error: 'Solo el admin puede enviar a un correo directo.' });
