@@ -18,13 +18,19 @@ import Logo from '@/components/Logo';
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
 // asignar) · agency = agencia/manager (pide contenido, gestiona modelos) ·
 // creator = creadora. 'producer'/'chatter' son legacy → etiqueta "Equipo".
+// "Dueño" (owner) is NOT a role — it's a single protected account (see OWNER_EMAIL).
+// Everyone else with full access is a plain "Admin". That keeps owner ≠ admin.
 const ROLES = [
-  { v: 'admin', l: 'Admin (dueño)' },
-  { v: 'supervisor', l: 'Equipo' },
+  { v: 'admin', l: 'Admin (acceso total)' },
+  { v: 'supervisor', l: 'Empleado' },
   { v: 'agency', l: 'Agencia / Manager' },
   { v: 'creator', l: 'Creadora' },
 ];
-const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), producer: 'Equipo', chatter: 'Equipo' };
+const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), producer: 'Empleado', chatter: 'Empleado' };
+// The owner account — shown as "Dueño", protected from role change and deletion. The rest
+// of the admins are just "Admin". No DB column needed (DDL is locked); the app designates it.
+const OWNER_EMAIL = 'admin@letshoot.ai';
+const isOwnerAccount = (u) => !!u && u.email === OWNER_EMAIL;
 
 // Presets de puesto: cada uno arma un rol de equipo listo (título + accesos). El admin
 // elige uno y puede ajustar los accesos abajo. «Personalizado» parte de cero.
@@ -210,7 +216,15 @@ export default function AdminPage() {
     setNu({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
     setNuCaps(TEAM_PRESETS[0].caps); setNuPreset('uploader');
     if (!showCreds) setEquipoPanel(null);
-    flash(createdRole === 'supervisor' ? 'Puesto creado' : 'Cuenta creada');
+    // Tell the admin WHERE the new account landed — agency/creator don't live in this
+    // Equipo interno roster, so "created" would otherwise look like "nothing happened".
+    flash(
+      createdRole === 'supervisor' ? 'Empleado creado'
+      : createdRole === 'agency' ? 'Agencia creada — la ves en la pestaña «Agencias»'
+      : createdRole === 'creator' ? 'Creadora creada — la ves en «Registros» (quita el filtro si no aparece)'
+      : createdRole === 'admin' ? 'Admin creado'
+      : 'Cuenta creada'
+    );
     await load();
   }
 
@@ -892,6 +906,7 @@ export default function AdminPage() {
             <div className="space-y-3">
             {roster.map((u) => {
               const isMgr = MANAGER_ROLES.includes(u.role);
+              const owner = isOwnerAccount(u);
               const caps = u.capabilities || [];
               const grantedLabels = CAPS.filter((c) => caps.includes(c.v)).map((c) => c.l);
               return (
@@ -900,7 +915,7 @@ export default function AdminPage() {
                   <Avatar src={u.avatar_url} name={u.full_name} size="md" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-paper">{u.full_name || '—'}
-                      <span className="ml-2 rounded-full bg-hair/10 px-2 py-0.5 text-[11px] font-normal text-paper-dim">{isMgr ? 'Dueño' : (u.job_title || 'Equipo')}</span>
+                      <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-normal ${owner ? 'bg-amber-400/10 text-amber-300' : 'bg-hair/10 text-paper-dim'}`}>{owner ? 'Dueño' : isMgr ? 'Admin' : (u.job_title || 'Empleado')}</span>
                     </p>
                     <p className="truncate text-xs text-paper-mute">{u.email}</p>
                     <p className="mt-0.5 truncate text-[11px] text-paper-dim">
@@ -1455,24 +1470,25 @@ function ResetPasswordBox({ userId, email = '', allowEmail = true }) {
       <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-paper"><KeyRound size={15} className="text-brand" /> Contraseña</h4>
       <p className="mb-3 text-[11px] text-paper-dim">
         {canEmail
-          ? 'Le enviamos un correo para que ponga su propia contraseña (recomendado). O ponle una temporal tú.'
+          ? 'Le llega un correo para que ponga su propia contraseña. No manejas su clave.'
           : 'Esta cuenta no tiene un correo real, así que ponle una contraseña temporal y compártesela.'}
       </p>
       <div className="flex flex-wrap gap-2">
-        {canEmail && (
+        {canEmail ? (
+          // Cuenta con correo real: una sola acción, limpio. La persona pone su propia clave.
           <button onClick={sendResetEmail} disabled={emailBusy}
             className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-2 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
             {emailBusy ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />} Enviar correo para que ponga su clave
           </button>
-        )}
-        {!open && (
+        ) : (!open && (
+          // Sin correo real (login de empresa): la única vía es una temporal.
           <button onClick={() => { setOpen(true); setMsg(''); setOkMsg(''); }}
             className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-            <KeyRound size={13} /> {canEmail ? 'Poner una temporal' : 'Resetear contraseña'}
+            <KeyRound size={13} /> Poner contraseña temporal
           </button>
-        )}
+        ))}
       </div>
-      {open && (
+      {!canEmail && open && (
         <div className="mt-2 space-y-2">
           <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Nueva contraseña temporal (mín. 8)"
             className="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
@@ -1945,6 +1961,8 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
 
   if (!staff) return null;
   const isMgr = staff.role === 'admin';
+  const owner = isOwnerAccount(staff);          // the protected Dueño account
+  const roleBadge = owner ? 'Dueño' : isMgr ? 'Admin' : (staff.job_title || 'Empleado');
   const caps = staff.capabilities || [];
   const memberSince = staff.created_at ? new Date(staff.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
@@ -1957,8 +1975,8 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
             <p className="truncate font-display text-lg font-semibold text-paper">{staff.full_name || '—'}</p>
             <p className="truncate text-xs text-paper-dim">{staff.email}</p>
           </div>
-          <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${isMgr ? 'border-brand/40 bg-brand/10 text-brand' : 'border-line bg-hair/5 text-paper-mute'}`}>
-            {isMgr ? 'Admin (dueño)' : (staff.job_title || 'Equipo')}
+          <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${owner ? 'border-amber-400/40 bg-amber-400/10 text-amber-300' : isMgr ? 'border-brand/40 bg-brand/10 text-brand' : 'border-line bg-hair/5 text-paper-mute'}`}>
+            {roleBadge}
           </span>
           <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
         </div>
@@ -1996,18 +2014,22 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
             ) : (
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nombre</dt><dd className="text-paper">{staff.full_name || '—'}</dd></div>
-              <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Puesto</dt><dd className="text-paper">{isMgr ? 'Dueño' : (staff.job_title || '—')}</dd></div>
+              <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Puesto</dt><dd className="text-paper">{roleBadge === 'Empleado' ? (staff.job_title || '—') : roleBadge}</dd></div>
               <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Correo</dt><dd className="truncate text-paper">{staff.email}</dd></div>
               <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Miembro desde</dt><dd className="text-paper">{memberSince}</dd></div>
             </dl>
             )}
             <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Tipo</span>
+              {owner ? (
+                <span className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-2.5 py-1.5 text-sm text-amber-300">Dueño (no se cambia)</span>
+              ) : (
               <select value={isMgr ? 'admin' : 'supervisor'} onChange={(e) => onChangeRole(staff.id, e.target.value)} disabled={isSelf}
                 className="rounded-lg border border-line bg-ink px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
-                <option value="admin">Admin (dueño)</option>
-                <option value="supervisor">Equipo</option>
+                <option value="admin">Admin (acceso total)</option>
+                <option value="supervisor">Empleado</option>
               </select>
+              )}
               {savingId === staff.id && <RefreshCw size={14} className="animate-spin text-brand" />}
             </div>
           </div>
@@ -2067,7 +2089,7 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
           </div>
 
           {/* Danger zone — eliminar cuenta. No aparece para ti mismo. */}
-          {!isSelf && (
+          {!isSelf && !owner && (
             <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-4">
               <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-rose-300"><Trash2 size={15} /> Eliminar cuenta</h4>
               <p className="text-[11px] leading-relaxed text-paper-dim">
