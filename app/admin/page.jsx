@@ -987,6 +987,9 @@ export default function AdminPage() {
                     );
                   })()}
                   <div className="mt-4"><ResetPasswordBox userId={ag.id} email={ag.email} /></div>
+                  <div className="mt-3 flex justify-end border-t border-line pt-3">
+                    <DeleteAccountButton userId={ag.id} label="agencia" onDeleted={load} />
+                  </div>
                 </div>
               );
             })}
@@ -1186,6 +1189,7 @@ export default function AdminPage() {
           savingId={savingId}
           flash={flash}
           onSaved={load}
+          onDeleted={() => { setSelCreator(null); load(); }}
         />
       )}
 
@@ -1450,6 +1454,46 @@ function EmailStudio({ defaultTo = '' }) {
   );
 }
 
+// Compact hard-delete control (fully removes the account so its email frees up).
+// Used where a full drawer danger-zone would be overkill (e.g. agency cards).
+function DeleteAccountButton({ userId, label = 'cuenta', onDeleted }) {
+  const [open, setOpen] = useState(false);
+  const [txt, setTxt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  async function go() {
+    setErr(''); setBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('delete-user', { body: { user_id: userId } });
+    setBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setErr(out?.error || 'No se pudo eliminar.'); return; }
+    onDeleted && onDeleted();
+  }
+  if (!open) {
+    return (
+      <button onClick={() => { setOpen(true); setTxt(''); setErr(''); }}
+        className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 px-3.5 py-2 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/10">
+        <Trash2 size={13} /> Eliminar {label}
+      </button>
+    );
+  }
+  return (
+    <div className="w-full rounded-xl border border-rose-500/30 bg-rose-500/[0.05] p-3">
+      <p className="mb-2 text-[11px] leading-relaxed text-paper-dim">Borra la {label} para siempre y libera su correo. Escribe <span className="font-semibold text-rose-300">ELIMINAR</span> para confirmar. No se puede deshacer.</p>
+      <input value={txt} onChange={(e) => setTxt(e.target.value)} placeholder="ELIMINAR" autoFocus
+        className="w-full rounded-lg border border-rose-500/30 bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-rose-500/60" />
+      {err && <p className="mt-1.5 text-[11px] text-rose-300">{err}</p>}
+      <div className="mt-2 flex justify-end gap-2">
+        <button onClick={() => { setOpen(false); setTxt(''); setErr(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+        <button onClick={go} disabled={busy || txt.trim().toUpperCase() !== 'ELIMINAR'}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Eliminar para siempre
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ResetPasswordBox({ userId, email = '', allowEmail = true }) {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
@@ -1555,7 +1599,7 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
   );
 }
 
-function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }) {
+function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, onDeleted }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
   const [loraCount, setLoraCount] = useState(null);
   const [rejecting, setRejecting] = useState(false);
@@ -1564,6 +1608,19 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
   const [editing, setEditing] = useState(false);       // editar datos personales
   const [form, setForm] = useState(null);              // borrador de datos al editar
   const [tab, setTab] = useState('datos');             // datos | identidad | suscripcion | clon
+  // Danger zone — hard delete (fully removes the account so the email frees up).
+  const [delOpen, setDelOpen] = useState(false);
+  const [delText, setDelText] = useState('');
+  const [delBusy, setDelBusy] = useState(false);
+  const [delErr, setDelErr] = useState('');
+  async function doDelete() {
+    setDelErr(''); setDelBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('delete-user', { body: { user_id: creator.id } });
+    setDelBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setDelErr(out?.error || 'No se pudo eliminar.'); return; }
+    onDeleted && onDeleted();
+  }
 
   // Actualiza el perfil (admin puede escribir cualquier campo) y refresca la lista.
   async function patch(fields, msg) {
@@ -1943,6 +2000,34 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved }
             </div>
           </Row>
           )}
+
+          {/* Danger zone — eliminar la creadora por completo (libera su correo). */}
+          <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-4">
+            <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-rose-300"><Trash2 size={15} /> Eliminar creadora</h4>
+            <p className="text-[11px] leading-relaxed text-paper-dim">
+              Borra esta cuenta para siempre con todo lo suyo (contenido, carpetas, identidad, pedidos, ventas). Libera su correo para volver a usarlo. No se puede deshacer.
+            </p>
+            {!delOpen ? (
+              <button onClick={() => { setDelOpen(true); setDelText(''); setDelErr(''); }}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 px-3.5 py-2 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/10">
+                <Trash2 size={13} /> Eliminar esta creadora
+              </button>
+            ) : (
+              <div className="mt-3 space-y-2.5">
+                <label className="block text-[11px] text-paper-dim">Para confirmar, escribe <span className="font-semibold text-rose-300">ELIMINAR</span>:</label>
+                <input value={delText} onChange={(e) => setDelText(e.target.value)} placeholder="ELIMINAR" autoFocus
+                  className="w-full rounded-lg border border-rose-500/30 bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-rose-500/60" />
+                {delErr && <p className="text-[11px] text-rose-300">{delErr}</p>}
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => { setDelOpen(false); setDelText(''); setDelErr(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+                  <button onClick={doDelete} disabled={delBusy || delText.trim().toUpperCase() !== 'ELIMINAR'}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">
+                    {delBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Eliminar para siempre
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
