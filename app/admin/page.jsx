@@ -364,18 +364,34 @@ export default function AdminPage() {
   }
 
   // Which models an agency manages (admin marks them here).
-  async function toggleAgencyModel(agencyId, creatorId, on) {
+  // Una creadora pertenece a UNA sola agencia. Asignarla a otra la MUEVE (quita el
+  // vínculo anterior). `on=false` la deja sin agencia. Todo pasa por aquí para que la
+  // logística de mover quede consistente en un solo lugar.
+  async function setCreatorAgency(creatorId, agencyId /* null = sin agencia */) {
     const supabase = getSupabase();
-    if (on) {
+    const nameOf = (id) => profiles.find((p) => p.id === id)?.full_name || 'agencia';
+    const prev = agencyLinks.find((x) => x.creator_id === creatorId)?.agency_id || null;
+    if (prev === agencyId) return; // sin cambio
+    // Quita cualquier vínculo previo de esta creadora (solo puede tener uno).
+    if (prev) {
+      const { error } = await supabase.from('agency_creators').delete().eq('creator_id', creatorId);
+      if (error) return flash('Error: ' + error.message);
+    }
+    if (agencyId) {
       const { error } = await supabase.from('agency_creators').insert({ agency_id: agencyId, creator_id: creatorId });
       if (error) return flash('Error: ' + error.message);
-      setAgencyLinks((l) => [...l, { agency_id: agencyId, creator_id: creatorId }]);
-    } else {
-      const { error } = await supabase.from('agency_creators').delete().eq('agency_id', agencyId).eq('creator_id', creatorId);
-      if (error) return flash('Error: ' + error.message);
-      setAgencyLinks((l) => l.filter((x) => !(x.agency_id === agencyId && x.creator_id === creatorId)));
     }
-    flash('Agencia actualizada');
+    setAgencyLinks((l) => {
+      const without = l.filter((x) => x.creator_id !== creatorId);
+      return agencyId ? [...without, { agency_id: agencyId, creator_id: creatorId }] : without;
+    });
+    flash(!agencyId ? 'Creadora sin agencia'
+      : prev ? `Movida de ${nameOf(prev)} a ${nameOf(agencyId)}`
+      : `Asignada a ${nameOf(agencyId)}`);
+  }
+  // Compat: el toggle por agencia usa el reasignador (marcar = mover a esta; desmarcar = quitar).
+  function toggleAgencyModel(agencyId, creatorId, on) {
+    return setCreatorAgency(creatorId, on ? agencyId : null);
   }
 
   // Professional review — approve unlocks payment (nothing charged yet); reject
@@ -445,11 +461,17 @@ export default function AdminPage() {
         ) : tab === 'registros' ? (
           <div className="mt-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-paper-mute">Toca una tarjeta para ver esas creadoras, o da de alta una nueva.</p>
-              <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
-                className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
-                <UserPlus size={15} /> Add creator
-              </button>
+              <p className="text-sm text-paper-mute">Da de alta una creadora o una agencia — le llega su invitación por correo.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => { setNewAgency({ full_name: '', email: '', password: '' }); setNaErr(''); }}
+                  className="inline-flex items-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
+                  <Building2 size={15} /> Crear agencia
+                </button>
+                <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
+                  className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+                  <UserPlus size={15} /> Add creator
+                </button>
+              </div>
             </div>
             {(() => {
               const cr = profiles.filter((p) => p.role === 'creator');
@@ -969,30 +991,7 @@ export default function AdminPage() {
               )}
             </div>
 
-            {newAgency && (
-              <form onSubmit={createAgency} className="rounded-2xl border border-line bg-card p-5">
-                <h3 className="mb-3 flex items-center gap-2 font-display font-semibold text-paper"><Building2 size={16} className="text-brand" /> Nueva agencia</h3>
-                <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr]">
-                  <input autoFocus value={newAgency.full_name} onChange={(e) => setNewAgency((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre de la agencia"
-                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                  <input type="email" value={newAgency.email} onChange={(e) => setNewAgency((v) => ({ ...v, email: e.target.value }))} placeholder="Correo (opcional)"
-                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                  <input type="text" value={newAgency.password} onChange={(e) => setNewAgency((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (opcional)"
-                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                </div>
-                <p className="mt-2 text-[11px] text-paper-dim">Con correo, le llega una invitación para poner su clave. Si escribes una contraseña, nace con esa (útil para cuentas de prueba). Sin correo, se genera un login de empresa.</p>
-                {naErr && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{naErr}</p>}
-                <div className="mt-4 flex justify-end gap-2">
-                  <button type="button" onClick={() => setNewAgency(null)} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
-                  <button type="submit" disabled={naBusy}
-                    className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-                    {naBusy ? <Loader2 size={16} className="animate-spin" /> : <Building2 size={15} />} Crear agencia
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {profiles.filter((p) => p.role === 'agency').length === 0 && !newAgency && (
+            {profiles.filter((p) => p.role === 'agency').length === 0 && (
               <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay agencias todavía. Crea la primera con «Crear agencia».</p>
             )}
             {profiles.filter((p) => p.role === 'agency').map((ag) => {
@@ -1011,10 +1010,15 @@ export default function AdminPage() {
                     {creators.length === 0 && <span className="text-sm text-paper-dim">No hay creadoras registradas todavía.</span>}
                     {creators.map((cr) => {
                       const on = linked.includes(cr.id);
+                      // ¿está con OTRA agencia? (una creadora = una sola agencia)
+                      const otherId = agencyLinks.find((x) => x.creator_id === cr.id && x.agency_id !== ag.id)?.agency_id;
+                      const otherName = otherId ? (profiles.find((p) => p.id === otherId)?.full_name || 'otra agencia') : null;
                       return (
-                        <button key={cr.id} onClick={() => toggleAgencyModel(ag.id, cr.id, !on)}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
+                        <button key={cr.id} onClick={() => setCreatorAgency(cr.id, on ? null : ag.id)}
+                          title={on ? 'Quitar de esta agencia' : otherName ? `Mover aquí (hoy con ${otherName})` : 'Asignar a esta agencia'}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : otherName ? 'border-amber-400/40 bg-amber-400/[0.06] text-amber-200 hover:text-amber-100' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
                           {on ? <Check size={14} /> : <Plus size={14} />} {cr.full_name || cr.email}
+                          {otherName && <span className="text-[10px] opacity-70">· {otherName}</span>}
                         </button>
                       );
                     })}
@@ -1083,6 +1087,38 @@ export default function AdminPage() {
           </div>
         ) : null}
       </main>
+
+      {newAgency && (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/70 py-8 backdrop-blur-sm" onClick={() => !naBusy && setNewAgency(null)}>
+          <form onClick={(e) => e.stopPropagation()} onSubmit={createAgency}
+            className="mx-5 w-full max-w-lg rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><Building2 size={18} className="text-brand" /> Crear agencia</h3>
+                <p className="mt-1 text-sm text-paper-mute">Con correo, le llega una invitación para poner su clave y entrar como agencia. Luego le asignas sus modelos.</p>
+              </div>
+              <button type="button" onClick={() => setNewAgency(null)} className="rounded-full p-1 text-paper-dim hover:text-paper"><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              <input autoFocus value={newAgency.full_name} onChange={(e) => setNewAgency((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre de la agencia"
+                className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              <input type="email" value={newAgency.email} onChange={(e) => setNewAgency((v) => ({ ...v, email: e.target.value }))} placeholder="Correo (opcional — le llega la invitación)"
+                className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              <input type="text" value={newAgency.password} onChange={(e) => setNewAgency((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (opcional — normalmente vacío)"
+                className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            </div>
+            <p className="mt-2 text-[11px] text-paper-dim">Con correo → invitación para que ponga su propia clave. Sin correo → login de empresa con clave temporal. La contraseña manual es solo para cuentas de prueba.</p>
+            {naErr && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{naErr}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setNewAgency(null)} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
+              <button type="submit" disabled={naBusy}
+                className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+                {naBusy ? <Loader2 size={16} className="animate-spin" /> : <Building2 size={15} />} Crear agencia
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {newCreator && (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/70 py-8 backdrop-blur-sm" onClick={() => !ncBusy && setNewCreator(null)}>
