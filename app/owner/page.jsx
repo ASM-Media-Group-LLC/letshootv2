@@ -76,6 +76,36 @@ export default function OwnerPage() {
     router.push('/onboarding');
   }
 
+  // One click: recreate the 4 demo accounts (creadora/clienta/agencia/equipo) that /owner
+  // uses to preview each experience. Signs in as admin and calls create-user (the same
+  // function «Add creator» uses) with the fixed demo passwords, so the buttons below work
+  // again. Idempotent: an existing account is just skipped.
+  async function seedDemo() {
+    setBusy('seed'); setError('');
+    await signOut().catch(() => {});
+    const res = await signIn(ADMIN.email, ADMIN.password);
+    if (res.error || res.profile?.role !== 'admin') { setError('No pude entrar como admin para preparar las cuentas.'); setBusy(''); return; }
+    const demos = [
+      { full_name: 'Creadora Demo', email: USER.email,    password: USER.password,    role: 'creator' },
+      { full_name: 'Clienta Demo',  email: CLIENTA.email, password: CLIENTA.password, role: 'creator', profile: { activate: true, plan: 'core' } },
+      { full_name: 'Agencia Demo',  email: AGENCY.email,  password: AGENCY.password,  role: 'agency' },
+      { full_name: 'Equipo Demo',   email: TEAM.email,    password: TEAM.password,    role: 'supervisor', capabilities: ['content', 'requests', 'feedback'] },
+    ];
+    const sb = getSupabase();
+    let created = 0, skipped = 0; const failed = [];
+    for (const d of demos) {
+      const { data, error } = await sb.functions.invoke('create-user', { body: { ...d, send_invite: false } });
+      let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+      if (out?.ok) created++;
+      else if (/ya existe|already/i.test(out?.error || '')) skipped++;
+      else failed.push(`${d.email} (${out?.error || 'error'})`);
+    }
+    setBusy('');
+    setError(failed.length
+      ? `Algunas fallaron: ${failed.join(' · ')}`
+      : `Listo — ${created} creada(s), ${skipped} ya existían. Ya puedes entrar como cualquiera de abajo.`);
+  }
+
   return (
     <main className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-ink px-5 py-16">
       <div className="blob left-1/2 top-1/3 h-[420px] w-[560px] -translate-x-1/2 bg-brand/10" aria-hidden />
@@ -85,6 +115,11 @@ export default function OwnerPage() {
           <Logo size="lg" />
           <h1 className="mt-6 font-display text-2xl font-semibold text-paper">Acceso rápido</h1>
           <p className="mt-1.5 text-sm text-paper-mute">Página privada para tus pruebas. Un clic y entras.</p>
+          <button onClick={seedDemo} disabled={!!busy}
+            className="mt-5 inline-flex items-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-60">
+            {busy === 'seed' ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={15} />} Restaurar cuentas demo
+          </button>
+          <p className="mt-1.5 max-w-md text-[11px] text-paper-dim">Recrea las cuentas de prueba (creadora, clienta, agencia, equipo) para que todos los botones de abajo funcionen. Úsalo si alguno dice que la cuenta no existe.</p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
