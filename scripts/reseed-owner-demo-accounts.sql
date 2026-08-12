@@ -14,7 +14,7 @@ begin
       ('creadora@letshoot.ai', 'LetShoot!creadora', 'Creadora Demo',  'creator',    null::jsonb),
       ('clienta@letshoot.ai',  'LetShoot!clienta',  'Clienta Demo',   'creator',    null::jsonb),
       ('agencia@letshoot.ai',  'LetShoot!agencia',  'Agencia Demo',   'agency',     null::jsonb),
-      ('equipo@letshoot.ai',   'LetShoot!equipo',   'Equipo Demo',    'supervisor', '["content","requests","feedback"]'::jsonb)
+      ('equipo@letshoot.ai',   'LetShoot!equipo',   'Equipo Demo',    'supervisor', '["datos","kyc","add_creators","content","requests","feedback","metrics","billing","agencies","team"]'::jsonb)
     ) as t(email, pw, full_name, role, caps)
   loop
     if not exists (select 1 from auth.users where email = demo.email) then

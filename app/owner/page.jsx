@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles, Building2, ClipboardList, Upload } from 'lucide-react';
 import { signIn, signOut, homeForProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
+import { ALL_CAP_VALUES } from '@/lib/caps';
 import Logo from '@/components/Logo';
 
 const ADMIN = { email: 'admin@letshoot.ai', password: 'LetShoot!admin' };
@@ -95,7 +96,7 @@ export default function OwnerPage() {
         { full_name: 'Creadora Demo', email: USER.email,    password: USER.password,    role: 'creator' },
         { full_name: 'Clienta Demo',  email: CLIENTA.email, password: CLIENTA.password, role: 'creator', profile: { activate: true, plan: 'core' } },
         { full_name: 'Agencia Demo',  email: AGENCY.email,  password: AGENCY.password,  role: 'agency' },
-        { full_name: 'Equipo Demo',   email: TEAM.email,    password: TEAM.password,    role: 'supervisor', capabilities: ['content', 'requests', 'feedback'] },
+        { full_name: 'Equipo Demo',   email: TEAM.email,    password: TEAM.password,    role: 'supervisor', capabilities: ALL_CAP_VALUES },
       ];
       let created = 0, skipped = 0; const failed = [];
       for (const d of demos) {
@@ -213,15 +214,16 @@ export default function OwnerPage() {
           </button>
         </div>
 
-        {/* Uploaders — el trabajador que sube el contenido a las modelos */}
+        {/* Trabajador (empleado) demo — nace con TODOS los accesos para probar cada función */}
         <div className="mt-4 flex flex-col rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
           <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/12 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
-            <Upload size={14} /> Uploaders · suben contenido
+            <Upload size={14} /> Trabajador · todos los accesos
           </span>
           <p className="text-sm text-paper-mute">
-            Los <strong className="text-paper">uploaders</strong> cargan el producto: entran a una modelo, suben sus
-            fotos y videos, les ponen el propósito y los amarran a un pedido. Al subirlos aparecen al instante en la
-            cuenta de la modelo y en la de su agencia. Solo ven sus funciones (contenido, pedidos, feedback).
+            Un <strong className="text-paper">empleado con todas las funciones activadas</strong> — para probar todo lo
+            que un puesto puede hacer: subir entregas, atender pedidos, feedback, verificar identidad, dar de alta
+            creadoras, agencias, cobros y ver los números. En la vida real, a cada empleado le das solo los accesos
+            que necesita; esta cuenta demo trae todos para que veas cada pantalla.
           </p>
           <div className="mt-3 inline-flex w-fit flex-col gap-0.5 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
             <div>{TEAM.email}</div>
@@ -229,10 +231,10 @@ export default function OwnerPage() {
           </div>
           <button onClick={() => enter(TEAM, 'team')} disabled={!!busy}
             className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-            {busy === 'team' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Uploader <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+            {busy === 'team' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Trabajador <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
           </button>
           <p className="mt-3 text-[11px] leading-relaxed text-paper-dim">
-            <ClipboardList size={12} className="mr-1 inline" /> A tus uploaders reales los creas en <strong className="text-paper-mute">Admin → «Equipo interno» → Crear puesto</strong> (el preset «Uploader» ya viene armado; agregas o quitas accesos) o por link de invitación.
+            <ClipboardList size={12} className="mr-1 inline" /> A tus empleados reales los creas en <strong className="text-paper-mute">Admin → «Equipo interno» → Crear puesto</strong> (marcas solo los accesos que necesita) o por link de invitación.
           </p>
         </div>
 
