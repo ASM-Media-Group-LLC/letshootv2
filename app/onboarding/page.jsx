@@ -157,7 +157,7 @@ export default function OnboardingPage() {
                 rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} pending={st === 'id_pending'} />
             </>
           )}
-          {tab === 'pago' && <PayStep me={me} t={t} lang={lang} paid={paid} plan={p.plan} onDone={done} />}
+          {tab === 'pago' && <PayStep me={me} t={t} lang={lang} paid={paid} paymentStatus={p.payment_status} subEndsAt={p.subscription_ends_at} plan={p.plan} onDone={done} onRefresh={refresh} />}
           {tab === 'clon' && <CloneSetup userId={me.user.id} embedded />}
         </div>
       </main>
@@ -560,7 +560,7 @@ function UploadSlot({ kind, label, hint, tap, file, onFile }) {
 }
 
 /* ── Suscripción — identical cards to the public /pricing, just selectable ─ */
-function PayStep({ me, onDone, t, lang, paid, plan }) {
+function PayStep({ me, onDone, onRefresh, t, lang, paid, paymentStatus, subEndsAt, plan }) {
   const c = PRICING_COPY[lang] || PRICING_COPY.en;
   const [period, setPeriod] = useState('m');
   const [sel, setSel] = useState(plan || PACKS.find((p) => p.popular)?.key || PACKS[0].key);
@@ -570,14 +570,14 @@ function PayStep({ me, onDone, t, lang, paid, plan }) {
   const current = PACKS.find((p) => p.key === sel) || PACKS[0];
   const curPrice = current[period];
 
+  // ── Suscripción ACTIVA: gestión (cambiar de plan / cancelar con motivo) ──
   if (paid) {
-    return (
-      <Panel title={t.onboarding.pay.title}>
-        <div className="flex items-center gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] px-4 py-4 text-sm text-paper-mute">
-          <Check size={18} className="text-brand" /> {current.name} · ${current.m}{c.perMo} — {t.onboarding.hub.badge.paid}
-        </div>
-      </Panel>
-    );
+    return <ManageSubscription me={me} t={t} lang={lang} plan={plan} subEndsAt={subEndsAt} onRefresh={onRefresh} />;
+  }
+
+  // ── Suscripción CANCELADA: reactivar ──
+  if (paymentStatus === 'canceled') {
+    return <CanceledSubscription me={me} t={t} lang={lang} plan={plan} subEndsAt={subEndsAt} onRefresh={onRefresh} />;
   }
 
   async function pay() {
@@ -659,6 +659,253 @@ function PayStep({ me, onDone, t, lang, paid, plan }) {
         {saving ? t.onboarding.pay.submitting : t.onboarding.pay.payBtn(current.name, curPrice)}
       </button>
       <p className="mt-3 text-center text-[11px] text-paper-dim">{t.onboarding.pay.stub}</p>
+    </Panel>
+  );
+}
+
+// Copy bilingüe para la gestión de suscripción (contenido en el componente para
+// no inflar el i18n global; el portal es ES/EN).
+const MANAGE_COPY = {
+  es: {
+    title: 'Tu suscripción',
+    active: 'Suscripción activa',
+    renew: (d) => `Se renueva el ${d}`,
+    perMo: '/mes',
+    changePlan: 'Cambiar de plan',
+    changeHint: 'Sube o baja tu plan cuando lo necesites.',
+    upgrade: 'Subir a', downgrade: 'Bajar a',
+    changeNote: 'El ajuste de precio se refleja en tu próximo cobro.',
+    changed: 'Plan actualizado',
+    cancel: 'Cancelar suscripción',
+    cancelTitle: '¿Seguro que quieres cancelar?',
+    cancelDesc: 'Perderás la entrega diaria de contenido al terminar tu ciclo. Cuéntanos por qué te vas — nos ayuda a mejorar.',
+    reasonLabel: 'Motivo (elige uno)',
+    notePh: 'Cuéntanos más (opcional)',
+    confirmCancel: 'Sí, cancelar mi suscripción',
+    keep: 'Mejor no, conservar mi plan',
+    pickReason: 'Elige un motivo para continuar.',
+    canceledBadge: 'Suscripción cancelada',
+    canceledUntil: (d) => `Tu plan sigue activo hasta el ${d}. Después dejarás de recibir contenido.`,
+    canceledNow: 'Ya no recibirás contenido nuevo.',
+    reactivate: 'Reactivar mi suscripción',
+    reactivated: 'Suscripción reactivada',
+    reasons: {
+      price: 'El precio es muy alto',
+      usage: 'No lo estoy usando lo suficiente',
+      features: 'Le faltan funciones que necesito',
+      quality: 'La calidad no fue lo que esperaba',
+      competitor: 'Encontré otro servicio',
+      break: 'Solo tomo un descanso',
+      other: 'Otro motivo',
+    },
+  },
+  en: {
+    title: 'Your subscription',
+    active: 'Active subscription',
+    renew: (d) => `Renews on ${d}`,
+    perMo: '/mo',
+    changePlan: 'Change plan',
+    changeHint: 'Upgrade or downgrade whenever you need.',
+    upgrade: 'Upgrade to', downgrade: 'Downgrade to',
+    changeNote: 'The price change applies on your next billing.',
+    changed: 'Plan updated',
+    cancel: 'Cancel subscription',
+    cancelTitle: 'Are you sure you want to cancel?',
+    cancelDesc: "You'll lose your daily content when your cycle ends. Tell us why you're leaving — it helps us improve.",
+    reasonLabel: 'Reason (pick one)',
+    notePh: 'Tell us more (optional)',
+    confirmCancel: 'Yes, cancel my subscription',
+    keep: 'Never mind, keep my plan',
+    pickReason: 'Pick a reason to continue.',
+    canceledBadge: 'Subscription canceled',
+    canceledUntil: (d) => `Your plan stays active until ${d}. After that you'll stop receiving content.`,
+    canceledNow: "You won't receive new content.",
+    reactivate: 'Reactivate my subscription',
+    reactivated: 'Subscription reactivated',
+    reasons: {
+      price: 'The price is too high',
+      usage: "I'm not using it enough",
+      features: 'Missing features I need',
+      quality: "Quality wasn't what I expected",
+      competitor: 'Found another service',
+      break: 'Just taking a break',
+      other: 'Other reason',
+    },
+  },
+};
+const REASON_KEYS = ['price', 'usage', 'features', 'quality', 'competitor', 'break', 'other'];
+const planRank = (key) => PACKS.findIndex((p) => p.key === key); // 0 test, 1 core, 2 pro
+
+function ManageSubscription({ me, t, lang, plan, subEndsAt, onRefresh }) {
+  const m = MANAGE_COPY[lang] || MANAGE_COPY.en;
+  const currentPack = PACKS.find((p) => p.key === plan) || PACKS[0];
+  const [mode, setMode] = useState('view'); // view | change | cancel
+  const [sel, setSel] = useState(plan || currentPack.key);
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState('');
+  const [error, setError] = useState('');
+
+  const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+
+  async function changePlan() {
+    if (sel === plan) return;
+    setBusy(true); setError('');
+    const supabase = getSupabase();
+    try {
+      const { error: e1 } = await supabase.from('profiles').update({ plan: sel }).eq('id', me.user.id);
+      if (e1) throw e1;
+      await supabase.from('subscription_events').insert({ creator_id: me.user.id, kind: 'plan_change', from_plan: plan, to_plan: sel });
+      setFlash(m.changed); setMode('view');
+      onRefresh && onRefresh();
+    } catch (err) { console.error(err); setError(t.common.error); }
+    finally { setBusy(false); }
+  }
+
+  async function cancelSub() {
+    if (!reason) { setError(m.pickReason); return; }
+    setBusy(true); setError('');
+    const supabase = getSupabase();
+    try {
+      const { error: e1 } = await supabase.from('profiles').update({ payment_status: 'canceled' }).eq('id', me.user.id);
+      if (e1) throw e1;
+      await supabase.from('subscription_events').insert({ creator_id: me.user.id, kind: 'cancel', from_plan: plan, reason, note: note.trim() || null });
+      onRefresh && onRefresh();
+    } catch (err) { console.error(err); setError(t.common.error); setBusy(false); }
+  }
+
+  return (
+    <Panel title={m.title}>
+      {/* Estado actual */}
+      <div className="rounded-2xl border border-brand/30 bg-brand/[0.06] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand">
+              <Check size={12} /> {m.active}
+            </div>
+            <div className="mt-2 font-display text-2xl font-semibold text-paper">{currentPack.name} · ${currentPack.m}<span className="text-sm font-normal text-paper-dim">{m.perMo}</span></div>
+            {subEndsAt && <div className="mt-0.5 text-xs text-paper-dim">{m.renew(fmtDate(subEndsAt))}</div>}
+          </div>
+        </div>
+        {flash && <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-brand/30 bg-brand/10 px-3 py-1.5 text-xs font-medium text-brand"><Check size={13} /> {flash}</p>}
+      </div>
+
+      {mode === 'view' && (
+        <div className="mt-4 grid gap-3">
+          <button onClick={() => { setMode('change'); setSel(plan); setError(''); setFlash(''); }}
+            className="flex items-center justify-between rounded-xl border border-line bg-ink-2 px-4 py-3.5 text-left transition-colors hover:border-brand/40">
+            <span>
+              <span className="block text-sm font-semibold text-paper">{m.changePlan}</span>
+              <span className="block text-[11px] text-paper-dim">{m.changeHint}</span>
+            </span>
+            <ArrowRight size={16} className="text-paper-dim" />
+          </button>
+          <button onClick={() => { setMode('cancel'); setReason(''); setNote(''); setError(''); }}
+            className="flex items-center justify-between rounded-xl border border-line bg-ink-2 px-4 py-3.5 text-left transition-colors hover:border-rose-500/40">
+            <span className="text-sm font-semibold text-rose-300">{m.cancel}</span>
+            <ArrowRight size={16} className="text-paper-dim" />
+          </button>
+        </div>
+      )}
+
+      {mode === 'change' && (
+        <div className="mt-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {PACKS.map((pack) => {
+              const active = sel === pack.key;
+              const isCurrent = pack.key === plan;
+              return (
+                <button key={pack.key} type="button" onClick={() => setSel(pack.key)}
+                  className={`relative flex flex-col rounded-2xl border p-4 text-left transition-all ${active ? 'border-brand bg-brand/[0.08] ring-1 ring-brand' : 'border-line bg-ink-2 hover:border-paper/20'}`}>
+                  {isCurrent && <span className="absolute right-2 top-2 rounded-full bg-hair/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-paper-dim">{lang === 'es' ? 'Actual' : 'Current'}</span>}
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-paper-mute">{pack.name}</span>
+                  <div className="mt-1.5 flex items-baseline gap-1">
+                    <span className={`font-display text-2xl leading-none ${active ? 'text-brand' : 'text-paper'}`}>${pack.m}</span>
+                    <span className="font-mono text-[10px] text-paper-dim">{m.perMo}</span>
+                  </div>
+                  <span className="mt-2 text-[11px] text-paper-dim">{pack.photos} {lang === 'es' ? 'fotos' : 'photos'} · {pack.videos} {lang === 'es' ? 'video' : 'video'}{pack.videos > 1 ? 's' : ''}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-[11px] text-paper-dim">{m.changeNote}</p>
+          {error && <p className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={changePlan} disabled={busy || sel === plan}
+              className="inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent transition-transform hover:scale-[1.02] disabled:opacity-50">
+              {busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+              {sel === plan ? m.changePlan : `${planRank(sel) > planRank(plan) ? m.upgrade : m.downgrade} ${(PACKS.find((p) => p.key === sel) || {}).name}`}
+            </button>
+            <button onClick={() => { setMode('view'); setError(''); }} className="rounded-full border border-line px-4 py-2.5 text-sm text-paper-mute hover:text-paper">{t.common.cancel || (lang === 'es' ? 'Volver' : 'Back')}</button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'cancel' && (
+        <div className="mt-4 rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-5">
+          <h3 className="font-display text-lg font-semibold text-paper">{m.cancelTitle}</h3>
+          <p className="mt-1 text-sm leading-relaxed text-paper-mute">{m.cancelDesc}</p>
+          <div className="mt-4">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{m.reasonLabel}</p>
+            <div className="grid gap-2">
+              {REASON_KEYS.map((k) => (
+                <button key={k} type="button" onClick={() => setReason(k)}
+                  className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors ${reason === k ? 'border-brand/60 bg-brand/10 text-paper' : 'border-line bg-ink-2 text-paper-mute hover:border-paper/20'}`}>
+                  <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${reason === k ? 'border-brand bg-brand' : 'border-paper-dim'}`}>{reason === k && <Check size={10} className="text-on-accent" />}</span>
+                  {m.reasons[k]}
+                </button>
+              ))}
+            </div>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={m.notePh} rows={2}
+              className="mt-3 w-full resize-none rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          </div>
+          {error && <p className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
+          <div className="mt-4 flex flex-col gap-2">
+            <button onClick={cancelSub} disabled={busy}
+              className="inline-flex items-center justify-center gap-1.5 rounded-full bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-rose-500 disabled:opacity-50">
+              {busy ? <Loader2 size={15} className="animate-spin" /> : <AlertTriangle size={15} />} {m.confirmCancel}
+            </button>
+            <button onClick={() => { setMode('view'); setError(''); }} className="rounded-full border border-brand/40 px-5 py-3 text-sm font-semibold text-brand transition-colors hover:bg-brand/10">{m.keep}</button>
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function CanceledSubscription({ me, t, lang, plan, subEndsAt, onRefresh }) {
+  const m = MANAGE_COPY[lang] || MANAGE_COPY.en;
+  const currentPack = PACKS.find((p) => p.key === plan) || PACKS[0];
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+
+  async function reactivate() {
+    setBusy(true); setError('');
+    const supabase = getSupabase();
+    try {
+      const { error: e1 } = await supabase.from('profiles').update({ payment_status: 'paid' }).eq('id', me.user.id);
+      if (e1) throw e1;
+      await supabase.from('subscription_events').insert({ creator_id: me.user.id, kind: 'resume', to_plan: plan });
+      onRefresh && onRefresh();
+    } catch (err) { console.error(err); setError(t.common.error); setBusy(false); }
+  }
+
+  return (
+    <Panel title={m.title}>
+      <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-5">
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-rose-300">
+          <AlertTriangle size={12} /> {m.canceledBadge}
+        </div>
+        <div className="mt-2 font-display text-xl font-semibold text-paper">{currentPack.name} · ${currentPack.m}{m.perMo}</div>
+        <p className="mt-1 text-sm text-paper-mute">{subEndsAt ? m.canceledUntil(fmtDate(subEndsAt)) : m.canceledNow}</p>
+        {error && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
+        <button onClick={reactivate} disabled={busy}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent transition-transform hover:scale-[1.02] disabled:opacity-60">
+          {busy ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />} {m.reactivate}
+        </button>
+      </div>
     </Panel>
   );
 }
