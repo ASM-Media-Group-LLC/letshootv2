@@ -45,7 +45,16 @@ export default function OwnerPage() {
     await signOut().catch(() => {});
     const res = await signIn(acct.email, acct.password);
     if (res.error || !res.profile) {
-      setError(res.error || 'No se pudo entrar.'); setBusy(''); return;
+      // The demo accounts were wiped in the fake-data cleanup — say exactly how to
+      // restore each one instead of a mute "Invalid login credentials".
+      const invalid = /invalid/i.test(res.error || '');
+      setError(invalid
+        ? `La cuenta demo ${acct.email} no existe (se borró en la limpieza de datos de prueba). ` +
+          (tag === 'agency'
+            ? 'Créala en Admin → Agencias → «Crear agencia» con ese correo y esa contraseña, y este botón vuelve a funcionar.'
+            : 'Créala en Admin → Registros → «Add creator» con ese correo y esa contraseña, y este botón vuelve a funcionar.')
+        : (res.error || 'No se pudo entrar.'));
+      setBusy(''); return;
     }
     router.push(homeForProfile(res.profile));
   }
