@@ -103,7 +103,7 @@ export default function StartPage() {
   return (
     <main className="relative bg-ink text-paper">
       {/* ── HERO con el video cinematográfico de la home ─────────────────── */}
-      <div className="relative min-h-[100svh] w-full overflow-hidden">
+      <div className="relative min-h-[82svh] w-full overflow-hidden sm:min-h-[100svh]">
         <video className="absolute inset-0 h-full w-full object-cover" autoPlay muted loop playsInline poster="/hero-miami-poster.jpg" aria-hidden>
           <source src="/hero-miami.mp4" type="video/mp4" />
         </video>
@@ -113,7 +113,7 @@ export default function StartPage() {
         <div className="pointer-events-none absolute inset-0" aria-hidden
           style={{ background: 'radial-gradient(ellipse 90% 80% at 50% 40%, transparent 48%, rgb(var(--bg) / 0.6) 100%)' }} />
 
-        <div className="relative z-10 flex min-h-[100svh] flex-col">
+        <div className="relative z-10 flex min-h-[82svh] flex-col sm:min-h-[100svh]">
           {/* Header */}
           <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-5">
             <Logo size="sm" />
@@ -126,9 +126,9 @@ export default function StartPage() {
             </div>
           </header>
 
-          {/* Hero content — centrado sobre el video */}
-          <section className="flex flex-1 items-center">
-            <div className="mx-auto w-full max-w-3xl px-5 pb-16 text-center sm:pb-20">
+          {/* Hero content — abajo en móvil (CTA cerca del borde), centrado en desktop */}
+          <section className="flex flex-1 items-end sm:items-center">
+            <div className="mx-auto w-full max-w-3xl px-5 pb-8 text-center sm:pb-20">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-paper backdrop-blur sm:text-[11px]">
                 <Sparkles size={12} className="text-brand" /> {c.eyebrow}
               </span>
@@ -148,7 +148,7 @@ export default function StartPage() {
       </div>
 
       {/* ── Real vs IA — pares uno al lado del otro ──────────────────────── */}
-      <section className="relative z-10 mx-auto max-w-5xl px-5 pt-20 sm:pt-28">
+      <section className="relative z-10 mx-auto max-w-5xl px-5 pt-12 sm:pt-28">
         <div className="text-center">
           <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">{c.galleryTitle}</h2>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-paper-mute sm:text-base">{c.gallerySub}</p>
