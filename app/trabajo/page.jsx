@@ -63,6 +63,22 @@ const nf = (n) => Number(n || 0).toLocaleString('en-US');
 const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
 
+// Estima el ingreso RECURRENTE mensual a partir de las suscripciones activas y su
+// plan (Test/Core/Pro tienen precio conocido). Excluye cortesías (gratis). Es un
+// ESTIMADO — el cobro real se lleva a mano en el libro (manual_sales).
+const PLAN_MONTHLY = Object.fromEntries(PACKS.map((p) => [p.key, p.m]));
+const PLAN_LABEL = Object.fromEntries(PACKS.map((p) => [p.key, p.name.replace(' Pack', '')]));
+function subEstimate(billRows, todayISO) {
+  const isPaid = (c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status);
+  const isCourtesy = (c) => !!c.comp_until && c.comp_until >= todayISO;
+  const paying = (billRows || []).filter((c) => isPaid(c) && !isCourtesy(c));
+  const courtesy = (billRows || []).filter((c) => isPaid(c) && isCourtesy(c));
+  const monthly = paying.reduce((a, c) => a + (PLAN_MONTHLY[c.plan] ?? PLAN_MONTHLY.core ?? 0), 0);
+  const byPlan = {};
+  paying.forEach((c) => { const k = c.plan || 'core'; byPlan[k] = (byPlan[k] || 0) + 1; });
+  return { monthly, paying: paying.length, courtesy: courtesy.length, byPlan };
+}
+
 export default function TrabajoPage() {
   const router = useRouter();
   const [me, setMe] = useState(undefined);
@@ -214,6 +230,7 @@ export default function TrabajoPage() {
 
   // Suscripciones (acceso 'billing'): activas y las que vencen en ≤7 días.
   const todayISO = new Date().toISOString().slice(0, 10);
+  const subEst = subEstimate(billRows, todayISO);
   const bill = {
     active: billRows.filter((c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status)).length,
     soon: billRows.filter((c) => {
@@ -221,6 +238,7 @@ export default function TrabajoPage() {
       const d = Math.floor((new Date(c.subscription_ends_at + 'T00:00:00') - new Date(todayISO + 'T00:00:00')) / 864e5);
       return d >= 0 && d <= 7;
     }).length,
+    est: subEst,
   };
 
   // ── Mi producción: piezas que subió ESTE trabajador ──
@@ -276,7 +294,7 @@ export default function TrabajoPage() {
     // «Cuentas» es la ENTRADA al dashboard de dinero — la cifra del mes en la
     // tarjeta invita a entrar; el detalle (promedio, gráfico, últimas ventas) vive
     // dentro, no desplegado en el panel.
-    ...(can('metrics') ? [{ id: 'cuentas', icon: DollarSign, label: 'Cuentas', value: moneyCents(ms?.monthC || 0), sub: `este mes · ${nf(ms?.count || 0)} ventas en el libro` }] : []),
+    ...(can('metrics') ? [{ id: 'cuentas', icon: DollarSign, label: 'Cuentas', value: money(subEst.monthly), sub: `estimado/mes · ${nf(subEst.paying)} suscripciones` }] : []),
     ...(can('metrics') ? [{ id: 'produccion', icon: ImageIcon, label: 'Producción', value: nf(books?.pieces || 0), sub: `piezas creadas en total` }] : []),
     // Con acceso 'agencies' la tarjeta es de GESTIÓN (crear + vincular modelos).
     // Sin él, pero con 'metrics', queda la vista de solo lectura.
@@ -446,7 +464,7 @@ export default function TrabajoPage() {
                 </>
               );
             })()}
-            {tab === 'cuentas' && can('metrics') && <CuentasPanel rows={salesRows} bill={bill} onOpenSales={() => router.push('/sales')} onOpenCobros={() => can('billing') && setTab('cobros')} canBilling={can('billing')} />}
+            {tab === 'cuentas' && can('metrics') && <CuentasPanel rows={salesRows} bill={bill} billRows={billRows} onOpenSales={() => router.push('/sales')} onOpenCobros={() => can('billing') && setTab('cobros')} canBilling={can('billing')} />}
             {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} />}
             {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} />}
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
@@ -1622,7 +1640,7 @@ function FeedbackTab({ creators, flash }) {
    #ventas y suscripciones activas + un mini-bar de los últimos 6 meses y las
    últimas 5 ventas. Todo lee de manual_sales (RLS ya guarda por 'metrics').
    Se le puede dar a un empleado con «Ver números de la empresa». */
-function CuentasPanel({ rows, bill, onOpenSales, onOpenCobros, canBilling }) {
+function CuentasPanel({ rows, bill, billRows, onOpenSales, onOpenCobros, canBilling }) {
   const nowKey = new Date().toISOString().slice(0, 7);
   const prevDate = new Date(); prevDate.setDate(1); prevDate.setMonth(prevDate.getMonth() - 1);
   const prevKey = prevDate.toISOString().slice(0, 7);
@@ -1653,6 +1671,11 @@ function CuentasPanel({ rows, bill, onOpenSales, onOpenCobros, canBilling }) {
 
   // Próximos cobros (rebills en los próximos 14 días).
   const todayISO = new Date().toISOString().slice(0, 10);
+  // Ingreso RECURRENTE estimado a partir de las suscripciones activas y su plan.
+  const est = bill?.est || subEstimate(billRows, todayISO);
+  const planLine = Object.entries(est.byPlan || {})
+    .sort((a, b) => (PLAN_MONTHLY[b[0]] || 0) - (PLAN_MONTHLY[a[0]] || 0))
+    .map(([k, n]) => `${n} ${PLAN_LABEL[k] || k}`).join(' · ');
   const in14ISO = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
   const upcomingRebills = (rows || []).filter((r) => r.rebill_on && r.rebill_on >= todayISO && r.rebill_on <= in14ISO);
   const upcomingTotal = upcomingRebills.reduce((a, r) => a + Number(r.amount || 0), 0);
@@ -1665,7 +1688,7 @@ function CuentasPanel({ rows, bill, onOpenSales, onOpenCobros, canBilling }) {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Cuentas del mes</div>
-          <p className="text-xs text-paper-dim">Lo que entró, cuánto en promedio y qué viene — todo lo que el equipo necesita saber sin abrir el libro.</p>
+          <p className="text-xs text-paper-dim">Ingreso estimado de las suscripciones activas + lo cobrado a mano. Un vistazo sin abrir el libro.</p>
         </div>
         <div className="flex items-center gap-2">
           {canBilling && (
@@ -1682,10 +1705,29 @@ function CuentasPanel({ rows, bill, onOpenSales, onOpenCobros, canBilling }) {
       <div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
         {/* Columna izquierda: números grandes + gráfico */}
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <MoneyStat label="Este mes" value={money(thisMonth)} delta={deltaPct} sub={`vs. ${money(lastMonth)} el mes pasado`} big />
-            <MoneyStat label="Promedio por venta" value={money(avgTicket)} sub={avgPrev > 0 ? `vs. ${money(avgPrev)}` : 'primera(s) venta(s)'} />
-            <MoneyStat label="Ventas del mes" value={nf(nSales)} sub={nSales === 0 ? 'aún nada este mes' : `${nSales} entrada${nSales === 1 ? '' : 's'} en el libro`} />
+          {/* El número que importa: ingreso RECURRENTE estimado de las suscripciones. */}
+          <div className="rounded-xl border border-brand/40 bg-brand/[0.07] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Ingreso estimado / mes</div>
+                <div className="mt-1 font-display text-3xl font-semibold leading-none text-paper">{money(est.monthly)}</div>
+                <div className="mt-1.5 text-[11px] text-paper-dim">
+                  de {nf(est.paying)} suscripción{est.paying === 1 ? '' : 'es'} que paga{est.paying === 1 ? '' : 'n'}
+                  {est.courtesy > 0 ? ` · ${est.courtesy} en cortesía (no cuenta${est.courtesy === 1 ? '' : 'n'})` : ''}
+                </div>
+              </div>
+              {planLine && (
+                <div className="shrink-0 rounded-lg border border-brand/25 bg-ink-2 px-3 py-2 text-right">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-paper-dim">Por plan</div>
+                  <div className="mt-0.5 text-xs font-medium text-paper">{planLine}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <MoneyStat label="Cobrado este mes" value={money(thisMonth)} delta={deltaPct} sub={thisMonth > 0 || lastMonth > 0 ? `vs. ${money(lastMonth)} anterior` : 'a mano, en el libro'} />
+            <MoneyStat label="Promedio por venta" value={money(avgTicket)} sub={nSales > 0 ? `${nf(nSales)} venta${nSales === 1 ? '' : 's'} este mes` : 'aún sin ventas'} />
             <MoneyStat label="Suscripciones activas" value={nf(bill?.active || 0)} sub={bill?.soon ? `${bill.soon} vencen esta semana` : 'todas al día'} alert={bill?.soon > 0} />
           </div>
 
