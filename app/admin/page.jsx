@@ -107,6 +107,11 @@ export default function AdminPage() {
   const [newCreator, setNewCreator] = useState(null); // null | {full_name, email, password} — modal de alta manual
   const [ncBusy, setNcBusy] = useState(false);
   const [ncErr, setNcErr] = useState('');
+  // Cuando el correo ya existe: guardamos la persona (si está cargada en `profiles`)
+  // para ofrecer acciones directas (reenviar correo de acceso, abrir su perfil)
+  // en vez de forzar a inventar otro correo.
+  const [dupUser, setDupUser] = useState(null);
+  const [dupBusy, setDupBusy] = useState(false);
   const [newAgency, setNewAgency] = useState(null);   // null | {full_name, email, password} — alta de agencia
   const [naBusy, setNaBusy] = useState(false);
   const [naErr, setNaErr] = useState('');
@@ -252,7 +257,18 @@ export default function AdminPage() {
     });
     let out = data;
     if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
-    if (!out?.ok) { setNcBusy(false); setNcErr(out?.error || 'No se pudo dar de alta la creadora.'); return; }
+    if (!out?.ok) {
+      setNcBusy(false);
+      // Si el correo ya existe, en vez de forzar a inventar otro correo, buscamos
+      // esa persona en la lista y ofrecemos acciones directas (reenviar acceso /
+      // abrir su perfil). Si no está cargada, cae al texto normal del error.
+      const dup = /Ya existe una cuenta/i.test(out?.error || '');
+      const emailLower = (f.email || '').trim().toLowerCase();
+      const existing = dup ? profiles.find((p) => (p.email || '').toLowerCase() === emailLower) : null;
+      if (existing) { setDupUser(existing); setNcErr(''); }
+      else { setNcErr(out?.error || 'No se pudo dar de alta la creadora.'); }
+      return;
+    }
 
     // 2) Llenar el resto del perfil con lo que ya tenemos (admin puede update).
     const patch = {};
@@ -1301,8 +1317,42 @@ export default function AdminPage() {
 
             {ncErr && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{ncErr}</p>}
 
+            {dupUser && (
+              <div className="mt-4 rounded-xl border border-amber-400/40 bg-amber-400/[0.06] p-3.5">
+                <p className="text-[13px] leading-snug text-paper">
+                  Ya existe una cuenta con <span className="font-semibold">{dupUser.email}</span>{dupUser.full_name ? <> — <span className="text-paper">{dupUser.full_name}</span></> : null}. En vez de inventar otro correo, actúa sobre esa cuenta:
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" disabled={dupBusy}
+                    onClick={async () => {
+                      setDupBusy(true);
+                      const { data, error: e2 } = await getSupabase().functions.invoke('reset-password', { body: { user_id: dupUser.id, send_email: true } });
+                      let o = data; if (e2 && !o) { try { o = await e2.context.json(); } catch { o = { error: e2.message }; } }
+                      setDupBusy(false);
+                      if (o?.ok) { flash(`Correo de acceso reenviado a ${dupUser.email}`); setDupUser(null); setNewCreator(null); }
+                      else { setNcErr(o?.error || 'No se pudo reenviar el correo.'); }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-60">
+                    {dupBusy ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />} Reenviar correo de acceso
+                  </button>
+                  {dupUser.role === 'creator' ? (
+                    <button type="button" onClick={() => { setSelCreator(dupUser.id); setNewCreator(null); setDupUser(null); }}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-paper hover:border-brand/50">
+                      <IdCard size={13} /> Abrir su perfil
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => { setSelStaff(dupUser.id); setNewCreator(null); setDupUser(null); }}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-paper hover:border-brand/50">
+                      <IdCard size={13} /> Abrir su perfil
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setDupUser(null)} className="rounded-full border border-line px-3.5 py-1.5 text-xs text-paper-mute hover:text-paper">Ignorar</button>
+                </div>
+              </div>
+            )}
+
             <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setNewCreator(null)} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
+              <button type="button" onClick={() => { setNewCreator(null); setDupUser(null); setNcErr(''); }} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
               <button type="submit" disabled={ncBusy}
                 className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
                 {ncBusy ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={15} />} Add creator
@@ -1586,10 +1636,11 @@ function EmailStudio({ defaultTo = '' }) {
 }
 
 // Compact hard-delete control (fully removes the account so its email frees up).
-// Used where a full drawer danger-zone would be overkill (e.g. agency cards).
+// Confirmación de DOS toques (sin escribir «ELIMINAR» — era demasiada fricción y
+// se dejaba de borrar por rabia). El primer click abre el panel rojo; el segundo
+// llama a delete-user. Se muestra el error real (FK, permisos) si falla.
 function DeleteAccountButton({ userId, label = 'cuenta', onDeleted }) {
   const [open, setOpen] = useState(false);
-  const [txt, setTxt] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   async function go() {
@@ -1602,7 +1653,7 @@ function DeleteAccountButton({ userId, label = 'cuenta', onDeleted }) {
   }
   if (!open) {
     return (
-      <button onClick={() => { setOpen(true); setTxt(''); setErr(''); }}
+      <button onClick={() => { setOpen(true); setErr(''); }}
         className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 px-3.5 py-2 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/10">
         <Trash2 size={13} /> Eliminar {label}
       </button>
@@ -1610,15 +1661,13 @@ function DeleteAccountButton({ userId, label = 'cuenta', onDeleted }) {
   }
   return (
     <div className="w-full rounded-xl border border-rose-500/30 bg-rose-500/[0.05] p-3">
-      <p className="mb-2 text-[11px] leading-relaxed text-paper-dim">Borra la {label} para siempre y libera su correo. Escribe <span className="font-semibold text-rose-300">ELIMINAR</span> para confirmar. No se puede deshacer.</p>
-      <input value={txt} onChange={(e) => setTxt(e.target.value)} placeholder="ELIMINAR" autoFocus
-        className="w-full rounded-lg border border-rose-500/30 bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-rose-500/60" />
-      {err && <p className="mt-1.5 text-[11px] text-rose-300">{err}</p>}
-      <div className="mt-2 flex justify-end gap-2">
-        <button onClick={() => { setOpen(false); setTxt(''); setErr(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
-        <button onClick={go} disabled={busy || txt.trim().toUpperCase() !== 'ELIMINAR'}
+      <p className="mb-2 text-[11px] leading-relaxed text-paper-dim">Borra la {label} para siempre y libera su correo. No se puede deshacer.</p>
+      {err && <p className="mb-2 text-[11px] text-rose-300">{err}</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={() => { setOpen(false); setErr(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+        <button onClick={go} disabled={busy}
           className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">
-          {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Eliminar para siempre
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Sí, eliminar para siempre
         </button>
       </div>
     </div>
@@ -1741,7 +1790,6 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
   const [tab, setTab] = useState('datos');             // datos | identidad | suscripcion | clon
   // Danger zone — hard delete (fully removes the account so the email frees up).
   const [delOpen, setDelOpen] = useState(false);
-  const [delText, setDelText] = useState('');
   const [delBusy, setDelBusy] = useState(false);
   const [delErr, setDelErr] = useState('');
   async function doDelete() {
@@ -2139,21 +2187,19 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
               Borra esta cuenta para siempre con todo lo suyo (contenido, carpetas, identidad, pedidos, ventas). Libera su correo para volver a usarlo. No se puede deshacer.
             </p>
             {!delOpen ? (
-              <button onClick={() => { setDelOpen(true); setDelText(''); setDelErr(''); }}
+              <button onClick={() => { setDelOpen(true); setDelErr(''); }}
                 className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 px-3.5 py-2 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/10">
                 <Trash2 size={13} /> Eliminar esta creadora
               </button>
             ) : (
               <div className="mt-3 space-y-2.5">
-                <label className="block text-[11px] text-paper-dim">Para confirmar, escribe <span className="font-semibold text-rose-300">ELIMINAR</span>:</label>
-                <input value={delText} onChange={(e) => setDelText(e.target.value)} placeholder="ELIMINAR" autoFocus
-                  className="w-full rounded-lg border border-rose-500/30 bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-rose-500/60" />
+                <p className="text-[11px] leading-relaxed text-paper-dim">Se borran <span className="text-paper">para siempre</span> su cuenta, contenido, identidad y notificaciones. Su correo queda libre para reusarse. No se puede deshacer.</p>
                 {delErr && <p className="text-[11px] text-rose-300">{delErr}</p>}
                 <div className="flex justify-end gap-2">
-                  <button onClick={() => { setDelOpen(false); setDelText(''); setDelErr(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
-                  <button onClick={doDelete} disabled={delBusy || delText.trim().toUpperCase() !== 'ELIMINAR'}
+                  <button onClick={() => { setDelOpen(false); setDelErr(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+                  <button onClick={doDelete} disabled={delBusy}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">
-                    {delBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Eliminar para siempre
+                    {delBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Sí, eliminar para siempre
                   </button>
                 </div>
               </div>
@@ -2175,7 +2221,6 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
   const [eErr, setEErr] = useState('');
   // Danger zone — hard delete. Requires typing the confirm word so it can't be a misclick.
   const [delOpen, setDelOpen] = useState(false);
-  const [delText, setDelText] = useState('');
   const [delBusy, setDelBusy] = useState(false);
   const [delErr, setDelErr] = useState('');
   async function doDelete() {
@@ -2346,21 +2391,19 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
                 Borra esta cuenta para siempre, junto con todo lo que le pertenece (contenido, carpetas, identidad, pedidos, ventas y notificaciones). No se puede deshacer.
               </p>
               {!delOpen ? (
-                <button onClick={() => { setDelOpen(true); setDelText(''); setDelErr(''); }}
+                <button onClick={() => { setDelOpen(true); setDelErr(''); }}
                   className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 px-3.5 py-2 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/10">
                   <Trash2 size={13} /> Eliminar esta cuenta
                 </button>
               ) : (
                 <div className="mt-3 space-y-2.5">
-                  <label className="block text-[11px] text-paper-dim">Para confirmar, escribe <span className="font-semibold text-rose-300">ELIMINAR</span>:</label>
-                  <input value={delText} onChange={(e) => setDelText(e.target.value)} placeholder="ELIMINAR" autoFocus
-                    className="w-full rounded-lg border border-rose-500/30 bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-rose-500/60" />
+                  <p className="text-[11px] leading-relaxed text-paper-dim">Se borra <span className="text-paper">para siempre</span>. Su correo queda libre para reusarse. No se puede deshacer.</p>
                   {delErr && <p className="text-[11px] text-rose-300">{delErr}</p>}
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => { setDelOpen(false); setDelText(''); setDelErr(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
-                    <button onClick={doDelete} disabled={delBusy || delText.trim().toUpperCase() !== 'ELIMINAR'}
+                    <button onClick={() => { setDelOpen(false); setDelErr(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+                    <button onClick={doDelete} disabled={delBusy}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">
-                      {delBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Eliminar para siempre
+                      {delBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Sí, eliminar para siempre
                     </button>
                   </div>
                 </div>
