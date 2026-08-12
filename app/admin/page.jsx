@@ -1588,21 +1588,74 @@ function EmailStudio({ defaultTo = '' }) {
 // (nombre · # modelos · $ ventas). Se abre para gestionar sus modelos.
 function AgenciasTab({ agencies, creators, agencyLinks, agencySales, profiles, onAssign, onDeleted }) {
   const [q, setQ] = useState('');
-  const list = agencies.filter((a) => !q.trim() || ((a.full_name || '') + (a.email || '')).toLowerCase().includes(q.toLowerCase()));
+  const [filter, setFilter] = useState('all');   // all | with | without | sales
+  const [sort, setSort] = useState('name');       // name | models | sales
+
+  // Métricas por agencia para filtrar/ordenar.
+  const meta = (a) => {
+    const models = agencyLinks.filter((l) => l.agency_id === a.id).length;
+    const cents = agencySales.filter((s) => s.agency_id === a.id).reduce((s, r) => s + (r.amount_cents || 0), 0);
+    return { models, cents };
+  };
+  const selCount = { all: agencies.length };
+
+  let list = agencies.filter((a) => !q.trim() || ((a.full_name || '') + (a.email || '')).toLowerCase().includes(q.toLowerCase()));
+  list = list.filter((a) => {
+    const m = meta(a);
+    if (filter === 'with') return m.models > 0;
+    if (filter === 'without') return m.models === 0;
+    if (filter === 'sales') return m.cents > 0;
+    return true;
+  });
+  list = [...list].sort((a, b) => {
+    const ma = meta(a), mb = meta(b);
+    if (sort === 'models') return mb.models - ma.models;
+    if (sort === 'sales') return mb.cents - ma.cents;
+    return (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '');
+  });
+
+  const selCls = 'appearance-none rounded-full border border-line bg-card py-1.5 pl-3 pr-8 text-xs font-semibold text-paper-mute outline-none transition-colors focus:border-brand/60';
+
   return (
     <div className="mt-6 space-y-3">
       <p className="max-w-3xl text-sm text-paper-mute">
         Cada agencia entra a <em>sus</em> modelos, hace pedidos y registra ventas. Abre una para gestionar qué modelos maneja. Para crear una agencia usa <span className="text-paper-mute">«Crear agencia»</span> en <span className="text-paper-mute">Registros</span>.
       </p>
-      {agencies.length > 4 && (
+
+      {/* Buscador + filtros + orden — siempre visibles */}
+      <div className="relative">
+        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar agencia por nombre o correo…"
+          className="w-full rounded-xl border border-line bg-ink-2 py-2.5 pl-9 pr-3 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-paper-dim"><SlidersHorizontal size={13} /> Filtrar:</span>
         <div className="relative">
-          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar agencia…"
-            className="w-full rounded-xl border border-line bg-ink-2 py-2.5 pl-9 pr-3 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} className={selCls}>
+            <option value="all">Todas</option>
+            <option value="with">Con modelos</option>
+            <option value="without">Sin modelos</option>
+            <option value="sales">Con ventas</option>
+          </select>
+          <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
         </div>
-      )}
+        <span className="ml-1 inline-flex items-center gap-1.5 text-[11px] font-medium text-paper-dim"><ArrowUpDown size={13} /> Ordenar:</span>
+        <div className="relative">
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className={selCls}>
+            <option value="name">Nombre (A–Z)</option>
+            <option value="models">Más modelos</option>
+            <option value="sales">Más ventas</option>
+          </select>
+          <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+        </div>
+        <span className="ml-auto text-[11px] text-paper-dim">{list.length} de {selCount.all}</span>
+      </div>
+
       {agencies.length === 0 && (
         <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay agencias todavía. Créala desde «Registros → Crear agencia».</p>
+      )}
+      {agencies.length > 0 && list.length === 0 && (
+        <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Ninguna agencia coincide con el filtro.</p>
       )}
       {list.map((ag) => (
         <AgencyAdminCard key={ag.id} ag={ag} creators={creators} agencyLinks={agencyLinks} agencySales={agencySales} profiles={profiles} onAssign={onAssign} onDeleted={onDeleted} />
