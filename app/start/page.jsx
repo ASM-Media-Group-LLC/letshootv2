@@ -32,7 +32,8 @@ const COPY = {
     gallerySub: 'Todas son la misma modelo. Unas son fotos suyas, otras las hizo su clon. ¿Notas la diferencia? Tus fans tampoco.',
     real: 'Real', ai: 'IA',
     cmpTitle: 'Haz cuentas',
-    cmpSub: 'Lo que cuesta una sola sesión de fotos… vs. tu clon trabajando para ti todos los días.',
+    cmpSub: 'lo que cuesta una sola sesión de fotos vs. tu clon trabajando para ti todos los días.',
+    vsLeft: 'El shoot tradicional', vsRight: 'LetShoot',
     oldTitle: 'Un shoot tradicional',
     oldCosts: [
       ['Maquillaje y peinado', '$80–$200'],
@@ -45,7 +46,7 @@ const COPY = {
     newTitle: 'Con LetShoot',
     newWins: ['Tu clon: gratis — solo subes fotos', 'Sin cámara, sin sesión, sin fotógrafo', 'Cientos de fotos y videos', 'Entrega cada día, al instante', 'Siempre a tu gusto — pides cambios', 'Tú eres la dueña de tu contenido'],
     newTotal: 'Desde $249/mes', newTotalNote: 'menos que una sola sesión — todo el mes',
-    howTitle: 'Así de simple',
+    howEyebrow: 'Cómo funciona', howTitle: 'Así de simple',
     steps: [
       { icon: Upload, t: 'Subes tus fotos', d: 'Unas cuantas fotos tuyas. Nosotros entrenamos tu clon con ellas.' },
       { icon: MessageSquare, t: 'Dices qué quieres', d: 'Escenas, ropa, estilo, poses… tú das las instrucciones.' },
@@ -68,7 +69,8 @@ const COPY = {
     gallerySub: "They're all the same model. Some are her own photos, some were made by her clone. Can you tell? Your fans can't either.",
     real: 'Real', ai: 'AI',
     cmpTitle: 'Do the math',
-    cmpSub: 'What one photoshoot costs… vs. your clone working for you every single day.',
+    cmpSub: 'what one photoshoot costs vs. your clone working for you every single day.',
+    vsLeft: 'The traditional shoot', vsRight: 'LetShoot',
     oldTitle: 'A traditional shoot',
     oldCosts: [
       ['Hair & makeup', '$80–$200'],
@@ -81,7 +83,7 @@ const COPY = {
     newTitle: 'With LetShoot',
     newWins: ['Your clone: free — you just upload photos', 'No camera, no shoot, no photographer', 'Hundreds of photos and videos', 'Delivered every day, instantly', 'Always your way — request changes', 'You own your content'],
     newTotal: 'From $249/mo', newTotalNote: 'less than one shoot — for the whole month',
-    howTitle: 'This simple',
+    howEyebrow: 'How it works', howTitle: 'This simple',
     steps: [
       { icon: Upload, t: 'Upload your photos', d: 'A handful of photos of you. We train your clone on them.' },
       { icon: MessageSquare, t: 'Say what you want', d: 'Scenes, outfits, style, poses… you give the instructions.' },
@@ -161,16 +163,25 @@ export default function StartPage() {
         </div>
       </section>
 
-      {/* ── Versus: shoot tradicional vs LetShoot ────────────────────────── */}
+      {/* ── VERSUS: shoot tradicional vs LetShoot (branded) ──────────────── */}
       <section className="relative z-10 mx-auto max-w-4xl px-5 pt-20 sm:pt-28">
+        {/* Header branded con VS */}
         <div className="text-center">
-          <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">{c.cmpTitle}</h2>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-paper-mute sm:text-base">{c.cmpSub}</p>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+            <span className="font-display text-2xl font-semibold tracking-tight text-paper-mute sm:text-3xl">{c.vsLeft}</span>
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-brand/30 bg-brand/10 font-display text-sm font-black italic tracking-wider text-brand shadow-glow-sm sm:h-12 sm:w-12">VS</span>
+            <span className="font-display text-2xl font-semibold tracking-tight text-brand sm:text-3xl">{c.vsRight}</span>
+          </div>
+          <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-paper-mute sm:text-base">
+            <span className="font-semibold text-paper">{c.cmpTitle}:</span> {c.cmpSub}
+          </p>
         </div>
-        <div className="mt-8 grid gap-4 sm:mt-10 sm:grid-cols-2">
+
+        {/* Cards con badge VS central */}
+        <div className="relative mt-8 grid gap-4 sm:mt-12 sm:grid-cols-2">
           {/* Tradicional */}
           <div className="rounded-3xl border border-rose-500/20 bg-rose-500/[0.03] p-5 sm:p-6">
-            <h3 className="font-display text-lg font-semibold text-paper">{c.oldTitle}</h3>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-rose-300/80">{c.oldTitle}</h3>
             <ul className="mt-4 space-y-2.5">
               {c.oldCosts.map(([label, cost], i) => (
                 <li key={i} className="flex items-center justify-between gap-3 text-sm">
@@ -183,14 +194,14 @@ export default function StartPage() {
               ))}
             </ul>
             <div className="mt-5 border-t border-rose-500/15 pt-4">
-              <div className="font-display text-2xl font-semibold text-rose-200">{c.oldTotal}</div>
+              <div className="font-display text-2xl font-semibold text-rose-200 line-through decoration-rose-400/40 decoration-1">{c.oldTotal}</div>
               <div className="text-[11px] uppercase tracking-wide text-paper-dim">{c.oldTotalNote}</div>
             </div>
           </div>
 
           {/* LetShoot */}
           <div className="relative overflow-hidden rounded-3xl border border-brand/40 bg-gradient-to-br from-brand/[0.10] to-transparent p-5 shadow-glow-sm sm:p-6">
-            <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><Sparkles size={16} className="text-brand" /> {c.newTitle}</h3>
+            <h3 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-brand"><Sparkles size={13} /> {c.newTitle}</h3>
             <ul className="mt-4 space-y-2.5">
               {c.newWins.map((w, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-paper"><Check size={14} className="mt-0.5 shrink-0 text-brand" /> {w}</li>
@@ -201,21 +212,29 @@ export default function StartPage() {
               <div className="text-[11px] uppercase tracking-wide text-paper-dim">{c.newTotalNote}</div>
             </div>
           </div>
+
+          {/* Badge VS central — entre las columnas (desktop) / entre las tarjetas (móvil) */}
+          <span className="pointer-events-none absolute left-1/2 top-1/2 z-10 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/10 bg-ink font-display text-xs font-black italic tracking-wider text-paper shadow-lg">VS</span>
         </div>
       </section>
 
-      {/* ── Cómo funciona — 3 pasos ──────────────────────────────────────── */}
+      {/* ── Cómo funciona — 3 pasos (estético + connector) ───────────────── */}
       <section className="relative z-10 mx-auto max-w-4xl px-5 pt-20 sm:pt-28">
-        <h2 className="text-center font-display text-3xl font-semibold tracking-tight sm:text-4xl">{c.howTitle}</h2>
-        <div className="mt-10 grid gap-4 sm:grid-cols-3">
+        <div className="text-center">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand">{c.howEyebrow}</span>
+          <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight sm:text-3xl">{c.howTitle}</h2>
+        </div>
+        <div className="mt-8 grid gap-3 sm:mt-10 sm:grid-cols-3 sm:gap-4">
           {c.steps.map((s, i) => (
-            <div key={i} className="group rounded-2xl border border-line bg-card p-6 transition-colors hover:border-brand/30">
-              <div className="flex items-center justify-between">
-                <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand transition-transform group-hover:scale-105"><s.icon size={20} /></span>
-                <span className="font-mono text-sm font-bold text-paper-dim/60">0{i + 1}</span>
+            <div key={i} className="group relative flex items-start gap-4 rounded-2xl border border-line bg-card p-5 sm:flex-col sm:items-stretch sm:p-6">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand/20 to-brand/5 text-brand ring-1 ring-inset ring-brand/25 transition-transform group-hover:scale-105"><s.icon size={20} /></span>
+              <div className="min-w-0 sm:mt-4">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] font-bold text-brand">0{i + 1}</span>
+                  <h3 className="font-display text-base font-semibold text-paper">{s.t}</h3>
+                </div>
+                <p className="mt-1 text-sm leading-relaxed text-paper-mute">{s.d}</p>
               </div>
-              <h3 className="mt-4 font-display text-lg font-semibold text-paper">{s.t}</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-paper-mute">{s.d}</p>
             </div>
           ))}
         </div>
