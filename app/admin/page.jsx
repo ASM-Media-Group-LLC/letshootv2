@@ -110,6 +110,8 @@ export default function AdminPage() {
   const [newAgency, setNewAgency] = useState(null);   // null | {full_name, email, password} — alta de agencia
   const [naBusy, setNaBusy] = useState(false);
   const [naErr, setNaErr] = useState('');
+  const [agConfirm, setAgConfirm] = useState(null);   // confirmación de asignar/mover/quitar creadora↔agencia
+  const [agBusy, setAgBusy] = useState(false);
 
   const loadKyc = useCallback(async () => {
     const supabase = getSupabase();
@@ -1006,7 +1008,14 @@ export default function AdminPage() {
                       const otherId = agencyLinks.find((x) => x.creator_id === cr.id && x.agency_id !== ag.id)?.agency_id;
                       const otherName = otherId ? (profiles.find((p) => p.id === otherId)?.full_name || 'otra agencia') : null;
                       return (
-                        <button key={cr.id} onClick={() => setCreatorAgency(cr.id, on ? null : ag.id)}
+                        <button key={cr.id} onClick={() => setAgConfirm({
+                            creatorId: cr.id,
+                            creatorName: cr.full_name || cr.stage_name || cr.email,
+                            toAgencyId: on ? null : ag.id,
+                            toAgencyName: ag.full_name || 'esta agencia',
+                            fromAgencyName: on ? (ag.full_name || 'esta agencia') : otherName,
+                            action: on ? 'remove' : (otherName ? 'move' : 'assign'),
+                          })}
                           title={on ? 'Quitar de esta agencia' : otherName ? `Mover aquí (hoy con ${otherName})` : 'Asignar a esta agencia'}
                           className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : otherName ? 'border-amber-400/40 bg-amber-400/[0.06] text-amber-200 hover:text-amber-100' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
                           {on ? <Check size={14} /> : <Plus size={14} />} {cr.full_name || cr.email}
@@ -1079,6 +1088,39 @@ export default function AdminPage() {
           </div>
         ) : null}
       </main>
+
+      {agConfirm && (
+        <div className="fixed inset-0 z-[55] grid place-items-center bg-ink/75 p-5 backdrop-blur-sm" onClick={() => !agBusy && setAgConfirm(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+            <div className={`mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${agConfirm.action === 'move' ? 'bg-amber-400/10 text-amber-300' : agConfirm.action === 'remove' ? 'bg-rose-500/10 text-rose-300' : 'bg-brand/10 text-brand'}`}>
+              {agConfirm.action === 'move' ? <><ArrowUpDown size={13} /> Mover de agencia</> : agConfirm.action === 'remove' ? <><X size={13} /> Quitar de la agencia</> : <><Building2 size={13} /> Asignar a la agencia</>}
+            </div>
+            <h3 className="font-display text-lg font-semibold text-paper">
+              {agConfirm.action === 'move' ? `¿Mover a ${agConfirm.creatorName}?`
+                : agConfirm.action === 'remove' ? `¿Quitar a ${agConfirm.creatorName}?`
+                : `¿Asignar a ${agConfirm.creatorName}?`}
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-paper-mute">
+              {agConfirm.action === 'move' ? <>
+                Una creadora solo puede estar en <strong className="text-paper">una agencia</strong>. Al asignarla a <strong className="text-paper">{agConfirm.toAgencyName}</strong>, <strong className="text-amber-300">saldrá de {agConfirm.fromAgencyName}</strong> — la agencia anterior deja de verla y de gestionarla al instante.
+              </> : agConfirm.action === 'remove' ? <>
+                Quedará <strong className="text-paper">sin agencia</strong>: {agConfirm.fromAgencyName} deja de verla y de gestionar su contenido. Su cuenta y su contenido no se borran.
+              </> : <>
+                {agConfirm.creatorName} pasará a ser gestionada por <strong className="text-paper">{agConfirm.toAgencyName}</strong>, que verá su contenido, hará pedidos y registrará sus ventas.
+              </>}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setAgConfirm(null)} disabled={agBusy} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper disabled:opacity-60">Cancelar</button>
+              <button disabled={agBusy}
+                onClick={async () => { setAgBusy(true); await setCreatorAgency(agConfirm.creatorId, agConfirm.toAgencyId); setAgBusy(false); setAgConfirm(null); }}
+                className={`inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60 ${agConfirm.action === 'remove' ? 'bg-rose-600 text-white' : 'bg-brand text-on-accent'}`}>
+                {agBusy ? <Loader2 size={15} className="animate-spin" /> : agConfirm.action === 'move' ? <ArrowUpDown size={15} /> : agConfirm.action === 'remove' ? <X size={15} /> : <Check size={15} />}
+                {agConfirm.action === 'move' ? 'Sí, mover' : agConfirm.action === 'remove' ? 'Sí, quitar' : 'Sí, asignar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {newAgency && (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/70 py-8 backdrop-blur-sm" onClick={() => !naBusy && setNewAgency(null)}>
