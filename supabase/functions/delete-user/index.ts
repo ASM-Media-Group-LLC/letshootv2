@@ -1,10 +1,26 @@
-// Edge function: delete-user (v1)
-// Hard-deletes an account (admin only). Cleans every FK that would block the delete, then
-// removes the auth user — which cascades the profile and all CASCADE children (assets,
-// folders, kyc, notifications, agency links, sales rows, etc.). This is irreversible;
-// the UI must confirm before calling. Guards: cannot delete yourself; cannot delete the
-// last admin.
+// Edge function: delete-user (v2)
+// Hard-deletes an account (admin only). Cleans every FK that would block the delete, wipes
+// the account's files from every storage bucket (avatars/kyc/lora/deliveries — otherwise
+// they'd orphan), then removes the auth user — which cascades the profile and all CASCADE
+// children (assets, folders, kyc rows, notifications, agency links, sales rows, subscription
+// events, etc.). Irreversible; the UI must confirm before calling. Guards: cannot delete
+// yourself; cannot delete the last admin.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+
+// Removes every object stored under "<userId>/…" in a bucket (paginated).
+async function wipeBucketFolder(svc: ReturnType<typeof createClient>, bucket: string, userId: string) {
+  try {
+    let offset = 0;
+    for (let guard = 0; guard < 50; guard++) {
+      const { data: files } = await svc.storage.from(bucket).list(userId, { limit: 100, offset });
+      if (!files || files.length === 0) break;
+      const paths = files.filter((f) => f.name).map((f) => `${userId}/${f.name}`);
+      if (paths.length) await svc.storage.from(bucket).remove(paths);
+      if (files.length < 100) break;
+      offset += 100;
+    }
+  } catch { /* best-effort: never block the account deletion on storage cleanup */ }
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -64,6 +80,15 @@ Deno.serve(async (req) => {
     // requests.chatter_id is NOT NULL — hand any of the target's requests to the acting
     // admin so customer work survives the deletion.
     await svc.from('requests').update({ chatter_id: user.id }).eq('chatter_id', target);
+
+    // Wipe the account's files from every bucket so nothing orphans (DB rows cascade,
+    // but storage objects do not). Files live under "<userId>/…".
+    await Promise.all([
+      wipeBucketFolder(svc, 'avatars', target),
+      wipeBucketFolder(svc, 'kyc', target),
+      wipeBucketFolder(svc, 'lora', target),
+      wipeBucketFolder(svc, 'deliveries', target),
+    ]);
 
     // Remove the auth user; the profile row and all CASCADE children go with it.
     const { error: delErr } = await svc.auth.admin.deleteUser(target);

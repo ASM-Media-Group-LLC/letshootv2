@@ -425,10 +425,20 @@ export default function AdminPage() {
       ? { ...u, onboarding_status: newStatus, id_rejection_reason: approve ? null : reason, id_reviewed_at: new Date().toISOString() }
       : u)));
     setKyc((k) => k.filter((u) => u.id !== userId));
+    // Correo a la creadora.
     sendEmail(approve ? 'approved' : 'rejected', userId, approve ? '' : (reason || ''));
     await getSupabase().from('notifications').insert({
       user_id: userId, kind: approve ? 'approved' : 'rejected', meta: approve ? {} : { reason: reason || '' },
     });
+    // Si la creadora tiene agencia, avísale también a la agencia (ambas partes).
+    try {
+      const { data: link } = await getSupabase().from('agency_creators').select('agency_id').eq('creator_id', userId).maybeSingle();
+      if (link?.agency_id) {
+        const cr = profiles.find((p) => p.id === userId);
+        const modelName = cr?.stage_name || cr?.full_name || 'tu modelo';
+        sendEmail(approve ? 'model_approved' : 'model_rejected', link.agency_id, modelName);
+      }
+    } catch { /* no bloquear la revisión si falla el aviso a la agencia */ }
     flash(approve ? 'Aprobada — ya puede pagar' : 'Verificación rechazada');
     return true;
   }
