@@ -71,8 +71,10 @@ const PLAN_LABEL = Object.fromEntries(PACKS.map((p) => [p.key, p.name.replace(' 
 function subEstimate(billRows, todayISO) {
   const isPaid = (c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status);
   const isCourtesy = (c) => !!c.comp_until && c.comp_until >= todayISO;
-  const paying = (billRows || []).filter((c) => isPaid(c) && !isCourtesy(c));
-  const courtesy = (billRows || []).filter((c) => isPaid(c) && isCourtesy(c));
+  // Las modelos de prueba NO cuentan en contabilidad.
+  const real = (billRows || []).filter((c) => !c.is_test);
+  const paying = real.filter((c) => isPaid(c) && !isCourtesy(c));
+  const courtesy = real.filter((c) => isPaid(c) && isCourtesy(c));
   const monthly = paying.reduce((a, c) => a + (PLAN_MONTHLY[c.plan] ?? PLAN_MONTHLY.core ?? 0), 0);
   const byPlan = {};
   paying.forEach((c) => { const k = c.plan || 'core'; byPlan[k] = (byPlan[k] || 0) + 1; });
@@ -232,7 +234,7 @@ export default function TrabajoPage() {
   const todayISO = new Date().toISOString().slice(0, 10);
   const subEst = subEstimate(billRows, todayISO);
   const bill = {
-    active: billRows.filter((c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status)).length,
+    active: billRows.filter((c) => !c.is_test && (c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status))).length,
     soon: billRows.filter((c) => {
       if (!c.subscription_ends_at) return false;
       const d = Math.floor((new Date(c.subscription_ends_at + 'T00:00:00') - new Date(todayISO + 'T00:00:00')) / 864e5);
@@ -474,7 +476,7 @@ export default function TrabajoPage() {
             {tab === 'produccion' && can('metrics') && <ProduccionTab books={books} />}
             {tab === 'agencias' && can('metrics') && <AgenciasTab books={books} />}
             {tab === 'gestagencias' && can('agencies') && <GestAgenciasTab agencies={agencies} creators={creators} flash={flash} reload={load} />}
-            {tab === 'cobros' && can('billing') && <CobrosTab rows={billRows} flash={flash} reload={load} />}
+            {tab === 'cobros' && can('billing') && <CobrosTab rows={billRows} flash={flash} reload={load} isAdmin={me.role === 'admin'} />}
             {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
           </>
         )}
@@ -1682,6 +1684,7 @@ function CuentasPanel({ rows, bill, billRows, onOpenSales, onOpenCobros, canBill
   const isPaidC = (c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status);
   const isCourtesyC = (c) => !!c.comp_until && c.comp_until >= todayISO;
   const breakdown = (billRows || [])
+    .filter((c) => !c.is_test)
     .filter(isPaidC)
     .map((c) => {
       const courtesy = isCourtesyC(c);
@@ -2151,7 +2154,7 @@ function GestAgenciasTab({ agencies, creators, flash, reload }) {
 }
 
 /* ── Suscripciones y cobros (acceso 'billing'): planes, cortesías, vencimiento ─ */
-function CobrosTab({ rows, flash, reload }) {
+function CobrosTab({ rows, flash, reload, isAdmin }) {
   const supabase = getSupabase();
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState(null);
@@ -2165,6 +2168,16 @@ function CobrosTab({ rows, flash, reload }) {
     setSavingId(null);
     if (error) { flash('Error: ' + error.message); return; }
     flash(msg || 'Suscripción actualizada');
+    reload && reload();
+  }
+
+  // Solo el dueño: marca/desmarca una modelo como de prueba (no cuenta en contabilidad).
+  async function setTest(creator, isTest) {
+    setSavingId(creator);
+    const { error } = await supabase.rpc('admin_set_test_creator', { p_creator: creator, p_is_test: isTest });
+    setSavingId(null);
+    if (error) { flash('Error: ' + error.message); return; }
+    flash(isTest ? 'Marcada como modelo de prueba' : 'Ya no es modelo de prueba');
     reload && reload();
   }
 
@@ -2195,9 +2208,12 @@ function CobrosTab({ rows, flash, reload }) {
               <button onClick={() => setOpenId(expOpen ? null : c.id)} className="flex w-full items-center gap-3 p-4 text-left">
                 <Avatar url={c.avatar_url} name={c.full_name} size={36} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-display font-semibold text-paper">{c.full_name}</p>
+                  <p className="flex items-center gap-2 truncate font-display font-semibold text-paper">
+                    <span className="truncate">{c.full_name}</span>
+                    {c.is_test && <span className="shrink-0 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">Prueba</span>}
+                  </p>
                   <p className="truncate text-[11px] text-paper-dim">
-                    {paid ? <span className="text-emerald-400">Activa</span> : <span className="text-paper-dim">Inactiva</span>}
+                    {c.is_test ? <span className="text-amber-300">No cuenta en contabilidad</span> : paid ? <span className="text-emerald-400">Activa</span> : <span className="text-paper-dim">Inactiva</span>}
                     {c.plan && <> · {c.plan.toUpperCase()}</>}
                     {c.comp_until && <> · <span className="text-amber-400">Cortesía</span></>}
                     {d != null && <> · vence en {d} día{d === 1 ? '' : 's'}</>}
@@ -2257,6 +2273,22 @@ function CobrosTab({ rows, flash, reload }) {
                       </button>
                     )}
                   </div>
+
+                  {/* Modelo de prueba — SOLO el dueño. No cuenta en contabilidad. */}
+                  {isAdmin && (
+                    <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.04] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">Modelo de prueba</p>
+                          <p className="mt-0.5 text-[11px] text-paper-dim">Si está activo, esta cuenta no cuenta en el ingreso estimado ni en el desglose. Solo el dueño puede cambiarlo.</p>
+                        </div>
+                        <button disabled={savingId === c.id} onClick={() => setTest(c.id, !c.is_test)}
+                          className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${c.is_test ? 'border-amber-400/50 bg-amber-400/15 text-amber-300' : 'border-line text-paper-mute hover:border-amber-400/40 hover:text-amber-300'}`}>
+                          {c.is_test ? <><Check size={13} /> Es de prueba</> : 'Marcar como prueba'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

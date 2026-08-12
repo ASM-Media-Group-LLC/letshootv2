@@ -145,7 +145,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }, { data: agSales }, { data: auditRows }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until').order('role'),
+      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -2325,6 +2325,20 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                   <p className="mt-1 text-sm text-paper-dim">No ha pagado. Elige su plan y actívala cuando pague.</p>
                 )}
                 {pack && <p className="mt-1 text-[11px] text-paper-dim">Incluye {pack.photos} fotos · {pack.videos} video{pack.videos === 1 ? '' : 's'} al mes</p>}
+              </div>
+
+              {/* Modelo de prueba — no cuenta en contabilidad (solo el dueño) */}
+              <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.04] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-300"><AlertTriangle size={13} /> Modelo de prueba</div>
+                    <p className="mt-1 text-[11px] text-paper-dim">Si está activo, esta cuenta NO cuenta en el ingreso estimado ni en el desglose de contabilidad. Úsalo para demos y cuentas internas.</p>
+                  </div>
+                  <button onClick={() => patch({ is_test: !creator.is_test }, creator.is_test ? 'Ya no es modelo de prueba' : 'Marcada como modelo de prueba')} disabled={saving}
+                    className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${creator.is_test ? 'border-amber-400/50 bg-amber-400/15 text-amber-300' : 'border-line text-paper-mute hover:border-amber-400/40 hover:text-amber-300'}`}>
+                    {creator.is_test ? <><Check size={13} /> Es de prueba</> : 'Marcar como prueba'}
+                  </button>
+                </div>
               </div>
 
               {/* Cortesía (gratis) + nota — para ver qué se le dio y por qué */}
