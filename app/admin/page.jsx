@@ -978,21 +978,13 @@ export default function AdminPage() {
           </div>
         ) : tab === 'agencias' ? (
           <div className="mt-6 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <p className="max-w-2xl text-sm text-paper-mute">
-                Cada agencia / manager entra a <em>todas</em> sus modelos, hace pedidos y registra las ventas.
-                Aquí creas agencias y marcas qué modelos maneja cada una.
-              </p>
-              {!newAgency && (
-                <button onClick={() => { setNewAgency({ full_name: '', email: '', password: '' }); setNaErr(''); }}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
-                  <Building2 size={15} /> Crear agencia
-                </button>
-              )}
-            </div>
+            <p className="max-w-3xl text-sm text-paper-mute">
+              Cada agencia / manager entra a <em>todas</em> sus modelos, hace pedidos y registra las ventas.
+              Aquí marcas qué modelos maneja cada una. Para crear una agencia usa el botón <span className="text-paper-mute">«Crear agencia»</span> en la pestaña <span className="text-paper-mute">Registros</span>.
+            </p>
 
             {profiles.filter((p) => p.role === 'agency').length === 0 && (
-              <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay agencias todavía. Crea la primera con «Crear agencia».</p>
+              <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay agencias todavía. Créala desde «Registros → Crear agencia».</p>
             )}
             {profiles.filter((p) => p.role === 'agency').map((ag) => {
               const linked = agencyLinks.filter((l) => l.agency_id === ag.id).map((l) => l.creator_id);
