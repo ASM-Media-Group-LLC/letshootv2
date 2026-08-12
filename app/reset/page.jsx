@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Lock, Check, Loader2 } from 'lucide-react';
+import { Lock, Check, Loader2, Eye, EyeOff } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import { getUserProfile, homeForProfile } from '@/lib/supabase/session';
 import { usePortal } from '@/lib/portal-i18n';
@@ -17,6 +17,7 @@ export default function ResetPage() {
   const [phase, setPhase] = useState('checking'); // checking | ready | invalid | done
   const [pw1, setPw1] = useState('');
   const [pw2, setPw2] = useState('');
+  const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -55,7 +56,17 @@ export default function ResetPage() {
     setSaving(true);
     const { error: err } = await getSupabase().auth.updateUser({ password: pw1 });
     setSaving(false);
-    if (err) { console.error(err); setError(t.common.error); return; }
+    if (err) {
+      console.error(err);
+      // Muestra el motivo real (sesión caduca, misma contraseña, etc.) — «Something
+      // went wrong» dejaba a la persona sin saber qué corregir.
+      const msg = String(err.message || '').toLowerCase();
+      if (/session|missing|expired|jwt/.test(msg)) setError('El enlace caducó o ya se usó. Pide otro correo de recuperación desde /forgot.');
+      else if (/same|new password should be different/.test(msg)) setError('La nueva contraseña no puede ser igual a la anterior.');
+      else if (/weak|password|characters/.test(msg)) setError('Contraseña débil. Usa al menos 8 caracteres.');
+      else setError(err.message || t.common.error);
+      return;
+    }
     setPhase('done');
   }
 
@@ -93,9 +104,17 @@ export default function ResetPage() {
               <label key={i} className={`block ${i ? 'mt-4' : ''}`}>
                 <div className="relative">
                   <Lock size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" aria-hidden />
-                  <input type="password" autoComplete={f.ac} required value={f.v}
+                  <input type={show ? 'text' : 'password'} autoComplete={f.ac} required value={f.v}
                     onChange={(e) => f.set(e.target.value)} placeholder={f.ph}
-                    className="w-full rounded-xl border border-line bg-ink-2 py-3 pl-11 pr-3 text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60" />
+                    className="w-full rounded-xl border border-line bg-ink-2 py-3 pl-11 pr-11 text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60" />
+                  {/* Ojo de visibilidad — solo en el primer campo (controla ambos). */}
+                  {i === 0 && (
+                    <button type="button" onClick={() => setShow((s) => !s)}
+                      aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-paper-dim transition-colors hover:bg-hair/10 hover:text-paper">
+                      {show ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  )}
                 </div>
               </label>
             ))}
