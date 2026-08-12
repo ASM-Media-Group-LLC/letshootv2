@@ -77,6 +77,8 @@ export default function TrabajoPage() {
   const [colaOpen, setColaOpen] = useState(false); // Cola del día: viene colapsada, el usuario la extiende
   const [colaSeen, setColaSeen] = useState(false); // ¿ya abrió la cola en ESTA visita? (para dejar de palpitar)
   const [books, setBooks] = useState(null);   // números de empresa (producción/agencias)
+  const [agencies, setAgencies] = useState([]); // agencias + sus modelos (acceso 'agencies')
+  const [billRows, setBillRows] = useState([]); // creadoras con estado de suscripción (acceso 'billing')
   const [ms, setMs] = useState(null);         // resumen del libro Manual Sales (centavos exactos)
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
@@ -95,10 +97,10 @@ export default function TrabajoPage() {
     if (!profile) return;
     const supabase = getSupabase();
     const pcaps = profile.role === 'admin'
-      ? ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team']
+      ? ['datos', 'kyc', 'add_creators', 'content', 'requests', 'feedback', 'metrics', 'agencies', 'billing', 'team']
       : (profile.capabilities || []);
     const monthKey = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
-    const [{ data: cr }, { data: st }, rq, fb, bk, sales, myAssets] = await Promise.all([
+    const [{ data: cr }, { data: st }, rq, fb, bk, sales, myAssets, ag, bl] = await Promise.all([
       supabase.rpc('team_creators'),
       supabase.rpc('team_staff'),
       pcaps.includes('requests') ? supabase.from('requests').select('id, status, title, creator_id, created_at, producer_id') : Promise.resolve({ data: [] }),
@@ -106,10 +108,14 @@ export default function TrabajoPage() {
       pcaps.includes('metrics') ? supabase.rpc('team_books') : Promise.resolve({ data: null }),
       pcaps.includes('metrics') ? supabase.from('manual_sales').select('amount, period_month') : Promise.resolve({ data: [] }),
       pcaps.includes('content') ? supabase.from('assets').select('id, type, creator_id, created_at').eq('uploaded_by', profile.id) : Promise.resolve({ data: [] }),
+      pcaps.includes('agencies') ? supabase.rpc('team_agencies') : Promise.resolve({ data: [] }),
+      pcaps.includes('billing') ? supabase.rpc('team_billing') : Promise.resolve({ data: [] }),
     ]);
     setCreators(cr || []);
     setStaff(st || []);
     setBooks(bk.data || null);
+    setAgencies(ag.data || []);
+    setBillRows(bl.data || []);
     setMine(myAssets.data || []);
     const srows = sales.data || [];
     setMs({
@@ -204,6 +210,17 @@ export default function TrabajoPage() {
   const idPend = creators.filter((c) => c.onboarding_status === 'id_pending').length;
   const staffPend = staff.filter((s) => s.staff_status === 'pending').length;
 
+  // Suscripciones (acceso 'billing'): activas y las que vencen en ≤7 días.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const bill = {
+    active: billRows.filter((c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status)).length,
+    soon: billRows.filter((c) => {
+      if (!c.subscription_ends_at) return false;
+      const d = Math.floor((new Date(c.subscription_ends_at + 'T00:00:00') - new Date(todayISO + 'T00:00:00')) / 864e5);
+      return d >= 0 && d <= 7;
+    }).length,
+  };
+
   // ── Mi producción: piezas que subió ESTE trabajador ──
   const weekAgoISO = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
   const monthKey = new Date().toISOString().slice(0, 7);
@@ -256,7 +273,11 @@ export default function TrabajoPage() {
   const BIZ_CARDS = [
     ...(can('metrics') ? [{ id: 'produccion', icon: ImageIcon, label: 'Producción', value: nf(books?.pieces || 0), sub: `piezas creadas en total` }] : []),
     ...(can('metrics') ? [{ id: 'ventas', href: '/sales', icon: DollarSign, label: 'Manual Sales', value: moneyCents(ms?.totalC || 0), sub: `${nf(ms?.count || 0)} ventas · ${moneyCents(ms?.monthC || 0)} este mes — abrir /sales` }] : []),
-    ...(can('metrics') ? [{ id: 'agencias', icon: Building2, label: 'Agencias', value: nf(books?.agencies || 0), sub: `${nf(books?.creators || 0)} creadoras en total` }] : []),
+    // Con acceso 'agencies' la tarjeta es de GESTIÓN (crear + vincular modelos).
+    // Sin él, pero con 'metrics', queda la vista de solo lectura.
+    ...(can('agencies') ? [{ id: 'gestagencias', icon: Building2, label: 'Agencias', value: nf(agencies.length), sub: 'crear y asignar modelos' }]
+        : can('metrics') ? [{ id: 'agencias', icon: Building2, label: 'Agencias', value: nf(books?.agencies || 0), sub: `${nf(books?.creators || 0)} creadoras en total` }] : []),
+    ...(can('billing') ? [{ id: 'cobros', icon: CreditCard, label: 'Suscripciones', value: nf(bill.active), sub: `${nf(bill.active)} activas · ${nf(bill.soon)} por vencer`, alert: bill.soon > 0 }] : []),
     ...(can('team') ? [{ id: 'equipo', icon: UserCog, label: 'Equipo', value: nf(staff.length), sub: staffPend ? `${staffPend} por aprobar` : 'todos con acceso', alert: staffPend > 0 }] : []),
   ];
 
@@ -428,6 +449,8 @@ export default function TrabajoPage() {
             {tab === 'feedback' && can('feedback') && <ReactionsDashboard canResolve onResolved={load} creators={creators.map((c) => ({ id: c.id, name: c.full_name, avatar_url: c.avatar_url }))} />}
             {tab === 'produccion' && can('metrics') && <ProduccionTab books={books} />}
             {tab === 'agencias' && can('metrics') && <AgenciasTab books={books} />}
+            {tab === 'gestagencias' && can('agencies') && <GestAgenciasTab agencies={agencies} creators={creators} flash={flash} reload={load} />}
+            {tab === 'cobros' && can('billing') && <CobrosTab rows={billRows} flash={flash} reload={load} />}
             {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
           </>
         )}
@@ -1685,6 +1708,296 @@ function ProduccionTab({ books }) {
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+/* ── Gestionar agencias (acceso 'agencies'): crear + vincular modelos ───── */
+// Una creadora = una sola agencia. Al tocar un chip se abre un pop-up de
+// seguridad que avisa si la modelo va a SALIR de su agencia actual.
+function GestAgenciasTab({ agencies, creators, flash, reload }) {
+  const supabase = getSupabase();
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ full_name: '', email: '' });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [creds, setCreds] = useState(null);
+  const [confirm, setConfirm] = useState(null); // { creatorId, creatorName, toAgencyId, toAgencyName, fromAgencyName, action }
+  const [saving, setSaving] = useState(false);
+
+  const inputCls = 'w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60';
+
+  // creatorId → { agencyId, agencyName } de su agencia actual (si tiene una).
+  const agencyOfCreator = {};
+  agencies.forEach((a) => (a.creator_ids || []).forEach((cid) => { agencyOfCreator[cid] = { id: a.id, name: a.full_name }; }));
+  const nameOfCreator = (id) => { const c = creators.find((x) => x.id === id); return c ? c.full_name : 'Creadora'; };
+
+  async function createAgency(e) {
+    e.preventDefault();
+    setErr(''); setCreds(null);
+    if (!f.full_name.trim()) { setErr('Pon el nombre de la agencia.'); return; }
+    const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke('create-user', {
+      body: { full_name: f.full_name.trim(), email: f.email.trim(), password: pw, role: 'agency' },
+    });
+    setBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setErr(out?.error || 'No se pudo crear la agencia.'); return; }
+    if (out.generated_email) setCreds({ email: out.login_email, password: pw });
+    else { flash(`Agencia creada${out.invited ? ` — invitación enviada a ${out.login_email || f.email.trim()}` : ''}`); setOpen(false); }
+    setF({ full_name: '', email: '' });
+    reload && reload();
+  }
+
+  async function doAssign() {
+    if (!confirm) return;
+    setSaving(true);
+    const { error } = await supabase.rpc('staff_set_creator_agency', { p_creator: confirm.creatorId, p_agency: confirm.toAgencyId });
+    setSaving(false);
+    if (error) { flash('Error: ' + error.message); return; }
+    flash(confirm.action === 'remove' ? `${confirm.creatorName} quedó sin agencia`
+        : confirm.action === 'move' ? `${confirm.creatorName}: de ${confirm.fromAgencyName} a ${confirm.toAgencyName}`
+        : `${confirm.creatorName} asignada a ${confirm.toAgencyName}`);
+    setConfirm(null);
+    reload && reload();
+  }
+
+  return (
+    <div className="mt-6 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-paper">Agencias</h2>
+          <p className="text-xs text-paper-dim">Crea agencias y decide qué modelos maneja cada una. Cada creadora pertenece a una sola agencia.</p>
+        </div>
+        {!open && (
+          <button onClick={() => { setOpen(true); setErr(''); setCreds(null); }}
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+            <Building2 size={15} /> Crear agencia
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <form onSubmit={createAgency} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-paper-dim">Nombre de la agencia</label>
+              <input value={f.full_name} onChange={(e) => setF((s) => ({ ...s, full_name: e.target.value }))} placeholder="ej. Nova Management" className={inputCls} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-paper-dim">Correo (para la invitación) — opcional</label>
+              <input value={f.email} onChange={(e) => setF((s) => ({ ...s, email: e.target.value }))} type="email" placeholder="agencia@correo.com" className={inputCls} />
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-paper-dim">Con correo le llega una invitación para poner su contraseña y entrar como agencia. Sin correo te damos un login y clave temporal para entregar a mano.</p>
+          {err && <p className="mt-2 text-xs text-red-400">{err}</p>}
+          {creds && (
+            <div className="mt-3 rounded-xl border border-brand/30 bg-ink-2 p-3 text-xs text-paper">
+              <p className="font-semibold text-brand">Cuenta creada — entrega estos datos:</p>
+              <p className="mt-1">Login: <span className="font-mono">{creds.email}</span></p>
+              <p>Clave temporal: <span className="font-mono">{creds.password}</span></p>
+            </div>
+          )}
+          <div className="mt-4 flex items-center gap-2">
+            <button type="submit" disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-60">
+              {busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Crear agencia
+            </button>
+            <button type="button" onClick={() => { setOpen(false); setErr(''); setCreds(null); }} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
+          </div>
+        </form>
+      )}
+
+      {agencies.length === 0 && !open && (
+        <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Aún no hay agencias. Crea la primera con el botón de arriba.</p>
+      )}
+
+      <div className="space-y-3">
+        {agencies.map((ag) => {
+          const set = new Set(ag.creator_ids || []);
+          return (
+            <div key={ag.id} className="rounded-2xl border border-line bg-card/60 p-4">
+              <div className="flex items-center gap-2">
+                <Building2 size={16} className="text-brand" />
+                <div className="min-w-0">
+                  <p className="truncate font-display font-semibold text-paper">{ag.full_name}</p>
+                  <p className="truncate text-[11px] text-paper-dim">{ag.email} · {set.size} modelo{set.size === 1 ? '' : 's'}</p>
+                </div>
+              </div>
+              <p className="mb-2 mt-3 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Modelos que maneja</p>
+              <div className="flex flex-wrap gap-2">
+                {creators.map((cr) => {
+                  const on = set.has(cr.id);
+                  const other = !on ? agencyOfCreator[cr.id] : null; // pertenece a OTRA agencia
+                  return (
+                    <button key={cr.id}
+                      onClick={() => setConfirm({
+                        creatorId: cr.id,
+                        creatorName: cr.full_name || 'Creadora',
+                        toAgencyId: on ? null : ag.id,
+                        toAgencyName: ag.full_name,
+                        fromAgencyName: on ? ag.full_name : (other ? other.name : null),
+                        action: on ? 'remove' : (other ? 'move' : 'assign'),
+                      })}
+                      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
+                      {on ? <Check size={12} /> : <Plus size={12} />}
+                      {cr.full_name}
+                      {other && <span className="text-amber-400">· {other.name}</span>}
+                    </button>
+                  );
+                })}
+                {creators.length === 0 && <span className="text-xs text-paper-dim">No hay creadoras todavía.</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Pop-up de seguridad: asignar / mover (avisa que sale) / quitar. */}
+      {confirm && (
+        <div className="fixed inset-0 z-[55] grid place-items-center bg-black/70 p-4" onClick={() => !saving && setConfirm(null)}>
+          <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-brand">
+              <Building2 size={13} /> {confirm.action === 'remove' ? 'Quitar de la agencia' : confirm.action === 'move' ? 'Mover de agencia' : 'Asignar a la agencia'}
+            </div>
+            <h3 className="font-display text-xl font-semibold text-paper">
+              {confirm.action === 'remove' ? `¿Quitar a ${confirm.creatorName}?`
+                : confirm.action === 'move' ? `¿Mover a ${confirm.creatorName}?`
+                : `¿Asignar a ${confirm.creatorName}?`}
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-paper-mute">
+              {confirm.action === 'remove' ? <>{confirm.creatorName} dejará de ser gestionada por <span className="font-semibold text-paper">{confirm.fromAgencyName}</span>. Quedará sin agencia.</>
+                : confirm.action === 'move' ? <>{confirm.creatorName} <span className="font-semibold text-amber-400">saldrá de {confirm.fromAgencyName}</span> y pasará a <span className="font-semibold text-paper">{confirm.toAgencyName}</span>. Una creadora solo puede estar en una agencia.</>
+                : <>{confirm.creatorName} pasará a ser gestionada por <span className="font-semibold text-paper">{confirm.toAgencyName}</span>, que verá su contenido, hará pedidos y registrará sus ventas.</>}
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setConfirm(null)} disabled={saving} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
+              <button onClick={doAssign} disabled={saving}
+                className={`inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold disabled:opacity-60 ${confirm.action === 'remove' ? 'bg-red-500/90 text-white' : 'bg-brand text-on-accent'}`}>
+                {saving ? <Loader2 size={15} className="animate-spin" /> : confirm.action === 'remove' ? <X size={15} /> : <Check size={15} />}
+                {confirm.action === 'remove' ? 'Sí, quitar' : confirm.action === 'move' ? 'Sí, mover' : 'Sí, asignar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Suscripciones y cobros (acceso 'billing'): planes, cortesías, vencimiento ─ */
+function CobrosTab({ rows, flash, reload }) {
+  const supabase = getSupabase();
+  const [q, setQ] = useState('');
+  const [openId, setOpenId] = useState(null);
+  const [savingId, setSavingId] = useState(null);
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+
+  async function act(creator, action, extra = {}, msg) {
+    setSavingId(creator);
+    const { error } = await supabase.rpc('staff_set_subscription', { p_creator: creator, p_action: action, ...extra });
+    setSavingId(null);
+    if (error) { flash('Error: ' + error.message); return; }
+    flash(msg || 'Suscripción actualizada');
+    reload && reload();
+  }
+
+  const list = rows.filter((c) => !q.trim() || (c.full_name || '').toLowerCase().includes(q.toLowerCase()) || (c.handle || '').toLowerCase().includes(q.toLowerCase()));
+  const daysLeft = (c) => { if (!c.subscription_ends_at) return null; return Math.floor((new Date(c.subscription_ends_at + 'T00:00:00') - new Date(todayISO + 'T00:00:00')) / 864e5); };
+  const isPaid = (c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status);
+
+  return (
+    <div className="mt-6 space-y-4">
+      <div>
+        <h2 className="font-display text-lg font-semibold text-paper">Suscripciones y cobros</h2>
+        <p className="text-xs text-paper-dim">Activa planes, da cortesías y ajusta fechas de vencimiento — igual que el administrador.</p>
+      </div>
+      <div className="relative">
+        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar creadora…"
+          className="w-full rounded-xl border border-line bg-ink-2 py-2.5 pl-9 pr-3 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+      </div>
+
+      <div className="space-y-2">
+        {list.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">No hay creadoras que coincidan.</p>}
+        {list.map((c) => {
+          const d = daysLeft(c);
+          const paid = isPaid(c);
+          const expOpen = openId === c.id;
+          return (
+            <div key={c.id} className="rounded-2xl border border-line bg-card/60">
+              <button onClick={() => setOpenId(expOpen ? null : c.id)} className="flex w-full items-center gap-3 p-4 text-left">
+                <Avatar url={c.avatar_url} name={c.full_name} size={36} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-display font-semibold text-paper">{c.full_name}</p>
+                  <p className="truncate text-[11px] text-paper-dim">
+                    {paid ? <span className="text-emerald-400">Activa</span> : <span className="text-paper-dim">Inactiva</span>}
+                    {c.plan && <> · {c.plan.toUpperCase()}</>}
+                    {c.comp_until && <> · <span className="text-amber-400">Cortesía</span></>}
+                    {d != null && <> · vence en {d} día{d === 1 ? '' : 's'}</>}
+                  </p>
+                </div>
+                {savingId === c.id ? <Loader2 size={15} className="animate-spin text-brand" /> : <ChevronDown size={16} className={`text-paper-dim transition-transform ${expOpen ? 'rotate-180' : ''}`} />}
+              </button>
+
+              {expOpen && (
+                <div className="space-y-4 border-t border-line p-4">
+                  {/* Plan */}
+                  <div>
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Plan</p>
+                    <div className="flex flex-wrap gap-2">
+                      {PACKS.map((p) => (
+                        <button key={p.key} disabled={savingId === c.id}
+                          onClick={() => act(c.id, 'plan', { p_plan: p.key, p_ends_at: c.subscription_ends_at || in30 }, `Plan: ${p.name}`)}
+                          className={`rounded-full border px-3 py-1.5 text-xs ${c.plan === p.key ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Vencimiento + estado */}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Vence el</p>
+                      <input type="date" defaultValue={c.subscription_ends_at || ''} disabled={savingId === c.id}
+                        onChange={(e) => act(c.id, 'ends_at', { p_ends_at: e.target.value || null }, 'Fecha de vencimiento actualizada')}
+                        className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+                    </div>
+                    <div>
+                      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Cortesía (gratis) hasta</p>
+                      <input type="date" defaultValue={c.comp_until || ''} disabled={savingId === c.id}
+                        onChange={(e) => act(c.id, 'comp', { p_comp_until: e.target.value || null }, 'Cortesía actualizada')}
+                        className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+                    </div>
+                  </div>
+                  {/* Nota */}
+                  <div>
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Nota de facturación</p>
+                    <input defaultValue={c.billing_note || ''} disabled={savingId === c.id} placeholder="ej. 1 mes gratis de cortesía"
+                      onBlur={(e) => { const v = e.target.value.trim(); if (v !== (c.billing_note || '')) act(c.id, 'note', { p_note: v }, 'Nota guardada'); }}
+                      className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  </div>
+                  {/* Activar / desactivar */}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {!paid ? (
+                      <button disabled={savingId === c.id} onClick={() => act(c.id, 'activate', { p_ends_at: c.subscription_ends_at || in30 }, 'Suscripción ACTIVADA')}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                        <Check size={15} /> Activar suscripción
+                      </button>
+                    ) : (
+                      <button disabled={savingId === c.id} onClick={() => act(c.id, 'deactivate', {}, 'Suscripción marcada INACTIVA')}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 disabled:opacity-60">
+                        <X size={15} /> Marcar inactiva
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
