@@ -6,7 +6,7 @@
 // video cinematográfico de la home.
 
 import Link from 'next/link';
-import { ArrowRight, Upload, MessageSquare, Sparkles, Gift } from 'lucide-react';
+import { ArrowRight, Upload, MessageSquare, Sparkles, Gift, Check, X } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
@@ -21,16 +21,30 @@ const PAIRS = [
 
 const COPY = {
   es: {
-    login: 'Ya tengo cuenta',
-    eyebrow: 'Para modelos y creadoras',
-    h1a: 'Te hacemos tu clon con IA,',
-    h1b: 'gratis.',
-    sub: 'Tú solo subes tus fotos y nos dices qué quieres. Nosotros te entregamos contenido listo para vender — cada día. Sin cámara, sin sesiones, sin fotógrafo.',
+    login: 'Iniciar sesión',
+    eyebrow: 'Hora de despedir a tu fotógrafo',
+    h1a: 'Te hacemos tu clon con IA',
+    h1b: 'y nadie se dará cuenta.',
+    sub: 'Tú solo subes tus fotos y nos dices qué quieres. Nosotros te entregamos contenido listo para vender — cada día. Sin cámara, sin sesiones, sin fotógrafo. Y gratis: crear tu clon no cuesta nada.',
     cta: 'Registrarme gratis',
     ctaNote: 'Crear tu clon no cuesta nada. Solo pagas el contenido si te gusta.',
     galleryTitle: '¿Real o IA?',
     gallerySub: 'Todas son la misma modelo. Unas son fotos suyas, otras las hizo su clon. ¿Notas la diferencia? Tus fans tampoco.',
     real: 'Real', ai: 'IA',
+    cmpTitle: 'Haz cuentas',
+    cmpSub: 'Lo que cuesta una sola sesión de fotos… vs. tu clon trabajando para ti todos los días.',
+    oldTitle: 'Un shoot tradicional',
+    oldCosts: [
+      ['Maquillaje y peinado', '$80–$200'],
+      ['Ropa y vestuario', '$100–$400'],
+      ['Airbnb o locación', '$150–$500'],
+      ['Fotógrafo', '$200–$800'],
+    ],
+    oldPains: ['Esperas su agenda — días o semanas', 'Te entrega pocas fotos', 'Ediciones que no te gustan', 'Y a repetir todo el próximo mes'],
+    oldTotal: '$530–$1,900', oldTotalNote: 'por UNA sola sesión',
+    newTitle: 'Con LetShoot',
+    newWins: ['Tu clon: gratis — solo subes fotos', 'Sin cámara, sin sesión, sin fotógrafo', 'Cientos de fotos y videos', 'Entrega cada día, al instante', 'Siempre a tu gusto — pides cambios', 'Tú eres la dueña de tu contenido'],
+    newTotal: 'Desde $249/mes', newTotalNote: 'menos que una sola sesión — todo el mes',
     howTitle: 'Así de simple',
     steps: [
       { icon: Upload, t: 'Subes tus fotos', d: 'Unas cuantas fotos tuyas. Nosotros entrenamos tu clon con ellas.' },
@@ -43,16 +57,30 @@ const COPY = {
     finalSub: 'Crea tu clon hoy. Toma un minuto.',
   },
   en: {
-    login: 'I already have an account',
-    eyebrow: 'For models & creators',
-    h1a: 'We build your AI clone,',
-    h1b: 'free.',
-    sub: 'You just upload your photos and tell us what you want. We deliver sell-ready content — every day. No camera, no shoots, no photographer.',
+    login: 'Log in',
+    eyebrow: 'Time to fire your photographer',
+    h1a: 'We build your AI clone',
+    h1b: 'and nobody will know.',
+    sub: 'You just upload your photos and tell us what you want. We deliver sell-ready content — every day. No camera, no shoots, no photographer. And free: building your clone costs nothing.',
     cta: 'Sign up free',
     ctaNote: 'Building your clone costs nothing. You only pay for content if you love it.',
     galleryTitle: 'Real or AI?',
     gallerySub: "They're all the same model. Some are her own photos, some were made by her clone. Can you tell? Your fans can't either.",
     real: 'Real', ai: 'AI',
+    cmpTitle: 'Do the math',
+    cmpSub: 'What one photoshoot costs… vs. your clone working for you every single day.',
+    oldTitle: 'A traditional shoot',
+    oldCosts: [
+      ['Hair & makeup', '$80–$200'],
+      ['Outfits & wardrobe', '$100–$400'],
+      ['Airbnb or location', '$150–$500'],
+      ['Photographer', '$200–$800'],
+    ],
+    oldPains: ['You wait for their schedule — days or weeks', 'You get only a few photos', 'Edits you don’t like', 'And you redo it all next month'],
+    oldTotal: '$530–$1,900', oldTotalNote: 'for ONE single shoot',
+    newTitle: 'With LetShoot',
+    newWins: ['Your clone: free — you just upload photos', 'No camera, no shoot, no photographer', 'Hundreds of photos and videos', 'Delivered every day, instantly', 'Always your way — request changes', 'You own your content'],
+    newTotal: 'From $249/mo', newTotalNote: 'less than one shoot — for the whole month',
     howTitle: 'This simple',
     steps: [
       { icon: Upload, t: 'Upload your photos', d: 'A handful of photos of you. We train your clone on them.' },
@@ -85,27 +113,29 @@ export default function StartPage() {
 
         <div className="relative z-10 flex min-h-[100svh] flex-col">
           {/* Header */}
-          <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-4">
+          <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-5">
             <Logo size="sm" />
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <LangToggle />
-              <Link href="/login" className="text-sm font-medium text-paper-mute transition-colors hover:text-paper">{c.login}</Link>
+              <Link href="/login"
+                className="rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-paper backdrop-blur transition-colors hover:bg-white/20">
+                {c.login}
+              </Link>
             </div>
           </header>
 
           {/* Hero content — centrado sobre el video */}
           <section className="flex flex-1 items-center">
-            <div className="mx-auto w-full max-w-3xl px-5 pb-20 text-center">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper backdrop-blur">
+            <div className="mx-auto w-full max-w-3xl px-5 pb-16 text-center sm:pb-20">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-paper backdrop-blur sm:text-[11px]">
                 <Sparkles size={12} className="text-brand" /> {c.eyebrow}
               </span>
-              <h1 className="mt-6 font-display text-5xl font-semibold leading-[1.02] tracking-tight drop-shadow-[0_2px_20px_rgba(0,0,0,0.5)] sm:text-7xl">
+              <h1 className="mx-auto mt-5 max-w-[15ch] font-display text-[2.5rem] font-semibold leading-[1.03] tracking-tight drop-shadow-[0_2px_20px_rgba(0,0,0,0.55)] sm:mt-6 sm:text-6xl lg:text-7xl">
                 {c.h1a} <span className="text-brand">{c.h1b}</span>
               </h1>
-              <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-paper/85 drop-shadow-[0_1px_10px_rgba(0,0,0,0.5)] sm:text-lg">{c.sub}</p>
-              <div className="mt-9 flex flex-col items-center gap-3">
+              <div className="mt-8 flex flex-col items-center gap-3 sm:mt-10">
                 <Link href="/signup"
-                  className="group inline-flex items-center gap-2 rounded-full bg-brand px-8 py-4 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.03]">
+                  className="group inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-full bg-brand px-8 py-4 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.03] sm:w-auto">
                   {c.cta} <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
                 </Link>
                 <p className="text-xs text-paper/70">{c.ctaNote}</p>
@@ -128,6 +158,49 @@ export default function StartPage() {
               <FigureCard src={p.ai} label={c.ai} tone="ai" />
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── Versus: shoot tradicional vs LetShoot ────────────────────────── */}
+      <section className="relative z-10 mx-auto max-w-4xl px-5 pt-20 sm:pt-28">
+        <div className="text-center">
+          <h2 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">{c.cmpTitle}</h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-paper-mute sm:text-base">{c.cmpSub}</p>
+        </div>
+        <div className="mt-8 grid gap-4 sm:mt-10 sm:grid-cols-2">
+          {/* Tradicional */}
+          <div className="rounded-3xl border border-rose-500/20 bg-rose-500/[0.03] p-5 sm:p-6">
+            <h3 className="font-display text-lg font-semibold text-paper">{c.oldTitle}</h3>
+            <ul className="mt-4 space-y-2.5">
+              {c.oldCosts.map(([label, cost], i) => (
+                <li key={i} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-2 text-paper-mute"><X size={14} className="shrink-0 text-rose-400/80" /> {label}</span>
+                  <span className="shrink-0 font-mono text-xs font-semibold text-paper-dim">{cost}</span>
+                </li>
+              ))}
+              {c.oldPains.map((p, i) => (
+                <li key={`p${i}`} className="flex items-start gap-2 text-sm text-paper-mute"><X size={14} className="mt-0.5 shrink-0 text-rose-400/80" /> {p}</li>
+              ))}
+            </ul>
+            <div className="mt-5 border-t border-rose-500/15 pt-4">
+              <div className="font-display text-2xl font-semibold text-rose-200">{c.oldTotal}</div>
+              <div className="text-[11px] uppercase tracking-wide text-paper-dim">{c.oldTotalNote}</div>
+            </div>
+          </div>
+
+          {/* LetShoot */}
+          <div className="relative overflow-hidden rounded-3xl border border-brand/40 bg-gradient-to-br from-brand/[0.10] to-transparent p-5 shadow-glow-sm sm:p-6">
+            <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><Sparkles size={16} className="text-brand" /> {c.newTitle}</h3>
+            <ul className="mt-4 space-y-2.5">
+              {c.newWins.map((w, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-paper"><Check size={14} className="mt-0.5 shrink-0 text-brand" /> {w}</li>
+              ))}
+            </ul>
+            <div className="mt-5 border-t border-brand/20 pt-4">
+              <div className="font-display text-2xl font-semibold text-brand">{c.newTotal}</div>
+              <div className="text-[11px] uppercase tracking-wide text-paper-dim">{c.newTotalNote}</div>
+            </div>
+          </div>
         </div>
       </section>
 
