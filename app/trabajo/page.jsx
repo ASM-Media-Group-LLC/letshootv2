@@ -1641,6 +1641,7 @@ function FeedbackTab({ creators, flash }) {
    últimas 5 ventas. Todo lee de manual_sales (RLS ya guarda por 'metrics').
    Se le puede dar a un empleado con «Ver números de la empresa». */
 function CuentasPanel({ rows, bill, billRows, onOpenSales, onOpenCobros, canBilling }) {
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const nowKey = new Date().toISOString().slice(0, 7);
   const prevDate = new Date(); prevDate.setDate(1); prevDate.setMonth(prevDate.getMonth() - 1);
   const prevKey = prevDate.toISOString().slice(0, 7);
@@ -1676,6 +1677,29 @@ function CuentasPanel({ rows, bill, billRows, onOpenSales, onOpenCobros, canBill
   const planLine = Object.entries(est.byPlan || {})
     .sort((a, b) => (PLAN_MONTHLY[b[0]] || 0) - (PLAN_MONTHLY[a[0]] || 0))
     .map(([k, n]) => `${n} ${PLAN_LABEL[k] || k}`).join(' · ');
+  // Desglose por cuenta: cada suscripción que cuenta, con su plan y su aporte
+  // mensual. Las cortesías se listan pero aportan $0. Ordenado por aporte.
+  const isPaidC = (c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status);
+  const isCourtesyC = (c) => !!c.comp_until && c.comp_until >= todayISO;
+  const breakdown = (billRows || [])
+    .filter(isPaidC)
+    .map((c) => {
+      const courtesy = isCourtesyC(c);
+      const plan = c.plan || 'core';
+      return {
+        id: c.id,
+        name: c.full_name || c.handle || 'Creadora',
+        handle: c.handle,
+        plan,
+        courtesy,
+        amount: courtesy ? 0 : (PLAN_MONTHLY[plan] ?? PLAN_MONTHLY.core ?? 0),
+        ends: c.subscription_ends_at,
+      };
+    })
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+  const shownBreakdown = showBreakdown ? breakdown : breakdown.slice(0, 6);
+  const PLAN_TONE = { pro: 'border-brand/40 bg-brand/10 text-brand', core: 'border-sky-400/40 bg-sky-400/10 text-sky-300', test: 'border-paper-dim/30 bg-hair/10 text-paper-mute' };
+
   const in14ISO = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
   const upcomingRebills = (rows || []).filter((r) => r.rebill_on && r.rebill_on >= todayISO && r.rebill_on <= in14ISO);
   const upcomingTotal = upcomingRebills.reduce((a, r) => a + Number(r.amount || 0), 0);
@@ -1792,6 +1816,42 @@ function CuentasPanel({ rows, bill, billRows, onOpenSales, onOpenCobros, canBill
           </div>
         </div>
       </div>
+
+      {/* Desglose por cuenta — de dónde sale el ingreso estimado, nombre por nombre */}
+      {breakdown.length > 0 && (
+        <div className="mt-3 rounded-xl border border-line bg-ink-2 p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Desglose por cuenta</span>
+              <p className="text-[11px] text-paper-dim">{nf(est.paying)} pagan · {money(est.monthly)}/mes{est.courtesy > 0 ? ` · ${est.courtesy} en cortesía` : ''}</p>
+            </div>
+            {canBilling && (
+              <button onClick={onOpenCobros} className="text-[11px] font-semibold text-brand hover:underline">Gestionar</button>
+            )}
+          </div>
+          <ul className="divide-y divide-line/60">
+            {shownBreakdown.map((c, i) => (
+              <li key={c.id} className="flex items-center gap-3 py-2">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand/10 text-[11px] font-semibold text-brand">{(c.name[0] || '?').toUpperCase()}</span>
+                <span className="w-5 shrink-0 text-right font-mono text-[11px] text-paper-dim">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-paper">{c.name}</div>
+                  {c.handle && <div className="truncate text-[11px] text-paper-dim">@{c.handle}</div>}
+                </div>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${PLAN_TONE[c.plan] || PLAN_TONE.core}`}>{PLAN_LABEL[c.plan] || c.plan}</span>
+                <span className="w-16 shrink-0 text-right font-display text-sm font-semibold">
+                  {c.courtesy ? <span className="text-amber-300">cortesía</span> : <span className="text-paper">{money(c.amount)}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {breakdown.length > 6 && (
+            <button onClick={() => setShowBreakdown((v) => !v)} className="mt-2 w-full rounded-lg border border-line py-2 text-[11px] font-semibold text-paper-mute hover:border-brand/50 hover:text-paper">
+              {showBreakdown ? 'Ver menos' : `Ver todas (${breakdown.length})`}
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
