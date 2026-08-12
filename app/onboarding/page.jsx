@@ -9,11 +9,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   LogOut, Check, ShieldCheck, IdCard, CreditCard, Upload, User, Plus,
-  AlertTriangle, ArrowRight, Loader2, Sparkles, Clock, CheckCircle2, Circle,
+  AlertTriangle, ArrowRight, Loader2, Sparkles, Clock, CheckCircle2, Circle, Camera, ChevronDown,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
+import { COUNTRIES, countryByName, splitPhone } from '@/lib/countries';
 import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
 import CloneSetup from '@/components/CloneSetup';
@@ -167,11 +168,17 @@ export default function OnboardingPage() {
 /* ── Datos ──────────────────────────────────────────────────────────────── */
 function InfoStep({ me, onDone, t }) {
   const p = me.profile || {};
+  const initialPhone = splitPhone(p.phone || '');
+  const initialCountry = countryByName(p.country || '');
   const [form, setForm] = useState({
     legal_first_name: p.legal_first_name || '', legal_last_name: p.legal_last_name || '',
-    date_of_birth: p.date_of_birth || '', country: p.country || '', phone: p.phone || '',
+    date_of_birth: p.date_of_birth || '', country: p.country || '',
     stage_name: p.stage_name || '', handle: p.handle || '',
   });
+  // Teléfono partido en código de país + número nacional. El código se prellena
+  // al elegir país (o del teléfono ya guardado).
+  const [dial, setDial] = useState(initialPhone.dial || initialCountry?.dial || '');
+  const [phoneNational, setPhoneNational] = useState(initialPhone.national || '');
   const [avatarUrl, setAvatarUrl] = useState(p.avatar_url || '');
   const [avatarPreview, setAvatarPreview] = useState('');   // local object URL while uploading
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -179,10 +186,48 @@ function InfoStep({ me, onDone, t }) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [draft, setDraft] = useState('idle'); // idle | saving | saved — autoguardado
   const avatarRef = useRef(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   // @handle: normalize as they type — lowercase, drop invalid chars, strip a leading @.
   const setHandle = (e) => setForm((f) => ({ ...f, handle: e.target.value.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9._]/g, '') }));
+
+  // Elegir país: guarda el nombre y, si el teléfono aún no tiene código puesto a
+  // mano, prellena el código de área de ese país.
+  function pickCountry(e) {
+    const name = e.target.value;
+    setForm((f) => ({ ...f, country: name }));
+    const c = countryByName(name);
+    if (c) setDial(c.dial);
+  }
+
+  const fullPhone = phoneNational.trim() ? `${dial} ${phoneNational.trim()}`.trim() : '';
+
+  // ── Autoguardado del borrador ──────────────────────────────────────────
+  // Si la persona llena algo y se sale, queda preguardado. Debounce 900ms; nunca
+  // toca onboarding_status ni valida (eso es al pulsar Guardar). El @handle NO se
+  // autoguarda para no chocar con el índice único; se guarda al pulsar Guardar.
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    setDraft('saving');
+    const id = setTimeout(async () => {
+      try {
+        const patch = {
+          legal_first_name: form.legal_first_name || null,
+          legal_last_name: form.legal_last_name || null,
+          date_of_birth: form.date_of_birth || null,
+          country: form.country || null,
+          phone: fullPhone || null,
+          stage_name: form.stage_name || null,
+        };
+        await getSupabase().from('profiles').update(patch).eq('id', me.user.id);
+        setDraft('saved');
+      } catch { setDraft('idle'); }
+    }, 900);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.legal_first_name, form.legal_last_name, form.date_of_birth, form.country, phoneNational, dial, form.stage_name]);
 
   const preview = avatarPreview || avatarUrl;
 
@@ -236,6 +281,7 @@ function InfoStep({ me, onDone, t }) {
     const supabase = getSupabase();
     const patch = {
       ...form,
+      phone: fullPhone || null,
       handle: form.handle || null,
       full_name: form.stage_name || `${form.legal_first_name} ${form.legal_last_name}`.trim(),
     };
@@ -256,23 +302,31 @@ function InfoStep({ me, onDone, t }) {
       <form onSubmit={save} className="grid gap-4">
         {/* Profile photo + @handle */}
         <div className="flex items-center gap-4 rounded-xl border border-line bg-ink-2 p-4">
-          <button type="button" onClick={() => avatarRef.current?.click()} disabled={avatarUploading}
-            className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-full ring-1 ring-hair/20 transition-transform hover:scale-[1.03] disabled:opacity-70">
-            {preview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={preview} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <span className="grid h-full w-full place-items-center bg-brand/15 text-brand"><User size={26} /></span>
-            )}
-            {avatarUploading ? (
-              <span className="absolute inset-0 grid place-items-center bg-ink/60"><Loader2 size={20} className="animate-spin text-brand" /></span>
-            ) : (
-              <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-ink/70 py-1 text-[10px] font-medium text-paper opacity-0 transition-opacity group-hover:opacity-100">
-                <Upload size={11} /> {preview ? t.onboarding.info.photoChange : t.onboarding.info.photoPick}
-              </span>
-            )}
-            {!preview && !avatarUploading && <span className="absolute -bottom-0 right-0 grid h-6 w-6 place-items-center rounded-full border-2 border-ink-2 bg-brand text-on-accent"><Plus size={12} /></span>}
-          </button>
+          <div className="shrink-0 text-center">
+            <button type="button" onClick={() => avatarRef.current?.click()} disabled={avatarUploading}
+              className="group relative mx-auto grid h-20 w-20 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-brand/25 to-brand/5 ring-1 ring-inset ring-brand/30 transition-all hover:ring-brand/60 disabled:opacity-70">
+              {preview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={preview} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              ) : (
+                <Camera size={24} className="text-brand/80 transition-colors group-hover:text-brand" strokeWidth={1.75} />
+              )}
+              {avatarUploading ? (
+                <span className="absolute inset-0 grid place-items-center bg-ink/60"><Loader2 size={20} className="animate-spin text-brand" /></span>
+              ) : (
+                <span className="absolute inset-x-0 bottom-0 hidden items-center justify-center gap-1 bg-ink/75 py-1 text-[10px] font-medium text-paper group-hover:flex">
+                  <Upload size={11} /> {preview ? t.onboarding.info.photoChange : t.onboarding.info.photoPick}
+                </span>
+              )}
+              {/* Badge de cámara: limpio, centrado en el borde inferior. */}
+              {!avatarUploading && (
+                <span className="absolute bottom-0.5 right-0.5 grid h-6 w-6 place-items-center rounded-full border-2 border-ink-2 bg-brand text-on-accent shadow-sm">
+                  {preview ? <Camera size={11} /> : <Plus size={13} />}
+                </span>
+              )}
+            </button>
+            <p className="mt-1.5 text-[10px] font-medium text-paper-dim">{preview ? t.onboarding.info.photoChange : t.onboarding.info.photoAdd}</p>
+          </div>
           <div className="min-w-0 flex-1">
             <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.onboarding.info.handle}</span>
             <div className="relative">
@@ -297,17 +351,52 @@ function InfoStep({ me, onDone, t }) {
           <Field label={t.onboarding.info.dob} type="date" value={form.date_of_birth} onChange={set('date_of_birth')} required
             min={new Date(Date.now() - 100 * 365.25 * 864e5).toISOString().slice(0, 10)}
             max={new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)} />
-          <Field label={t.onboarding.info.country} value={form.country} onChange={set('country')} placeholder={t.onboarding.info.countryPh} required />
+          {/* País: lista desplegable con bandera (guarda el nombre). */}
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.onboarding.info.country} <span className="text-rose-400">*</span></span>
+            <div className="relative">
+              <select value={form.country} onChange={pickCountry} required
+                className={`w-full appearance-none rounded-xl border border-line bg-ink-2 py-3 pl-3.5 pr-10 outline-none transition-colors focus:border-brand/60 ${form.country ? 'text-paper' : 'text-paper-dim'}`}>
+                <option value="" disabled>{t.onboarding.info.countryPick}</option>
+                {COUNTRIES.map((c) => <option key={c.code} value={c.name} className="text-paper">{c.flag} {c.name}</option>)}
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+            </div>
+          </label>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t.onboarding.info.phone} value={form.phone} onChange={set('phone')} placeholder={t.onboarding.info.phonePh} />
+          {/* Teléfono: elige país (trae el código) + tu número. */}
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.onboarding.info.phone}</span>
+            <div className="flex gap-2">
+              <div className="relative shrink-0">
+                <select value={dial} onChange={(e) => setDial(e.target.value)} aria-label="Código de país"
+                  className="h-full appearance-none rounded-xl border border-line bg-ink-2 py-3 pl-3 pr-7 text-paper outline-none transition-colors focus:border-brand/60">
+                  <option value="">+</option>
+                  {COUNTRIES.map((c) => <option key={c.code} value={c.dial}>{c.flag} {c.dial}</option>)}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-paper-dim" />
+              </div>
+              <input value={phoneNational} onChange={(e) => setPhoneNational(e.target.value.replace(/[^\d\s-]/g, ''))}
+                inputMode="tel" placeholder={t.onboarding.info.phonePh}
+                className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60" />
+            </div>
+          </label>
           <Field label={t.onboarding.info.stage} value={form.stage_name} onChange={set('stage_name')} placeholder={t.onboarding.info.stagePh} />
         </div>
         {error && <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
-        <button type="submit" disabled={saving}
-          className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-brand py-3 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
-          {saving ? t.common.saving : saved ? <><Check size={17} /> {t.common.save}</> : t.common.save}
-        </button>
+        <div className="mt-1 flex items-center gap-3">
+          <button type="submit" disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand py-3 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
+            {saving ? t.common.saving : saved ? <><Check size={17} /> {t.common.save}</> : t.common.save}
+          </button>
+          {/* Indicador de autoguardado — que la persona sepa que no pierde nada. */}
+          <span className="min-w-[110px] text-[11px] text-paper-dim">
+            {draft === 'saving' ? <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> {t.onboarding.info.draftSaving}</span>
+              : draft === 'saved' ? <span className="inline-flex items-center gap-1 text-brand"><Check size={12} /> {t.onboarding.info.draftSaved}</span>
+              : null}
+          </span>
+        </div>
       </form>
     </Panel>
   );
