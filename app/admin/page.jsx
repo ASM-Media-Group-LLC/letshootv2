@@ -1019,87 +1019,7 @@ export default function AdminPage() {
             })()}
           </div>
         ) : tab === 'agencias' ? (
-          <div className="mt-6 space-y-4">
-            <p className="max-w-3xl text-sm text-paper-mute">
-              Cada agencia / manager entra a <em>todas</em> sus modelos, hace pedidos y registra las ventas.
-              Aquí marcas qué modelos maneja cada una. Para crear una agencia usa el botón <span className="text-paper-mute">«Crear agencia»</span> en la pestaña <span className="text-paper-mute">Registros</span>.
-            </p>
-
-            {profiles.filter((p) => p.role === 'agency').length === 0 && (
-              <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay agencias todavía. Créala desde «Registros → Crear agencia».</p>
-            )}
-            {profiles.filter((p) => p.role === 'agency').map((ag) => {
-              const linked = agencyLinks.filter((l) => l.agency_id === ag.id).map((l) => l.creator_id);
-              return (
-                <div key={ag.id} className="rounded-2xl border border-line bg-card p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-2 font-display font-semibold text-paper"><Building2 size={16} className="text-brand" /> {ag.full_name || '—'}</p>
-                      <p className="mt-0.5 truncate text-xs text-paper-mute">{ag.email}</p>
-                    </div>
-                    <div className="text-xs text-paper-dim">{linked.length} modelo{linked.length === 1 ? '' : 's'}</div>
-                  </div>
-                  <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Modelos que maneja</p>
-                  <div className="flex flex-wrap gap-2">
-                    {creators.length === 0 && <span className="text-sm text-paper-dim">No hay creadoras registradas todavía.</span>}
-                    {creators.map((cr) => {
-                      const on = linked.includes(cr.id);
-                      // ¿está con OTRA agencia? (una creadora = una sola agencia)
-                      const otherId = agencyLinks.find((x) => x.creator_id === cr.id && x.agency_id !== ag.id)?.agency_id;
-                      const otherName = otherId ? (profiles.find((p) => p.id === otherId)?.full_name || 'otra agencia') : null;
-                      return (
-                        <button key={cr.id} onClick={() => setAgConfirm({
-                            creatorId: cr.id,
-                            creatorName: cr.full_name || cr.stage_name || cr.email,
-                            toAgencyId: on ? null : ag.id,
-                            toAgencyName: ag.full_name || 'esta agencia',
-                            fromAgencyName: on ? (ag.full_name || 'esta agencia') : otherName,
-                            action: on ? 'remove' : (otherName ? 'move' : 'assign'),
-                          })}
-                          title={on ? 'Quitar de esta agencia' : otherName ? `Mover aquí (hoy con ${otherName})` : 'Asignar a esta agencia'}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? 'border-brand/50 bg-brand/10 text-brand' : otherName ? 'border-amber-400/40 bg-amber-400/[0.06] text-amber-200 hover:text-amber-100' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
-                          {on ? <Check size={14} /> : <Plus size={14} />} {cr.full_name || cr.email}
-                          {otherName && <span className="text-[10px] opacity-70">· {otherName}</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {(() => {
-                    const rows = agencySales.filter((s) => s.agency_id === ag.id);
-                    const cents = rows.reduce((s, r) => s + (r.amount_cents || 0), 0);
-                    const nameOf = (cid) => { const c = profiles.find((p) => p.id === cid); return c?.stage_name || c?.full_name || 'Modelo'; };
-                    return (
-                      <div className="mt-4">
-                        <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
-                          <CreditCard size={12} className="text-brand" /> Libro de ventas · {rows.length} registrada{rows.length === 1 ? '' : 's'} · {moneyCents(cents)}
-                        </div>
-                        {rows.length === 0 ? (
-                          <p className="rounded-xl border border-dashed border-line bg-ink-2/50 px-3 py-2 text-xs text-paper-dim">Aún sin ventas registradas por la maquinita. (Cada +1 deja una fila aquí.)</p>
-                        ) : (
-                          <div className="overflow-hidden rounded-xl border border-line">
-                            {rows.slice(0, 6).map((r, i) => (
-                              <div key={r.id} className={`flex items-center justify-between gap-3 px-3 py-2 text-xs ${i > 0 ? 'border-t border-line' : ''}`}>
-                                <span className="min-w-0 truncate text-paper">{nameOf(r.creator_id)}</span>
-                                <span className="flex shrink-0 items-center gap-3 text-paper-dim">
-                                  <span>{new Date(r.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span>
-                                  <span className="font-semibold text-brand">{moneyCents(r.amount_cents)}</span>
-                                </span>
-                              </div>
-                            ))}
-                            {rows.length > 6 && <div className="border-t border-line px-3 py-1.5 text-center text-[10px] text-paper-dim">+{rows.length - 6} más</div>}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                  <div className="mt-4"><ResetPasswordBox userId={ag.id} email={ag.email} /></div>
-                  <div className="mt-3 flex justify-end border-t border-line pt-3">
-                    <DeleteAccountButton userId={ag.id} label="agencia" onDeleted={load} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <AgenciasTab agencies={profiles.filter((p) => p.role === 'agency')} creators={creators} agencyLinks={agencyLinks} agencySales={agencySales} profiles={profiles} onAssign={setAgConfirm} onDeleted={load} />
         ) : tab === 'actividad' ? (
           <div className="mt-6">
             <EmailStudio defaultTo="rusin24@gmail.com" />
@@ -1664,6 +1584,148 @@ function EmailStudio({ defaultTo = '' }) {
 // Ficha rápida de la creadora: la HORA EXACTA de registro (importante ahora que
 // entra gente real) + datos clave, sin abrir el perfil completo. Se abre desde el
 // botón de info junto a los estados (Activa/Core).
+// Pestaña Agencias — escalable: buscador arriba, cada agencia colapsada
+// (nombre · # modelos · $ ventas). Se abre para gestionar sus modelos.
+function AgenciasTab({ agencies, creators, agencyLinks, agencySales, profiles, onAssign, onDeleted }) {
+  const [q, setQ] = useState('');
+  const list = agencies.filter((a) => !q.trim() || ((a.full_name || '') + (a.email || '')).toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="mt-6 space-y-3">
+      <p className="max-w-3xl text-sm text-paper-mute">
+        Cada agencia entra a <em>sus</em> modelos, hace pedidos y registra ventas. Abre una para gestionar qué modelos maneja. Para crear una agencia usa <span className="text-paper-mute">«Crear agencia»</span> en <span className="text-paper-mute">Registros</span>.
+      </p>
+      {agencies.length > 4 && (
+        <div className="relative">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar agencia…"
+            className="w-full rounded-xl border border-line bg-ink-2 py-2.5 pl-9 pr-3 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        </div>
+      )}
+      {agencies.length === 0 && (
+        <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay agencias todavía. Créala desde «Registros → Crear agencia».</p>
+      )}
+      {list.map((ag) => (
+        <AgencyAdminCard key={ag.id} ag={ag} creators={creators} agencyLinks={agencyLinks} agencySales={agencySales} profiles={profiles} onAssign={onAssign} onDeleted={onDeleted} />
+      ))}
+    </div>
+  );
+}
+
+function AgencyAdminCard({ ag, creators, agencyLinks, agencySales, profiles, onAssign, onDeleted }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [showBook, setShowBook] = useState(false);
+  const linkedIds = agencyLinks.filter((l) => l.agency_id === ag.id).map((l) => l.creator_id);
+  const linked = creators.filter((c) => linkedIds.includes(c.id));
+  const salesRows = agencySales.filter((s) => s.agency_id === ag.id);
+  const cents = salesRows.reduce((s, r) => s + (r.amount_cents || 0), 0);
+  const nameOf = (cid) => { const c = profiles.find((p) => p.id === cid); return c?.stage_name || c?.full_name || 'Modelo'; };
+  const crName = (cr) => cr.full_name || cr.stage_name || cr.email;
+  // Buscar modelos para AGREGAR (excluye las que ya maneja esta agencia).
+  const results = q.trim()
+    ? creators.filter((c) => !linkedIds.includes(c.id) && ((c.full_name || '') + (c.stage_name || '') + (c.email || '') + (c.handle || '')).toLowerCase().includes(q.toLowerCase())).slice(0, 8)
+    : [];
+
+  return (
+    <div className="rounded-2xl border border-line bg-card">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-hair/[0.03]">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"><Building2 size={16} /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-display font-semibold text-paper">{ag.full_name || '—'}</span>
+          <span className="block truncate text-[11px] text-paper-dim">{ag.email}</span>
+        </span>
+        <span className="shrink-0 text-right">
+          <span className="block text-sm font-semibold text-paper">{linked.length} <span className="text-xs font-normal text-paper-dim">modelo{linked.length === 1 ? '' : 's'}</span></span>
+          <span className="block text-[11px] text-brand">{moneyCents(cents)}</span>
+        </span>
+        <ChevronDown size={16} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="space-y-4 border-t border-line p-4">
+          {/* Modelos que maneja — removibles */}
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Modelos que maneja · {linked.length}</p>
+            {linked.length === 0 ? (
+              <p className="text-xs text-paper-dim">Ninguna todavía. Búscala abajo para agregarla.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {linked.map((cr) => (
+                  <button key={cr.id} title="Quitar de esta agencia"
+                    onClick={() => onAssign({ creatorId: cr.id, creatorName: crName(cr), toAgencyId: null, toAgencyName: ag.full_name || 'esta agencia', fromAgencyName: ag.full_name || 'esta agencia', action: 'remove' })}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-sm text-brand transition-colors hover:border-rose-500/50 hover:bg-rose-500/10 hover:text-rose-300">
+                    {crName(cr)} <X size={13} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Agregar modelo — buscador (escala a cientos) */}
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Agregar modelo</p>
+            <div className="relative">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre, @ o correo…"
+                className="w-full rounded-xl border border-line bg-ink-2 py-2.5 pl-9 pr-3 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            </div>
+            {q.trim() && (
+              <div className="mt-2 space-y-1">
+                {results.length === 0 && <p className="px-1 text-xs text-paper-dim">Sin resultados.</p>}
+                {results.map((cr) => {
+                  const otherId = agencyLinks.find((x) => x.creator_id === cr.id && x.agency_id !== ag.id)?.agency_id;
+                  const otherName = otherId ? (profiles.find((p) => p.id === otherId)?.full_name || 'otra agencia') : null;
+                  return (
+                    <button key={cr.id}
+                      onClick={() => { onAssign({ creatorId: cr.id, creatorName: crName(cr), toAgencyId: ag.id, toAgencyName: ag.full_name || 'esta agencia', fromAgencyName: otherName, action: otherName ? 'move' : 'assign' }); setQ(''); }}
+                      className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-ink-2 px-3 py-2 text-left text-sm transition-colors hover:border-brand/40">
+                      <span className="min-w-0 truncate text-paper">{crName(cr)}
+                        {otherName && <span className="ml-1.5 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">con {otherName}</span>}
+                      </span>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-brand"><Plus size={13} /> {otherName ? 'Mover' : 'Agregar'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Libro de ventas — compacto, se despliega si lo pides */}
+          <div className="rounded-xl border border-line bg-ink-2">
+            <button onClick={() => setShowBook((v) => !v)} className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left">
+              <span className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim"><CreditCard size={13} className="text-brand" /> Libro de ventas</span>
+              <span className="inline-flex items-center gap-2 text-xs">
+                <span className="text-paper-dim">{salesRows.length} venta{salesRows.length === 1 ? '' : 's'}</span>
+                <span className="font-semibold text-brand">{moneyCents(cents)}</span>
+                {salesRows.length > 0 && <ChevronDown size={13} className={`text-paper-dim transition-transform ${showBook ? 'rotate-180' : ''}`} />}
+              </span>
+            </button>
+            {showBook && salesRows.length > 0 && (
+              <div className="border-t border-line">
+                {salesRows.slice(0, 8).map((r, i) => (
+                  <div key={r.id} className={`flex items-center justify-between gap-3 px-3.5 py-2 text-xs ${i > 0 ? 'border-t border-line/60' : ''}`}>
+                    <span className="min-w-0 truncate text-paper">{nameOf(r.creator_id)}</span>
+                    <span className="flex shrink-0 items-center gap-3 text-paper-dim">
+                      <span>{new Date(r.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span>
+                      <span className="font-semibold text-brand">{moneyCents(r.amount_cents)}</span>
+                    </span>
+                  </div>
+                ))}
+                {salesRows.length > 8 && <div className="border-t border-line px-3 py-1.5 text-center text-[10px] text-paper-dim">+{salesRows.length - 8} más</div>}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+            <ResetPasswordBox userId={ag.id} email={ag.email} />
+            <DeleteAccountButton userId={ag.id} label="agencia" onDeleted={onDeleted} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CreatorInfoModal({ u, onClose, onOpenProfile, onView }) {
   const dt = (v, withTime) => {
     if (!v) return '—';
