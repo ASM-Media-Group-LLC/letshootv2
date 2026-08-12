@@ -4,6 +4,7 @@
 //  · staff with the 'team' capability → ONLY role 'supervisor' (Equipo) + capabilities
 // Capabilities are the granular functions of an internal puesto.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { brandedLayout, sendResend } from '../_shared/branded-email.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +13,7 @@ const CORS = {
 };
 const VALID_ROLES = ['admin', 'supervisor', 'chatter', 'producer', 'creator', 'agency'];
 const VALID_CAPS = ['datos', 'kyc', 'add_creators', 'content', 'requests', 'feedback', 'metrics', 'billing', 'agencies', 'team'];
+const VALID_AGENCY_CAPS = ['content', 'sales', 'requests', 'metrics']; // funciones del sub-equipo de agencia
 const APP = 'https://letshoot.ai';
 
 function reply(obj: unknown, status = 200) {
@@ -39,9 +41,19 @@ Deno.serve(async (req) => {
     const canTeam = isSup && callerCaps.includes('team');            // crear empleados
     const canAddCreators = isSup && callerCaps.includes('add_creators'); // dar de alta creadoras
     const canAddAgencies = isSup && callerCaps.includes('agencies');     // crear agencias
-    if (!isAdmin && !canTeam && !canAddCreators && !canAddAgencies) return reply({ ok: false, error: 'No tienes permiso para crear usuarios.' });
 
     const body = await req.json().catch(() => ({}));
+    const wantsAgencyMember = body.agency_member === true;
+
+    // Agency OWNER (rol 'agency' y NO empleado de otra agencia) puede invitar a su sub-equipo.
+    let isAgencyOwner = false;
+    if (prof?.role === 'agency') {
+      const { data: memRow } = await caller.from('agency_members').select('agency_id').eq('member_id', user.id).maybeSingle();
+      isAgencyOwner = !memRow; // si no es empleado de nadie, es dueño
+    }
+    if (!isAdmin && !canTeam && !canAddCreators && !canAddAgencies && !(isAgencyOwner && wantsAgencyMember)) {
+      return reply({ ok: false, error: 'No tienes permiso para crear usuarios.' });
+    }
     const emailProvided = String(body.email || '').trim() !== '';
     let email = String(body.email || '').trim().toLowerCase();
     const password = String(body.password || '');
@@ -51,6 +63,13 @@ Deno.serve(async (req) => {
     const capabilities = Array.isArray(body.capabilities)
       ? body.capabilities.filter((c: unknown) => typeof c === 'string' && VALID_CAPS.includes(c))
       : [];
+    // Sub-equipo de agencia: funciones + modelos asignados.
+    const memberCaps = Array.isArray(body.member_caps)
+      ? body.member_caps.filter((c: unknown) => typeof c === 'string' && VALID_AGENCY_CAPS.includes(c))
+      : [];
+    const memberCreatorIds = Array.isArray(body.member_creator_ids)
+      ? body.member_creator_ids.filter((c: unknown) => typeof c === 'string')
+      : [];
 
     if (!password || !role) return reply({ ok: false, error: 'Contrasena y rol son obligatorios.' });
     if (password.length < 8) return reply({ ok: false, error: 'La contrasena debe tener al menos 8 caracteres.' });
@@ -59,7 +78,8 @@ Deno.serve(async (req) => {
     if (!isAdmin) {
       const ok = (role === 'supervisor' && canTeam)
         || (role === 'creator' && canAddCreators)
-        || (role === 'agency' && canAddAgencies);
+        || (role === 'agency' && canAddAgencies)
+        || (role === 'agency' && isAgencyOwner && wantsAgencyMember);
       if (!ok) return reply({ ok: false, error: 'No tienes permiso para crear ese tipo de cuenta.' });
     }
 
@@ -87,6 +107,9 @@ Deno.serve(async (req) => {
     const patch: Record<string, unknown> = { role, full_name, email };
     if (role !== 'creator') patch.onboarding_status = 'active';
     if (role === 'supervisor') { patch.capabilities = capabilities; if (job_title) patch.job_title = job_title; }
+    // Empleado de agencia: nace aprobado (no espera revisión del admin como una agencia externa).
+    const asAgencyMember = isAgencyOwner && wantsAgencyMember && role === 'agency';
+    if (asAgencyMember) patch.staff_status = 'approved';
     // Optional creator profile fields (perfil público, identidad, suscripción, cortesía,
     // nota). Applied server-side so a non-admin with 'add_creators' can set them too
     // (client-side they'd be blocked by RLS). Whitelisted — no arbitrary columns.
@@ -125,6 +148,18 @@ Deno.serve(async (req) => {
     const { error: upErr } = await svc.from('profiles').update(patch).eq('id', created.user.id);
     if (upErr) return reply({ ok: false, error: upErr.message });
 
+    // Sub-equipo de agencia: vincula al empleado con su agencia (funciones) y le asigna
+    // SOLO los modelos elegidos (validados: deben pertenecer a la agencia del dueño).
+    if (asAgencyMember) {
+      await svc.from('agency_members').insert({ agency_id: user.id, member_id: created.user.id, capabilities: memberCaps });
+      if (memberCreatorIds.length) {
+        const { data: owned } = await svc.from('agency_creators').select('creator_id').eq('agency_id', user.id);
+        const allowed = new Set((owned || []).map((r: { creator_id: string }) => r.creator_id));
+        const rows = memberCreatorIds.filter((id: string) => allowed.has(id)).map((id: string) => ({ member_id: created.user.id, creator_id: id }));
+        if (rows.length) await svc.from('agency_member_creators').insert(rows);
+      }
+    }
+
     // ANY account with a real email gets a branded "set your password" invitation so the
     // person sets their own clave — the admin never handles a password. Best-effort: a
     // failed email must never fail the account creation. Real recovery link + send-email.
@@ -141,7 +176,17 @@ Deno.serve(async (req) => {
         const actionUrl = hashed
           ? `${APP}/reset?token_hash=${encodeURIComponent(hashed)}&type=recovery`
           : (linkData?.properties?.action_link || '');
-        if (actionUrl) {
+        if (actionUrl && asAgencyMember) {
+          // El dueño de la agencia NO es staff → send-email rechazaría 'invite'. Mandamos
+          // el correo branded directo con el módulo compartido.
+          const html = brandedLayout({
+            eyebrow: 'Invitación', title: `Hola ${full_name || 'equipo'}, tu acceso está listo`,
+            body: 'Tu agencia te dio acceso a LetShoot para gestionar sus modelos. Crea tu contraseña para entrar.',
+            cta: 'Crear mi contraseña', url: actionUrl, pre: 'Crea tu contraseña y entra a LetShoot.',
+          });
+          const sent = await sendResend(email, 'Tu acceso a LetShoot está listo', html);
+          invited = !!sent?.ok;
+        } else if (actionUrl) {
           const r = await fetch(`${url}/functions/v1/send-email`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, apikey: anon, 'Content-Type': 'application/json' },

@@ -12,6 +12,7 @@ import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
   ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart, KeyRound,
+  UserPlus, Trash2, Check, Mail,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -94,6 +95,9 @@ export default function AgenciaPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
+  // Contexto de agencia: si soy dueño o empleado, de qué agencia, y mis funciones.
+  const [ctx, setCtx] = useState({ agencyId: null, agencyName: '', isOwner: true, caps: ['content', 'sales', 'requests', 'metrics'] });
+  const can = (c) => ctx.caps.includes(c);
   const [models, setModels] = useState([]);       // [{id, name, status, assets:[...]}]
   const [folders, setFolders] = useState({});     // folderId -> name
   const [requests, setRequests] = useState([]);
@@ -132,11 +136,18 @@ export default function AgenciaPage() {
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(''), 2600); };
 
-  const load = useCallback(async (agencyId) => {
+  const load = useCallback(async (agencyId, isOwner = true) => {
     const supabase = getSupabase();
-    const { data: links } = await supabase.from('agency_creators')
-      .select('creator_id').eq('agency_id', agencyId);
-    const ids = (links || []).map((l) => l.creator_id);
+    // Dueño: todos los modelos de su agencia. Empleado: SOLO los asignados
+    // (agency_member_creators — RLS le deja leer los suyos).
+    let ids = [];
+    if (isOwner) {
+      const { data: links } = await supabase.from('agency_creators').select('creator_id').eq('agency_id', agencyId);
+      ids = (links || []).map((l) => l.creator_id);
+    } else {
+      const { data: mine } = await supabase.from('agency_member_creators').select('creator_id');
+      ids = (mine || []).map((l) => l.creator_id);
+    }
     if (!ids.length) { setModels([]); setRequests([]); return; }
 
     const [{ data: profs }, { data: assets }, { data: fols }, { data: reqs }] = await Promise.all([
@@ -211,13 +222,18 @@ export default function AgenciaPage() {
       if (up.profile?.role !== 'agency') { router.replace(homeForRole(up.profile?.role)); return; }
       // Agencia externa que se registró por link: espera aprobación del admin.
       if (up.profile?.staff_status === 'pending') { setMe(up.profile); setLoading(false); return; }
-      await load(up.user.id);
+      // ¿Soy dueño de la agencia o empleado del sub-equipo? Resuelve agencia + funciones.
+      const { data: cx } = await getSupabase().rpc('my_agency_context');
+      const c = Array.isArray(cx) ? cx[0] : cx;
+      const context = c ? { agencyId: c.agency_id, agencyName: c.agency_name, isOwner: c.is_owner, caps: c.capabilities || [] } : { agencyId: up.user.id, agencyName: up.profile.full_name, isOwner: true, caps: ['content', 'sales', 'requests', 'metrics'] };
+      setCtx(context);
+      await load(context.agencyId, context.isOwner);
       setMe(up.profile);
       setLoading(false);
     })();
   }, [router, load]);
 
-  const refresh = useCallback(async () => { if (me?.id) await load(me.id); }, [me?.id, load]);
+  const refresh = useCallback(async () => { if (ctx.agencyId) await load(ctx.agencyId, ctx.isOwner); }, [ctx.agencyId, ctx.isOwner, load]);
 
   // Add a model to the roster by generating a personal invite link. She registers
   // herself, does her own onboarding, and is auto-linked to this agency on redeem.
@@ -307,12 +323,14 @@ export default function AgenciaPage() {
   const modelRequests = model ? requests.filter((r) => r.creator_id === model.id) : requests;
 
   // The summary cards ARE the navigation: tap one to open its view (closed by default).
+  // Se muestran según las funciones del empleado (el dueño las tiene todas).
   const BOOK_KPIS = [
     { icon: Users, label: 'Modelos', value: nf(books.models), sub: 'que gestionas', view: 'modelos' },
-    { icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo', view: 'contenido' },
-    { icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades', view: 'ingresos' },
-    { icon: DollarSign, label: 'Ingresos generados', value: money(books.revenue), sub: 'total histórico', view: 'ingresos' },
-    { icon: Heart, label: 'Reacciones', value: nf(likeCount), sub: 'likes y comentarios', view: 'reacciones' },
+    ...(can('content') ? [{ icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo', view: 'contenido' }] : []),
+    ...(can('metrics') ? [{ icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades', view: 'ingresos' }] : []),
+    ...(can('metrics') ? [{ icon: DollarSign, label: 'Ingresos generados', value: money(books.revenue), sub: 'total histórico', view: 'ingresos' }] : []),
+    ...(can('content') ? [{ icon: Heart, label: 'Reacciones', value: nf(likeCount), sub: 'likes y comentarios', view: 'reacciones' }] : []),
+    ...(ctx.isOwner ? [{ icon: UserPlus, label: 'Equipo', value: '+', sub: 'empleados y accesos', view: 'equipo' }] : []),
   ];
 
   return (
@@ -719,12 +737,17 @@ export default function AgenciaPage() {
           )}
         </div>
         )}
+
+        {/* ── Equipo: sub-equipo de la agencia (solo el dueño) ─────────────── */}
+        {atab === 'equipo' && ctx.isOwner && (
+          <AgencyTeamTab agencyId={ctx.agencyId} models={models} flash={flash} />
+        )}
       </main>
 
       {detail && (
         <RecordSale
           asset={detail} src={srcFor(detail)} folderName={folders[detail.folder_id]}
-          agencyId={me.id} agencyName={me.full_name} agencyHandle={me.handle} agencyEmail={me.email}
+          agencyId={ctx.agencyId} soldBy={me.id} canSell={can('sales')} agencyName={me.full_name} agencyHandle={me.handle} agencyEmail={me.email}
           onClose={() => setDetail(null)}
           onSaved={async (patch) => { flash('Guardado'); setDetail((d) => (d ? { ...d, ...patch } : d)); await refresh(); }}
         />
@@ -953,7 +976,10 @@ function NewRequest({ creatorId, agencyId, onDone }) {
 }
 
 // Agency records what a piece sold + keeps a day-by-day notes journal.
-function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle, agencyEmail, onClose, onSaved }) {
+// agencyId = la AGENCIA (para agency_sales.agency_id); soldBy = quien registra
+// (auth.uid(): dueño o empleado, para sold_by / author_id). canSell gatea las
+// acciones de venta (un empleado sin la función 'sales' solo mira).
+function RecordSale({ asset, src, folderName, agencyId, soldBy, canSell = true, agencyName, agencyHandle, agencyEmail, onClose, onSaved }) {
   const [sales, setSales] = useState(asset.sales_count || 0);
   const [revenue, setRevenue] = useState(asset.revenue || 0);
   // Precio por venta (el promedio) — arranca con lo que ya se vio y se puede cambiar.
@@ -969,7 +995,7 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
     if (loved) return;
     const { error } = await getSupabase().from('feedback').upsert({
       creator_id: asset.creator_id, asset_id: asset.id, kind: 'love',
-      author_id: agencyId, author_role: 'agency', resolved: true,
+      author_id: soldBy, author_role: 'agency', resolved: true,
     }, { onConflict: 'asset_id,author_id' });
     if (!error) setLoved(true);
   }
@@ -1006,7 +1032,7 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
     // Libro de ventas: cada +1 deja una fila auditable (fecha, pieza, precio, quién).
     getSupabase().from('agency_sales').insert({
       creator_id: asset.creator_id, agency_id: agencyId, asset_id: asset.id,
-      amount_cents: Math.round(priceNum() * 100), sold_by: agencyId,
+      amount_cents: Math.round(priceNum() * 100), sold_by: soldBy,
     }).then(() => {}, () => {});
   }
   async function dec() {
@@ -1026,7 +1052,7 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
     if (!newNote.trim()) return;
     setAddingNote(true);
     const { error } = await getSupabase().from('asset_notes').insert({
-      asset_id: asset.id, author_id: agencyId, author_name: agencyName, author_handle: agencyHandle || null, author_email: agencyEmail || null, note: newNote.trim(),
+      asset_id: asset.id, author_id: soldBy, author_name: agencyName, author_handle: agencyHandle || null, author_email: agencyEmail || null, note: newNote.trim(),
     });
     setAddingNote(false);
     if (error) { console.error(error); return; }
@@ -1130,6 +1156,168 @@ function RecordSale({ asset, src, folderName, agencyId, agencyName, agencyHandle
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Sub-equipo de la agencia: invitar empleados con funciones + modelos ──────
+const AGENCY_FUNCS = [
+  { v: 'content', l: 'Ver contenido' },
+  { v: 'sales', l: 'Registrar ventas y precios' },
+  { v: 'requests', l: 'Hacer pedidos' },
+  { v: 'metrics', l: 'Ver ingresos y números' },
+];
+
+function AgencyTeamTab({ agencyId, models, flash }) {
+  const [team, setTeam] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ full_name: '', email: '', caps: [], creators: [] });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [creds, setCreds] = useState(null);
+
+  const load = useCallback(async () => {
+    const { data } = await getSupabase().rpc('agency_team');
+    setTeam(data || []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = (k, v) => setF((s) => ({ ...s, [k]: s[k].includes(v) ? s[k].filter((x) => x !== v) : [...s[k], v] }));
+  const nameOf = (id) => (models.find((m) => m.id === id)?.name) || 'Modelo';
+
+  async function invite(e) {
+    e.preventDefault();
+    setErr(''); setCreds(null);
+    if (!f.email.trim()) { setErr('Pon el correo del empleado.'); return; }
+    if (!f.caps.length) { setErr('Elige al menos una función.'); return; }
+    if (!f.creators.length) { setErr('Asigna al menos una modelo.'); return; }
+    const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
+    setBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('create-user', {
+      body: { role: 'agency', agency_member: true, email: f.email.trim(), password: pw, full_name: f.full_name.trim(), member_caps: f.caps, member_creator_ids: f.creators },
+    });
+    setBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setErr(out?.error || 'No se pudo invitar al empleado.'); return; }
+    flash(out.invited ? `Invitación enviada a ${f.email.trim()}` : 'Empleado creado');
+    setF({ full_name: '', email: '', caps: [], creators: [] });
+    setOpen(false);
+    load();
+  }
+
+  async function removeMember(mid, name) {
+    if (!window.confirm(`¿Quitar a ${name}? Pierde el acceso a la agencia.`)) return;
+    const { error } = await getSupabase().from('agency_members').delete().eq('member_id', mid);
+    if (error) { flash('Error: ' + error.message); return; }
+    flash('Empleado quitado');
+    load();
+  }
+
+  const inputCls = 'w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60';
+
+  return (
+    <div className="mt-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-paper">Tu equipo</h2>
+          <p className="text-xs text-paper-dim">Invita empleados y dales funciones y modelos. Tú (dueño) siempre tienes acceso total.</p>
+        </div>
+        {!open && (
+          <button onClick={() => { setOpen(true); setErr(''); setCreds(null); }}
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+            <UserPlus size={15} /> Invitar empleado
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <form onSubmit={invite} className="rounded-2xl border border-brand/25 bg-brand/[0.04] p-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-paper-dim">Nombre</label>
+              <input value={f.full_name} onChange={(e) => setF((s) => ({ ...s, full_name: e.target.value }))} placeholder="Nombre del empleado" className={inputCls} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-paper-dim">Correo (le llega la invitación)</label>
+              <input value={f.email} onChange={(e) => setF((s) => ({ ...s, email: e.target.value }))} type="email" placeholder="empleado@correo.com" className={inputCls} />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-brand/80">Funciones</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {AGENCY_FUNCS.map((c) => {
+                const on = f.caps.includes(c.v);
+                return (
+                  <button key={c.v} type="button" onClick={() => toggle('caps', c.v)}
+                    className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors ${on ? 'border-brand/60 bg-brand/10 text-paper' : 'border-line bg-ink-2 text-paper-mute hover:border-paper/20'}`}>
+                    <span className={`grid h-4 w-4 shrink-0 place-items-center rounded border ${on ? 'border-brand bg-brand text-on-accent' : 'border-paper-dim'}`}>{on && <Check size={11} />}</span>
+                    {c.l}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-brand/80">Modelos que puede gestionar</p>
+            {models.length === 0 ? (
+              <p className="text-xs text-paper-dim">Aún no tienes modelos en la agencia.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {models.map((m) => {
+                  const on = f.creators.includes(m.id);
+                  return (
+                    <button key={m.id} type="button" onClick={() => toggle('creators', m.id)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
+                      {on ? <Check size={12} /> : <Plus size={12} />} {m.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
+          <div className="mt-4 flex items-center gap-2">
+            <button type="submit" disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-60">
+              {busy ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />} Enviar invitación
+            </button>
+            <button type="button" onClick={() => { setOpen(false); setErr(''); }} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
+          </div>
+        </form>
+      )}
+
+      {team.length === 0 && !open && (
+        <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Aún no tienes empleados. Invita al primero con el botón de arriba.</p>
+      )}
+
+      <div className="space-y-2">
+        {team.map((mem) => (
+          <div key={mem.member_id} className="rounded-2xl border border-line bg-card p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate font-display font-semibold text-paper">{mem.full_name}</p>
+                <p className="truncate text-[11px] text-paper-dim">{mem.email}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(mem.capabilities || []).map((c) => (
+                    <span key={c} className="rounded-full border border-brand/30 bg-brand/10 px-2 py-0.5 text-[10px] font-semibold text-brand">
+                      {(AGENCY_FUNCS.find((x) => x.v === c) || {}).l || c}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-paper-dim">
+                  {(mem.creator_ids || []).length === 0 ? 'Sin modelos asignadas' : `${mem.creator_ids.length} modelo${mem.creator_ids.length === 1 ? '' : 's'}: ${mem.creator_ids.map(nameOf).join(', ')}`}
+                </p>
+              </div>
+              <button onClick={() => removeMember(mem.member_id, mem.full_name)} title="Quitar empleado"
+                className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 px-3 py-1.5 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/10">
+                <Trash2 size={13} /> Quitar
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
