@@ -273,8 +273,11 @@ export default function TrabajoPage() {
     ...(can('content') ? [{ id: 'miproduccion', icon: TrendingUp, label: 'Mi producción', value: nf(mine.length), sub: `${myWeek} en 7 días · ${myMonth} este mes` }] : []),
   ];
   const BIZ_CARDS = [
+    // «Cuentas» es la ENTRADA al dashboard de dinero — la cifra del mes en la
+    // tarjeta invita a entrar; el detalle (promedio, gráfico, últimas ventas) vive
+    // dentro, no desplegado en el panel.
+    ...(can('metrics') ? [{ id: 'cuentas', icon: DollarSign, label: 'Cuentas', value: moneyCents(ms?.monthC || 0), sub: `este mes · ${nf(ms?.count || 0)} ventas en el libro` }] : []),
     ...(can('metrics') ? [{ id: 'produccion', icon: ImageIcon, label: 'Producción', value: nf(books?.pieces || 0), sub: `piezas creadas en total` }] : []),
-    ...(can('metrics') ? [{ id: 'ventas', href: '/sales', icon: DollarSign, label: 'Manual Sales', value: moneyCents(ms?.totalC || 0), sub: `${nf(ms?.count || 0)} ventas · ${moneyCents(ms?.monthC || 0)} este mes — abrir /sales` }] : []),
     // Con acceso 'agencies' la tarjeta es de GESTIÓN (crear + vincular modelos).
     // Sin él, pero con 'metrics', queda la vista de solo lectura.
     ...(can('agencies') ? [{ id: 'gestagencias', icon: Building2, label: 'Agencias', value: nf(agencies.length), sub: 'crear y asignar modelos' }]
@@ -414,10 +417,6 @@ export default function TrabajoPage() {
               </section>
             )}
 
-            {can('metrics') && (
-              <CuentasPanel rows={salesRows} bill={bill} onOpenSales={() => router.push('/sales')} onOpenCobros={() => can('billing') && setTab('cobros')} canBilling={can('billing')} />
-            )}
-
             {OPS_CARDS.length > 0 && (
               <>
                 <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Áreas · entra a trabajar</div>
@@ -447,6 +446,7 @@ export default function TrabajoPage() {
                 </>
               );
             })()}
+            {tab === 'cuentas' && can('metrics') && <CuentasPanel rows={salesRows} bill={bill} onOpenSales={() => router.push('/sales')} onOpenCobros={() => can('billing') && setTab('cobros')} canBilling={can('billing')} />}
             {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} />}
             {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} />}
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
