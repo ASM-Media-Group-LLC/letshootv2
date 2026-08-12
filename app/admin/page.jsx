@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2 } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -112,6 +112,7 @@ export default function AdminPage() {
   // en vez de forzar a inventar otro correo.
   const [dupUser, setDupUser] = useState(null);
   const [dupBusy, setDupBusy] = useState(false);
+  const [infoUser, setInfoUser] = useState(null); // creadora cuyo modal de info (hora de registro, etc.) está abierto
   const [newAgency, setNewAgency] = useState(null);   // null | {full_name, email, password} — alta de agencia
   const [naBusy, setNaBusy] = useState(false);
   const [naErr, setNaErr] = useState('');
@@ -643,9 +644,11 @@ export default function AdminPage() {
                           const nFotos = photoCount[u.id] || 0;
                           const joined = u.created_at ? new Date(u.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' }) : '—';
                           const planLabel = u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : null;
+                          const joinedFull = u.created_at ? new Date(u.created_at).toLocaleString('es-US', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
                           return (
-                            <button key={u.id} onClick={() => setSelCreator(u.id)}
-                              className="grid w-full min-w-[720px] grid-cols-[1.4fr_0.6fr_0.5fr_0.9fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+                            <div key={u.id} role="button" tabIndex={0} onClick={() => setSelCreator(u.id)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') setSelCreator(u.id); }}
+                              className="grid w-full min-w-[720px] cursor-pointer grid-cols-[1.4fr_0.6fr_0.5fr_0.9fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
                               <span className="flex min-w-0 items-center gap-2.5">
                                 <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                                 <span className="min-w-0">
@@ -653,7 +656,8 @@ export default function AdminPage() {
                                   <span className="block truncate text-[11px] text-paper-dim">{u.handle ? `@${u.handle}` : u.email}</span>
                                 </span>
                               </span>
-                              <span className="text-paper-mute">{joined}</span>
+                              {/* ENTRÓ: fecha corta visible + hora exacta en el tooltip */}
+                              <span className="text-paper-mute" title={joinedFull}>{joined}</span>
                               <span className={nFotos ? 'font-medium text-paper' : 'text-paper-dim'}>{nFotos}</span>
                               <span className="text-xs">
                                 {(() => {
@@ -668,12 +672,22 @@ export default function AdminPage() {
                               <span className="flex flex-wrap items-center gap-1.5">
                                 <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span>
                                 {planLabel && <span className="inline-block rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{planLabel}</span>}
+                                {/* Botón de info: hora exacta de registro + datos clave, sin abrir el perfil completo */}
+                                <button onClick={(e) => { e.stopPropagation(); setInfoUser(u); }} title="Ver información"
+                                  className="grid h-6 w-6 place-items-center rounded-full border border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-brand">
+                                  <Info size={13} />
+                                </button>
                               </span>
-                              <span className="flex items-center justify-end gap-1.5 text-xs font-semibold text-brand">
+                              <span className="flex items-center justify-end gap-2 text-xs font-semibold">
                                 {u.onboarding_status === 'id_pending' && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">Revisar</span>}
-                                Abrir →
+                                {/* Ver: abre el panel de la creadora TAL COMO ella lo ve (otra pestaña, solo lectura) */}
+                                <button onClick={(e) => { e.stopPropagation(); window.open(`/panel?as=${u.id}`, '_blank', 'noopener'); }} title="Ver su panel como ella lo ve"
+                                  className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-paper-mute transition-colors hover:border-brand/50 hover:text-brand">
+                                  <Eye size={13} /> Ver
+                                </button>
+                                <span className="text-brand">Abrir →</span>
                               </span>
-                            </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -1397,6 +1411,8 @@ export default function AdminPage() {
         />
       )}
 
+      {infoUser && <CreatorInfoModal u={infoUser} onClose={() => setInfoUser(null)} onOpenProfile={() => { setSelCreator(infoUser.id); setInfoUser(null); }} onView={() => window.open(`/panel?as=${infoUser.id}`, '_blank', 'noopener')} />}
+
       {toast && (
         <div className="fixed bottom-5 left-1/2 z-[60] w-max max-w-[calc(100vw-2.5rem)] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-center text-sm font-medium text-brand backdrop-blur">
           {toast}
@@ -1640,6 +1656,67 @@ function EmailStudio({ defaultTo = '' }) {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Ficha rápida de la creadora: la HORA EXACTA de registro (importante ahora que
+// entra gente real) + datos clave, sin abrir el perfil completo. Se abre desde el
+// botón de info junto a los estados (Activa/Core).
+function CreatorInfoModal({ u, onClose, onOpenProfile, onView }) {
+  const dt = (v, withTime) => {
+    if (!v) return '—';
+    const d = new Date(v);
+    return d.toLocaleString('es-US', withTime
+      ? { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' }
+      : { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+  const dOnly = (v) => (v ? new Date(v + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'long', year: 'numeric' }) : '—');
+  const planLabel = u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : '—';
+  const paid = u.payment_status === 'paid' || ['active', 'paid'].includes(u.onboarding_status);
+  const Row = ({ icon: Icon, label, value, accent }) => (
+    <div className="flex items-start justify-between gap-4 border-b border-line/60 py-2.5 last:border-0">
+      <span className="flex items-center gap-2 text-[13px] text-paper-dim"><Icon size={14} className="shrink-0 text-paper-dim" /> {label}</span>
+      <span className={`text-right text-[13px] font-medium ${accent || 'text-paper'}`}>{value}</span>
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center gap-3">
+          <Avatar src={u.avatar_url} name={u.full_name} size="md" />
+          <div className="min-w-0">
+            <p className="truncate font-display text-lg font-semibold text-paper">{u.full_name || 'Sin nombre aún'}</p>
+            <p className="truncate text-[11px] text-paper-dim">{u.handle ? `@${u.handle} · ` : ''}{u.email}</p>
+          </div>
+          <button onClick={onClose} className="ml-auto grid h-8 w-8 place-items-center rounded-full border border-line text-paper-dim hover:text-paper"><X size={15} /></button>
+        </div>
+
+        <div className="rounded-xl border border-brand/25 bg-brand/[0.05] px-3.5 py-2.5">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-brand"><Clock size={13} /> Se registró</div>
+          <div className="mt-1 text-sm font-medium text-paper">{dt(u.created_at, true)}</div>
+        </div>
+
+        <div className="mt-3">
+          <Row icon={CreditCard} label="Suscripción" value={paid ? `${planLabel} · Activa` : `${planLabel} · Inactiva`} accent={paid ? 'text-emerald-300' : 'text-paper-dim'} />
+          <Row icon={Calendar} label="Vence" value={dOnly(u.subscription_ends_at)} />
+          {u.comp_until && <Row icon={Sparkles} label="Cortesía hasta" value={dOnly(u.comp_until)} accent="text-amber-300" />}
+          <Row icon={ShieldCheck} label="Estado" value={(OB[u.onboarding_status] || OB.registered).label} />
+          <Row icon={MapPin} label="País" value={u.country || '—'} />
+          <Row icon={Phone} label="Teléfono" value={u.phone || '—'} />
+          <Row icon={Calendar} label="Nacimiento" value={dOnly(u.date_of_birth)} />
+          {u.billing_note && <Row icon={Info} label="Nota" value={u.billing_note} />}
+        </div>
+
+        <div className="mt-5 flex gap-2">
+          <button onClick={onView} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-semibold text-paper hover:border-brand/50">
+            <Eye size={14} /> Ver su panel
+          </button>
+          <button onClick={onOpenProfile} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent">
+            Abrir perfil →
+          </button>
+        </div>
       </div>
     </div>
   );

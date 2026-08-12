@@ -8,12 +8,12 @@
 // sold, who added it, the agency's day-by-day notes, and she can leave feedback.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, MessageSquare, User, Bell,
   X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
-  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff,
+  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff, Eye,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -55,8 +55,12 @@ const NOTIF_META = {
 export default function PanelPage() {
   const { t, lang } = usePortal();
   const router = useRouter();
+  const search = useSearchParams();
+  const asId = search.get('as'); // ?as=<creatorId> → el equipo VE el panel de esa creadora (solo lectura)
   const locale = lang === 'es' ? 'es-US' : 'en-US';
   const [state, setState] = useState({ loading: true, profile: null, assets: [], folders: {} });
+  const [viewAs, setViewAs] = useState(null); // { id, name } cuando el equipo mira como la creadora; null si es su propio panel
+  const readOnly = !!viewAs; // en modo «ver como» NADA se puede escribir
   const [urls, setUrls] = useState({});
   const [toast, setToast] = useState('');
   const [notifs, setNotifs] = useState([]);
@@ -115,6 +119,32 @@ export default function PanelPage() {
       const up = await getUserProfile();
       if (!up) { router.replace('/login'); return; }
       if (!up.profile?.role) { router.replace('/login'); return; }
+
+      // ── Modo «ver como»: el equipo (staff/admin) abre el panel de una creadora
+      // tal como ella lo ve. Solo lectura; usa las políticas de staff para leer
+      // su contenido/pedidos/feedback. No aplica a la creadora misma.
+      const isStaff = ['admin', 'supervisor', 'producer', 'chatter'].includes(up.profile.role);
+      if (asId && isStaff) {
+        const { data: rows } = await getSupabase().rpc('creator_profile', { target: asId });
+        const cp = rows?.[0];
+        if (!cp) { router.replace('/admin'); return; }
+        const profile = {
+          id: cp.id, role: 'creator', full_name: cp.full_name, stage_name: cp.stage_name,
+          handle: cp.handle, avatar_url: cp.avatar_url, onboarding_status: cp.onboarding_status,
+          payment_status: cp.payment_status, plan: cp.plan, lora_status: cp.lora_status,
+        };
+        const { assets, folders } = await load(cp.id);
+        const latest = assets.reduce((mx, a) => (a.deliver_date && a.deliver_date > mx ? a.deliver_date : mx), '');
+        setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
+        setViewAs({ id: cp.id, name: cp.stage_name || cp.full_name || 'la creadora' });
+        setState({ loading: false, profile, assets, folders });
+        // La agencia que la maneja (para reflejar «gestionada por…» igual que ella lo ve).
+        const { data: link } = await getSupabase().from('agency_creators').select('agency_id, profiles!agency_creators_agency_id_fkey(full_name)').eq('creator_id', cp.id).maybeSingle();
+        if (link?.profiles?.full_name) setAgency(link.profiles.full_name);
+        return;
+      }
+
+      // ── Panel propio de la creadora ──
       if (up.profile.role !== 'creator') { router.replace(homeForRole(up.profile.role)); return; }
       if (up.profile.onboarding_status !== 'active') { router.replace('/onboarding'); return; }
       const { assets, folders } = await load(up.user.id);
@@ -123,7 +153,7 @@ export default function PanelPage() {
       setState({ loading: false, profile: up.profile, assets, folders });
       const { data: ag } = await getSupabase().rpc('my_agency'); if (ag) setAgency(ag);
     })();
-  }, [router, load]);
+  }, [router, load, asId]);
 
   const refresh = useCallback(async () => {
     if (!state.profile?.id) return;
@@ -148,11 +178,12 @@ export default function PanelPage() {
     const opening = !bellOpen; setBellOpen(opening);
     if (opening) {
       setJustUnread(notifs.filter((n) => !n.read).map((n) => n.id));
-      if (unread > 0) { setNotifs((ns) => ns.map((n) => ({ ...n, read: true }))); await getSupabase().from('notifications').update({ read: true }).eq('user_id', state.profile.id).eq('read', false); }
+      if (unread > 0 && !readOnly) { setNotifs((ns) => ns.map((n) => ({ ...n, read: true }))); await getSupabase().from('notifications').update({ read: true }).eq('user_id', state.profile.id).eq('read', false); }
     }
   }
   // Ella decide: salirse de su agencia (borra el vínculo; avisa a la agencia).
   async function leaveAgency() {
+    if (readOnly) return;
     if (!window.confirm(t.panel.leaveAgencyConfirm)) return;
     const supabase = getSupabase();
     const { data: link } = await supabase.from('agency_creators').select('agency_id').eq('creator_id', state.profile.id).maybeSingle();
@@ -167,6 +198,7 @@ export default function PanelPage() {
   }
 
   async function sendFeedback(asset, kind) {
+    if (readOnly) return;
     let message = null;
     if (kind === 'change') { message = window.prompt(t.panel.changePrompt, ''); if (message === null) return; }
     const { error } = await getSupabase().from('feedback').upsert(
@@ -178,6 +210,7 @@ export default function PanelPage() {
     flash(kind === 'love' ? (t.panel.fbLoved || 'Le dijiste que te encantó') : (t.panel.fbChange || 'Pediste un cambio — el equipo ya lo sabe'));
   }
   async function createRequest({ title, description, refFiles }) {
+    if (readOnly) return false;
     if (!title.trim()) return false;
     const supabase = getSupabase();
     // Client-generated id so reference photos upload under it BEFORE the insert —
@@ -315,12 +348,25 @@ export default function PanelPage() {
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
+      {readOnly && (
+        <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-amber-400/30 bg-amber-400/10 px-4 py-2 text-amber-200">
+          <span className="inline-flex items-center gap-2 text-[13px] font-medium">
+            <Eye size={15} /> {isEs ? <>Vista del equipo — estás viendo el panel de <b className="text-amber-100">{viewAs?.name}</b> tal como ella lo ve. Solo lectura.</> : <>Team view — you're seeing <b className="text-amber-100">{viewAs?.name}</b>'s panel exactly as she sees it. Read-only.</>}
+          </span>
+          <button onClick={() => { if (window.history.length > 1) window.close(); if (!window.closed) router.push('/admin'); }}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 px-3 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-400/15">
+            <X size={13} /> {isEs ? 'Cerrar vista' : 'Close view'}
+          </button>
+        </div>
+      )}
+      {!readOnly && (
       <WelcomeTour storageKey="ls_tour_creator_v1" steps={[
         { eyebrow: 'Bienvenida', title: 'Te damos la bienvenida', body: 'Aquí recibes tu contenido listo para vender, cada día. Te mostramos lo básico en 20 segundos.' },
         { eyebrow: 'Calendario', title: 'Tu calendario', body: 'Los días que tu equipo sube contenido quedan marcados. Toca un día para ver y descargar lo de esa fecha.' },
         { eyebrow: 'Galería', title: 'Toda tu galería', body: 'Todo tu contenido en un solo lugar, listo para descargar y vender donde quieras.' },
         { eyebrow: 'Pedidos', title: 'Pide lo que necesites', body: '¿Quieres un set específico? Crea un pedido y tu equipo lo produce por ti.' },
       ]} />
+      )}
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
           <div className="flex items-center gap-3"><Logo size="sm" /><span className="hidden text-sm text-paper-dim sm:inline">· {(lang || 'es').startsWith('es') ? 'Tu portal' : 'Your portal'}</span></div>
@@ -372,7 +418,9 @@ export default function PanelPage() {
               )}
             </div>
             <Link href="/cuenta" aria-label={t.panel.myAccount} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><User size={16} /></Link>
-            <button onClick={async () => { await signOut(); router.replace('/login'); }} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><LogOut size={15} /> <span className="hidden sm:inline">{t.common.exit}</span></button>
+            {readOnly
+              ? <button onClick={() => { window.close(); if (!window.closed) router.push('/admin'); }} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><X size={15} /> <span className="hidden sm:inline">{isEs ? 'Cerrar' : 'Close'}</span></button>
+              : <button onClick={async () => { await signOut(); router.replace('/login'); }} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><LogOut size={15} /> <span className="hidden sm:inline">{t.common.exit}</span></button>}
           </div>
         </div>
       </header>
@@ -533,7 +581,7 @@ export default function PanelPage() {
               </div>
             )}
 
-            {state.profile?.id && (
+            {state.profile?.id && !readOnly && (
               <details className="mt-10 rounded-2xl border border-line bg-card p-4">
                 <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-paper-mute"><UserPlus size={15} className="text-brand" /> {t.panel.addClonePhotos}</summary>
                 <div className="mt-4"><LoraUploader userId={state.profile.id} compact /></div>
@@ -574,9 +622,9 @@ export default function PanelPage() {
           <div className="mt-6">
             <div className="flex items-center justify-between">
               <p className="text-sm text-paper-mute">{t.panel.requests}</p>
-              <button onClick={() => setReqOpen((v) => !v)} className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20"><Plus size={15} /> {t.panel.askContent}</button>
+              {!readOnly && <button onClick={() => setReqOpen((v) => !v)} className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20"><Plus size={15} /> {t.panel.askContent}</button>}
             </div>
-            {reqOpen && <RequestForm t={t} onSubmit={createRequest} />}
+            {reqOpen && !readOnly && <RequestForm t={t} onSubmit={createRequest} />}
             <div className="mt-4 space-y-2.5">
               {requests.length === 0 && !reqOpen && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{t.panel.reqEmpty}</p>}
               {requests.map((r) => {
@@ -593,7 +641,7 @@ export default function PanelPage() {
                       </div>
                       <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${st.cls}`}>{st.l}</span>
                     </div>
-                    <CreatorReqThread req={r} t={t} locale={locale} onSent={refresh} flash={flash} />
+                    <CreatorReqThread req={r} t={t} locale={locale} onSent={refresh} flash={flash} readOnly={readOnly} />
                   </div>
                 );
               })}
@@ -609,7 +657,7 @@ export default function PanelPage() {
 }
 
 // Request thread: team questions land here (and at her agency); she replies.
-function CreatorReqThread({ req, t, locale, onSent, flash }) {
+function CreatorReqThread({ req, t, locale, onSent, flash, readOnly }) {
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -618,6 +666,7 @@ function CreatorReqThread({ req, t, locale, onSent, flash }) {
 
   async function send(e) {
     e.preventDefault();
+    if (readOnly) return;
     if (!body.trim()) return;
     setSending(true);
     const { error } = await getSupabase().rpc('post_request_message', { rid: req.id, body_text: body.trim() });
@@ -644,14 +693,14 @@ function CreatorReqThread({ req, t, locale, onSent, flash }) {
               <p className="text-paper-mute">{m.body}</p>
             </div>
           ))}
-          <form className="flex gap-2" onSubmit={send}>
+          {!readOnly && <form className="flex gap-2" onSubmit={send}>
             <input value={body} onChange={(e) => setBody(e.target.value)} placeholder={t.panel.reqMsgPlaceholder}
               className="min-w-0 flex-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-xs text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
             <button type="submit" disabled={sending || !body.trim()}
               className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-on-accent disabled:opacity-50">
               {sending ? '…' : t.panel.reqMsgSend}
             </button>
-          </form>
+          </form>}
         </div>
       )}
     </div>
