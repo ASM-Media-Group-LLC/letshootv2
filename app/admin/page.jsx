@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -669,23 +669,19 @@ export default function AdminPage() {
                                   return <span className="text-paper-mute">{dateLabel}</span>;
                                 })()}
                               </span>
-                              <span className="flex flex-wrap items-center gap-1.5">
-                                <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span>
+                              {/* ESTADO: solo los badges — limpio y alineado siempre */}
+                              <span className="flex items-center gap-1.5">
+                                <span className={`inline-block whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span>
                                 {planLabel && <span className="inline-block rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{planLabel}</span>}
-                                {/* Botón de info: hora exacta de registro + datos clave, sin abrir el perfil completo */}
-                                <button onClick={(e) => { e.stopPropagation(); setInfoUser(u); }} title="Ver información"
-                                  className="grid h-6 w-6 place-items-center rounded-full border border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-brand">
-                                  <Info size={13} />
-                                </button>
                               </span>
-                              <span className="flex items-center justify-end gap-2 text-xs font-semibold">
-                                {u.onboarding_status === 'id_pending' && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">Revisar</span>}
-                                {/* Ver: abre el panel de la creadora TAL COMO ella lo ve (otra pestaña, solo lectura) */}
-                                <button onClick={(e) => { e.stopPropagation(); window.open(`/panel?as=${u.id}`, '_blank', 'noopener'); }} title="Ver su panel como ella lo ve"
-                                  className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-paper-mute transition-colors hover:border-brand/50 hover:text-brand">
-                                  <Eye size={13} /> Ver
-                                </button>
-                                <span className="text-brand">Abrir →</span>
+                              {/* Acciones: un solo menú ⋯ para que la fila no se desarme */}
+                              <span className="flex items-center justify-end">
+                                <RowActions items={[
+                                  { label: 'Abrir perfil', icon: IdCard, onClick: () => setSelCreator(u.id) },
+                                  { label: 'Ver su panel', icon: Eye, onClick: () => window.open(`/panel?as=${u.id}`, '_blank', 'noopener') },
+                                  { label: 'Ver información', icon: Info, onClick: () => setInfoUser(u) },
+                                  ...(u.onboarding_status === 'id_pending' ? [{ label: 'Revisar identidad', icon: ShieldCheck, tone: 'amber', onClick: () => setSelCreator(u.id) }] : []),
+                                ]} />
                               </span>
                             </div>
                           );
@@ -1584,6 +1580,44 @@ function EmailStudio({ defaultTo = '' }) {
 // Ficha rápida de la creadora: la HORA EXACTA de registro (importante ahora que
 // entra gente real) + datos clave, sin abrir el perfil completo. Se abre desde el
 // botón de info junto a los estados (Activa/Core).
+// Menú de acciones por fila (⋯). Posición fija calculada del botón para no
+// recortarse dentro del contenedor con scroll horizontal. Cierra al tocar fuera.
+function RowActions({ items }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
+  function toggle(e) {
+    e.stopPropagation();
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      const width = 208;
+      setPos({ top: Math.min(r.bottom + 6, window.innerHeight - 8), left: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)) });
+    }
+    setOpen((o) => !o);
+  }
+  return (
+    <>
+      <button ref={btnRef} onClick={toggle} aria-label="Acciones"
+        className={`grid h-8 w-8 place-items-center rounded-full border transition-colors ${open ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-dim hover:border-brand/50 hover:text-paper'}`}>
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[60]" onClick={(e) => { e.stopPropagation(); setOpen(false); }}>
+          <div className="fixed w-52 overflow-hidden rounded-xl border border-line bg-card shadow-glow-sm"
+            style={{ top: pos.top, left: pos.left }} onClick={(e) => e.stopPropagation()}>
+            {items.map((it, i) => (
+              <button key={i} onClick={(e) => { e.stopPropagation(); setOpen(false); it.onClick(); }}
+                className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm transition-colors hover:bg-hair/[0.06] ${i > 0 ? 'border-t border-line/60' : ''} ${it.tone === 'amber' ? 'text-amber-300' : 'text-paper'}`}>
+                <it.icon size={15} className={it.tone === 'amber' ? 'text-amber-300' : 'text-paper-dim'} /> {it.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // Pestaña Agencias — escalable: buscador arriba, cada agencia colapsada
 // (nombre · # modelos · $ ventas). Se abre para gestionar sus modelos.
 function AgenciasTab({ agencies, creators, agencyLinks, agencySales, profiles, onAssign, onDeleted }) {
