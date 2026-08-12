@@ -82,28 +82,37 @@ export default function OwnerPage() {
   // again. Idempotent: an existing account is just skipped.
   async function seedDemo() {
     setBusy('seed'); setError('');
-    await signOut().catch(() => {});
-    const res = await signIn(ADMIN.email, ADMIN.password);
-    if (res.error || res.profile?.role !== 'admin') { setError('No pude entrar como admin para preparar las cuentas.'); setBusy(''); return; }
-    const demos = [
-      { full_name: 'Creadora Demo', email: USER.email,    password: USER.password,    role: 'creator' },
-      { full_name: 'Clienta Demo',  email: CLIENTA.email, password: CLIENTA.password, role: 'creator', profile: { activate: true, plan: 'core' } },
-      { full_name: 'Agencia Demo',  email: AGENCY.email,  password: AGENCY.password,  role: 'agency' },
-      { full_name: 'Equipo Demo',   email: TEAM.email,    password: TEAM.password,    role: 'supervisor', capabilities: ['content', 'requests', 'feedback'] },
-    ];
-    const sb = getSupabase();
-    let created = 0, skipped = 0; const failed = [];
-    for (const d of demos) {
-      const { data, error } = await sb.functions.invoke('create-user', { body: { ...d, send_invite: false } });
-      let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
-      if (out?.ok) created++;
-      else if (/ya existe|already/i.test(out?.error || '')) skipped++;
-      else failed.push(`${d.email} (${out?.error || 'error'})`);
+    try {
+      await signOut().catch(() => {});
+      const res = await signIn(ADMIN.email, ADMIN.password);
+      if (res.error || res.profile?.role !== 'admin') throw new Error(res.error || 'No entré como admin.');
+      const sb = getSupabase();
+      // Attach the fresh admin token explicitly — after a just-completed signIn the
+      // cookie-based client may not have propagated it to functions.invoke yet.
+      const { data: { session } } = await sb.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined;
+      const demos = [
+        { full_name: 'Creadora Demo', email: USER.email,    password: USER.password,    role: 'creator' },
+        { full_name: 'Clienta Demo',  email: CLIENTA.email, password: CLIENTA.password, role: 'creator', profile: { activate: true, plan: 'core' } },
+        { full_name: 'Agencia Demo',  email: AGENCY.email,  password: AGENCY.password,  role: 'agency' },
+        { full_name: 'Equipo Demo',   email: TEAM.email,    password: TEAM.password,    role: 'supervisor', capabilities: ['content', 'requests', 'feedback'] },
+      ];
+      let created = 0, skipped = 0; const failed = [];
+      for (const d of demos) {
+        const { data, error } = await sb.functions.invoke('create-user', { body: { ...d, send_invite: false }, headers });
+        let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+        if (out?.ok) created++;
+        else if (/ya existe|already/i.test(out?.error || '')) skipped++;
+        else failed.push(`${d.email}: ${out?.error || 'sin respuesta'}`);
+      }
+      setError(failed.length
+        ? `Fallaron: ${failed.join(' · ')}`
+        : `Listo — ${created} creada(s), ${skipped} ya existían. Recarga y entra como cualquiera de abajo.`);
+    } catch (e) {
+      setError('Error: ' + (e?.message || String(e)));
+    } finally {
+      setBusy('');
     }
-    setBusy('');
-    setError(failed.length
-      ? `Algunas fallaron: ${failed.join(' · ')}`
-      : `Listo — ${created} creada(s), ${skipped} ya existían. Ya puedes entrar como cualquiera de abajo.`);
   }
 
   return (
