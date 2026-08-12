@@ -80,6 +80,7 @@ export default function TrabajoPage() {
   const [agencies, setAgencies] = useState([]); // agencias + sus modelos (acceso 'agencies')
   const [billRows, setBillRows] = useState([]); // creadoras con estado de suscripción (acceso 'billing')
   const [ms, setMs] = useState(null);         // resumen del libro Manual Sales (centavos exactos)
+  const [salesRows, setSalesRows] = useState([]); // filas crudas del libro (para el dashboard de Cuentas)
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
   const meRef = useRef(null);
@@ -106,7 +107,7 @@ export default function TrabajoPage() {
       pcaps.includes('requests') ? supabase.from('requests').select('id, status, title, creator_id, created_at, producer_id') : Promise.resolve({ data: [] }),
       pcaps.includes('feedback') ? supabase.from('feedback').select('id, kind, resolved, creator_id, message, asset_id, created_at') : Promise.resolve({ data: [] }),
       pcaps.includes('metrics') ? supabase.rpc('team_books') : Promise.resolve({ data: null }),
-      pcaps.includes('metrics') ? supabase.from('manual_sales').select('amount, period_month') : Promise.resolve({ data: [] }),
+      pcaps.includes('metrics') ? supabase.from('manual_sales').select('id, amount, period_month, sold_on, model_name, concept, rebill_on').order('sold_on', { ascending: false }) : Promise.resolve({ data: [] }),
       pcaps.includes('content') ? supabase.from('assets').select('id, type, creator_id, created_at').eq('uploaded_by', profile.id) : Promise.resolve({ data: [] }),
       pcaps.includes('agencies') ? supabase.rpc('team_agencies') : Promise.resolve({ data: [] }),
       pcaps.includes('billing') ? supabase.rpc('team_billing') : Promise.resolve({ data: [] }),
@@ -118,6 +119,7 @@ export default function TrabajoPage() {
     setBillRows(bl.data || []);
     setMine(myAssets.data || []);
     const srows = sales.data || [];
+    setSalesRows(srows);
     setMs({
       totalC: sumCents(srows, (r) => r.amount),
       count: srows.length,
@@ -410,6 +412,10 @@ export default function TrabajoPage() {
                   )
                 )}
               </section>
+            )}
+
+            {can('metrics') && (
+              <CuentasPanel rows={salesRows} bill={bill} onOpenSales={() => router.push('/sales')} onOpenCobros={() => can('billing') && setTab('cobros')} canBilling={can('billing')} />
             )}
 
             {OPS_CARDS.length > 0 && (
@@ -1606,6 +1612,163 @@ function FeedbackTab({ creators, flash }) {
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── CUENTAS · resumen persistente arriba del panel (acceso 'metrics') ──────
+   Es el «dashboard de dinero» que la dueña quería ver de un vistazo:
+   ingresos del mes en grande, delta vs. mes pasado, promedio por venta,
+   #ventas y suscripciones activas + un mini-bar de los últimos 6 meses y las
+   últimas 5 ventas. Todo lee de manual_sales (RLS ya guarda por 'metrics').
+   Se le puede dar a un empleado con «Ver números de la empresa». */
+function CuentasPanel({ rows, bill, onOpenSales, onOpenCobros, canBilling }) {
+  const nowKey = new Date().toISOString().slice(0, 7);
+  const prevDate = new Date(); prevDate.setDate(1); prevDate.setMonth(prevDate.getMonth() - 1);
+  const prevKey = prevDate.toISOString().slice(0, 7);
+
+  // Sumas por mes (period_month es 'YYYY-MM' — de qué mes CUBRE la venta).
+  const byMonth = {};
+  (rows || []).forEach((r) => {
+    const k = r.period_month || (r.sold_on ? String(r.sold_on).slice(0, 7) : nowKey);
+    byMonth[k] = (byMonth[k] || 0) + Number(r.amount || 0);
+  });
+  const thisMonth = byMonth[nowKey] || 0;
+  const lastMonth = byMonth[prevKey] || 0;
+  const thisMonthRows = (rows || []).filter((r) => (r.period_month || (r.sold_on ? String(r.sold_on).slice(0, 7) : '')) === nowKey);
+  const lastMonthRows = (rows || []).filter((r) => (r.period_month || (r.sold_on ? String(r.sold_on).slice(0, 7) : '')) === prevKey);
+  const nSales = thisMonthRows.length;
+  const avgTicket = nSales > 0 ? thisMonth / nSales : 0;
+  const avgPrev = lastMonthRows.length > 0 ? lastMonth / lastMonthRows.length : 0;
+  const deltaPct = lastMonth > 0 ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100) : null;
+
+  // Últimos 6 meses en orden cronológico (para el mini bar-chart).
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+    const key = d.toISOString().slice(0, 7);
+    months.push({ key, label: d.toLocaleDateString('es-US', { month: 'short' }).replace('.', ''), amount: byMonth[key] || 0 });
+  }
+  const peak = Math.max(1, ...months.map((m) => m.amount));
+
+  // Próximos cobros (rebills en los próximos 14 días).
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const in14ISO = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  const upcomingRebills = (rows || []).filter((r) => r.rebill_on && r.rebill_on >= todayISO && r.rebill_on <= in14ISO);
+  const upcomingTotal = upcomingRebills.reduce((a, r) => a + Number(r.amount || 0), 0);
+
+  // Últimas 5 ventas para la lista de la derecha.
+  const latest = [...(rows || [])].slice(0, 5);
+
+  return (
+    <section className="mt-6 rounded-2xl border border-brand/25 bg-gradient-to-br from-brand/[0.05] to-transparent p-4 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Cuentas del mes</div>
+          <p className="text-xs text-paper-dim">Lo que entró, cuánto en promedio y qué viene — todo lo que el equipo necesita saber sin abrir el libro.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {canBilling && (
+            <button onClick={onOpenCobros} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:border-brand/50 hover:text-paper">
+              <CreditCard size={13} /> Suscripciones
+            </button>
+          )}
+          <button onClick={onOpenSales} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/25">
+            <DollarSign size={13} /> Ver el libro
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
+        {/* Columna izquierda: números grandes + gráfico */}
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <MoneyStat label="Este mes" value={money(thisMonth)} delta={deltaPct} sub={`vs. ${money(lastMonth)} el mes pasado`} big />
+            <MoneyStat label="Promedio por venta" value={money(avgTicket)} sub={avgPrev > 0 ? `vs. ${money(avgPrev)}` : 'primera(s) venta(s)'} />
+            <MoneyStat label="Ventas del mes" value={nf(nSales)} sub={nSales === 0 ? 'aún nada este mes' : `${nSales} entrada${nSales === 1 ? '' : 's'} en el libro`} />
+            <MoneyStat label="Suscripciones activas" value={nf(bill?.active || 0)} sub={bill?.soon ? `${bill.soon} vencen esta semana` : 'todas al día'} alert={bill?.soon > 0} />
+          </div>
+
+          <div className="rounded-xl border border-line bg-ink-2 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Últimos 6 meses</span>
+              <span className="text-[11px] text-paper-dim">pico: {money(peak)}</span>
+            </div>
+            <div className="flex h-24 items-end gap-2">
+              {months.map((m) => {
+                const h = Math.max(4, Math.round((m.amount / peak) * 100));
+                const isCurrent = m.key === nowKey;
+                return (
+                  <div key={m.key} className="flex flex-1 flex-col items-center gap-1.5">
+                    <div className="flex w-full flex-1 items-end">
+                      <div className={`w-full rounded-t ${isCurrent ? 'bg-brand' : 'bg-brand/30'}`} style={{ height: `${h}%` }} title={`${m.label}: ${money(m.amount)}`} />
+                    </div>
+                    <span className={`text-[10px] font-semibold uppercase ${isCurrent ? 'text-brand' : 'text-paper-dim'}`}>{m.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Columna derecha: próximos cobros + últimas ventas */}
+        <div className="space-y-3">
+          <div className="rounded-xl border border-line bg-ink-2 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Próximos 14 días</span>
+              <span className="text-[11px] text-paper-dim">rebills</span>
+            </div>
+            <div className="font-display text-xl font-semibold text-paper">{money(upcomingTotal)}</div>
+            <div className="mt-0.5 text-[11px] text-paper-dim">
+              {upcomingRebills.length === 0 ? 'no hay cobros programados' : `${upcomingRebills.length} venta${upcomingRebills.length === 1 ? '' : 's'} para volver a cobrar`}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-line bg-ink-2 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Últimas ventas</span>
+              <button onClick={onOpenSales} className="text-[11px] font-semibold text-brand hover:underline">ver todas</button>
+            </div>
+            {latest.length === 0 ? (
+              <p className="text-xs text-paper-dim">Aún no hay ventas registradas.</p>
+            ) : (
+              <ul className="divide-y divide-line/60">
+                {latest.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-paper">{r.model_name || '—'}</div>
+                      <div className="truncate text-[11px] text-paper-dim">
+                        {r.sold_on ? new Date(r.sold_on + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short' }) : '—'}
+                        {r.concept ? ` · ${r.concept}` : ''}
+                      </div>
+                    </div>
+                    <div className="shrink-0 font-display text-sm font-semibold text-brand">{money(Number(r.amount || 0))}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Tarjeta compacta para las cuatro cifras de arriba: número grande, delta chip
+// opcional y subtítulo pequeño. `big` la resalta y `alert` la pinta ámbar.
+function MoneyStat({ label, value, sub, delta, big, alert }) {
+  return (
+    <div className={`rounded-xl border p-3.5 ${big ? 'border-brand/40 bg-brand/[0.06]' : alert ? 'border-amber-400/40 bg-amber-400/[0.05]' : 'border-line bg-ink-2'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{label}</span>
+        {delta !== undefined && delta !== null && (
+          <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${delta >= 0 ? 'text-brand' : 'text-rose-300'}`}>
+            {delta >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}{delta >= 0 ? '+' : ''}{delta}%
+          </span>
+        )}
+      </div>
+      <div className={`mt-1.5 font-display font-semibold leading-tight text-paper ${big ? 'text-2xl' : 'text-lg'}`}>{value}</div>
+      {sub && <div className="mt-1 text-[11px] text-paper-dim">{sub}</div>}
     </div>
   );
 }
