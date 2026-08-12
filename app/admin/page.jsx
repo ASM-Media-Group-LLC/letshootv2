@@ -107,6 +107,9 @@ export default function AdminPage() {
   const [newCreator, setNewCreator] = useState(null); // null | {full_name, email, password} — modal de alta manual
   const [ncBusy, setNcBusy] = useState(false);
   const [ncErr, setNcErr] = useState('');
+  const [newAgency, setNewAgency] = useState(null);   // null | {full_name, email, password} — alta de agencia
+  const [naBusy, setNaBusy] = useState(false);
+  const [naErr, setNaErr] = useState('');
 
   const loadKyc = useCallback(async () => {
     const supabase = getSupabase();
@@ -290,6 +293,32 @@ export default function AdminPage() {
       : f.activate
       ? 'Creadora dada de alta y ACTIVA — lista para trabajar'
       : 'Creadora creada (inactiva) — actívala en Suscripción cuando pague para que la vea ella y su agencia');
+    await load();
+  }
+
+  // Alta de agencia — la agencia entra a sus modelos, pide y registra ventas.
+  // Con correo real le llega la invitación para poner su clave; con contraseña
+  // temporal escrita, nace con esa clave (útil para recrear la agencia demo).
+  async function createAgency(e) {
+    e.preventDefault();
+    setNaErr('');
+    const f = newAgency || {};
+    if (!f.full_name?.trim()) { setNaErr('Pon el nombre de la agencia.'); return; }
+    if (f.password && f.password.length < 8) { setNaErr('La contraseña debe tener al menos 8 caracteres.'); return; }
+    const pw = f.password?.trim() || `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
+    setNaBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('create-user', {
+      body: { full_name: f.full_name.trim(), email: (f.email || '').trim(), password: pw, role: 'agency' },
+    });
+    setNaBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setNaErr(out?.error || 'No se pudo crear la agencia.'); return; }
+    if (out.generated_email || f.password?.trim()) {
+      flash(`Agencia creada — login: ${out.login_email || f.email.trim()}${f.password?.trim() ? ` · clave: ${pw}` : ''}`);
+    } else {
+      flash(`Agencia creada — invitación enviada a ${out.login_email || f.email.trim()}`);
+    }
+    setNewAgency(null);
     await load();
   }
 
@@ -927,12 +956,44 @@ export default function AdminPage() {
           </div>
         ) : tab === 'agencias' ? (
           <div className="mt-6 space-y-4">
-            <p className="text-sm text-paper-mute">
-              Cada agencia / manager entra a <em>todas</em> sus modelos, hace pedidos y registra las ventas.
-              Aquí marcas qué modelos maneja cada una. Para crear una agencia nueva, usa «Crear puesto / usuario» en Equipo interno con tipo «Agencia / Manager».
-            </p>
-            {profiles.filter((p) => p.role === 'agency').length === 0 && (
-              <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay agencias todavía.</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <p className="max-w-2xl text-sm text-paper-mute">
+                Cada agencia / manager entra a <em>todas</em> sus modelos, hace pedidos y registra las ventas.
+                Aquí creas agencias y marcas qué modelos maneja cada una.
+              </p>
+              {!newAgency && (
+                <button onClick={() => { setNewAgency({ full_name: '', email: '', password: '' }); setNaErr(''); }}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+                  <Building2 size={15} /> Crear agencia
+                </button>
+              )}
+            </div>
+
+            {newAgency && (
+              <form onSubmit={createAgency} className="rounded-2xl border border-line bg-card p-5">
+                <h3 className="mb-3 flex items-center gap-2 font-display font-semibold text-paper"><Building2 size={16} className="text-brand" /> Nueva agencia</h3>
+                <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr]">
+                  <input autoFocus value={newAgency.full_name} onChange={(e) => setNewAgency((v) => ({ ...v, full_name: e.target.value }))} placeholder="Nombre de la agencia"
+                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  <input type="email" value={newAgency.email} onChange={(e) => setNewAgency((v) => ({ ...v, email: e.target.value }))} placeholder="Correo (opcional)"
+                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  <input type="text" value={newAgency.password} onChange={(e) => setNewAgency((v) => ({ ...v, password: e.target.value }))} placeholder="Contraseña (opcional)"
+                    className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                <p className="mt-2 text-[11px] text-paper-dim">Con correo, le llega una invitación para poner su clave. Si escribes una contraseña, nace con esa (útil para cuentas de prueba). Sin correo, se genera un login de empresa.</p>
+                {naErr && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{naErr}</p>}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setNewAgency(null)} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
+                  <button type="submit" disabled={naBusy}
+                    className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+                    {naBusy ? <Loader2 size={16} className="animate-spin" /> : <Building2 size={15} />} Crear agencia
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {profiles.filter((p) => p.role === 'agency').length === 0 && !newAgency && (
+              <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay agencias todavía. Crea la primera con «Crear agencia».</p>
             )}
             {profiles.filter((p) => p.role === 'agency').map((ag) => {
               const linked = agencyLinks.filter((l) => l.agency_id === ag.id).map((l) => l.creator_id);
