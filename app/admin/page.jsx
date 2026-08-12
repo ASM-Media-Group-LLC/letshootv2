@@ -670,9 +670,10 @@ export default function AdminPage() {
                                 })()}
                               </span>
                               {/* ESTADO: solo los badges — limpio y alineado siempre */}
-                              <span className="flex items-center gap-1.5">
+                              <span className="flex flex-wrap items-center gap-1.5">
                                 <span className={`inline-block whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span>
                                 {planLabel && <span className="inline-block rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{planLabel}</span>}
+                                {u.is_test && <span className="inline-block rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300">Prueba</span>}
                               </span>
                               {/* Acciones: un solo menú ⋯ para que la fila no se desarme */}
                               <span className="flex items-center justify-end">
