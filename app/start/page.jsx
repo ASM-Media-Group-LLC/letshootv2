@@ -14,8 +14,8 @@ import LangToggle from '@/components/LangToggle';
 // Pares: cada uno es la MISMA modelo — una foto suya (candid, "real") y una que
 // hizo su clon IA (estudio). Van una al lado de la otra, etiquetadas.
 const PAIRS = [
-  { real: '/lib/despertar-desayuno.jpg', ai: '/lib/julia-perfil-3.jpg' },
-  { real: '/lib/ciudad-rooftop.jpg', ai: '/lib/julia-perfil-6.jpg' },
+  { real: '/lib/despertar-desayuno.jpg', ai: '/lib/lujo-champana.jpg' },
+  { real: '/lib/ciudad-rooftop.jpg', ai: '/lib/lujo-hotel.jpg' },
   { real: '/lib/lluvia-cafe.jpg', ai: '/lib/julia-frontal-1.jpg' },
 ];
 
