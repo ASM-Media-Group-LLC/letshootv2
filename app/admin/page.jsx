@@ -2134,6 +2134,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
             <p className="truncate font-display text-lg font-semibold text-paper">{creator.stage_name || creator.full_name || '—'}</p>
             <p className="truncate text-xs text-paper-dim">{creator.handle ? `@${creator.handle} · ` : ''}{creator.email}</p>
           </div>
+          {creator.is_test && <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2.5 py-1 text-xs font-semibold text-amber-300">Prueba</span>}
           <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${TONE2[st.tone]}`}>{st.label}</span>
           <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
         </div>
@@ -2218,6 +2219,20 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                   {l}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Modelo de prueba — no cuenta en contabilidad (solo el dueño) */}
+          <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.04] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-300"><AlertTriangle size={13} /> Modelo de prueba</div>
+                <p className="mt-1 text-[11px] text-paper-dim">Si está activo, esta cuenta NO cuenta en el ingreso estimado ni en el desglose de contabilidad. Úsalo para demos y cuentas internas.</p>
+              </div>
+              <button onClick={() => patch({ is_test: !creator.is_test }, creator.is_test ? 'Ya no es modelo de prueba' : 'Marcada como modelo de prueba')} disabled={saving}
+                className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${creator.is_test ? 'border-amber-400/50 bg-amber-400/15 text-amber-300' : 'border-line text-paper-mute hover:border-amber-400/40 hover:text-amber-300'}`}>
+                {creator.is_test ? <><Check size={13} /> Es de prueba</> : 'Marcar como prueba'}
+              </button>
             </div>
           </div>
 
@@ -2325,20 +2340,6 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                   <p className="mt-1 text-sm text-paper-dim">No ha pagado. Elige su plan y actívala cuando pague.</p>
                 )}
                 {pack && <p className="mt-1 text-[11px] text-paper-dim">Incluye {pack.photos} fotos · {pack.videos} video{pack.videos === 1 ? '' : 's'} al mes</p>}
-              </div>
-
-              {/* Modelo de prueba — no cuenta en contabilidad (solo el dueño) */}
-              <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.04] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-300"><AlertTriangle size={13} /> Modelo de prueba</div>
-                    <p className="mt-1 text-[11px] text-paper-dim">Si está activo, esta cuenta NO cuenta en el ingreso estimado ni en el desglose de contabilidad. Úsalo para demos y cuentas internas.</p>
-                  </div>
-                  <button onClick={() => patch({ is_test: !creator.is_test }, creator.is_test ? 'Ya no es modelo de prueba' : 'Marcada como modelo de prueba')} disabled={saving}
-                    className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${creator.is_test ? 'border-amber-400/50 bg-amber-400/15 text-amber-300' : 'border-line text-paper-mute hover:border-amber-400/40 hover:text-amber-300'}`}>
-                    {creator.is_test ? <><Check size={13} /> Es de prueba</> : 'Marcar como prueba'}
-                  </button>
-                </div>
               </div>
 
               {/* Cortesía (gratis) + nota — para ver qué se le dio y por qué */}
