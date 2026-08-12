@@ -293,7 +293,10 @@ function InfoStep({ me, onDone, t }) {
           <Field label={t.onboarding.info.lastName} value={form.legal_last_name} onChange={set('legal_last_name')} required />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t.onboarding.info.dob} type="date" value={form.date_of_birth} onChange={set('date_of_birth')} required />
+          {/* Rango razonable: entre 100 años atrás y hace 18 años. Bloquea años absurdos como 198888. */}
+          <Field label={t.onboarding.info.dob} type="date" value={form.date_of_birth} onChange={set('date_of_birth')} required
+            min={new Date(Date.now() - 100 * 365.25 * 864e5).toISOString().slice(0, 10)}
+            max={new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)} />
           <Field label={t.onboarding.info.country} value={form.country} onChange={set('country')} placeholder={t.onboarding.info.countryPh} required />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -320,11 +323,12 @@ function Panel({ title, desc, children }) {
   );
 }
 
-function Field({ label, type = 'text', value, onChange, placeholder, required }) {
+function Field({ label, type = 'text', value, onChange, placeholder, required, min, max }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-medium text-paper-mute">{label}</span>
       <input type={type} value={value} onChange={onChange} placeholder={placeholder} required={required}
+        min={min} max={max}
         className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-paper outline-none transition-colors placeholder:text-paper-dim focus:border-brand/60 [color-scheme:dark]" />
     </label>
   );
