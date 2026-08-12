@@ -17,12 +17,13 @@ export default function ForgotPage() {
   async function onSubmit(e) {
     e.preventDefault();
     setLoading(true); setError('');
-    const { error: err } = await getSupabase().auth.resetPasswordForEmail(
-      String(email).trim().toLowerCase(),
-      { redirectTo: `${window.location.origin}/reset` }
-    );
+    // Our branded edge function sends the reset email (letshoot.ai/reset link),
+    // never Supabase's default template. Anti-enumeration: it always replies ok.
+    const { data, error: err } = await getSupabase().functions.invoke('forgot-password', {
+      body: { email: String(email).trim().toLowerCase() },
+    });
     setLoading(false);
-    if (err) { console.error(err); setError(t.common.error); return; }
+    if (err && data?.ok !== true) { console.error(err); setError(t.common.error); return; }
     setSent(true);
   }
 

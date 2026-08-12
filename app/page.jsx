@@ -1,4 +1,5 @@
 import Nav from '@/components/Nav';
+import AuthCodeCatcher from '@/components/AuthCodeCatcher';
 import CinematicHero from '@/components/CinematicHero';
 import RealVsAI from '@/components/RealVsAI';
 import Comparison from '@/components/Comparison';
@@ -14,6 +15,7 @@ import Footer from '@/components/Footer';
 export default function Page() {
   return (
     <main className="relative z-10 min-h-screen">
+      <AuthCodeCatcher />
       <Nav />
       <CinematicHero />
       <RealVsAI />
