@@ -13,7 +13,7 @@ import {
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
   ImageIcon, DollarSign, Building2, Film, ShoppingBag, TrendingUp, TrendingDown,
-  CreditCard, ListChecks, ChevronDown,
+  CreditCard, ListChecks, ChevronDown, Trash2,
 } from 'lucide-react';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -808,6 +808,32 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     flash('Pieza borrada'); await load();
   }
 
+  // Selección múltiple para borrar en batch. Toca un checkbox de una foto para
+  // seleccionarla; una barra sticky arriba deja borrarlas todas de un tirón.
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  function toggleSel(id) {
+    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function clearSel() { setSelected(new Set()); }
+  async function delSelected(all) {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    if (!window.confirm(`¿Borrar ${ids.length} pieza${ids.length === 1 ? '' : 's'}? No se puede deshacer.`)) return;
+    setBulkBusy(true);
+    const supabase = getSupabase();
+    // Junta storage_paths de los que están en el bucket (no de los seed '/lib/...').
+    const idSet = new Set(ids);
+    const paths = (all || []).filter((a) => idSet.has(a.id) && !isDirect(a.storage_path)).map((a) => a.storage_path);
+    if (paths.length) { await supabase.storage.from('deliveries').remove(paths); }
+    const { error } = await supabase.from('assets').delete().in('id', ids);
+    setBulkBusy(false);
+    if (error) { flash('No se pudieron borrar todas: ' + error.message); return; }
+    flash(`${ids.length} pieza${ids.length === 1 ? '' : 's'} borrada${ids.length === 1 ? '' : 's'}`);
+    clearSel();
+    await load();
+  }
+
   useEffect(() => { load(); }, [load]);
 
   async function createFolder(e) {
@@ -1146,31 +1172,66 @@ function CreatorDetail({ creator, me, flash, onBack }) {
             const as = [...(folder.assets || [])].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || ''));
             const photos = as.filter((a) => a.type !== 'video');
             const videos = as.filter((a) => a.type === 'video');
+            const allIds = as.map((a) => a.id);
+            const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
+            const anySelected = selected.size > 0;
+            const toggleAll = () => { if (allSelected) clearSel(); else setSelected(new Set(allIds)); };
             const Grid = ({ label, Icon, items, color }) => items.length === 0 ? null : (
               <div className="mt-4">
                 <div className={`mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider ${color}`}><Icon size={12} /> {label} · {items.length}</div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                  {items.map((a) => (
-                    <div key={a.id} className="group relative overflow-hidden rounded-xl border border-line bg-card">
-                      {a.type === 'video'
-                        ? <video src={srcOf(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
-                        // eslint-disable-next-line @next/next/no-img-element
-                        : <img src={srcOf(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
-                      {a.type === 'video' && <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 text-[9px] font-bold uppercase text-fuchsia-200 backdrop-blur">Video</span>}
-                      <button onClick={() => delAsset(a)} disabled={delId === a.id} title="Borrar pieza"
-                        className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-lg bg-ink/70 text-paper-dim opacity-0 backdrop-blur transition-all hover:bg-rose-500/80 hover:text-white group-hover:opacity-100 disabled:opacity-100">
-                        {delId === a.id ? <Loader2 size={13} className="animate-spin" /> : <X size={14} />}
-                      </button>
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/60 to-transparent p-2 pt-6">
-                        <p className="truncate text-[11px] font-medium text-paper">{a.title || 'Sin título'}</p>
-                        {a.deliver_date && <p className="text-[10px] text-paper-dim">{new Date(a.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</p>}
+                  {items.map((a) => {
+                    const isSel = selected.has(a.id);
+                    return (
+                      <div key={a.id} onClick={() => anySelected && toggleSel(a.id)}
+                        className={`group relative overflow-hidden rounded-xl border bg-card transition-all ${isSel ? 'border-brand ring-2 ring-brand/60' : 'border-line'} ${anySelected ? 'cursor-pointer' : ''}`}>
+                        {a.type === 'video'
+                          ? <video src={srcOf(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
+                          // eslint-disable-next-line @next/next/no-img-element
+                          : <img src={srcOf(a)} alt={a.title || ''} className={`aspect-[3/4] w-full object-cover transition-transform duration-300 ${isSel ? 'scale-[0.97]' : 'group-hover:scale-105'}`} />}
+                        {a.type === 'video' && <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 text-[9px] font-bold uppercase text-fuchsia-200 backdrop-blur">Video</span>}
+                        {/* Checkbox de selección — visible al hover o siempre si hay ≥1 seleccionada */}
+                        <button onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }} title={isSel ? 'Quitar selección' : 'Seleccionar'}
+                          className={`absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border-2 backdrop-blur transition-all ${isSel ? 'border-brand bg-brand text-on-accent opacity-100' : `border-white/60 bg-ink/60 text-transparent group-hover:opacity-100 ${anySelected ? 'opacity-100' : 'opacity-0'}`}`}>
+                          {isSel && <Check size={12} strokeWidth={3} />}
+                        </button>
+                        {/* Borrar individual (rápido) — se esconde cuando hay selección múltiple activa */}
+                        {!anySelected && (
+                          <button onClick={(e) => { e.stopPropagation(); delAsset(a); }} disabled={delId === a.id} title="Borrar pieza"
+                            className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-lg bg-ink/70 text-paper-dim opacity-0 backdrop-blur transition-all hover:bg-rose-500/80 hover:text-white group-hover:opacity-100 disabled:opacity-100">
+                            {delId === a.id ? <Loader2 size={13} className="animate-spin" /> : <X size={14} />}
+                          </button>
+                        )}
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/60 to-transparent p-2 pt-6">
+                          <p className="truncate text-[11px] font-medium text-paper">{a.title || 'Sin título'}</p>
+                          {a.deliver_date && <p className="text-[10px] text-paper-dim">{new Date(a.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</p>}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
             return (<>
+              {/* Barra de selección — aparece cuando hay ≥1 seleccionado */}
+              {anySelected && (
+                <div className="sticky top-[64px] z-20 mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand/50 bg-brand/10 px-3 py-2 backdrop-blur">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-brand">{selected.size} seleccionada{selected.size === 1 ? '' : 's'}</span>
+                    <button onClick={toggleAll} className="text-[11px] font-semibold text-paper-mute hover:text-paper">
+                      {allSelected ? 'Quitar todas' : `Seleccionar todas (${allIds.length})`}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={clearSel} disabled={bulkBusy} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper disabled:opacity-50">Cancelar</button>
+                    <button onClick={() => delSelected(as)} disabled={bulkBusy}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/90 px-4 py-1.5 text-xs font-semibold text-white hover:bg-rose-500 disabled:opacity-60">
+                      {bulkBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      Borrar {selected.size}
+                    </button>
+                  </div>
+                </div>
+              )}
               <Grid label="Fotos" Icon={ImageIcon} items={photos} color="text-sky-300" />
               <Grid label="Videos" Icon={Film} items={videos} color="text-fuchsia-300" />
             </>);
