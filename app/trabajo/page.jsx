@@ -15,6 +15,7 @@ import {
   ImageIcon, DollarSign, Building2, Film, ShoppingBag, TrendingUp, TrendingDown,
   CreditCard, ListChecks, ChevronDown, Trash2,
 } from 'lucide-react';
+import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
@@ -814,6 +815,8 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   const [bulkBusy, setBulkBusy] = useState(false);
   // Filtro de la galería: todo (default), fotos o videos. Mezclamos por defecto.
   const [mediaFilter, setMediaFilter] = useState('all');
+  // Lightbox: al hacer click (sin selección) se abre la pieza en grande.
+  const [preview, setPreview] = useState(null);
   function toggleSel(id) {
     setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
@@ -1236,12 +1239,13 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                   {items.map((a) => {
                     const isSel = selected.has(a.id);
                     return (
-                      <div key={a.id} onClick={() => anySelected && toggleSel(a.id)}
-                        className={`group relative overflow-hidden rounded-xl border bg-card transition-all ${isSel ? 'border-brand ring-2 ring-brand/60' : 'border-line'} ${anySelected ? 'cursor-pointer' : ''}`}>
-                        {a.type === 'video'
-                          ? <video src={srcOf(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
-                          // eslint-disable-next-line @next/next/no-img-element
-                          : <img src={srcOf(a)} alt={a.title || ''} className={`aspect-[3/4] w-full object-cover transition-transform duration-300 ${isSel ? 'scale-[0.97]' : 'group-hover:scale-105'}`} />}
+                      <div key={a.id} onClick={() => anySelected ? toggleSel(a.id) : setPreview(a)}
+                        className={`group relative cursor-pointer overflow-hidden rounded-xl border bg-card transition-all ${isSel ? 'border-brand ring-2 ring-brand/60' : 'border-line'}`}>
+                        <div className="aspect-[3/4] w-full overflow-hidden">
+                          <MediaThumb asset={a} src={srcOf(a)}
+                            className="h-full w-full object-cover"
+                            imgClassName={`transition-transform duration-300 ${isSel ? 'scale-[0.97]' : 'group-hover:scale-105'}`} />
+                        </div>
                         {a.type === 'video' && <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 text-[9px] font-bold uppercase text-fuchsia-200 backdrop-blur">Video</span>}
                         {/* Checkbox de selección — visible al hover o siempre si hay ≥1 seleccionada */}
                         <button onClick={(e) => { e.stopPropagation(); toggleSel(a.id); }} title={isSel ? 'Quitar selección' : 'Seleccionar'}
@@ -1270,6 +1274,9 @@ function CreatorDetail({ creator, me, flash, onBack }) {
           )}
         </div>
       )}
+
+      {/* Lightbox: ver la pieza en grande con controles reales */}
+      <MediaLightbox asset={preview} src={preview ? srcOf(preview) : null} onClose={() => setPreview(null)} />
     </section>
   );
 }

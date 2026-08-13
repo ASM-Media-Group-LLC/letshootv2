@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
+import MediaThumb from '@/components/MediaThumb';
 import { ymOf, ymLabel, shiftYm, aggregate, pct, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
@@ -577,10 +578,10 @@ export default function AgenciaPage() {
                       {[...monthAssets].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || '')).map((a) => (
                         <button key={a.id} onClick={() => setDetail(a)}
                           className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
-                          {a.type === 'video'
-                            ? <video src={srcFor(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
-                            // eslint-disable-next-line @next/next/no-img-element
-                            : <img src={srcFor(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
+                          <div className="aspect-[3/4] w-full overflow-hidden">
+                            <MediaThumb asset={a} src={srcFor(a)} className="h-full w-full object-cover"
+                              imgClassName="transition-transform duration-300 group-hover:scale-105" />
+                          </div>
                           <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
                             {a.sales_count > 0 && (
                               <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur">
@@ -632,10 +633,10 @@ export default function AgenciaPage() {
               const Card = (a) => (
                 <button key={a.id} onClick={() => setDetail(a)}
                   className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
-                  {a.type === 'video'
-                    ? <video src={srcFor(a)} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
-                    // eslint-disable-next-line @next/next/no-img-element
-                    : <img src={srcFor(a)} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
+                  <div className="aspect-[3/4] w-full overflow-hidden">
+                    <MediaThumb asset={a} src={srcFor(a)} className="h-full w-full object-cover"
+                      imgClassName="transition-transform duration-300 group-hover:scale-105" />
+                  </div>
                   <span className="pointer-events-none absolute right-1.5 top-1.5 rounded-md bg-ink/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-paper backdrop-blur">{a.type === 'video' ? 'Video' : 'Foto'}</span>
                   <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
                     {a.sales_count > 0 && (

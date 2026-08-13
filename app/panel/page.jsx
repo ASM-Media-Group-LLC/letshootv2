@@ -20,6 +20,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
 import { ymOf, ymLabel, shiftYm, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
+import MediaThumb from '@/components/MediaThumb';
 import Avatar from '@/components/Avatar';
 import LangToggle from '@/components/LangToggle';
 import WelcomeTour from '@/components/WelcomeTour';
@@ -490,10 +491,7 @@ export default function PanelPage() {
                       {revenueBreakdown.map((a) => (
                         <button key={a.id} onClick={() => setDetail(a)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card p-2.5 text-left transition-colors hover:border-brand/40">
                           <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line bg-ink-2">
-                            {a.type === 'video'
-                              ? <video src={srcFor(a)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
-                              // eslint-disable-next-line @next/next/no-img-element
-                              : <img src={srcFor(a)} alt="" className="h-full w-full object-cover" />}
+                            <MediaThumb asset={a} src={srcFor(a)} className="h-full w-full object-cover" />
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-medium text-paper">{a.title || (isEs ? 'Pieza' : 'Piece')}</span>
@@ -551,10 +549,7 @@ export default function PanelPage() {
                           <span className="relative h-16 w-16 shrink-0">
                             <span className="absolute -right-1 -top-1 h-full w-full rounded-xl border border-line bg-ink-2" aria-hidden />
                             <span className="relative block h-16 w-16 overflow-hidden rounded-xl border border-line">
-                              {cover.type === 'video'
-                                ? <video src={srcFor(cover)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
-                                // eslint-disable-next-line @next/next/no-img-element
-                                : <img src={srcFor(cover)} alt="" className="h-full w-full object-cover" />}
+                              <MediaThumb asset={cover} src={srcFor(cover)} className="h-full w-full object-cover" />
                               <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-bold text-paper">{g.items.length}</span>
                             </span>
                           </span>
@@ -599,10 +594,7 @@ export default function PanelPage() {
                 {notesFeed.map((n) => (
                   <button key={n.id} onClick={() => setDetail(n.asset)} className="group relative flex w-full items-start gap-3 rounded-2xl border border-line bg-card p-3 text-left transition-colors hover:border-brand/40">
                     <div className="relative z-10 h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-line">
-                      {n.asset.type === 'video'
-                        ? <video src={srcFor(n.asset)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
-                        // eslint-disable-next-line @next/next/no-img-element
-                        : <img src={srcFor(n.asset)} alt="" className="h-full w-full object-cover" />}
+                      <MediaThumb asset={n.asset} src={srcFor(n.asset)} className="h-full w-full object-cover" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm leading-snug text-paper">{n.note}</p>
@@ -710,10 +702,10 @@ function CreatorReqThread({ req, t, locale, onSent, flash, readOnly }) {
 function PhotoCard({ a, src, folder, onOpen, feedback }) {
   return (
     <button onClick={() => onOpen(a)} className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
-      {a.type === 'video'
-        ? <video src={src} className="aspect-[3/4] w-full object-cover" muted playsInline preload="metadata" />
-        // eslint-disable-next-line @next/next/no-img-element
-        : <img src={src} alt={a.title || ''} className="aspect-[3/4] w-full object-cover transition-transform duration-300 group-hover:scale-105" />}
+      <div className="aspect-[3/4] w-full overflow-hidden">
+        <MediaThumb asset={a} src={src} className="h-full w-full object-cover"
+          imgClassName="transition-transform duration-300 group-hover:scale-105" />
+      </div>
       <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
         {Number(a.revenue) > 0 && (
           <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
