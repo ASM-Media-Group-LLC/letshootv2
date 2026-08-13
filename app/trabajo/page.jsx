@@ -812,6 +812,8 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   // seleccionarla; una barra sticky arriba deja borrarlas todas de un tirón.
   const [selected, setSelected] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Filtro de la galería: todo (default), fotos o videos. Mezclamos por defecto.
+  const [mediaFilter, setMediaFilter] = useState('all');
   function toggleSel(id) {
     setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
@@ -1167,19 +1169,70 @@ function CreatorDetail({ creator, me, flash, onBack }) {
             <input ref={fileRef} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => e.target.files && uploadFiles(e.target.files)} />
           </div>
 
-          {/* Lo que ya vive en la entrega — separado en Fotos y Videos */}
+          {/* Galería MEZCLADA (fotos y videos juntos), lo último subido primero.
+              Con filtro «Todo · Fotos · Videos» por si se quiere separar. */}
           {(folder.assets || []).length > 0 ? (() => {
-            const as = [...(folder.assets || [])].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || ''));
-            const photos = as.filter((a) => a.type !== 'video');
-            const videos = as.filter((a) => a.type === 'video');
-            const allIds = as.map((a) => a.id);
+            // Orden: created_at desc (lo último subido primero). Fallback a deliver_date.
+            const stamp = (a) => a.created_at || a.deliver_date || '';
+            const as = [...(folder.assets || [])].sort((a, b) => stamp(b).localeCompare(stamp(a)));
+            const nPhotos = as.filter((a) => a.type !== 'video').length;
+            const nVideos = as.length - nPhotos;
+            const items = mediaFilter === 'photo' ? as.filter((a) => a.type !== 'video')
+                        : mediaFilter === 'video' ? as.filter((a) => a.type === 'video')
+                        : as;
+            const allIds = items.map((a) => a.id);
             const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
             const anySelected = selected.size > 0;
             const toggleAll = () => { if (allSelected) clearSel(); else setSelected(new Set(allIds)); };
-            const Grid = ({ label, Icon, items, color }) => items.length === 0 ? null : (
-              <div className="mt-4">
-                <div className={`mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider ${color}`}><Icon size={12} /> {label} · {items.length}</div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+
+            return (<>
+              {/* Barra de selección — aparece cuando hay ≥1 seleccionado */}
+              {anySelected && (
+                <div className="sticky top-[64px] z-20 mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand/50 bg-brand/10 px-3 py-2 backdrop-blur">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-brand">{selected.size} seleccionada{selected.size === 1 ? '' : 's'}</span>
+                    <button onClick={toggleAll} className="text-[11px] font-semibold text-paper-mute hover:text-paper">
+                      {allSelected ? 'Quitar todas' : `Seleccionar todas (${allIds.length})`}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={clearSel} disabled={bulkBusy} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper disabled:opacity-50">Cancelar</button>
+                    <button onClick={() => delSelected(as)} disabled={bulkBusy}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/90 px-4 py-1.5 text-xs font-semibold text-white hover:bg-rose-500 disabled:opacity-60">
+                      {bulkBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      Borrar {selected.size}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Cabecera de la galería: título + filtro segmentado */}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+                  Galería · {items.length}{mediaFilter !== 'all' && ` de ${as.length}`} · lo último subido primero
+                </div>
+                <div className="inline-flex items-center rounded-full border border-line bg-ink-2 p-0.5 text-[11px] font-semibold">
+                  {[
+                    { k: 'all',   l: `Todo · ${as.length}`,     Icon: ListChecks, color: 'text-brand' },
+                    { k: 'photo', l: `Fotos · ${nPhotos}`,      Icon: ImageIcon,  color: 'text-sky-300' },
+                    { k: 'video', l: `Videos · ${nVideos}`,     Icon: Film,       color: 'text-fuchsia-300' },
+                  ].map((t) => {
+                    const on = mediaFilter === t.k;
+                    return (
+                      <button key={t.k} onClick={() => setMediaFilter(t.k)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 transition-colors ${on ? 'bg-brand/15 ' + t.color : 'text-paper-mute hover:text-paper'}`}>
+                        <t.Icon size={12} /> {t.l}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Grid mezclado */}
+              {items.length === 0 ? (
+                <p className="mt-3 rounded-xl border border-dashed border-line p-6 text-center text-sm text-paper-dim">Nada en este filtro.</p>
+              ) : (
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                   {items.map((a) => {
                     const isSel = selected.has(a.id);
                     return (
@@ -1210,30 +1263,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                     );
                   })}
                 </div>
-              </div>
-            );
-            return (<>
-              {/* Barra de selección — aparece cuando hay ≥1 seleccionado */}
-              {anySelected && (
-                <div className="sticky top-[64px] z-20 mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand/50 bg-brand/10 px-3 py-2 backdrop-blur">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-brand">{selected.size} seleccionada{selected.size === 1 ? '' : 's'}</span>
-                    <button onClick={toggleAll} className="text-[11px] font-semibold text-paper-mute hover:text-paper">
-                      {allSelected ? 'Quitar todas' : `Seleccionar todas (${allIds.length})`}
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={clearSel} disabled={bulkBusy} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper disabled:opacity-50">Cancelar</button>
-                    <button onClick={() => delSelected(as)} disabled={bulkBusy}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/90 px-4 py-1.5 text-xs font-semibold text-white hover:bg-rose-500 disabled:opacity-60">
-                      {bulkBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                      Borrar {selected.size}
-                    </button>
-                  </div>
-                </div>
               )}
-              <Grid label="Fotos" Icon={ImageIcon} items={photos} color="text-sky-300" />
-              <Grid label="Videos" Icon={Film} items={videos} color="text-fuchsia-300" />
             </>);
           })() : (
             <p className="mt-4 rounded-xl border border-dashed border-line p-6 text-center text-sm text-paper-dim">Entrega vacía — sube fotos y videos arriba.</p>
