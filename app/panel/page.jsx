@@ -81,6 +81,17 @@ export default function PanelPage() {
   const [month, setMonth] = useState(null);
   const [openDays, setOpenDays] = useState([]);   // gallery day-folders expanded
   const [myFeedback, setMyFeedback] = useState({}); // asset_id -> 'love' | 'change'
+  // Modo selección estilo iPhone/AirDrop: toca fotos para marcarlas y bajarlas
+  // todas de un tirón. Se activa con el botón «Seleccionar» y se sale con «X».
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+  function toggleSel(id) { setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
+  function clearSel() { setSelected(new Set()); }
+  function exitSelect() { setSelectMode(false); clearSel(); }
+  // Al cambiar de vista o de mes/rango, sale del modo selección (evita quedarse
+  // con selecciones fantasma cuando ya no ves esas fotos).
+  useEffect(() => { exitSelect(); }, [view, range, month]);
 
   const load = useCallback(async (userId) => {
     const supabase = getSupabase();
@@ -516,7 +527,7 @@ export default function PanelPage() {
                       <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">{isEs ? 'Nada en este rango.' : 'Nothing in this range.'}</p>
                     ) : (
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                        {list.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} />)}
+                        {list.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
                       </div>
                     )}
                   </>
@@ -527,9 +538,57 @@ export default function PanelPage() {
         )}
 
         {/* ── Contenido: calendario de entregas por día ── */}
-        {view === 'contenido' && (
+        {view === 'contenido' && (() => {
+          const allVisible = groups.flatMap((g) => g.items);
+          const allIds = allVisible.map((a) => a.id);
+          const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
+          const selectAll = () => setSelected(new Set(allIds));
+          async function downloadSelected() {
+            const chosen = allVisible.filter((a) => selected.has(a.id));
+            if (!chosen.length) return;
+            setBulkDownloading(true);
+            downloadMany(chosen);
+            // Deja que arranquen todas las descargas antes de bajar el spinner.
+            setTimeout(() => setBulkDownloading(false), Math.max(400, chosen.length * 350));
+            exitSelect();
+          }
+          return (
           <div className="mt-6">
             {rangeBar()}
+
+            {/* Barra de acción tipo iPhone/AirDrop — seleccionar y bajar en batch */}
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] text-paper-dim">{isEs ? 'Toca «Seleccionar» para marcar varias y bajarlas juntas.' : 'Tap “Select” to mark several and download them together.'}</p>
+              {!selectMode ? (
+                <button onClick={() => setSelectMode(true)} disabled={allIds.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-brand disabled:opacity-40">
+                  <Check size={13} /> {isEs ? 'Seleccionar' : 'Select'}
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button onClick={allSelected ? clearSel : selectAll}
+                    className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper">
+                    {allSelected ? (isEs ? 'Quitar todas' : 'Deselect all') : (isEs ? `Seleccionar todas (${allIds.length})` : `Select all (${allIds.length})`)}
+                  </button>
+                  <button onClick={exitSelect} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper">
+                    {isEs ? 'Cancelar' : 'Cancel'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Barra sticky: cuenta y botón Descargar cuando hay selección */}
+            {selectMode && selected.size > 0 && (
+              <div className="sticky top-2 z-30 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand/50 bg-brand/10 px-3 py-2 backdrop-blur">
+                <span className="text-sm font-semibold text-brand">
+                  {selected.size} {selected.size === 1 ? (isEs ? 'seleccionada' : 'selected') : (isEs ? 'seleccionadas' : 'selected')}
+                </span>
+                <button onClick={downloadSelected} disabled={bulkDownloading}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-xs font-semibold text-on-accent transition-colors hover:brightness-110 disabled:opacity-60">
+                  <Download size={13} /> {isEs ? `Descargar ${selected.size}` : `Download ${selected.size}`}
+                </button>
+              </div>
+            )}
 
             {/* Gallery — one folder per day; tap to open its photos */}
             {groups.length === 0 ? (
@@ -565,7 +624,7 @@ export default function PanelPage() {
                       {open && (
                         <div className="border-t border-line p-3">
                           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                            {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} />)}
+                            {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
                           </div>
                           <button onClick={() => downloadMany(g.items)} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:hidden"><Download size={13} /> {t.panel.downloadAll}</button>
                         </div>
@@ -583,7 +642,8 @@ export default function PanelPage() {
               </details>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {view === 'activity' && (
           <div className="mt-6">
@@ -699,13 +759,21 @@ function CreatorReqThread({ req, t, locale, onSent, flash, readOnly }) {
   );
 }
 
-function PhotoCard({ a, src, folder, onOpen, feedback }) {
+function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, onToggle }) {
+  const handleClick = () => { selectMode ? onToggle?.(a.id) : onOpen(a); };
   return (
-    <button onClick={() => onOpen(a)} className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
-      <div className="aspect-[3/4] w-full overflow-hidden">
+    <button onClick={handleClick}
+      className={`group relative overflow-hidden rounded-xl border bg-card text-left transition-all ${isSelected ? 'border-brand ring-2 ring-brand/60' : 'border-line'}`}>
+      <div className={`aspect-[3/4] w-full overflow-hidden ${isSelected ? 'scale-[0.97]' : ''}`}>
         <MediaThumb asset={a} src={src} className="h-full w-full object-cover"
           imgClassName="transition-transform duration-300 group-hover:scale-105" />
       </div>
+      {/* Checkbox estilo iPhone — visible cuando el modo selección está activo */}
+      {selectMode && (
+        <span className={`absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full border-2 backdrop-blur transition-all ${isSelected ? 'border-brand bg-brand text-on-accent' : 'border-white/70 bg-black/40 text-transparent'}`}>
+          <Check size={14} strokeWidth={3} />
+        </span>
+      )}
       <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
         {Number(a.revenue) > 0 && (
           <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
