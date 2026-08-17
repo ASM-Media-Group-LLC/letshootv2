@@ -7,7 +7,7 @@
 // agency/manager keeps. Per photo she sees: when it was delivered, how much it
 // sold, who added it, the agency's day-by-day notes, and she can leave feedback.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -53,7 +53,22 @@ const NOTIF_META = {
   default: { icon: Bell, cls: 'bg-hair/10 text-paper-dim' },
 };
 
+// Página con auth: nunca es estática. force-dynamic la saca del prerender del
+// build (donde useSearchParams sin Suspense rompía `next build`, no `next dev`).
+export const dynamic = 'force-dynamic';
+
+// Wrapper con Suspense — Next 14 exige que useSearchParams viva dentro de un
+// límite de Suspense para el build de producción. Sin esto, TODOS los deploys
+// de Vercel fallaban al prerenderizar /panel.
 export default function PanelPage() {
+  return (
+    <Suspense fallback={<div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>}>
+      <PanelPageInner />
+    </Suspense>
+  );
+}
+
+function PanelPageInner() {
   const { t, lang } = usePortal();
   const router = useRouter();
   const search = useSearchParams();
