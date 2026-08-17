@@ -7,6 +7,7 @@
 // Sales live HERE (attributed to the agency), not on the creator's own panel.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
@@ -479,7 +480,7 @@ export default function AgenciaPage() {
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
           <div className="flex min-w-0 items-center gap-3">
-            <Logo size="sm" />
+            <Link href="/agencia" aria-label="Ir al inicio" className="flex shrink-0 items-center transition-opacity hover:opacity-80"><Logo size="sm" /></Link>
             <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
               <Building2 size={12} /> Agencia · Manager
             </span>

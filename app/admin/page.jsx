@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
@@ -453,7 +454,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
-      <Header me={me} router={router} />
+      <Header me={me} router={router} creators={creators} />
 
       <main className="mx-auto max-w-5xl px-5 py-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -675,11 +676,15 @@ export default function AdminPage() {
                                 {planLabel && <span className="inline-block rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{planLabel}</span>}
                                 {u.is_test && <span className="inline-block rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300">Prueba</span>}
                               </span>
-                              {/* Acciones: un solo menú ⋯ para que la fila no se desarme */}
-                              <span className="flex items-center justify-end">
+                              {/* Acciones: «Ver como ella» siempre visible (abre su panel en otra pestaña) + menú ⋯ */}
+                              <span className="flex items-center justify-end gap-1.5">
+                                <button onClick={(e) => { e.stopPropagation(); window.open(`/panel?as=${u.id}`, '_blank', 'noopener'); }}
+                                  title="Ver el panel como ella lo ve (solo lectura, otra pestaña)"
+                                  className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-[11px] font-semibold text-paper-mute transition-colors hover:border-brand/50 hover:text-brand">
+                                  <Eye size={12} /> <span className="hidden sm:inline">Ver como ella</span>
+                                </button>
                                 <RowActions items={[
                                   { label: 'Abrir perfil', icon: IdCard, onClick: () => setSelCreator(u.id) },
-                                  { label: 'Ver su panel', icon: Eye, onClick: () => window.open(`/panel?as=${u.id}`, '_blank', 'noopener') },
                                   { label: 'Ver información', icon: Info, onClick: () => setInfoUser(u) },
                                   ...(u.onboarding_status === 'id_pending' ? [{ label: 'Revisar identidad', icon: ShieldCheck, tone: 'amber', onClick: () => setSelCreator(u.id) }] : []),
                                 ]} />
@@ -2669,31 +2674,86 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
   );
 }
 
-function Header({ me, router }) {
+function Header({ me, router, creators }) {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
         <div className="flex min-w-0 items-center gap-3">
-          <Logo size="sm" />
+          <Link href="/admin" aria-label="Ir al inicio de Administración" className="flex shrink-0 items-center transition-opacity hover:opacity-80"><Logo size="sm" /></Link>
           <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
             <ShieldCheck size={12} /> Administración
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="hidden items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3 md:flex">
             <Avatar src={me?.avatar_url} name={me?.full_name} size="xs" />
             <span className="hidden leading-tight sm:block">
               <span className="block text-xs font-semibold text-paper">{me?.full_name}</span>
               <span className="block text-[10px] text-paper-dim">Dueño · Administración</span>
             </span>
           </div>
-          <a href="/trabajo" className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">Trabajo</a>
+          <ImpersonateMenu creators={creators} />
+          <a href="/trabajo" className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 sm:px-3.5">Trabajo</a>
           <button onClick={async () => { await signOut(); router.replace('/login'); }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper sm:px-3.5">
             <LogOut size={15} /> <span className="hidden sm:inline">Salir</span>
           </button>
         </div>
       </div>
     </header>
+  );
+}
+
+// «Ver como creadora» centralizado — dropdown con lista buscable de todas las
+// creadoras. Un clic abre su panel en otra pestaña (impersonate read-only).
+function ImpersonateMenu({ creators }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  const list = (creators || []).filter((c) => {
+    const t = q.trim().toLowerCase();
+    if (!t) return true;
+    return `${c.full_name || ''} ${c.handle || ''} ${c.email || ''}`.toLowerCase().includes(t);
+  }).slice(0, 12);
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:px-3.5">
+        <Eye size={14} /> <span className="hidden sm:inline">Ver como…</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-2xl border border-line bg-ink shadow-glow-sm">
+          <div className="border-b border-line p-2.5">
+            <div className="relative">
+              <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar creadora…"
+                className="w-full rounded-lg border border-line bg-ink-2 py-1.5 pl-7 pr-2 text-xs text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            </div>
+            <p className="mt-1.5 text-[10px] text-paper-dim">Abre su panel en otra pestaña, tal como ella lo ve.</p>
+          </div>
+          <div className="max-h-72 overflow-y-auto py-1">
+            {list.length === 0 && <p className="px-3 py-4 text-center text-xs text-paper-dim">Ninguna coincide.</p>}
+            {list.map((c) => (
+              <button key={c.id}
+                onClick={() => { window.open(`/panel?as=${c.id}`, '_blank', 'noopener'); setOpen(false); }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-hair/[0.06]">
+                <Avatar src={c.avatar_url} name={c.full_name} size="xs" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-paper">{c.full_name || 'Sin nombre'}</span>
+                  <span className="block truncate text-[10px] text-paper-dim">{c.handle ? `@${c.handle}` : c.email}</span>
+                </span>
+                <Eye size={12} className="shrink-0 text-paper-dim" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

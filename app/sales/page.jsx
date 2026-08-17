@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogOut, DollarSign, ArrowLeft } from 'lucide-react';
-import { getUserProfile, signOut } from '@/lib/supabase/session';
+import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
@@ -43,7 +43,7 @@ export default function SalesPage() {
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
           <div className="flex min-w-0 items-center gap-3">
-            <Logo size="sm" />
+            <Link href={homeForRole(me?.role)} aria-label="Ir al inicio" className="flex shrink-0 items-center transition-opacity hover:opacity-80"><Logo size="sm" /></Link>
             <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
               <DollarSign size={12} /> Manual Sales
             </span>
@@ -56,8 +56,8 @@ export default function SalesPage() {
                 <span className="block text-[10px] text-paper-dim">{me?.role === 'admin' ? 'Dueño' : (me?.job_title || 'Equipo')} · Ventas</span>
               </span>
             </div>
-            <Link href="/trabajo" className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-              <ArrowLeft size={14} /> <span className="hidden sm:inline">Espacio de trabajo</span>
+            <Link href={homeForRole(me?.role)} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-paper sm:px-3.5">
+              <ArrowLeft size={14} /> Volver
             </Link>
             <button onClick={async () => { await signOut(); router.replace('/login'); }}
               className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
