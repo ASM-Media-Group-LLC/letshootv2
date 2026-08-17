@@ -213,7 +213,7 @@ export default function AgenciaPage() {
 
   // Select a model and jump to its latest delivery month.
   function pickModel(m) {
-    setSel(m.id); setReqOpen(false); setMtab('content');
+    setSel(m.id); setAtab(null); setReqOpen(false); setMtab('content');
     const latest = (m.assets || []).reduce((mx, a) => (a.deliver_date && a.deliver_date > mx ? a.deliver_date : mx), '');
     setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
   }
@@ -433,7 +433,6 @@ export default function AgenciaPage() {
   // The summary cards ARE the navigation: tap one to open its view (closed by default).
   // Se muestran según las funciones del empleado (el dueño las tiene todas).
   const BOOK_KPIS = [
-    { icon: Users, label: 'Modelos', value: nf(books.models), sub: 'que gestionas', view: 'modelos' },
     ...(can('content') ? [{ icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo', view: 'contenido' }] : []),
     ...(can('metrics') ? [{ icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades', view: 'ingresos' }] : []),
     ...(can('metrics') ? [{ icon: DollarSign, label: 'Ingresos generados', value: money(books.revenue), sub: 'total histórico', view: 'ingresos' }] : []),
@@ -482,47 +481,81 @@ export default function AgenciaPage() {
           {/* La agencia NO agrega modelos — el admin conecta modelo con agencia. */}
         </div>
 
-        {/* Resumen: solo las tarjetas. Tocar una CAMBIA de pantalla al área. */}
-        {!atab && (
+        {/* HOME = grid de modelos. Clic en uno abre su dashboard a pantalla completa. */}
+        {!atab && !sel && (
           <>
-            <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen de tu agencia · histórico — toca una tarjeta para abrirla</div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              {/* Cajita de Salidas — solo si hay modelos pidiendo irse. Ámbar, resalta. */}
-              {leaveReqs.length > 0 && (
-                <button onClick={() => setAtab('salidas')}
-                  className="group rounded-2xl border border-amber-400/40 bg-amber-400/[0.06] p-4 text-left transition-colors hover:border-amber-400/70">
-                  <div className="flex items-center justify-between gap-2 text-amber-300">
-                    <span className="flex items-center gap-2">
-                      <AlertTriangle size={15} />
-                      <span className="text-xs font-medium">Salidas</span>
-                    </span>
-                    <ChevronRight size={15} className="shrink-0 transition-transform group-hover:translate-x-0.5" />
-                  </div>
-                  <div className="mt-1.5 font-display text-2xl font-semibold text-amber-200 sm:text-3xl">{leaveReqs.length}</div>
-                  <div className="mt-0.5 text-[11px] text-paper-dim">{leaveReqs.length === 1 ? 'modelo quiere salir' : 'modelos quieren salir'}</div>
-                </button>
-              )}
-              {BOOK_KPIS.map((k) => (
-                <button key={k.label}
-                  onClick={() => { setAtab(k.view); if (k.view !== 'modelos') setSel(null); }}
-                  className="group rounded-2xl border border-line bg-card p-4 text-left transition-colors hover:border-brand/40">
-                  <div className="flex items-center justify-between gap-2 text-paper-dim">
-                    <span className="flex items-center gap-2">
-                      <k.icon size={15} className="text-brand" />
-                      <span className="text-xs font-medium">{k.label}</span>
-                    </span>
-                    <ChevronRight size={15} className="shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
-                  </div>
-                  <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{k.value}</div>
-                  <div className="mt-0.5 text-[11px] text-paper-dim">{k.sub}</div>
-                </button>
-              ))}
-            </div>
+            {/* Aviso de salidas — franja arriba si hay pendientes */}
+            {leaveReqs.length > 0 && (
+              <button onClick={() => setAtab('salidas')}
+                className="mt-6 flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-400/40 bg-amber-400/[0.06] px-4 py-3 text-left transition-colors hover:border-amber-400/70">
+                <span className="flex items-center gap-2 text-sm font-semibold text-amber-200">
+                  <AlertTriangle size={16} className="text-amber-300" /> {leaveReqs.length === 1 ? '1 modelo quiere dejar tu agencia' : `${leaveReqs.length} modelos quieren dejar tu agencia`}
+                </span>
+                <span className="flex items-center gap-1 text-xs font-semibold text-amber-300">Ver <ChevronRight size={14} /></span>
+              </button>
+            )}
+
+            {/* Grid de modelos — lo primero y lo principal */}
+            <div className="mb-2.5 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Tus modelos · {models.length}</div>
+            {models.length === 0 ? (
+              <p className="rounded-2xl border border-line bg-card p-5 text-sm text-paper-dim">Aún no tienes modelos. El administrador de LetShoot conecta cada modelo con tu agencia.</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {models.map((m) => {
+                  const mSales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
+                  const mRev = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
+                  const ck = completion(checklists[m.id]);
+                  return (
+                    <button key={m.id} onClick={() => pickModel(m)}
+                      className="group flex items-center gap-3 rounded-2xl border border-line bg-card p-4 text-left transition-all hover:border-brand/40 hover:bg-hair/[0.03]">
+                      <Avatar src={m.avatar_url} name={m.name} size="md" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-display text-base font-semibold text-paper">{m.name}</span>
+                          {m.status === 'active'
+                            ? <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-brand">Activa</span>
+                            : <span className="rounded-full bg-hair/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-paper-dim">Onboarding</span>}
+                        </div>
+                        {m.handle && <div className="truncate text-[11px] text-paper-dim">@{m.handle}</div>}
+                        <div className="mt-1 text-[12px] text-paper-mute">{m.assets.length} entregadas · {nf(mSales)} ventas · <span className="font-semibold text-paper">{money(mRev)}</span></div>
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <span className={`h-1.5 flex-1 overflow-hidden rounded-full ${ck.done === ck.total ? 'bg-brand/20' : 'bg-amber-500/20'}`}>
+                            <span className={`block h-full rounded-full ${ck.done === ck.total ? 'bg-brand' : 'bg-amber-400'}`} style={{ width: `${(ck.done / ck.total) * 100}%` }} />
+                          </span>
+                          <span className={`text-[10px] font-semibold ${ck.done === ck.total ? 'text-brand' : 'text-amber-300'}`}>{ck.done}/{ck.total}</span>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Resumen de la agencia — secundario, tarjetas chicas */}
+            {BOOK_KPIS.length > 0 && (
+              <>
+                <div className="mb-2 mt-8 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen de tu agencia · toca para abrir</div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {BOOK_KPIS.map((k) => (
+                    <button key={k.label} onClick={() => { setAtab(k.view); setSel(null); }}
+                      className="group rounded-2xl border border-line bg-card p-4 text-left transition-colors hover:border-brand/40">
+                      <div className="flex items-center justify-between gap-2 text-paper-dim">
+                        <span className="flex items-center gap-2"><k.icon size={15} className="text-brand" /><span className="text-xs font-medium">{k.label}</span></span>
+                        <ChevronRight size={15} className="shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+                      </div>
+                      <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{k.value}</div>
+                      <div className="mt-0.5 text-[11px] text-paper-dim">{k.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </>
         )}
 
-        {/* Pantalla de área — reemplaza el resumen; "Resumen" arriba para volver. */}
-        {atab && (
+        {/* Pantalla de área secundaria — reemplaza el resumen; "Resumen" para volver. */}
+        {atab && !sel && (
           <div className="mb-1 mt-6">
             <button onClick={() => { setAtab(null); setSel(null); }} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-paper-mute transition-colors hover:text-paper">
               <ChevronLeft size={15} /> Resumen
@@ -568,54 +601,22 @@ export default function AgenciaPage() {
         </div>
         )}
 
-        {atab === 'modelos' && (
-        <div className="mt-6 grid gap-6 md:grid-cols-[280px_1fr]">
-          {/* Models list */}
-          <aside className="space-y-1.5">
-            <div className="mb-1 px-1 text-xs font-semibold uppercase tracking-wider text-paper-dim">Tus modelos · {models.length}</div>
-            {models.length === 0 && <p className="rounded-xl border border-line bg-card p-4 text-sm text-paper-dim">Aún no tienes modelos. El administrador de LetShoot conecta cada modelo con tu agencia.</p>}
-            {models.map((m) => {
-              const sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
-              const rev = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
-              const activeSel = sel === m.id;
-              const ck = completion(checklists[m.id]);
-              return (
-                <button key={m.id} onClick={() => pickModel(m)}
-                  className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
-                    activeSel ? 'border-brand/50 bg-brand/10' : 'border-line bg-card hover:border-brand/30'}`}>
-                  <Avatar src={m.avatar_url} name={m.name} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold text-paper">{m.name}</span>
-                      {m.status === 'active'
-                        ? <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-brand">Activa</span>
-                        : <span className="rounded-full bg-hair/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-paper-dim">Onboarding</span>}
-                    </div>
-                    {m.handle && <div className="truncate text-[11px] text-paper-dim">@{m.handle}</div>}
-                    <div className="mt-0.5 text-[11px] text-paper-dim">{m.assets.length} entregadas · {nf(sales)} ventas · {money(rev)}</div>
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <span className={`h-1.5 flex-1 overflow-hidden rounded-full ${ck.done === ck.total ? 'bg-brand/20' : 'bg-amber-500/20'}`}>
-                        <span className={`block h-full rounded-full ${ck.done === ck.total ? 'bg-brand' : 'bg-amber-400'}`} style={{ width: `${(ck.done / ck.total) * 100}%` }} />
-                      </span>
-                      <span className={`text-[10px] font-semibold ${ck.done === ck.total ? 'text-brand' : 'text-amber-300'}`}>{ck.done}/{ck.total}</span>
-                    </div>
-                  </div>
-                  <ChevronRight size={16} className={activeSel ? 'text-brand' : 'text-paper-dim'} />
-                </button>
-              );
-            })}
-          </aside>
-
-          {/* Selected model */}
-          <section className="min-w-0">
-            {!model ? (
-              <div className="grid h-full min-h-[240px] place-items-center rounded-2xl border border-dashed border-line bg-card p-8 text-center text-sm text-paper-dim">
-                Elige una modelo para ver su contenido, registrar ventas y hacer pedidos.
-              </div>
-            ) : (
+        {/* Dashboard del modelo a PANTALLA COMPLETA (sin sidebar). «Volver» a la lista. */}
+        {sel && model && (
+          <div className="mt-6">
+            <button onClick={() => { setSel(null); setAtab(null); }} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-paper-mute transition-colors hover:text-paper">
+              <ChevronLeft size={15} /> Volver a modelos
+            </button>
+            <div className="mt-3">
               <>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="font-display text-xl font-semibold">{model.name}</h2>
+                  <div className="flex items-center gap-3">
+                    <Avatar src={model.avatar_url} name={model.name} size="md" />
+                    <div>
+                      <h2 className="font-display text-xl font-semibold sm:text-2xl">{model.name}</h2>
+                      {model.handle && <p className="text-xs text-paper-dim">@{model.handle}</p>}
+                    </div>
+                  </div>
                   <button onClick={() => setReqOpen(true)}
                     className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
                     <Plus size={15} /> Nueva petición
@@ -765,9 +766,8 @@ export default function AgenciaPage() {
                 </div>
                 )}
               </>
-            )}
-          </section>
-        </div>
+            </div>
+          </div>
         )}
 
         {/* ── Contenido: every delivered piece across all models ────────────── */}
