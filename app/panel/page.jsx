@@ -590,48 +590,24 @@ export default function PanelPage() {
               </div>
             )}
 
-            {/* Gallery — one folder per day; tap to open its photos */}
-            {groups.length === 0 ? (
+            {/* Galería tipo iPhone Photos: un solo grid con TODAS las piezas,
+                lo último subido primero. Fotos y videos mezclados. Sin cajitas
+                por día. Cada día se marca con un pequeño heading arriba de sus
+                miniaturas. */}
+            {allVisible.length === 0 ? (
               <p className="mt-6 rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{t.panel.emptyMonth}</p>
             ) : (
-              <div className="mt-6 space-y-3">
-                {groups.map((g) => {
-                  const open = openDays.includes(g.date);
-                  const cover = g.items[0];
-                  const label = `${g.items.length} ${g.items.length === 1 ? t.panel.mPhotos.slice(0, -1).toLowerCase() : t.panel.mPhotos.toLowerCase()}`;
-                  return (
-                    <div key={g.date} className="overflow-hidden rounded-2xl border border-line bg-card">
-                      {/* Folder header */}
-                      <div className="flex items-center gap-3 p-3">
-                        <button onClick={() => setOpenDays((d) => open ? d.filter((x) => x !== g.date) : [...d, g.date])}
-                          className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                          <span className="relative h-16 w-16 shrink-0">
-                            <span className="absolute -right-1 -top-1 h-full w-full rounded-xl border border-line bg-ink-2" aria-hidden />
-                            <span className="relative block h-16 w-16 overflow-hidden rounded-xl border border-line">
-                              <MediaThumb asset={cover} src={srcFor(cover)} className="h-full w-full object-cover" />
-                              <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-bold text-paper">{g.items.length}</span>
-                            </span>
-                          </span>
-                          <span className="min-w-0">
-                            <span className="flex items-center gap-1.5 text-sm font-semibold text-paper"><Sparkles size={14} className="text-brand" /> {fmtDay(g.date)}</span>
-                            <span className="mt-0.5 block text-xs text-paper-dim">{label} · {open ? t.panel.tapClose || 'toca para cerrar' : t.panel.tapOpen || 'toca para ver'}</span>
-                          </span>
-                        </button>
-                        <button onClick={() => downloadMany(g.items)} className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:inline-flex"><Download size={13} /> {t.panel.downloadAll}</button>
-                        <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
-                      </div>
-                      {/* Photos */}
-                      {open && (
-                        <div className="border-t border-line p-3">
-                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                            {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
-                          </div>
-                          <button onClick={() => downloadMany(g.items)} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:hidden"><Download size={13} /> {t.panel.downloadAll}</button>
-                        </div>
-                      )}
+              <div className="mt-6 space-y-6">
+                {groups.map((g) => (
+                  <div key={g.date}>
+                    <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+                      <Sparkles size={12} className="text-brand" /> {fmtDay(g.date)} · <span className="text-paper-mute">{g.items.length}</span>
                     </div>
-                  );
-                })}
+                    <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                      {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
