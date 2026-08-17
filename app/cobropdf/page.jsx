@@ -26,7 +26,7 @@ const CSS = `
 
   background: var(--desk);
   color: var(--ink);
-  font-family: var(--font-inter), "Inter", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -34,11 +34,11 @@ const CSS = `
   padding: 48px 16px 96px;
   min-height: 100vh;
 }
-.cobro .display {
-  font-family: var(--font-poppins), "Poppins", -apple-system, "Helvetica Neue", Arial, sans-serif;
+.cobro .serif {
+  font-family: Georgia, "Times New Roman", "Palatino", serif;
 }
 .cobro .mono {
-  font-family: var(--font-mono), "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: "Courier New", ui-monospace, Menlo, monospace;
 }
 .cobro .tabular { font-variant-numeric: tabular-nums; }
 
@@ -83,16 +83,16 @@ const CSS = `
 .cobro .brand-mark {
   width: 42px; height: 42px;
   border-radius: 11px;
-  background: var(--ink);
+  background: var(--accent);
   display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
 .cobro .brand-mark svg { width: 21px; height: 21px; display: block; }
 .cobro .brand-word {
-  font-family: var(--font-poppins), "Poppins", -apple-system, sans-serif;
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: -0.028em;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.022em;
   color: var(--ink);
   line-height: 1;
 }
@@ -124,9 +124,8 @@ const CSS = `
   border-top: 1px solid var(--rule);
 }
 .cobro .statement .kicker {
-  font-family: var(--font-poppins), "Poppins", -apple-system, sans-serif;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--accent-deep);
@@ -134,18 +133,20 @@ const CSS = `
 }
 .cobro .statement h1 {
   margin: 0;
-  font-family: var(--font-poppins), "Poppins", -apple-system, sans-serif;
-  font-size: 28px;
-  font-weight: 500;
-  letter-spacing: -0.024em;
-  line-height: 1.25;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  line-height: 1.28;
   color: var(--ink);
   max-width: 520px;
 }
 .cobro .statement h1 em {
-  font-style: normal;
-  color: var(--accent-deep);
-  font-weight: 600;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: -0.005em;
 }
 
 /* ── Item ─────────────────────────────────────────────────────────── */
@@ -171,11 +172,11 @@ const CSS = `
   color: var(--muted);
 }
 .cobro .item .price {
-  font-family: var(--font-poppins), "Poppins", -apple-system, sans-serif;
   font-size: 17px;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
 }
 
 /* ── Total: sobrio, alineado derecha, sin gritar ─────────────────── */
@@ -235,15 +236,15 @@ const CSS = `
   background: var(--accent);
 }
 .cobro .total .grand .val {
-  font-family: var(--font-poppins), "Poppins", -apple-system, sans-serif;
-  font-size: 36px;
-  font-weight: 500;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 34px;
+  font-weight: 700;
   letter-spacing: -0.028em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 .cobro .total .grand .val .cur {
-  font-weight: 400;
+  font-weight: 500;
   color: var(--muted);
   margin-right: 3px;
 }
