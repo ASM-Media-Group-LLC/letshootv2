@@ -6,7 +6,7 @@
 // video cinematográfico de la home.
 
 import Link from 'next/link';
-import { ArrowRight, Upload, MessageSquare, Sparkles, Gift, Check, X } from 'lucide-react';
+import { ArrowRight, Upload, MessageSquare, Sparkles, Gift, Check, X, Camera, Sun, Users, Aperture, Eye, Hand } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
@@ -19,6 +19,18 @@ const PAIRS = [
   { real: '/lib/lluvia-cafe.jpg', ai: '/lib/julia-frontal-1.jpg' },
 ];
 
+// Ejemplos reales de los ángulos que necesitamos para entrenar el clon.
+// La modelo los ve ANTES de darle «crear cuenta» — así llega con el material
+// listo, no perdida cuando aparece el uploader.
+const PREP_SHOTS = [
+  { src: '/lib/julia-frontal-1.jpg', k: 'Frontal', d: 'Mirando al lente' },
+  { src: '/lib/julia-angulo-1.jpg',  k: '¾',       d: 'Torso girado' },
+  { src: '/lib/julia-perfil-1.jpg',  k: 'Perfil',   d: '90° de lado' },
+  { src: '/lib/julia-risa-1.jpg',    k: 'Expresión', d: 'Risa, guiño…' },
+  { src: '/lib/julia-medio-1.jpg',   k: 'Medio cuerpo', d: 'De cintura para arriba' },
+  { src: '/lib/julia-vestida-1.jpg', k: 'Cuerpo entero', d: 'De pies a cabeza' },
+];
+
 const COPY = {
   es: {
     login: 'Iniciar sesión',
@@ -28,6 +40,27 @@ const COPY = {
     sub: 'Tú solo subes tus fotos y nos dices qué quieres. Nosotros te entregamos contenido listo para vender — cada día. Sin cámara, sin sesiones, sin fotógrafo. Y gratis: crear tu clon no cuesta nada.',
     cta: 'Registrarme gratis',
     ctaNote: 'Crear tu clon no cuesta nada. Solo pagas el contenido si te gusta.',
+    prepEyebrow: 'Antes de empezar',
+    prepTitle: 'Así vas a preparar tus fotos.',
+    prepSub: 'Para que tu clon salga idéntica a ti, necesitamos verte desde varios ángulos y con distintas expresiones. Reúne unas 20 fotos para empezar — 50 o más si quieres el resultado perfecto. La mayoría ya las tienes en tu galería.',
+    prepAnglesLabel: 'Los 6 ángulos que necesitamos',
+    prepDoLabel: 'Sí queremos', prepDontLabel: 'Evita',
+    prepDo: [
+      'Buena luz — natural es lo mejor',
+      'Fondo variado — casa, calle, salidas',
+      'Distintas expresiones y poses',
+      'Ropa distinta en cada set',
+      'Selfies bien enfocadas',
+    ],
+    prepDont: [
+      'Lentes de sol o gorras',
+      'Otras personas en la foto',
+      'Filtros fuertes o poses maquilladas',
+      'Fotos borrosas o pixeladas',
+      'Mucha sombra sobre tu cara',
+    ],
+    prepTip: 'Tip: entra a Fotos en tu teléfono, filtra por «Selfies» y las escoges de ahí. Cuando estés lista, dale «Registrarme» y las subes ahí mismo.',
+    prepCta: 'Listo, ya tengo mis fotos',
     galleryTitle: '¿Real o IA?',
     gallerySub: 'Todas son la misma modelo. Unas son fotos suyas, otras las hizo su clon. ¿Notas la diferencia? Tus fans tampoco.',
     real: 'Real', ai: 'IA',
@@ -65,6 +98,27 @@ const COPY = {
     sub: 'You just upload your photos and tell us what you want. We deliver sell-ready content — every day. No camera, no shoots, no photographer. And free: building your clone costs nothing.',
     cta: 'Sign up free',
     ctaNote: 'Building your clone costs nothing. You only pay for content if you love it.',
+    prepEyebrow: 'Before you start',
+    prepTitle: 'Here’s how you’ll prep your photos.',
+    prepSub: 'For your clone to look identical to you, we need to see you from a few angles and in different expressions. Gather around 20 photos to start — 50 or more for the best result. You probably already have most of them in your gallery.',
+    prepAnglesLabel: 'The 6 angles we need',
+    prepDoLabel: 'Do', prepDontLabel: 'Avoid',
+    prepDo: [
+      'Good light — natural is best',
+      'Varied backgrounds — home, street, outings',
+      'Different expressions and poses',
+      'Different outfits in each set',
+      'Well-focused selfies',
+    ],
+    prepDont: [
+      'Sunglasses or hats',
+      'Other people in the shot',
+      'Heavy filters or overly posed shots',
+      'Blurry or pixelated photos',
+      'Heavy shadow on your face',
+    ],
+    prepTip: 'Tip: open Photos on your phone, filter by “Selfies,” and pick from there. When you’re ready, tap “Sign up” and upload them right away.',
+    prepCta: 'Ready — my photos are set',
     galleryTitle: 'Real or AI?',
     gallerySub: "They're all the same model. Some are her own photos, some were made by her clone. Can you tell? Your fans can't either.",
     real: 'Real', ai: 'AI',
@@ -146,6 +200,95 @@ export default function StartPage() {
           </section>
         </div>
       </div>
+
+      {/* ── PREPARA TUS FOTOS ─ una sección cinematográfica antes del signup */}
+      <section className="relative isolate overflow-hidden">
+        {/* Fondo: mismo video en loop, muy dark, como continuación del hero */}
+        <video className="absolute inset-0 h-full w-full object-cover opacity-30" autoPlay muted loop playsInline aria-hidden>
+          <source src="/hero-miami.mp4" type="video/mp4" />
+        </video>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-ink via-ink/85 to-ink" aria-hidden />
+        <div className="pointer-events-none absolute inset-0" aria-hidden
+          style={{ background: 'radial-gradient(ellipse 85% 60% at 50% 30%, rgb(0 177 246 / 0.10) 0%, transparent 60%)' }} />
+
+        <div className="relative mx-auto max-w-6xl px-5 py-20 sm:py-28">
+          {/* Cabecera editorial */}
+          <div className="mx-auto max-w-3xl text-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-brand backdrop-blur sm:text-[11px]">
+              <Camera size={12} /> {c.prepEyebrow}
+            </span>
+            <h2 className="mt-5 font-display text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
+              {c.prepTitle}
+            </h2>
+            <p className="mx-auto mt-5 max-w-2xl text-sm leading-relaxed text-paper/80 sm:text-base">
+              {c.prepSub}
+            </p>
+          </div>
+
+          {/* Grid de ángulos — 6 ejemplos reales de Julia */}
+          <div className="mt-14 sm:mt-16">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-brand sm:text-[11px]">
+                <Aperture size={13} /> {c.prepAnglesLabel}
+              </span>
+              <span className="hidden text-[11px] font-medium text-paper/50 sm:inline">6 categorías · variedad = mejor clon</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
+              {PREP_SHOTS.map((s, i) => (
+                <figure key={i} className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-ink-2 shadow-lg ring-1 ring-white/[0.04]">
+                  <div className="aspect-[3/4] overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={s.src} alt={s.k} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]" />
+                  </div>
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" aria-hidden />
+                  <figcaption className="absolute inset-x-0 bottom-0 p-3">
+                    <span className="block font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-brand">0{i + 1}</span>
+                    <span className="mt-0.5 block font-display text-sm font-semibold text-white">{s.k}</span>
+                    <span className="block text-[11px] text-white/70">{s.d}</span>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+
+          {/* Do / Don't en dos columnas */}
+          <div className="mt-14 grid gap-4 sm:mt-16 sm:grid-cols-2 sm:gap-5">
+            <div className="rounded-3xl border border-brand/25 bg-brand/[0.06] p-6 backdrop-blur sm:p-7">
+              <h3 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-brand">
+                <Check size={14} /> {c.prepDoLabel}
+              </h3>
+              <ul className="mt-4 space-y-2.5">
+                {c.prepDo.map((d, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-[14px] text-paper">
+                    <Check size={15} className="mt-0.5 shrink-0 text-brand" /> {d}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-3xl border border-rose-500/25 bg-rose-500/[0.04] p-6 backdrop-blur sm:p-7">
+              <h3 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-rose-300">
+                <X size={14} /> {c.prepDontLabel}
+              </h3>
+              <ul className="mt-4 space-y-2.5">
+                {c.prepDont.map((d, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-[14px] text-paper-mute">
+                    <X size={15} className="mt-0.5 shrink-0 text-rose-400/80" /> {d}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* Tip + CTA propio */}
+          <div className="mx-auto mt-12 max-w-2xl text-center">
+            <p className="text-sm leading-relaxed text-paper/70">{c.prepTip}</p>
+            <Link href="/signup"
+              className="group mt-7 inline-flex items-center gap-2 rounded-full bg-brand px-8 py-4 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.03]">
+              {c.prepCta} <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
+            </Link>
+          </div>
+        </div>
+      </section>
 
       {/* ── Real vs IA — pares uno al lado del otro ──────────────────────── */}
       <section className="relative z-10 mx-auto max-w-5xl px-5 pt-12 sm:pt-28">
