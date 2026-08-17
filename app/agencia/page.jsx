@@ -92,6 +92,96 @@ function AgencyResetPasswordBox({ userId, name }) {
   );
 }
 
+// Lunes (YYYY-MM-DD) de la semana de una fecha.
+function mondayOf(d) {
+  const dt = new Date(d);
+  const day = (dt.getDay() + 6) % 7; // 0 = lunes
+  dt.setHours(0, 0, 0, 0);
+  dt.setDate(dt.getDate() - day);
+  return dt.toISOString().slice(0, 10);
+}
+
+// Registro RÁPIDO de ventas por SEMANA (totales) — la agencia mete el total de
+// la semana de una modelo de un tirón. Alimenta la banda de momentum de la modelo.
+function WeeklySales({ creatorId, flash }) {
+  const supabase = getSupabase();
+  const nf = (n) => Number(n || 0).toLocaleString('en-US');
+  const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const [week, setWeek] = useState(() => mondayOf(new Date()));
+  const [rows, setRows] = useState([]);
+  const [sales, setSales] = useState('');
+  const [revenue, setRevenue] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const reload = useCallback(async () => {
+    const { data } = await supabase.from('agency_weekly_sales')
+      .select('week_start, sales, revenue').eq('creator_id', creatorId)
+      .order('week_start', { ascending: false }).limit(10);
+    setRows(data || []);
+  }, [creatorId, supabase]);
+  useEffect(() => { reload(); }, [reload]);
+  // Prefill al cambiar de semana.
+  useEffect(() => {
+    const r = rows.find((x) => x.week_start === week);
+    setSales(r ? String(r.sales) : '');
+    setRevenue(r ? String(Number(r.revenue)) : '');
+  }, [week, rows]);
+
+  async function save() {
+    setBusy(true);
+    const { error } = await supabase.rpc('agency_set_week', {
+      p_creator: creatorId, p_week_start: week,
+      p_sales: parseInt(sales || '0', 10), p_revenue: parseFloat(revenue || '0'),
+    });
+    setBusy(false);
+    if (error) { flash('Error: ' + error.message); return; }
+    flash('Semana guardada');
+    await reload();
+  }
+
+  const bars = [...rows].sort((a, b) => a.week_start.localeCompare(b.week_start)).slice(-8);
+  const peak = Math.max(1, ...bars.map((b) => b.sales));
+  const wLabel = (d) => new Date(d + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short' });
+
+  return (
+    <div className="mt-4 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-brand"><TrendingUp size={13} /> Ventas de la semana</div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setWeek(mondayOf(new Date(week + 'T00:00:00').getTime() - 7 * 864e5))} className="grid h-7 w-7 place-items-center rounded-full border border-line text-paper-mute hover:text-paper"><ChevronLeft size={14} /></button>
+          <span className="min-w-[110px] text-center text-xs font-semibold text-paper">Semana del {wLabel(week)}</span>
+          <button onClick={() => setWeek(mondayOf(new Date(week + 'T00:00:00').getTime() + 7 * 864e5))} className="grid h-7 w-7 place-items-center rounded-full border border-line text-paper-mute hover:text-paper"><ChevronRight size={14} /></button>
+        </div>
+      </div>
+      <p className="mt-1 text-[11px] text-paper-dim">Mete el total de la semana de un tirón — no foto por foto. La modelo lo ve como momentum.</p>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[1fr_1fr_auto]">
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-paper-dim">Ventas</span>
+          <input type="number" min="0" value={sales} onChange={(e) => setSales(e.target.value)} placeholder="0"
+            className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-paper-dim">Ingresos ($)</span>
+          <input type="number" min="0" value={revenue} onChange={(e) => setRevenue(e.target.value)} placeholder="0"
+            className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+        </label>
+        <button onClick={save} disabled={busy} className="col-span-2 inline-flex items-center justify-center gap-1.5 self-end rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-accent hover:brightness-110 disabled:opacity-60 sm:col-span-1">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Guardar
+        </button>
+      </div>
+      {bars.length > 0 && (
+        <div className="mt-3 flex h-12 items-end gap-1.5">
+          {bars.map((b) => (
+            <div key={b.week_start} className="flex flex-1 flex-col items-center" title={`${wLabel(b.week_start)}: ${nf(b.sales)} ventas · ${money(b.revenue)}`}>
+              <div className={`w-full rounded-t ${b.week_start === week ? 'bg-brand' : 'bg-brand/30'}`} style={{ height: `${Math.max(8, Math.round((b.sales / peak) * 100))}%` }} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AgenciaPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -585,6 +675,9 @@ export default function AgenciaPage() {
                   <StatCard icon={ShoppingBag} label="Vendidas" value={nf(cur.sales)} d={pct(cur.sales, prev.sales)} />
                   <StatCard icon={DollarSign} label="Ingresos" value={money(cur.revenue)} d={pct(cur.revenue, prev.revenue)} />
                 </div>
+
+                {/* Registro rápido de ventas por semana — alimenta el momentum de la modelo */}
+                {can('sales') && <WeeklySales creatorId={sel} flash={flash} />}
 
                 {/* Per-model sub-nav: content vs orders */}
                 <div className="mt-6 inline-flex rounded-full border border-line bg-card p-1">

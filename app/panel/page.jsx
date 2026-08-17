@@ -13,7 +13,7 @@ import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, MessageSquare, User, Bell,
   X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
-  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff, Eye, Clock, Loader2,
+  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff, Eye, Clock, Loader2, TrendingUp, TrendingDown,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -69,6 +69,7 @@ export default function PanelPage() {
   const [justUnread, setJustUnread] = useState([]); // ids sin leer al abrir la campana
   const [detail, setDetail] = useState(null);
   const [agency, setAgency] = useState('');
+  const [weekly, setWeekly] = useState([]); // ventas por semana (momentum)
   const [leaveReq, setLeaveReq] = useState(null); // solicitud de salida activa (pending|rejected)
   const [leaveModal, setLeaveModal] = useState(false); // pop-up de confirmación
   const [leaveReason, setLeaveReason] = useState('');
@@ -169,6 +170,11 @@ export default function PanelPage() {
       setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
       setState({ loading: false, profile: up.profile, assets, folders });
       const { data: ag } = await getSupabase().rpc('my_agency'); if (ag) setAgency(ag);
+      // Ventas por semana (para la banda de momentum): últimas ~10 semanas.
+      const { data: wk } = await getSupabase().from('agency_weekly_sales')
+        .select('week_start, sales, revenue').eq('creator_id', up.profile.id)
+        .order('week_start', { ascending: true }).limit(12);
+      setWeekly(wk || []);
       // Solicitud de salida activa (pendiente o rechazada) para mostrar su estado.
       const { data: lr } = await getSupabase().from('agency_leave_requests')
         .select('id, status, created_at').eq('creator_id', up.profile.id)
@@ -520,6 +526,7 @@ export default function PanelPage() {
         {/* ── Números: dashboard del mes + desglose de ingresos ── */}
         {view === 'numeros' && (
           <div className="mt-6">
+            <MomentumBand weekly={weekly} locale={locale} isEs={isEs} />
             {rangeBar()}
             {/* Cards = selector: cada una abre su detalle abajo */}
             <div className="grid grid-cols-3 gap-3">
@@ -867,6 +874,69 @@ function CreatorReqThread({ req, t, locale, onSent, flash, readOnly }) {
           </form>}
         </div>
       )}
+    </div>
+  );
+}
+
+// Banda de MOMENTUM: lo que la modelo ve para sentir que sube. Esta semana vs
+// la pasada (ventas + ingresos + %), racha, y mini-gráfico de las últimas semanas.
+function MomentumBand({ weekly, locale, isEs }) {
+  if (!weekly || weekly.length === 0) return null;
+  const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const nf = (n) => Number(n || 0).toLocaleString('en-US');
+  const rows = [...weekly].sort((a, b) => a.week_start.localeCompare(b.week_start));
+  const cur = rows[rows.length - 1];
+  const prev = rows.length > 1 ? rows[rows.length - 2] : null;
+  const delta = prev && prev.sales > 0 ? Math.round(((cur.sales - prev.sales) / prev.sales) * 100) : null;
+  const up = delta === null ? true : delta >= 0;
+  // Racha: cuántas semanas seguidas (hasta la actual) subió respecto a la anterior.
+  let streak = 0;
+  for (let i = rows.length - 1; i > 0; i--) { if (rows[i].sales >= rows[i - 1].sales) streak++; else break; }
+  const bars = rows.slice(-8);
+  const peak = Math.max(1, ...bars.map((b) => b.sales));
+  const wLabel = (d) => new Date(d + 'T00:00:00').toLocaleDateString(locale || 'es-US', { day: 'numeric', month: 'short' });
+
+  return (
+    <div className="mb-4 overflow-hidden rounded-2xl border border-brand/30 bg-gradient-to-br from-brand/[0.10] to-transparent p-4 sm:p-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand">
+            <Activity size={12} /> {isEs ? 'Tu momentum · esta semana' : 'Your momentum · this week'}
+          </div>
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <span className="font-display text-3xl font-bold text-paper">{nf(cur.sales)}</span>
+            <span className="text-sm text-paper-mute">{isEs ? 'ventas' : 'sales'} · {money(cur.revenue)}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+            {delta !== null && (
+              <span className={`inline-flex items-center gap-0.5 font-semibold ${up ? 'text-emerald-300' : 'text-rose-300'}`}>
+                {up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{up ? '+' : ''}{delta}% {isEs ? 'vs la semana pasada' : 'vs last week'}
+              </span>
+            )}
+            {streak >= 2 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 font-semibold text-amber-300">
+                🔥 {streak} {isEs ? 'semanas subiendo' : 'weeks up'}
+              </span>
+            )}
+          </div>
+        </div>
+        {/* Mini-gráfico de barras — últimas 8 semanas */}
+        <div className="flex h-16 items-end gap-1.5">
+          {bars.map((b, i) => {
+            const h = Math.max(8, Math.round((b.sales / peak) * 100));
+            const isLast = i === bars.length - 1;
+            return (
+              <div key={b.week_start} className="group/bar relative flex flex-col items-center">
+                <div className={`w-3 rounded-t sm:w-4 ${isLast ? 'bg-brand' : 'bg-brand/30'}`} style={{ height: `${h}%`, minHeight: 8 }}
+                  title={`${wLabel(b.week_start)}: ${nf(b.sales)} ${isEs ? 'ventas' : 'sales'}`} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <p className="mt-3 text-[11px] text-paper-dim">
+        {isEs ? 'Ventas que registró tu agencia, semana a semana. Mientras más enganche tu contenido, más sube.' : 'Sales your agency logged, week by week. The more your content hooks, the higher it climbs.'}
+      </p>
     </div>
   );
 }
