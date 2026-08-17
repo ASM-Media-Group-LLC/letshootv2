@@ -12,7 +12,7 @@ import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
   ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart, KeyRound,
-  UserPlus, Trash2, Check, Mail, AlertTriangle,
+  UserPlus, Trash2, Check, Mail, AlertTriangle, Search,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -210,6 +210,10 @@ export default function AgenciaPage() {
   const [cFilter, setCFilter] = useState('all');   // Contenido tab: model filter
   const [leaveReqs, setLeaveReqs] = useState([]);  // solicitudes de salida pendientes
   const [leaveBusy, setLeaveBusy] = useState('');  // id de la solicitud que se está respondiendo
+  // Lista de modelos escalable: buscador + filtro + orden (para 10+ modelos).
+  const [mQuery, setMQuery] = useState('');
+  const [mFilter, setMFilter] = useState('all');   // all | active | onboarding | sales
+  const [mSort, setMSort] = useState('sales');     // name | sales | revenue | pending
 
   // Select a model and jump to its latest delivery month.
   function pickModel(m) {
@@ -440,6 +444,30 @@ export default function AgenciaPage() {
     ...(ctx.isOwner ? [{ icon: UserPlus, label: 'Equipo', value: '+', sub: 'empleados y accesos', view: 'equipo' }] : []),
   ];
 
+  // Lista de modelos con métricas + buscador/filtro/orden — escalable a muchas.
+  // (Cálculo simple, no hook, porque va después de posibles returns tempranos.)
+  const shownModels = (() => {
+    let list = models.map((m) => {
+      const _sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
+      const _rev = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
+      const _ck = completion(checklists[m.id]);
+      return { ...m, _sales, _rev, _ck, _pct: _ck.total ? _ck.done / _ck.total : 0 };
+    });
+    const q = mQuery.trim().toLowerCase();
+    if (q) list = list.filter((m) => `${m.name} ${m.handle || ''}`.toLowerCase().includes(q));
+    if (mFilter === 'active') list = list.filter((m) => m.status === 'active');
+    else if (mFilter === 'onboarding') list = list.filter((m) => m.status !== 'active');
+    else if (mFilter === 'sales') list = list.filter((m) => m._sales > 0);
+    const cmp = {
+      name: (a, b) => a.name.localeCompare(b.name),
+      sales: (a, b) => b._sales - a._sales || a.name.localeCompare(b.name),
+      revenue: (a, b) => b._rev - a._rev || a.name.localeCompare(b.name),
+      pending: (a, b) => a._pct - b._pct || a.name.localeCompare(b.name),
+    };
+    list.sort(cmp[mSort] || cmp.sales);
+    return list;
+  })();
+
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
       <WelcomeTour storageKey="ls_tour_agency_v1" steps={[
@@ -495,41 +523,71 @@ export default function AgenciaPage() {
               </button>
             )}
 
-            {/* Grid de modelos — lo primero y lo principal */}
-            <div className="mb-2.5 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Tus modelos · {models.length}</div>
+            {/* Lista de modelos — densa y escalable: buscador + filtro + orden */}
+            <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Tus modelos</span>
+              <span className="text-[11px] text-paper-dim">{shownModels.length} de {models.length}</span>
+            </div>
             {models.length === 0 ? (
               <p className="rounded-2xl border border-line bg-card p-5 text-sm text-paper-dim">Aún no tienes modelos. El administrador de LetShoot conecta cada modelo con tu agencia.</p>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {models.map((m) => {
-                  const mSales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
-                  const mRev = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
-                  const ck = completion(checklists[m.id]);
-                  return (
+              <>
+                {/* Toolbar: buscar + filtrar + ordenar */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative min-w-[200px] flex-1">
+                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+                    <input value={mQuery} onChange={(e) => setMQuery(e.target.value)} placeholder="Buscar modelo por nombre o @…"
+                      className="w-full rounded-full border border-line bg-ink-2 py-2 pl-9 pr-3 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  </div>
+                  <select value={mFilter} onChange={(e) => setMFilter(e.target.value)}
+                    className="rounded-full border border-line bg-ink-2 px-3 py-2 text-xs font-semibold text-paper-mute outline-none focus:border-brand/60">
+                    <option value="all">Todas</option>
+                    <option value="active">Activas</option>
+                    <option value="onboarding">En onboarding</option>
+                    <option value="sales">Con ventas</option>
+                  </select>
+                  <select value={mSort} onChange={(e) => setMSort(e.target.value)}
+                    className="rounded-full border border-line bg-ink-2 px-3 py-2 text-xs font-semibold text-paper-mute outline-none focus:border-brand/60">
+                    <option value="sales">Más ventas</option>
+                    <option value="revenue">Más ingresos</option>
+                    <option value="pending">Más pendientes</option>
+                    <option value="name">Nombre (A–Z)</option>
+                  </select>
+                </div>
+
+                {/* Encabezados (desktop) */}
+                <div className="mt-3 hidden grid-cols-[1.6fr_0.7fr_0.8fr_0.9fr_auto] gap-3 px-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:grid">
+                  <span>Modelo</span><span className="text-right">Entregadas</span><span className="text-right">Ventas</span><span className="text-right">Ingresos</span><span className="text-right">Cuenta</span>
+                </div>
+                {/* Filas densas */}
+                <div className="overflow-hidden rounded-2xl border border-line">
+                  {shownModels.length === 0 && <p className="px-4 py-6 text-center text-sm text-paper-dim">Ninguna modelo coincide.</p>}
+                  {shownModels.map((m) => (
                     <button key={m.id} onClick={() => pickModel(m)}
-                      className="group flex items-center gap-3 rounded-2xl border border-line bg-card p-4 text-left transition-all hover:border-brand/40 hover:bg-hair/[0.03]">
-                      <Avatar src={m.avatar_url} name={m.name} size="md" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate font-display text-base font-semibold text-paper">{m.name}</span>
-                          {m.status === 'active'
-                            ? <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-brand">Activa</span>
-                            : <span className="rounded-full bg-hair/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-paper-dim">Onboarding</span>}
-                        </div>
-                        {m.handle && <div className="truncate text-[11px] text-paper-dim">@{m.handle}</div>}
-                        <div className="mt-1 text-[12px] text-paper-mute">{m.assets.length} entregadas · {nf(mSales)} ventas · <span className="font-semibold text-paper">{money(mRev)}</span></div>
-                        <div className="mt-1.5 flex items-center gap-1.5">
-                          <span className={`h-1.5 flex-1 overflow-hidden rounded-full ${ck.done === ck.total ? 'bg-brand/20' : 'bg-amber-500/20'}`}>
-                            <span className={`block h-full rounded-full ${ck.done === ck.total ? 'bg-brand' : 'bg-amber-400'}`} style={{ width: `${(ck.done / ck.total) * 100}%` }} />
+                      className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-line px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-hair/[0.04] sm:grid-cols-[1.6fr_0.7fr_0.8fr_0.9fr_auto]">
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <Avatar src={m.avatar_url} name={m.name} size="sm" />
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-semibold text-paper">{m.name}</span>
+                            {m.status === 'active'
+                              ? <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[8px] font-bold uppercase text-brand">Activa</span>
+                              : <span className="rounded-full bg-hair/10 px-1.5 py-0.5 text-[8px] font-bold uppercase text-paper-dim">Onboarding</span>}
                           </span>
-                          <span className={`text-[10px] font-semibold ${ck.done === ck.total ? 'text-brand' : 'text-amber-300'}`}>{ck.done}/{ck.total}</span>
-                        </div>
-                      </div>
-                      <ChevronRight size={18} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+                          <span className="block truncate text-[11px] text-paper-dim">{m.handle ? `@${m.handle}` : ''}<span className="sm:hidden"> · {nf(m._sales)} ventas · {money(m._rev)}</span></span>
+                        </span>
+                      </span>
+                      <span className="hidden text-right text-sm text-paper-mute sm:block">{nf(m.assets.length)}</span>
+                      <span className="hidden text-right text-sm font-medium text-paper sm:block">{nf(m._sales)}</span>
+                      <span className="hidden text-right text-sm font-semibold text-brand sm:block">{money(m._rev)}</span>
+                      <span className="flex items-center justify-end gap-2">
+                        <span className={`hidden items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold sm:inline-flex ${m._ck.done === m._ck.total ? 'bg-brand/10 text-brand' : 'bg-amber-500/10 text-amber-300'}`}>{m._ck.done}/{m._ck.total}</span>
+                        <ChevronRight size={16} className="shrink-0 text-paper-dim" />
+                      </span>
                     </button>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
 
             {/* Resumen de la agencia — secundario, tarjetas chicas */}
