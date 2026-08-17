@@ -615,8 +615,8 @@ export default function PanelPage() {
             ) : contentLayout === 'grid' ? (
               /* Vista GRID pura como Fotos de Mac: TODAS las piezas en un solo
                  grid, sin separadores por día. Orden: lo último subido primero. */
-              <div className="mt-6 grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-                {allVisible.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
+              <div className="mt-6 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                {allVisible.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} bare />)}
               </div>
             ) : (
               /* Vista DÍAS: cajitas colapsables — portada + fecha + Download
@@ -788,11 +788,13 @@ function CreatorReqThread({ req, t, locale, onSent, flash, readOnly }) {
   );
 }
 
-function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, onToggle }) {
+function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, onToggle, bare }) {
+  // `bare` = modo «manejo de fotos» tipo Fotos de Mac: sin precios, sin título,
+  // sin folder, sin bordes redondeados. Solo la miniatura pura.
   const handleClick = () => { selectMode ? onToggle?.(a.id) : onOpen(a); };
   return (
     <button onClick={handleClick}
-      className={`group relative overflow-hidden rounded-xl border bg-card text-left transition-all ${isSelected ? 'border-brand ring-2 ring-brand/60' : 'border-line'}`}>
+      className={`group relative overflow-hidden text-left transition-all ${bare ? 'rounded-none border-0 bg-black' : 'rounded-xl border bg-card'} ${isSelected ? (bare ? 'ring-2 ring-brand' : 'border-brand ring-2 ring-brand/60') : (bare ? '' : 'border-line')}`}>
       <div className={`aspect-[3/4] w-full overflow-hidden ${isSelected ? 'scale-[0.97]' : ''}`}>
         <MediaThumb asset={a} src={src} className="h-full w-full object-cover"
           imgClassName="transition-transform duration-300 group-hover:scale-105" />
@@ -803,18 +805,23 @@ function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, o
           <Check size={14} strokeWidth={3} />
         </span>
       )}
-      <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
-        {Number(a.revenue) > 0 && (
-          <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
-        )}
-        {feedback === 'love' && <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/80 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur"><Heart size={10} /> </span>}
-        {feedback === 'change' && <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/80 px-1.5 py-0.5 text-[10px] font-semibold text-ink backdrop-blur"><MessageSquarePlus size={10} /> </span>}
-      </div>
-      {(a.title || folder) && (
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2.5 pt-8">
-          {a.title && <p className="truncate text-xs font-semibold text-paper">{a.title}</p>}
-          {folder && <p className="truncate text-[11px] text-paper-mute">{folder}</p>}
-        </div>
+      {/* Metadatos (precios, título, folder) — SOLO en modo no-bare */}
+      {!bare && (
+        <>
+          <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
+            {Number(a.revenue) > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
+            )}
+            {feedback === 'love' && <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/80 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur"><Heart size={10} /> </span>}
+            {feedback === 'change' && <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/80 px-1.5 py-0.5 text-[10px] font-semibold text-ink backdrop-blur"><MessageSquarePlus size={10} /> </span>}
+          </div>
+          {(a.title || folder) && (
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2.5 pt-8">
+              {a.title && <p className="truncate text-xs font-semibold text-paper">{a.title}</p>}
+              {folder && <p className="truncate text-[11px] text-paper-mute">{folder}</p>}
+            </div>
+          )}
+        </>
       )}
     </button>
   );
