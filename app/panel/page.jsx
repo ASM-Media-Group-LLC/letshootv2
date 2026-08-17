@@ -613,28 +613,10 @@ export default function PanelPage() {
             {allVisible.length === 0 ? (
               <p className="mt-6 rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{t.panel.emptyMonth}</p>
             ) : contentLayout === 'grid' ? (
-              /* Vista GRID tipo iPhone Photos: un solo grid continuo, lo último
-                 subido primero, con un heading discreto de fecha entre bloques
-                 y un botón compacto Download all por día. */
-              <div className="mt-6 space-y-6">
-                {groups.map((g) => (
-                  <div key={g.date}>
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
-                        <Sparkles size={12} className="text-brand" /> {fmtDay(g.date)} · <span className="text-paper-mute">{g.items.length}</span>
-                      </div>
-                      {!selectMode && (
-                        <button onClick={() => downloadMany(g.items)} title={t.panel.downloadAll}
-                          className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-[10px] font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-brand">
-                          <Download size={11} /> {t.panel.downloadAll}
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-                      {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
-                    </div>
-                  </div>
-                ))}
+              /* Vista GRID pura como Fotos de Mac: TODAS las piezas en un solo
+                 grid, sin separadores por día. Orden: lo último subido primero. */
+              <div className="mt-6 grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                {allVisible.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
               </div>
             ) : (
               /* Vista DÍAS: cajitas colapsables — portada + fecha + Download
