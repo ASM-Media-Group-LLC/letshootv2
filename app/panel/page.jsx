@@ -557,11 +557,15 @@ export default function PanelPage() {
           <div className="mt-6">
             {rangeBar()}
 
-            {/* Barra de acción tipo iPhone/AirDrop — seleccionar y bajar en batch */}
+            {/* Barra de acción: toggle Galería/Entregas + Select (Select SOLO en Galería) */}
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[11px] text-paper-dim">{isEs ? 'Toca «Seleccionar» para marcar varias y bajarlas juntas.' : 'Tap “Select” to mark several and download them together.'}</p>
+              <p className="text-[11px] text-paper-dim">
+                {contentLayout === 'grid'
+                  ? (isEs ? 'Toca «Seleccionar» para marcar varias y bajarlas juntas.' : 'Tap “Select” to mark several and download them together.')
+                  : (isEs ? 'Cada entrega tiene su «Descargar todo».' : 'Each delivery has its own “Download all”.')}
+              </p>
               <div className="flex items-center gap-2">
-                {/* Toggle Grid | Días — misma info, dos formas de verla */}
+                {/* Toggle Galería | Entregas */}
                 {!selectMode && allIds.length > 0 && (
                   <div className="inline-flex items-center rounded-full border border-line bg-ink-2 p-0.5 text-[11px] font-semibold">
                     {[
@@ -578,22 +582,23 @@ export default function PanelPage() {
                     })}
                   </div>
                 )}
-              {!selectMode ? (
-                <button onClick={() => setSelectMode(true)} disabled={allIds.length === 0}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-brand disabled:opacity-40">
-                  <Check size={13} /> {isEs ? 'Seleccionar' : 'Select'}
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button onClick={allSelected ? clearSel : selectAll}
-                    className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper">
-                    {allSelected ? (isEs ? 'Quitar todas' : 'Deselect all') : (isEs ? `Seleccionar todas (${allIds.length})` : `Select all (${allIds.length})`)}
+                {/* Select — SOLO en Galería (en Entregas cada día tiene Download all) */}
+                {contentLayout === 'grid' && (!selectMode ? (
+                  <button onClick={() => setSelectMode(true)} disabled={allIds.length === 0}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-brand disabled:opacity-40">
+                    <Check size={13} /> {isEs ? 'Seleccionar' : 'Select'}
                   </button>
-                  <button onClick={exitSelect} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper">
-                    {isEs ? 'Cancelar' : 'Cancel'}
-                  </button>
-                </div>
-              )}
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button onClick={allSelected ? clearSel : selectAll}
+                      className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper">
+                      {allSelected ? (isEs ? 'Quitar todas' : 'Deselect all') : (isEs ? `Seleccionar todas (${allIds.length})` : `Select all (${allIds.length})`)}
+                    </button>
+                    <button onClick={exitSelect} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper">
+                      {isEs ? 'Cancelar' : 'Cancel'}
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -804,6 +809,10 @@ function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, o
         <span className={`absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full border-2 backdrop-blur transition-all ${isSelected ? 'border-brand bg-brand text-on-accent' : 'border-white/70 bg-black/40 text-transparent'}`}>
           <Check size={14} strokeWidth={3} />
         </span>
+      )}
+      {/* En modo bare (Galería): solo el precio, chiquito, en la esquina inferior derecha */}
+      {bare && Number(a.revenue) > 0 && !selectMode && (
+        <span className="pointer-events-none absolute bottom-1 right-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur">{money(a.revenue)}</span>
       )}
       {/* Metadatos (precios, título, folder) — SOLO en modo no-bare */}
       {!bare && (
