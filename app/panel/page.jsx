@@ -85,6 +85,7 @@ export default function PanelPage() {
   // todas de un tirón. Se activa con el botón «Seleccionar» y se sale con «X».
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
+  const [contentLayout, setContentLayout] = useState('grid'); // grid | days
   const [bulkDownloading, setBulkDownloading] = useState(false);
   function toggleSel(id) { setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
   function clearSel() { setSelected(new Set()); }
@@ -559,6 +560,24 @@ export default function PanelPage() {
             {/* Barra de acción tipo iPhone/AirDrop — seleccionar y bajar en batch */}
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] text-paper-dim">{isEs ? 'Toca «Seleccionar» para marcar varias y bajarlas juntas.' : 'Tap “Select” to mark several and download them together.'}</p>
+              <div className="flex items-center gap-2">
+                {/* Toggle Grid | Días — misma info, dos formas de verla */}
+                {!selectMode && allIds.length > 0 && (
+                  <div className="inline-flex items-center rounded-full border border-line bg-ink-2 p-0.5 text-[11px] font-semibold">
+                    {[
+                      { k: 'grid', l: isEs ? 'Grid' : 'Grid' },
+                      { k: 'days', l: isEs ? 'Días' : 'Days' },
+                    ].map((t) => {
+                      const on = contentLayout === t.k;
+                      return (
+                        <button key={t.k} onClick={() => setContentLayout(t.k)}
+                          className={`rounded-full px-3 py-1 transition-colors ${on ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:text-paper'}`}>
+                          {t.l}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               {!selectMode ? (
                 <button onClick={() => setSelectMode(true)} disabled={allIds.length === 0}
                   className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-brand disabled:opacity-40">
@@ -575,6 +594,7 @@ export default function PanelPage() {
                   </button>
                 </div>
               )}
+              </div>
             </div>
 
             {/* Barra sticky: cuenta y botón Descargar cuando hay selección */}
@@ -590,24 +610,75 @@ export default function PanelPage() {
               </div>
             )}
 
-            {/* Galería tipo iPhone Photos: un solo grid con TODAS las piezas,
-                lo último subido primero. Fotos y videos mezclados. Sin cajitas
-                por día. Cada día se marca con un pequeño heading arriba de sus
-                miniaturas. */}
             {allVisible.length === 0 ? (
               <p className="mt-6 rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{t.panel.emptyMonth}</p>
-            ) : (
+            ) : contentLayout === 'grid' ? (
+              /* Vista GRID tipo iPhone Photos: un solo grid continuo, lo último
+                 subido primero, con un heading discreto de fecha entre bloques
+                 y un botón compacto Download all por día. */
               <div className="mt-6 space-y-6">
                 {groups.map((g) => (
                   <div key={g.date}>
-                    <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
-                      <Sparkles size={12} className="text-brand" /> {fmtDay(g.date)} · <span className="text-paper-mute">{g.items.length}</span>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+                        <Sparkles size={12} className="text-brand" /> {fmtDay(g.date)} · <span className="text-paper-mute">{g.items.length}</span>
+                      </div>
+                      {!selectMode && (
+                        <button onClick={() => downloadMany(g.items)} title={t.panel.downloadAll}
+                          className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-[10px] font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-brand">
+                          <Download size={11} /> {t.panel.downloadAll}
+                        </button>
+                      )}
                     </div>
                     <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
                       {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
                     </div>
                   </div>
                 ))}
+              </div>
+            ) : (
+              /* Vista DÍAS: cajitas colapsables — portada + fecha + Download
+                 all + chevron. Layout anterior para quien lo prefiera. */
+              <div className="mt-6 space-y-3">
+                {groups.map((g) => {
+                  const open = openDays.includes(g.date);
+                  const cover = g.items[0];
+                  const label = `${g.items.length} ${g.items.length === 1 ? t.panel.mPhotos.slice(0, -1).toLowerCase() : t.panel.mPhotos.toLowerCase()}`;
+                  return (
+                    <div key={g.date} className="overflow-hidden rounded-2xl border border-line bg-card">
+                      <div className="flex items-center gap-3 p-3">
+                        <button onClick={() => setOpenDays((d) => open ? d.filter((x) => x !== g.date) : [...d, g.date])}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                          <span className="relative h-16 w-16 shrink-0">
+                            <span className="absolute -right-1 -top-1 h-full w-full rounded-xl border border-line bg-ink-2" aria-hidden />
+                            <span className="relative block h-16 w-16 overflow-hidden rounded-xl border border-line">
+                              <MediaThumb asset={cover} src={srcFor(cover)} className="h-full w-full object-cover" />
+                              <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-bold text-paper">{g.items.length}</span>
+                            </span>
+                          </span>
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5 text-sm font-semibold text-paper"><Sparkles size={14} className="text-brand" /> {fmtDay(g.date)}</span>
+                            <span className="mt-0.5 block text-xs text-paper-dim">{label} · {open ? (t.panel.tapClose || (isEs ? 'toca para cerrar' : 'tap to close')) : (t.panel.tapOpen || (isEs ? 'toca para ver' : 'tap to view'))}</span>
+                          </span>
+                        </button>
+                        {!selectMode && (
+                          <button onClick={() => downloadMany(g.items)} className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:inline-flex"><Download size={13} /> {t.panel.downloadAll}</button>
+                        )}
+                        <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
+                      </div>
+                      {open && (
+                        <div className="border-t border-line p-3">
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                            {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
+                          </div>
+                          {!selectMode && (
+                            <button onClick={() => downloadMany(g.items)} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:hidden"><Download size={13} /> {t.panel.downloadAll}</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
