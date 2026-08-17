@@ -392,47 +392,26 @@ export default function AgenciaPage() {
           {/* La agencia NO agrega modelos — el admin conecta modelo con agencia. */}
         </div>
 
-        {/* Banner + sección: solicitudes de salida de modelos */}
-        {leaveReqs.length > 0 && (
-          <div className="mt-6 overflow-hidden rounded-2xl border border-amber-400/30 bg-amber-400/[0.05]">
-            <div className="flex items-center gap-2 border-b border-amber-400/20 px-4 py-3">
-              <AlertTriangle size={16} className="text-amber-300" />
-              <span className="text-sm font-semibold text-amber-200">
-                {leaveReqs.length === 1 ? '1 modelo quiere dejar tu agencia' : `${leaveReqs.length} modelos quieren dejar tu agencia`}
-              </span>
-              <span className="text-[11px] text-paper-dim">— acéptalo o recházalo</span>
-            </div>
-            <ul className="divide-y divide-amber-400/10">
-              {leaveReqs.map((lr) => (
-                <li key={lr.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <Avatar src={lr.avatar_url} name={lr.creator_name} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-paper">{lr.creator_name}</p>
-                    <p className="truncate text-[11px] text-paper-dim">
-                      {lr.creator_handle ? `@${lr.creator_handle}` : ''}{lr.reason ? ` · «${lr.reason}»` : ' · pidió salir'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => respondLeave(lr.id, false)} disabled={leaveBusy === lr.id}
-                      className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-50">
-                      Rechazar
-                    </button>
-                    <button onClick={() => respondLeave(lr.id, true)} disabled={leaveBusy === lr.id}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-1.5 text-xs font-semibold text-on-accent transition-colors hover:brightness-110 disabled:opacity-60">
-                      {leaveBusy === lr.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Aceptar salida
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
         {/* Resumen: solo las tarjetas. Tocar una CAMBIA de pantalla al área. */}
         {!atab && (
           <>
             <div className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Resumen de tu agencia · histórico — toca una tarjeta para abrirla</div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {/* Cajita de Salidas — solo si hay modelos pidiendo irse. Ámbar, resalta. */}
+              {leaveReqs.length > 0 && (
+                <button onClick={() => setAtab('salidas')}
+                  className="group rounded-2xl border border-amber-400/40 bg-amber-400/[0.06] p-4 text-left transition-colors hover:border-amber-400/70">
+                  <div className="flex items-center justify-between gap-2 text-amber-300">
+                    <span className="flex items-center gap-2">
+                      <AlertTriangle size={15} />
+                      <span className="text-xs font-medium">Salidas</span>
+                    </span>
+                    <ChevronRight size={15} className="shrink-0 transition-transform group-hover:translate-x-0.5" />
+                  </div>
+                  <div className="mt-1.5 font-display text-2xl font-semibold text-amber-200 sm:text-3xl">{leaveReqs.length}</div>
+                  <div className="mt-0.5 text-[11px] text-paper-dim">{leaveReqs.length === 1 ? 'modelo quiere salir' : 'modelos quieren salir'}</div>
+                </button>
+              )}
               {BOOK_KPIS.map((k) => (
                 <button key={k.label}
                   onClick={() => { setAtab(k.view); if (k.view !== 'modelos') setSel(null); }}
@@ -459,9 +438,44 @@ export default function AgenciaPage() {
               <ChevronLeft size={15} /> Resumen
             </button>
             <h2 className="mt-1.5 flex items-center gap-2 font-display text-lg font-semibold sm:text-xl">
-              {(() => { const k = BOOK_KPIS.find((x) => x.view === atab); const Ic = k?.icon; return <>{Ic && <Ic size={18} className="text-brand" />} {k?.label || ''}</>; })()}
+              {atab === 'salidas'
+                ? <><AlertTriangle size={18} className="text-amber-300" /> Salidas de modelos</>
+                : (() => { const k = BOOK_KPIS.find((x) => x.view === atab); const Ic = k?.icon; return <>{Ic && <Ic size={18} className="text-brand" />} {k?.label || ''}</>; })()}
             </h2>
           </div>
+        )}
+
+        {atab === 'salidas' && (
+        <div className="mt-6">
+          <p className="mb-3 text-sm text-paper-mute">Estas modelos pidieron dejar tu agencia. Acepta (salen y dejas de gestionarlas) o rechaza. Si rechazas, la modelo puede salir de todos modos.</p>
+          {leaveReqs.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">No hay solicitudes de salida.</p>
+          ) : (
+            <ul className="space-y-2">
+              {leaveReqs.map((lr) => (
+                <li key={lr.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/[0.04] p-3.5">
+                  <Avatar src={lr.avatar_url} name={lr.creator_name} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-paper">{lr.creator_name}</p>
+                    <p className="truncate text-[11px] text-paper-dim">
+                      {lr.creator_handle ? `@${lr.creator_handle}` : ''}{lr.reason ? ` · «${lr.reason}»` : ' · pidió salir'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => respondLeave(lr.id, false)} disabled={leaveBusy === lr.id}
+                      className="rounded-full border border-line px-3.5 py-2 text-xs font-semibold text-paper-mute transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-50">
+                      Rechazar
+                    </button>
+                    <button onClick={() => respondLeave(lr.id, true)} disabled={leaveBusy === lr.id}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-xs font-semibold text-on-accent transition-colors hover:brightness-110 disabled:opacity-60">
+                      {leaveBusy === lr.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Aceptar salida
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         )}
 
         {atab === 'modelos' && (
