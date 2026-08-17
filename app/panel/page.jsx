@@ -621,7 +621,7 @@ export default function PanelPage() {
               /* Vista GRID pura como Fotos de Mac: TODAS las piezas en un solo
                  grid, sin separadores por día. Orden: lo último subido primero. */
               <div className="mt-6 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-                {allVisible.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} bare />)}
+                {allVisible.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} bare locale={locale} />)}
               </div>
             ) : (
               /* Vista DÍAS: cajitas colapsables — portada + fecha + Download
@@ -793,7 +793,10 @@ function CreatorReqThread({ req, t, locale, onSent, flash, readOnly }) {
   );
 }
 
-function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, onToggle, bare }) {
+function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, onToggle, bare, locale }) {
+  // Fecha en que se subió (created_at; fallback a deliver_date), corta y discreta.
+  const upDate = a.created_at ? new Date(a.created_at) : (a.deliver_date ? new Date(a.deliver_date + 'T00:00:00') : null);
+  const upLabel = upDate ? upDate.toLocaleDateString(locale || 'es-US', { day: 'numeric', month: 'short' }) : null;
   // `bare` = modo «manejo de fotos» tipo Fotos de Mac: sin precios, sin título,
   // sin folder, sin bordes redondeados. Solo la miniatura pura.
   const handleClick = () => { selectMode ? onToggle?.(a.id) : onOpen(a); };
@@ -810,9 +813,17 @@ function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, o
           <Check size={14} strokeWidth={3} />
         </span>
       )}
-      {/* En modo bare (Galería): solo el precio, chiquito, en la esquina inferior derecha */}
-      {bare && Number(a.revenue) > 0 && !selectMode && (
-        <span className="pointer-events-none absolute bottom-1 right-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur">{money(a.revenue)}</span>
+      {/* Modo bare (Galería): abajo-izquierda la fecha de subida, abajo-derecha el
+          precio — ambos discretos, colores suaves, para no robar atención. */}
+      {bare && !selectMode && (
+        <>
+          {upLabel && (
+            <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-medium text-white/75 backdrop-blur-sm">{upLabel}</span>
+          )}
+          {Number(a.revenue) > 0 && (
+            <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-medium text-white/85 backdrop-blur-sm">{money(a.revenue)}</span>
+          )}
+        </>
       )}
       {/* Metadatos (precios, título, folder) — SOLO en modo no-bare */}
       {!bare && (
