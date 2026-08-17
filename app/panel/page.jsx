@@ -821,7 +821,7 @@ function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, o
             <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-medium text-white/75 backdrop-blur-sm">{upLabel}</span>
           )}
           {Number(a.revenue) > 0 && (
-            <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-medium text-white/85 backdrop-blur-sm">{money(a.revenue)}</span>
+            <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold text-brand/90 backdrop-blur-sm">{money(a.revenue)}</span>
           )}
         </>
       )}
