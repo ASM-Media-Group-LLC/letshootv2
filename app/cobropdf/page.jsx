@@ -1,9 +1,9 @@
 'use client';
 
-// /cobropdf — molde de recibo LetShoot. Estética alineada con la home:
-// Poppins display, Inter body, tracking apretado, restraint total. No es un
-// flyer de descuento; es un statement editorial. El monto no grita, la
-// composición sí. Print-ready (Letter, print-color-adjust: exact global).
+// /cobropdf — molde de COBRO (invoice) LetShoot. Se manda ANTES de recibir el
+// pago para pedirlo. Statement editorial sobrio, no flyer: fecha de
+// vencimiento visible, instrucciones de cómo pagar, pill «Por pagar».
+// Print-ready (Letter, print-color-adjust: exact global).
 
 const CSS = `
 * {
@@ -368,7 +368,7 @@ export default function CobroPdfPage() {
           </button>
         </div>
 
-        <article className="paper" role="document" aria-label="Recibo LetShoot">
+        <article className="paper" role="document" aria-label="Cobro LetShoot">
           {/* Header: logo + meta */}
           <header className="header">
             <div className="brand">
@@ -379,17 +379,17 @@ export default function CobroPdfPage() {
               </div>
             </div>
             <div className="meta">
-              <div><span className="k">Recibo</span> &nbsp; <span className="v mono">LS-2026-0817</span></div>
-              <div><span className="k">Fecha</span> &nbsp; <span className="v">17 Ago 2026</span></div>
-              <div><span className="k">Cliente</span> &nbsp; <span className="v mono">JP-4014</span></div>
+              <div><span className="k">Cobro</span> &nbsp; <span className="v mono">LS-2026-0817</span></div>
+              <div><span className="k">Emitido</span> &nbsp; <span className="v">17 Ago 2026</span></div>
+              <div><span className="k">Vence</span> &nbsp; <span className="v">25 Ago 2026</span></div>
             </div>
           </header>
 
           {/* Statement editorial */}
           <section className="statement">
-            <div className="kicker">Pago recibido</div>
+            <div className="kicker">Cobro por pagar</div>
             <h1>
-              Gracias, Julia. Tu <em>Pro Pack</em> queda activo hasta el 31 de agosto de 2026.
+              Hola, Julia. Aquí está tu cobro del <em>Pro Pack</em>. Pagando antes del 25 de agosto renuevas al instante.
             </h1>
           </section>
 
@@ -409,11 +409,11 @@ export default function CobroPdfPage() {
               <div className="row"><span>Impuestos</span><span className="v">$0.00</span></div>
             </div>
             <div className="grand">
-              <span className="label">Total pagado</span>
+              <span className="label">Total a pagar</span>
               <span className="right">
-                <span className="paid" aria-label="Estado: pagado">
+                <span className="paid" aria-label="Estado: por pagar">
                   <span className="dot" aria-hidden="true"></span>
-                  Pagado
+                  Por pagar
                 </span>
                 <span className="val tabular"><span className="cur">$</span>899.00</span>
               </span>
@@ -429,10 +429,10 @@ export default function CobroPdfPage() {
               <div className="line">julia.parker@ejemplo.com</div>
             </div>
             <div className="field">
-              <div className="label">Método de pago</div>
+              <div className="label">Cómo pagar</div>
               <div className="name">Zelle</div>
-              <div className="line">Ref. <span className="mono">ZE-2508171742</span></div>
-              <div className="line">Confirmado el 15 ago 2026</div>
+              <div className="line">soporte@letshoot.ai</div>
+              <div className="line">Referencia: <span className="mono">LS-2026-0817</span></div>
             </div>
             <div className="field">
               <div className="label">Emitido por</div>
@@ -444,7 +444,7 @@ export default function CobroPdfPage() {
 
           {/* Notas finas */}
           <p className="fine">
-            Tu plan se renueva mensualmente. Puedes cancelar cuando quieras desde tu panel — el acceso queda activo hasta el final del período pagado. Todos los cargos son en dólares estadounidenses (USD).
+            Al recibir tu pago, activamos el Pro Pack al instante hasta el 31 de agosto de 2026. Si ya pagaste, ignora este cobro — la confirmación puede tardar unas horas. Todos los cargos son en dólares estadounidenses (USD).
           </p>
 
           {/* Footer */}
