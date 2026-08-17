@@ -12,7 +12,7 @@ import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
   ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart, KeyRound,
-  UserPlus, Trash2, Check, Mail,
+  UserPlus, Trash2, Check, Mail, AlertTriangle,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -118,6 +118,8 @@ export default function AgenciaPage() {
   const [newLink, setNewLink] = useState('');      // freshly-created invite URL
   const [copied, setCopied] = useState('');        // token just copied
   const [cFilter, setCFilter] = useState('all');   // Contenido tab: model filter
+  const [leaveReqs, setLeaveReqs] = useState([]);  // solicitudes de salida pendientes
+  const [leaveBusy, setLeaveBusy] = useState('');  // id de la solicitud que se está respondiendo
 
   // Select a model and jump to its latest delivery month.
   function pickModel(m) {
@@ -193,6 +195,10 @@ export default function AgenciaPage() {
       .eq('agency_id', agencyId).eq('target_role', 'creator')
       .order('created_at', { ascending: false });
 
+    // Solicitudes de salida pendientes (modelos que piden dejar la agencia).
+    const { data: leaves } = await supabase.rpc('agency_leave_requests');
+    setLeaveReqs(leaves || []);
+
     setFolders(folderMap);
     setModels(list);
     setRequests((reqs || []).map((r) => ({ ...r, _msgs: msgsByReq[r.id] || [] })));
@@ -235,6 +241,17 @@ export default function AgenciaPage() {
   }, [router, load]);
 
   const refresh = useCallback(async () => { if (ctx.agencyId) await load(ctx.agencyId, ctx.isOwner); }, [ctx.agencyId, ctx.isOwner, load]);
+
+  // La agencia responde una solicitud de salida: aceptar (la modelo sale) o rechazar.
+  async function respondLeave(reqId, accept) {
+    if (!accept && !window.confirm('¿Rechazar la salida? La modelo podrá salir de todos modos.')) return;
+    setLeaveBusy(reqId);
+    const { error } = await getSupabase().rpc('agency_respond_leave', { p_request: reqId, p_accept: accept });
+    setLeaveBusy('');
+    if (error) { flash('Error: ' + error.message); return; }
+    flash(accept ? 'Salida aceptada — la modelo dejó la agencia' : 'Solicitud rechazada');
+    await refresh();
+  }
 
   // Add a model to the roster by generating a personal invite link. She registers
   // herself, does her own onboarding, and is auto-linked to this agency on redeem.
@@ -374,6 +391,42 @@ export default function AgenciaPage() {
           </div>
           {/* La agencia NO agrega modelos — el admin conecta modelo con agencia. */}
         </div>
+
+        {/* Banner + sección: solicitudes de salida de modelos */}
+        {leaveReqs.length > 0 && (
+          <div className="mt-6 overflow-hidden rounded-2xl border border-amber-400/30 bg-amber-400/[0.05]">
+            <div className="flex items-center gap-2 border-b border-amber-400/20 px-4 py-3">
+              <AlertTriangle size={16} className="text-amber-300" />
+              <span className="text-sm font-semibold text-amber-200">
+                {leaveReqs.length === 1 ? '1 modelo quiere dejar tu agencia' : `${leaveReqs.length} modelos quieren dejar tu agencia`}
+              </span>
+              <span className="text-[11px] text-paper-dim">— acéptalo o recházalo</span>
+            </div>
+            <ul className="divide-y divide-amber-400/10">
+              {leaveReqs.map((lr) => (
+                <li key={lr.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <Avatar src={lr.avatar_url} name={lr.creator_name} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-paper">{lr.creator_name}</p>
+                    <p className="truncate text-[11px] text-paper-dim">
+                      {lr.creator_handle ? `@${lr.creator_handle}` : ''}{lr.reason ? ` · «${lr.reason}»` : ' · pidió salir'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => respondLeave(lr.id, false)} disabled={leaveBusy === lr.id}
+                      className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-50">
+                      Rechazar
+                    </button>
+                    <button onClick={() => respondLeave(lr.id, true)} disabled={leaveBusy === lr.id}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-1.5 text-xs font-semibold text-on-accent transition-colors hover:brightness-110 disabled:opacity-60">
+                      {leaveBusy === lr.id ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Aceptar salida
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Resumen: solo las tarjetas. Tocar una CAMBIA de pantalla al área. */}
         {!atab && (

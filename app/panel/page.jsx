@@ -13,7 +13,7 @@ import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, MessageSquare, User, Bell,
   X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
-  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff, Eye,
+  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff, Eye, Clock, Loader2,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -69,6 +69,10 @@ export default function PanelPage() {
   const [justUnread, setJustUnread] = useState([]); // ids sin leer al abrir la campana
   const [detail, setDetail] = useState(null);
   const [agency, setAgency] = useState('');
+  const [leaveReq, setLeaveReq] = useState(null); // solicitud de salida activa (pending|rejected)
+  const [leaveModal, setLeaveModal] = useState(false); // pop-up de confirmación
+  const [leaveReason, setLeaveReason] = useState('');
+  const [leaveBusy, setLeaveBusy] = useState(false);
   const [requests, setRequests] = useState([]);
   const [reqOpen, setReqOpen] = useState(false);
   const [notesFeed, setNotesFeed] = useState([]);
@@ -165,6 +169,11 @@ export default function PanelPage() {
       setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
       setState({ loading: false, profile: up.profile, assets, folders });
       const { data: ag } = await getSupabase().rpc('my_agency'); if (ag) setAgency(ag);
+      // Solicitud de salida activa (pendiente o rechazada) para mostrar su estado.
+      const { data: lr } = await getSupabase().from('agency_leave_requests')
+        .select('id, status, created_at').eq('creator_id', up.profile.id)
+        .in('status', ['pending', 'rejected']).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      setLeaveReq(lr || null);
     })();
   }, [router, load, asId]);
 
@@ -195,19 +204,37 @@ export default function PanelPage() {
     }
   }
   // Ella decide: salirse de su agencia (borra el vínculo; avisa a la agencia).
-  async function leaveAgency() {
+  // La modelo pide salir → crea una solicitud PENDIENTE (no sale aún).
+  async function submitLeaveRequest() {
     if (readOnly) return;
-    if (!window.confirm(t.panel.leaveAgencyConfirm)) return;
-    const supabase = getSupabase();
-    const { data: link } = await supabase.from('agency_creators').select('agency_id').eq('creator_id', state.profile.id).maybeSingle();
-    const { error } = await supabase.from('agency_creators').delete().eq('creator_id', state.profile.id);
+    setLeaveBusy(true);
+    const { data, error } = await getSupabase().rpc('request_leave_agency', { p_reason: leaveReason.trim() || null });
+    setLeaveBusy(false);
     if (error) { flash(t.common.error); return; }
-    if (link?.agency_id) {
-      // Best-effort: la agencia se entera de que algo cambió.
-      await supabase.from('notifications').insert({ user_id: link.agency_id, kind: 'agency_left', meta: { creator: state.profile.stage_name || state.profile.full_name || '' } }).then(() => {}, () => {});
-    }
-    setAgency(null);
-    flash(t.common?.saved || 'Listo');
+    setLeaveReq({ id: data, status: 'pending' });
+    setLeaveModal(false); setLeaveReason('');
+    flash(isEs ? 'Solicitud enviada a tu agencia' : 'Request sent to your agency');
+  }
+  // La modelo sale de todos modos (rechazada o ignorada) — siempre gana.
+  async function leaveAnyway() {
+    if (readOnly || !leaveReq) return;
+    if (!window.confirm(isEs ? '¿Salir de la agencia de todos modos? No se puede deshacer.' : 'Leave the agency anyway? This cannot be undone.')) return;
+    setLeaveBusy(true);
+    const { error } = await getSupabase().rpc('creator_leave_anyway', { p_request: leaveReq.id });
+    setLeaveBusy(false);
+    if (error) { flash(t.common.error); return; }
+    setLeaveReq(null); setAgency(null);
+    flash(isEs ? 'Saliste de la agencia' : 'You left the agency');
+  }
+  // La modelo cancela su solicitud pendiente (cambió de opinión).
+  async function cancelLeaveRequest() {
+    if (readOnly || !leaveReq) return;
+    setLeaveBusy(true);
+    const { error } = await getSupabase().rpc('cancel_leave_request', { p_request: leaveReq.id });
+    setLeaveBusy(false);
+    if (error) { flash(t.common.error); return; }
+    setLeaveReq(null);
+    flash(isEs ? 'Solicitud cancelada' : 'Request cancelled');
   }
 
   async function sendFeedback(asset, kind) {
@@ -448,9 +475,34 @@ export default function PanelPage() {
             {agency && (
               <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-paper-dim">
                 <Building2 size={12} className="text-brand" /> {t.panel.managedBy} <span className="font-medium text-paper-mute">{agency}</span>
-                <button onClick={leaveAgency} className="ml-1 rounded-full border border-line px-2 py-0.5 text-[10px] text-paper-dim transition-colors hover:border-rose-500/40 hover:text-rose-300">
-                  {t.panel.leaveAgency}
-                </button>
+                {!readOnly && !leaveReq && (
+                  <button onClick={() => setLeaveModal(true)} className="ml-1 rounded-full border border-line px-2 py-0.5 text-[10px] text-paper-dim transition-colors hover:border-rose-500/40 hover:text-rose-300">
+                    {t.panel.leaveAgency}
+                  </button>
+                )}
+                {!readOnly && leaveReq?.status === 'pending' && (
+                  <>
+                    <span className="ml-1 inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                      <Clock size={10} /> {isEs ? 'Salida pendiente' : 'Leave pending'}
+                    </span>
+                    <button onClick={leaveAnyway} disabled={leaveBusy} className="rounded-full border border-rose-500/40 px-2 py-0.5 text-[10px] font-semibold text-rose-300 transition-colors hover:bg-rose-500/10 disabled:opacity-50">
+                      {isEs ? 'Salir de todos modos' : 'Leave anyway'}
+                    </button>
+                    <button onClick={cancelLeaveRequest} disabled={leaveBusy} className="rounded-full border border-line px-2 py-0.5 text-[10px] text-paper-dim transition-colors hover:text-paper disabled:opacity-50">
+                      {isEs ? 'Cancelar' : 'Cancel'}
+                    </button>
+                  </>
+                )}
+                {!readOnly && leaveReq?.status === 'rejected' && (
+                  <>
+                    <span className="ml-1 inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
+                      {isEs ? 'La agencia rechazó' : 'Agency declined'}
+                    </span>
+                    <button onClick={leaveAnyway} disabled={leaveBusy} className="rounded-full border border-rose-500/40 px-2 py-0.5 text-[10px] font-semibold text-rose-300 transition-colors hover:bg-rose-500/10 disabled:opacity-50">
+                      {isEs ? 'Salir de todos modos' : 'Leave anyway'}
+                    </button>
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -737,6 +789,32 @@ export default function PanelPage() {
       </main>
 
       {detail && <AssetDetail asset={detail} src={srcFor(detail)} dl={dlFor(detail)} t={t} locale={locale} folderName={state.folders[detail.folder_id]} feedback={myFeedback[detail.id]} onClose={() => setDetail(null)} onFeedback={sendFeedback} />}
+
+      {/* Pop-up: pedir salir de la agencia (crea una solicitud, no sale al toque) */}
+      {leaveModal && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => !leaveBusy && setLeaveModal(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-line bg-ink p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-rose-500/15 text-rose-300"><Building2 size={17} /></span>
+              <h3 className="font-display text-lg font-semibold text-paper">{isEs ? 'Salir de la agencia' : 'Leave the agency'}</h3>
+            </div>
+            <p className="mt-3 text-sm leading-relaxed text-paper-mute">
+              {isEs
+                ? <>Se le enviará una solicitud a <span className="font-semibold text-paper">{agency}</span>. Si la acepta, sales de una. Si la rechaza o no responde, podrás salir de todos modos.</>
+                : <>A request will be sent to <span className="font-semibold text-paper">{agency}</span>. If they accept, you leave right away. If they decline or don’t respond, you can still leave anyway.</>}
+            </p>
+            <label className="mt-4 block text-[11px] font-medium uppercase tracking-wide text-paper-dim">{isEs ? 'Motivo (opcional)' : 'Reason (optional)'}</label>
+            <textarea value={leaveReason} onChange={(e) => setLeaveReason(e.target.value)} rows={2} placeholder={isEs ? 'Ej. me voy por mi cuenta' : 'e.g. going independent'}
+              className="mt-1 w-full resize-none rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setLeaveModal(false)} disabled={leaveBusy} className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-paper-mute hover:text-paper disabled:opacity-50">{isEs ? 'Cancelar' : 'Cancel'}</button>
+              <button onClick={submitLeaveRequest} disabled={leaveBusy} className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/90 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500 disabled:opacity-60">
+                {leaveBusy && <Loader2 size={14} className="animate-spin" />} {isEs ? 'Enviar solicitud' : 'Send request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {toast && <div className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-full border border-brand/40 bg-brand/15 px-4 py-2 text-sm font-medium text-brand backdrop-blur">{toast}</div>}
     </div>
   );
