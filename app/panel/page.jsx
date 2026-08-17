@@ -72,7 +72,7 @@ export default function PanelPage() {
   const [requests, setRequests] = useState([]);
   const [reqOpen, setReqOpen] = useState(false);
   const [notesFeed, setNotesFeed] = useState([]);
-  const [view, setView] = useState('numeros'); // numeros | contenido | activity | requests
+  const [view, setView] = useState('contenido'); // contenido (default) | numeros | activity | requests
   const [range, setRange] = useState('month'); // week (7 días) | month | all | custom — compartido Contenido/Números
   const [customFrom, setCustomFrom] = useState(''); // rango de fechas: desde
   const [customTo, setCustomTo] = useState('');     // rango de fechas: hasta
@@ -565,8 +565,8 @@ export default function PanelPage() {
                 {!selectMode && allIds.length > 0 && (
                   <div className="inline-flex items-center rounded-full border border-line bg-ink-2 p-0.5 text-[11px] font-semibold">
                     {[
-                      { k: 'grid', l: isEs ? 'Grid' : 'Grid' },
-                      { k: 'days', l: isEs ? 'Días' : 'Days' },
+                      { k: 'grid', l: isEs ? 'Galería' : 'Gallery' },
+                      { k: 'days', l: isEs ? 'Entregas' : 'Deliveries' },
                     ].map((t) => {
                       const on = contentLayout === t.k;
                       return (
