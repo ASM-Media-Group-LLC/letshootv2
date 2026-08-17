@@ -321,25 +321,28 @@ const CSS = `
 }
 
 /* Print */
-@page { size: Letter; margin: 0.5in; }
+/* @page sin margen: el PROPIO papel pone su margen interno. Así el contenido
+   nunca se corta a los lados y el navegador no mete header/footer. */
+@page { size: Letter; margin: 0; }
 @media print {
   html, body {
     background: #fff !important;
     padding: 0 !important; margin: 0 !important;
-    min-height: 0 !important;
+    width: auto !important; min-height: 0 !important;
   }
   .cobro { background: #fff !important; padding: 0 !important; min-height: 0 !important; }
   .cobro .toolbar { display: none !important; }
   .cobro .paper {
     max-width: none !important;
+    width: auto !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 0.6in 0.62in !important;
     box-shadow: none !important;
     border-radius: 0 !important;
     overflow: visible !important;
   }
-  .cobro .statement h1 { font-size: 24px !important; }
-  .cobro .total .grand .val { font-size: 32px !important; }
+  .cobro .statement h1 { font-size: 22px !important; }
+  .cobro .total .grand .val { font-size: 30px !important; }
   a { color: inherit !important; text-decoration: none !important; }
   .cobro .header,
   .cobro .statement,
