@@ -40,6 +40,7 @@ const COPY = {
     sub: 'Tú solo subes tus fotos y nos dices qué quieres. Nosotros te entregamos contenido listo para vender — cada día. Sin cámara, sin sesiones, sin fotógrafo. Y gratis: crear tu clon no cuesta nada.',
     cta: 'Registrarme gratis',
     ctaNote: 'Crear tu clon no cuesta nada. Solo pagas el contenido si te gusta.',
+    learnMore: 'Cómo preparar tus fotos',
     prepEyebrow: 'Antes de empezar',
     prepTitle: 'Así vas a preparar tus fotos.',
     prepSub: 'Para que tu clon salga idéntica a ti, necesitamos verte desde varios ángulos y con distintas expresiones. Reúne unas 20 fotos para empezar — 50 o más si quieres el resultado perfecto. La mayoría ya las tienes en tu galería.',
@@ -98,6 +99,7 @@ const COPY = {
     sub: 'You just upload your photos and tell us what you want. We deliver sell-ready content — every day. No camera, no shoots, no photographer. And free: building your clone costs nothing.',
     cta: 'Sign up free',
     ctaNote: 'Building your clone costs nothing. You only pay for content if you love it.',
+    learnMore: 'How to prep your photos',
     prepEyebrow: 'Before you start',
     prepTitle: 'Here’s how you’ll prep your photos.',
     prepSub: 'For your clone to look identical to you, we need to see you from a few angles and in different expressions. Gather around 20 photos to start — 50 or more for the best result. You probably already have most of them in your gallery.',
@@ -194,7 +196,12 @@ export default function StartPage() {
                   className="group inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-full bg-brand px-8 py-4 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.03] sm:w-auto">
                   {c.cta} <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
                 </Link>
-                <p className="text-xs text-paper/70">{c.ctaNote}</p>
+                <a href="#prepara"
+                  onClick={(e) => { e.preventDefault(); document.getElementById('prepara')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+                  className="group mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-paper/70 transition-colors hover:text-brand sm:text-sm">
+                  {c.learnMore} <ArrowRight size={14} className="rotate-90 transition-transform group-hover:translate-y-0.5" />
+                </a>
+                <p className="text-[11px] text-paper/60">{c.ctaNote}</p>
               </div>
             </div>
           </section>
@@ -202,7 +209,7 @@ export default function StartPage() {
       </div>
 
       {/* ── PREPARA TUS FOTOS ─ una sección cinematográfica antes del signup */}
-      <section className="relative isolate overflow-hidden">
+      <section id="prepara" className="relative isolate overflow-hidden scroll-mt-16">
         {/* Fondo: mismo video en loop, muy dark, como continuación del hero */}
         <video className="absolute inset-0 h-full w-full object-cover opacity-30" autoPlay muted loop playsInline aria-hidden>
           <source src="/hero-miami.mp4" type="video/mp4" />
@@ -217,10 +224,10 @@ export default function StartPage() {
             <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-brand backdrop-blur sm:text-[11px]">
               <Camera size={12} /> {c.prepEyebrow}
             </span>
-            <h2 className="mt-5 font-display text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
+            <h2 className="mt-5 font-display text-2xl font-semibold leading-[1.15] tracking-tight sm:text-3xl lg:text-4xl">
               {c.prepTitle}
             </h2>
-            <p className="mx-auto mt-5 max-w-2xl text-sm leading-relaxed text-paper/80 sm:text-base">
+            <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-paper/80 sm:text-base">
               {c.prepSub}
             </p>
           </div>
