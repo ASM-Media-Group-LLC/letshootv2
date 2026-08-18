@@ -13,14 +13,14 @@ import Link from 'next/link';
 import {
   LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, MessageSquare, User, Bell,
   X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
-  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff, Eye, Clock, Loader2, TrendingUp, TrendingDown,
+  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff, Eye, Clock, Loader2, TrendingUp, TrendingDown, Maximize2,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
 import { ymOf, ymLabel, shiftYm, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
-import MediaThumb from '@/components/MediaThumb';
+import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import Avatar from '@/components/Avatar';
 import LangToggle from '@/components/LangToggle';
 import WelcomeTour from '@/components/WelcomeTour';
@@ -1051,6 +1051,8 @@ function RequestForm({ t, onSubmit }) {
 // the agency's notes journal (read-only), and the creator's own feedback.
 function AssetDetail({ asset, src, dl, t, locale, folderName, feedback, onClose, onFeedback }) {
   const [notes, setNotes] = useState([]);
+  const [zoom, setZoom] = useState(false);
+  const isEs = (locale || 'es').startsWith('es');
   useEffect(() => { (async () => { const { data } = await getSupabase().from('asset_notes').select('id, note, note_date, author_name, author_handle, author_email').eq('asset_id', asset.id).order('note_date', { ascending: false }).order('created_at', { ascending: false }); setNotes(data || []); })(); }, [asset.id]);
   const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 
@@ -1060,11 +1062,16 @@ function AssetDetail({ asset, src, dl, t, locale, folderName, feedback, onClose,
       <div className="relative w-full max-w-4xl self-start overflow-hidden border-line bg-card shadow-glow-sm sm:self-center sm:rounded-3xl sm:border">
         <button onClick={onClose} aria-label={t.panel.close} className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-ink/70 text-paper backdrop-blur transition-colors hover:text-brand"><X size={18} /></button>
         <div className="grid md:grid-cols-[1.1fr_1fr]">
-          <div className="bg-ink">
+          <div className="group relative bg-ink">
             {asset.type === 'video'
               ? <video src={src} className="h-full max-h-[46vh] w-full object-contain md:max-h-[85vh]" controls autoPlay loop playsInline />
               // eslint-disable-next-line @next/next/no-img-element
-              : <img src={src} alt={asset.title || ''} className="h-full max-h-[46vh] w-full object-contain md:max-h-[85vh]" />}
+              : <img src={src} alt={asset.title || ''} onClick={() => setZoom(true)} className="h-full max-h-[46vh] w-full cursor-zoom-in object-contain md:max-h-[85vh]" />}
+            {/* Ampliar a pantalla completa — para foto y video */}
+            <button onClick={() => setZoom(true)} aria-label={isEs ? 'Ampliar' : 'Enlarge'}
+              className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/55 px-3 py-1.5 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/75 sm:opacity-0 sm:group-hover:opacity-100">
+              <Maximize2 size={13} /> {isEs ? 'Ampliar' : 'Enlarge'}
+            </button>
           </div>
           <div className="flex flex-col gap-4 overflow-y-auto p-5 md:max-h-[85vh]">
             <div>
@@ -1136,6 +1143,8 @@ function AssetDetail({ asset, src, dl, t, locale, folderName, feedback, onClose,
           </div>
         </div>
       </div>
+      {/* Zoom a pantalla completa (read-only para la creadora) */}
+      {zoom && <MediaLightbox asset={asset} src={src} onClose={() => setZoom(false)} />}
     </div>
   );
 }

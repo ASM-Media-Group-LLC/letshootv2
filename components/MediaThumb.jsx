@@ -7,8 +7,8 @@
 // Uso: <MediaThumb asset={a} src={srcOf(a)} className="aspect-[3/4]" />
 // El consumidor decide qué pasa al hacer click (abrir lightbox, seleccionar…).
 
-import { useRef, useState } from 'react';
-import { Play } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Play, Pencil } from 'lucide-react';
 
 export default function MediaThumb({ asset, src, className = 'aspect-[3/4] w-full object-cover', imgClassName = '' }) {
   const videoRef = useRef(null);
@@ -50,8 +50,23 @@ export default function MediaThumb({ asset, src, className = 'aspect-[3/4] w-ful
 // Lightbox universal: modal fullscreen con la pieza en grande. Para videos
 // entra con controles nativos + autoplay + loop; para fotos, la imagen a todo
 // el alto disponible. Esc o click en el fondo cierra.
-export function MediaLightbox({ asset, src, onClose }) {
+// Si se pasa `onRename(asset, nuevoTitulo)`, el título se vuelve editable
+// (solo el equipo interno lo pasa; para la creadora queda de solo lectura).
+export function MediaLightbox({ asset, src, onClose, onRename }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setEditing(false); setSaving(false); setDraft(asset?.title || ''); }, [asset?.id]);
   if (!asset) return null;
+  const canEdit = typeof onRename === 'function';
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    try { await onRename(asset, draft.trim()); setEditing(false); }
+    finally { setSaving(false); }
+  }
+
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4 backdrop-blur-md" onClick={onClose}>
       <button onClick={onClose} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-black/50 text-white transition-colors hover:bg-white/10" aria-label="Cerrar">
@@ -62,10 +77,31 @@ export function MediaLightbox({ asset, src, onClose }) {
           ? <video src={src} className="max-h-[92vh] max-w-[92vw] rounded-xl bg-black object-contain shadow-2xl" controls autoPlay loop playsInline />
           // eslint-disable-next-line @next/next/no-img-element
           : <img src={src} alt={asset.title || ''} className="max-h-[92vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />}
-        {(asset.title || asset.deliver_date) && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-xl bg-gradient-to-t from-black/70 to-transparent p-4">
-            {asset.title && <p className="text-sm font-medium text-white">{asset.title}</p>}
-            {asset.deliver_date && <p className="text-[11px] text-white/70">{new Date(asset.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
+        {(asset.title || asset.deliver_date || canEdit) && (
+          <div className="absolute inset-x-0 bottom-0 rounded-b-xl bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4">
+            {canEdit && editing ? (
+              <div className="flex items-center gap-2">
+                <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setEditing(false); setDraft(asset.title || ''); } }}
+                  placeholder="Título de la foto" maxLength={120}
+                  className="min-w-0 flex-1 rounded-lg border border-white/25 bg-black/60 px-3 py-1.5 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/60" />
+                <button onClick={save} disabled={saving} className="shrink-0 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-white disabled:opacity-50">{saving ? '…' : 'Guardar'}</button>
+                <button onClick={() => { setEditing(false); setDraft(asset.title || ''); }} className="shrink-0 rounded-lg border border-white/25 px-3 py-1.5 text-xs text-white/80 transition-colors hover:text-white">Cancelar</button>
+              </div>
+            ) : (
+              <div className="flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={`truncate text-sm font-medium ${asset.title ? 'text-white' : 'italic text-white/50'}`}>{asset.title || 'Sin título'}</p>
+                  {asset.deliver_date && <p className="text-[11px] text-white/70">{new Date(asset.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
+                </div>
+                {canEdit && (
+                  <button onClick={() => { setDraft(asset.title || ''); setEditing(true); }}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/25 bg-black/50 px-2.5 py-1.5 text-xs font-medium text-white/90 backdrop-blur transition-colors hover:bg-white/10">
+                    <Pencil size={12} /> Renombrar
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

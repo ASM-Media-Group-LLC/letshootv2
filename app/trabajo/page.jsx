@@ -809,6 +809,18 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     flash('Pieza borrada'); await load();
   }
 
+  // Renombrar el título de una pieza desde el lightbox. Update en sitio (sin
+  // recargar) para no re-firmar todas las miniaturas: refleja el nuevo título
+  // en la galería y en el preview abierto al instante.
+  async function renameAsset(a, title) {
+    const supabase = getSupabase();
+    const { error } = await supabase.from('assets').update({ title: title || null }).eq('id', a.id);
+    if (error) { flash('No se pudo renombrar: ' + error.message); return; }
+    setFolders((fs) => (fs || []).map((f) => ({ ...f, assets: (f.assets || []).map((x) => x.id === a.id ? { ...x, title: title || null } : x) })));
+    setPreview((p) => (p && p.id === a.id ? { ...p, title: title || null } : p));
+    flash(title ? 'Título actualizado' : 'Título quitado');
+  }
+
   // Selección múltiple para borrar en batch. Toca un checkbox de una foto para
   // seleccionarla; una barra sticky arriba deja borrarlas todas de un tirón.
   const [selected, setSelected] = useState(() => new Set());
@@ -1276,7 +1288,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
       )}
 
       {/* Lightbox: ver la pieza en grande con controles reales */}
-      <MediaLightbox asset={preview} src={preview ? srcOf(preview) : null} onClose={() => setPreview(null)} />
+      <MediaLightbox asset={preview} src={preview ? srcOf(preview) : null} onClose={() => setPreview(null)} onRename={renameAsset} />
     </section>
   );
 }

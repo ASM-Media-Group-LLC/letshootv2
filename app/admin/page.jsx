@@ -555,7 +555,7 @@ export default function AdminPage() {
                     {stats.map((s) => {
                       const active = regFilter === s.key;
                       return (
-                        <button key={s.key} onClick={() => { setRegFilter(active ? null : s.key); if (active) setRegQuery(''); }}
+                        <button key={s.key} onClick={() => { setRegFilter(active ? null : s.key); setRegSub('all'); if (active) setRegQuery(''); }}
                           className={`rounded-2xl border p-4 text-left transition-all ${TONE[s.tone]} ${active ? 'ring-2 ring-brand/60 ring-offset-2 ring-offset-ink' : 'opacity-90 hover:opacity-100'}`}>
                           <div className="flex items-start justify-between">
                             <div className="font-display text-3xl font-bold">{s.value}</div>
@@ -583,7 +583,7 @@ export default function AdminPage() {
                       {(overdueList.length > 0 || dueSoonList.length > 0) && (
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {overdueList.length > 0 && (
-                            <button onClick={() => setRegSub('overdue')}
+                            <button onClick={() => { setRegSub('overdue'); setRegFilter(null); }}
                               className="group flex items-center justify-between gap-3 rounded-2xl border border-rose-500/50 bg-rose-500/[0.08] p-3.5 text-left transition-colors hover:bg-rose-500/[0.14]">
                               <div>
                                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-rose-300">
@@ -595,7 +595,7 @@ export default function AdminPage() {
                             </button>
                           )}
                           {dueSoonList.length > 0 && (
-                            <button onClick={() => setRegSub('due_soon')}
+                            <button onClick={() => { setRegSub('due_soon'); setRegFilter(null); }}
                               className="group flex items-center justify-between gap-3 rounded-2xl border border-amber-500/50 bg-amber-500/[0.06] p-3.5 text-left transition-colors hover:bg-amber-500/[0.12]">
                               <div>
                                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-300">
@@ -611,7 +611,7 @@ export default function AdminPage() {
 
                       {/* Filtrar + Ordenar — dropdowns compactos, no botones abiertos. */}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Dropdown icon={SlidersHorizontal} label="Filtrar" value={regSub} onChange={setRegSub}
+                        <Dropdown icon={SlidersHorizontal} label="Filtrar" value={regSub} onChange={(v) => { setRegSub(v); setRegFilter(null); }}
                           options={[
                             { value: 'all', label: 'Todas' },
                             { value: 'active', label: 'Suscripción activa' },
