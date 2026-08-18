@@ -109,7 +109,8 @@ Deno.serve(async (req) => {
     if (role === 'supervisor') { patch.capabilities = capabilities; if (job_title) patch.job_title = job_title; }
     // Empleado de agencia: nace aprobado (no espera revisión del admin como una agencia externa).
     const asAgencyMember = isAgencyOwner && wantsAgencyMember && role === 'agency';
-    if (asAgencyMember) patch.staff_status = 'approved';
+    const isAdminInvitingAgencyMember = isAdmin && wantsAgencyMember && role === 'agency';
+    if (asAgencyMember || isAdminInvitingAgencyMember) patch.staff_status = 'approved';
     // Optional creator profile fields (perfil público, identidad, suscripción, cortesía,
     // nota). Applied server-side so a non-admin with 'add_creators' can set them too
     // (client-side they'd be blocked by RLS). Whitelisted — no arbitrary columns.
@@ -150,10 +151,23 @@ Deno.serve(async (req) => {
 
     // Sub-equipo de agencia: vincula al empleado con su agencia (funciones) y le asigna
     // SOLO los modelos elegidos (validados: deben pertenecer a la agencia del dueño).
-    if (asAgencyMember) {
-      await svc.from('agency_members').insert({ agency_id: user.id, member_id: created.user.id, capabilities: memberCaps });
+    // El admin puede invitar en nombre de cualquier agencia pasando `agency_id`;
+    // el dueño siempre invita para su propia agencia (user.id).
+    if (asAgencyMember || isAdminInvitingAgencyMember) {
+      let targetAgencyId = user.id;
+      if (isAdminInvitingAgencyMember) {
+        if (typeof body.agency_id !== 'string' || !body.agency_id) {
+          return reply({ ok: false, error: 'Falta la agencia destino (agency_id).' });
+        }
+        targetAgencyId = body.agency_id;
+        const { data: agProf } = await svc.from('profiles').select('id, role').eq('id', targetAgencyId).maybeSingle();
+        if (!agProf || agProf.role !== 'agency') return reply({ ok: false, error: 'Agencia destino inválida.' });
+        const { data: isEmp } = await svc.from('agency_members').select('member_id').eq('member_id', targetAgencyId).maybeSingle();
+        if (isEmp) return reply({ ok: false, error: 'La agencia destino es un empleado, no dueña.' });
+      }
+      await svc.from('agency_members').insert({ agency_id: targetAgencyId, member_id: created.user.id, capabilities: memberCaps });
       if (memberCreatorIds.length) {
-        const { data: owned } = await svc.from('agency_creators').select('creator_id').eq('agency_id', user.id);
+        const { data: owned } = await svc.from('agency_creators').select('creator_id').eq('agency_id', targetAgencyId);
         const allowed = new Set((owned || []).map((r: { creator_id: string }) => r.creator_id));
         const rows = memberCreatorIds.filter((id: string) => allowed.has(id)).map((id: string) => ({ member_id: created.user.id, creator_id: id }));
         if (rows.length) await svc.from('agency_member_creators').insert(rows);
@@ -176,12 +190,12 @@ Deno.serve(async (req) => {
         const actionUrl = hashed
           ? `${APP}/reset?token_hash=${encodeURIComponent(hashed)}&type=recovery`
           : (linkData?.properties?.action_link || '');
-        if (actionUrl && asAgencyMember) {
-          // El dueño de la agencia NO es staff → send-email rechazaría 'invite'. Mandamos
-          // el correo branded directo con el módulo compartido.
+        if (actionUrl && (asAgencyMember || isAdminInvitingAgencyMember)) {
+          // Ni el dueño de agencia ni el empleado son staff → send-email rechazaría 'invite'.
+          // Mandamos el correo branded directo con el módulo compartido.
           const html = brandedLayout({
             eyebrow: 'Invitación', title: `Hola ${full_name || 'equipo'}, tu acceso está listo`,
-            body: 'Tu agencia te dio acceso a LetShoot para gestionar sus modelos. Crea tu contraseña para entrar.',
+            body: 'Te dieron acceso a LetShoot para gestionar modelos de tu agencia. Crea tu contraseña para entrar.',
             cta: 'Crear mi contraseña', url: actionUrl, pre: 'Crea tu contraseña y entra a LetShoot.',
           });
           const sent = await sendResend(email, 'Tu acceso a LetShoot está listo', html);

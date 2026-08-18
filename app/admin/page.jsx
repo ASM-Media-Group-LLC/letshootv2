@@ -89,6 +89,7 @@ export default function AdminPage() {
   const [selCreator, setSelCreator] = useState(null); // creator id whose profile drawer is open
   const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
+  const [agencyMembers, setAgencyMembers] = useState([]); // agency_members rows (empleados de cada agencia)
   const [assetStats, setAssetStats] = useState([]);   // per-creator sales/revenue for agency numbers
   const [agencySales, setAgencySales] = useState([]); // libro de ventas por venta (agency_sales)
   const [audit, setAudit] = useState([]);             // bitácora (audit_log)
@@ -145,17 +146,19 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: assetRows }, { data: agSales }, { data: auditRows }] = await Promise.all([
+    const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: agSales }, { data: auditRows }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
+      supabase.from('agency_members').select('agency_id, member_id, capabilities'),
       supabase.from('assets').select('creator_id, sales_count, revenue'),
       supabase.from('agency_sales').select('id, agency_id, creator_id, amount_cents, created_at').order('created_at', { ascending: false }).limit(400),
       supabase.from('audit_log').select('id, actor_id, action, target_id, meta, created_at').order('created_at', { ascending: false }).limit(200),
     ]);
     setProfiles(profs || []);
     setAgencyLinks(agLinks || []);
+    setAgencyMembers(agMembers || []);
     setAssetStats(assetRows || []);
     setAgencySales(agSales || []);
     setAudit(auditRows || []);
@@ -1021,7 +1024,7 @@ export default function AdminPage() {
             })()}
           </div>
         ) : tab === 'agencias' ? (
-          <AgenciasTab agencies={profiles.filter((p) => p.role === 'agency')} creators={creators} agencyLinks={agencyLinks} agencySales={agencySales} profiles={profiles} onAssign={setAgConfirm} onDeleted={load} />
+          <AgenciasTab agencies={profiles.filter((p) => p.role === 'agency')} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} agencySales={agencySales} profiles={profiles} onAssign={setAgConfirm} onDeleted={load} reload={load} flash={flash} />
         ) : tab === 'actividad' ? (
           <div className="mt-6">
             <EmailStudio defaultTo="rusin24@gmail.com" />
@@ -1626,7 +1629,7 @@ function RowActions({ items }) {
 
 // Pestaña Agencias — escalable: buscador arriba, cada agencia colapsada
 // (nombre · # modelos · $ ventas). Se abre para gestionar sus modelos.
-function AgenciasTab({ agencies, creators, agencyLinks, agencySales, profiles, onAssign, onDeleted }) {
+function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySales, profiles, onAssign, onDeleted, reload, flash }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');   // all | with | without | sales
   const [sort, setSort] = useState('name');       // name | models | sales
@@ -1698,18 +1701,22 @@ function AgenciasTab({ agencies, creators, agencyLinks, agencySales, profiles, o
         <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Ninguna agencia coincide con el filtro.</p>
       )}
       {list.map((ag) => (
-        <AgencyAdminCard key={ag.id} ag={ag} creators={creators} agencyLinks={agencyLinks} agencySales={agencySales} profiles={profiles} onAssign={onAssign} onDeleted={onDeleted} />
+        <AgencyAdminCard key={ag.id} ag={ag} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} agencySales={agencySales} profiles={profiles} onAssign={onAssign} onDeleted={onDeleted} reload={reload} flash={flash} />
       ))}
     </div>
   );
 }
 
-function AgencyAdminCard({ ag, creators, agencyLinks, agencySales, profiles, onAssign, onDeleted }) {
+function AgencyAdminCard({ ag, creators, agencyLinks, agencyMembers, agencySales, profiles, onAssign, onDeleted, reload, flash }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [showBook, setShowBook] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const linkedIds = agencyLinks.filter((l) => l.agency_id === ag.id).map((l) => l.creator_id);
   const linked = creators.filter((c) => linkedIds.includes(c.id));
+  // Empleados de esta agencia (usuarios rol 'agency' vinculados por agency_members).
+  const memberRows = (agencyMembers || []).filter((m) => m.agency_id === ag.id);
+  const memberProfiles = memberRows.map((m) => ({ ...(profiles.find((p) => p.id === m.member_id) || {}), _caps: m.capabilities || [] })).filter((p) => p.id);
   const salesRows = agencySales.filter((s) => s.agency_id === ag.id);
   const cents = salesRows.reduce((s, r) => s + (r.amount_cents || 0), 0);
   const nameOf = (cid) => { const c = profiles.find((p) => p.id === cid); return c?.stage_name || c?.full_name || 'Modelo'; };
@@ -1809,12 +1816,203 @@ function AgencyAdminCard({ ag, creators, agencyLinks, agencySales, profiles, onA
             )}
           </div>
 
+          {/* Empleados de la agencia — el admin puede invitar y quitar en nombre de la agencia */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Empleados · {memberProfiles.length}</p>
+              <button onClick={() => setInviteOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20">
+                <UserPlus size={13} /> Invitar empleado
+              </button>
+            </div>
+            {memberProfiles.length === 0 ? (
+              <p className="text-xs text-paper-dim">La agencia no tiene empleados todavía. Invita a alguien para que le llegue su correo.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {memberProfiles.map((m) => (
+                  <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-ink-2 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-paper">{m.full_name || m.email || 'Empleado'}</p>
+                      <p className="truncate text-[11px] text-paper-dim">{m.email} {m._caps.length > 0 && <span className="ml-1 text-brand/80">· {m._caps.join(', ')}</span>}</p>
+                    </div>
+                    <button onClick={async () => {
+                      if (!window.confirm(`¿Quitar a ${m.full_name || m.email} de ${ag.full_name || 'esta agencia'}? Pierde el acceso.`)) return;
+                      const { error } = await getSupabase().from('agency_members').delete().eq('member_id', m.id);
+                      if (error) { flash && flash('Error: ' + error.message); return; }
+                      flash && flash('Empleado quitado');
+                      reload && reload();
+                    }}
+                      className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-[11px] font-medium text-paper-mute transition-colors hover:border-rose-500/50 hover:text-rose-300">
+                      <X size={11} /> Quitar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
             <ResetPasswordBox userId={ag.id} email={ag.email} />
             <DeleteAccountButton userId={ag.id} label="agencia" onDeleted={onDeleted} />
           </div>
+
+          {inviteOpen && (
+            <InviteAgencyMemberModal ag={ag} agencyModels={linked} onClose={() => setInviteOpen(false)}
+              onDone={(msg) => { setInviteOpen(false); flash && flash(msg); reload && reload(); }} />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Modal para que el admin invite un empleado a una agencia específica. Llama a la
+// edge function `create-user` con `agency_member: true` y `agency_id` = la agencia
+// destino. Si el correo es real le llega la invitación branded para poner su clave;
+// si se deja vacío, se genera un login interno @equipo.letshoot.ai + contraseña
+// temporal que se muestra al final para copiar y pegar.
+const AGENCY_CAPS = [
+  { key: 'content', label: 'Ver contenido' },
+  { key: 'requests', label: 'Hacer pedidos' },
+  { key: 'sales', label: 'Registrar ventas' },
+  { key: 'metrics', label: 'Ver métricas' },
+];
+function InviteAgencyMemberModal({ ag, agencyModels, onClose, onDone }) {
+  const [f, setF] = useState({ full_name: '', email: '', caps: ['content', 'requests', 'sales'], creators: agencyModels.map((c) => c.id) });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [creds, setCreds] = useState(null);
+  const toggle = (k, v) => setF((s) => ({ ...s, [k]: s[k].includes(v) ? s[k].filter((x) => x !== v) : [...s[k], v] }));
+  const crName = (c) => c.stage_name || c.full_name || c.email || 'Modelo';
+
+  async function submit(e) {
+    e.preventDefault();
+    setErr('');
+    if (!f.caps.length) { setErr('Elige al menos una función.'); return; }
+    if (!f.creators.length) { setErr('Asigna al menos una modelo.'); return; }
+    const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
+    setBusy(true);
+    const { data, error } = await getSupabase().functions.invoke('create-user', {
+      body: {
+        role: 'agency', agency_member: true, agency_id: ag.id,
+        email: f.email.trim(), password: pw, full_name: f.full_name.trim(),
+        member_caps: f.caps, member_creator_ids: f.creators,
+      },
+    });
+    setBusy(false);
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setErr(out?.error || 'No se pudo invitar al empleado.'); return; }
+    // Si no había correo real, la function generó uno interno + tenemos la contraseña.
+    if (out.generated_email) { setCreds({ email: out.login_email, password: pw }); return; }
+    onDone(out.invited ? `Invitación enviada a ${f.email.trim()}` : 'Empleado creado');
+  }
+
+  const inputCls = 'w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60';
+
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit}
+        className="w-full max-w-lg rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+        {creds ? (
+          <div>
+            <div className="mb-4 flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand/15 text-brand"><Check size={18} /></span>
+              <div>
+                <h3 className="font-display text-lg font-semibold text-paper">Empleado creado</h3>
+                <p className="mt-0.5 text-sm text-paper-mute">Sin correo — comparte manualmente estos accesos con {f.full_name || 'la persona'}.</p>
+              </div>
+            </div>
+            <div className="space-y-2 rounded-2xl border border-line bg-ink-2 p-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Correo (login)</p>
+                <p className="mt-0.5 select-all font-mono text-sm text-paper">{creds.email}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Contraseña temporal</p>
+                <p className="mt-0.5 select-all font-mono text-sm text-paper">{creds.password}</p>
+              </div>
+            </div>
+            <button type="button" onClick={() => onDone('Empleado creado')}
+              className="mt-5 w-full rounded-full bg-brand py-2.5 text-sm font-semibold text-on-accent transition-colors hover:bg-brand/90">
+              Listo
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"><UserPlus size={18} /></span>
+              <div>
+                <h3 className="font-display text-lg font-semibold text-paper">Invitar empleado</h3>
+                <p className="mt-0.5 text-sm text-paper-mute">A <strong className="text-paper">{ag.full_name || 'esta agencia'}</strong>. Le llega su correo con un enlace para crear su contraseña.</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-paper-dim">Nombre</label>
+                <input value={f.full_name} onChange={(e) => setF((s) => ({ ...s, full_name: e.target.value }))} placeholder="Nombre del empleado" className={inputCls} />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-paper-dim">Correo <span className="text-paper-dim/70">(opcional)</span></label>
+                <input type="email" value={f.email} onChange={(e) => setF((s) => ({ ...s, email: e.target.value }))} placeholder="persona@dominio.com" className={inputCls} />
+              </div>
+            </div>
+            <p className="mt-1.5 text-[10px] text-paper-dim">Si dejas el correo vacío, generamos un login interno y te mostramos la contraseña para copiar.</p>
+
+            <div className="mt-4">
+              <p className="mb-1.5 text-[11px] font-medium text-paper-dim">Funciones</p>
+              <div className="flex flex-wrap gap-2">
+                {AGENCY_CAPS.map((c) => {
+                  const on = f.caps.includes(c.key);
+                  return (
+                    <button type="button" key={c.key} onClick={() => toggle('caps', c.key)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${on ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:border-brand/40'}`}>
+                      {on && <Check size={12} />} {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-medium text-paper-dim">Modelos que puede gestionar · {f.creators.length}/{agencyModels.length}</p>
+                {agencyModels.length > 0 && (
+                  <button type="button" onClick={() => setF((s) => ({ ...s, creators: s.creators.length === agencyModels.length ? [] : agencyModels.map((c) => c.id) }))}
+                    className="text-[11px] font-semibold text-brand hover:underline">
+                    {f.creators.length === agencyModels.length ? 'Ninguna' : 'Todas'}
+                  </button>
+                )}
+              </div>
+              {agencyModels.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-line px-3 py-3 text-xs text-paper-dim">Esta agencia no tiene modelos asignadas todavía. Asígnale modelos arriba para poder darle acceso al empleado.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {agencyModels.map((c) => {
+                    const on = f.creators.includes(c.id);
+                    return (
+                      <button type="button" key={c.id} onClick={() => toggle('creators', c.id)}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${on ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:border-brand/40'}`}>
+                        {on && <Check size={11} />} {crName(c)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {err && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
+
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+              <button type="button" onClick={onClose} disabled={busy} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper disabled:opacity-50">Cancelar</button>
+              <button type="submit" disabled={busy || !f.caps.length || !f.creators.length}
+                className="inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-colors hover:bg-brand/90 disabled:opacity-50">
+                {busy ? <><Loader2 size={14} className="animate-spin" /> Invitando…</> : <><UserPlus size={14} /> Invitar</>}
+              </button>
+            </div>
+          </>
+        )}
+      </form>
     </div>
   );
 }
