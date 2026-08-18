@@ -434,6 +434,9 @@ function IdentityStep({ me, onDone, t, lang, rejected, reason, approved, pending
   const [consents, setConsents] = useState(CONSENT_INIT);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [submitted, setSubmitted] = useState(false); // muestra el pop-up de gracias
+  const esL = lang === 'es';
+  const contactEmail = me.user?.email || me.profile?.email || '';
 
   if (approved) {
     return (
@@ -477,7 +480,7 @@ function IdentityStep({ me, onDone, t, lang, rejected, reason, approved, pending
         consent_clone: true, consent_billing: true, consent_at: new Date().toISOString(),
       }).eq('id', me.user.id);
       if (pErr) throw pErr;
-      onDone();
+      setSubmitted(true); // pop-up de gracias; onDone() se llama al cerrarlo
     } catch (err) {
       console.error(err);
       setError(t.common.error);
@@ -527,6 +530,29 @@ function IdentityStep({ me, onDone, t, lang, rejected, reason, approved, pending
         {saving ? <><Loader2 size={18} className="animate-spin" /> {t.onboarding.id.uploading}</> : <><ShieldCheck size={18} /> {t.onboarding.id.submit}</>}
       </button>
       <p className="mt-3 text-center text-[11px] text-paper-dim">{t.onboarding.id.note}</p>
+
+      {/* Pop-up de confirmación tras enviar la verificación */}
+      {submitted && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-ink/85 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-brand/25 bg-card p-7 text-center shadow-glow-sm">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-brand/15 text-brand">
+              <CheckCircle2 size={34} />
+            </div>
+            <h3 className="mt-5 font-display text-xl font-semibold text-paper">
+              {esL ? '¡Gracias! Recibimos tu verificación' : 'Thank you! We received your verification'}
+            </h3>
+            <p className="mt-2.5 text-sm leading-relaxed text-paper-mute">
+              {esL
+                ? <>En aproximadamente <span className="font-semibold text-paper">48 horas</span> recibirás un correo{contactEmail ? <> a <span className="font-medium text-paper">{contactEmail}</span></> : ''} con el resultado de tu verificación y los siguientes pasos para activar tu cuenta.</>
+                : <>In about <span className="font-semibold text-paper">48 hours</span> you’ll get an email{contactEmail ? <> at <span className="font-medium text-paper">{contactEmail}</span></> : ''} with your verification result and the next steps to activate your account.</>}
+            </p>
+            <button onClick={() => { setSubmitted(false); onDone(); }}
+              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3 text-sm font-semibold text-on-accent transition-colors hover:bg-brand/90">
+              {esL ? 'Entendido' : 'Got it'}
+            </button>
+          </div>
+        </div>
+      )}
     </Panel>
   );
 }
@@ -562,6 +588,7 @@ function UploadSlot({ kind, label, hint, tap, file, onFile }) {
 /* ── Suscripción — identical cards to the public /pricing, just selectable ─ */
 function PayStep({ me, onDone, onRefresh, t, lang, paid, paymentStatus, subEndsAt, plan }) {
   const c = PRICING_COPY[lang] || PRICING_COPY.en;
+  const esL = lang === 'es';
   const [period, setPeriod] = useState('m');
   const [sel, setSel] = useState(plan || PACKS.find((p) => p.popular)?.key || PACKS[0].key);
   const [saving, setSaving] = useState(false);
@@ -580,9 +607,34 @@ function PayStep({ me, onDone, onRefresh, t, lang, paid, paymentStatus, subEndsA
     return <CanceledSubscription me={me} t={t} lang={lang} plan={plan} subEndsAt={subEndsAt} onRefresh={onRefresh} />;
   }
 
+  // ── Plan elegido, pago EN CONFIRMACIÓN (billing manual) ──
+  if (paymentStatus === 'pending') {
+    const chosen = PACKS.find((p) => p.key === plan);
+    return (
+      <Panel title={esL ? 'Pago en confirmación' : 'Payment under review'} desc={esL ? 'Elegiste tu plan. Falta que confirmemos tu pago.' : 'You chose your plan. We just need to confirm your payment.'}>
+        <div className="rounded-2xl border border-brand/25 bg-brand/[0.05] p-5">
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand/15 text-brand"><Clock size={20} /></span>
+            <div>
+              <div className="font-display text-base font-semibold text-paper">{esL ? 'Tu plan' : 'Your plan'}: {chosen?.name || plan}</div>
+              <p className="mt-0.5 text-sm text-paper-mute">{esL ? 'En cuanto confirmemos tu pago, tu cuenta se activa y empiezas a recibir contenido. Te avisamos por correo.' : 'As soon as we confirm your payment, your account activates and you start receiving content. We’ll email you.'}</p>
+            </div>
+          </div>
+        </div>
+        <button onClick={async () => { await getSupabase().from('profiles').update({ payment_status: 'unpaid' }).eq('id', me.user.id); onRefresh(); }}
+          className="mt-4 w-full rounded-full border border-line py-3 text-sm font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+          {esL ? 'Cambiar de plan' : 'Change plan'}
+        </button>
+      </Panel>
+    );
+  }
+
+  // Billing manual (sin procesador de pago aún): elegir plan NO cobra ni activa.
+  // Deja el plan elegido + payment_status='pending' y el equipo confirma el pago
+  // a mano. Así el panel interno no la muestra falsamente como «pagada».
   async function pay() {
     setSaving(true); setError('');
-    const { error: err } = await getSupabase().from('profiles').update({ payment_status: 'paid', plan: sel }).eq('id', me.user.id);
+    const { error: err } = await getSupabase().from('profiles').update({ payment_status: 'pending', plan: sel }).eq('id', me.user.id);
     setSaving(false);
     if (err) { console.error(err); setError(t.common.error); return; }
     onDone();
@@ -656,9 +708,9 @@ function PayStep({ me, onDone, onRefresh, t, lang, paid, paymentStatus, subEndsA
       {error && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={pay} disabled={saving}
         className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3.5 font-semibold text-on-accent transition-colors hover:bg-brand/90 disabled:opacity-60">
-        {saving ? t.onboarding.pay.submitting : t.onboarding.pay.payBtn(current.name, curPrice)}
+        {saving ? t.onboarding.pay.submitting : (esL ? `Elegir ${current.name} · $${curPrice}/mes` : `Choose ${current.name} · $${curPrice}/mo`)}
       </button>
-      <p className="mt-3 text-center text-[11px] text-paper-dim">{t.onboarding.pay.stub}</p>
+      <p className="mt-3 text-center text-[11px] text-paper-dim">{esL ? 'No se te cobra ahora. Confirmamos tu pago contigo y activamos tu cuenta.' : 'You’re not charged now. We confirm your payment with you and activate your account.'}</p>
     </Panel>
   );
 }
