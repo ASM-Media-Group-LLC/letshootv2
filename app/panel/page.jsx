@@ -628,6 +628,26 @@ function PanelPageInner() {
             });
             return [...map.values()].sort((x, y) => x.name.localeCompare(y.name, locale, { numeric: true }));
           })();
+          // Subcarpetas por convención de nombre: «Padre / Hijo» se anida bajo
+          // un encabezado «Padre». Sin esquema nuevo — solo el nombre manda.
+          const splitFolderName = (name) => {
+            const parts = String(name).split(/\s*\/\s*/);
+            return parts.length > 1 ? { parent: parts[0], child: parts.slice(1).join(' / ') } : { parent: null, child: name };
+          };
+          const folderSections = (() => {
+            const secs = []; const byParent = new Map();
+            folderGroups.forEach((g) => {
+              const { parent, child } = splitFolderName(g.name);
+              const folder = { ...g, displayName: child };
+              if (parent) {
+                if (!byParent.has(parent)) { const s = { parent, folders: [] }; byParent.set(parent, s); secs.push(s); }
+                byParent.get(parent).folders.push(folder);
+              } else {
+                secs.push({ parent: null, folders: [folder] });
+              }
+            });
+            return secs;
+          })();
           const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
           const selectAll = () => setSelected(new Set(allIds));
           async function downloadSelected() {
@@ -713,48 +733,60 @@ function PanelPageInner() {
                 {allVisible.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} bare locale={locale} />)}
               </div>
             ) : contentLayout === 'folders' ? (
-              /* Vista CARPETAS: una cajita por carpeta (situación), colapsable,
-                 con portada + nombre + conteo + Descargar todo. */
-              <div className="mt-6 space-y-3">
-                {folderGroups.map((g) => {
-                  const open = openFolders.includes(g.id);
-                  const cover = g.items[0];
-                  const label = `${g.items.length} ${g.items.length === 1 ? t.panel.mPhotos.slice(0, -1).toLowerCase() : t.panel.mPhotos.toLowerCase()}`;
-                  return (
-                    <div key={g.id} className="overflow-hidden rounded-2xl border border-line bg-card">
-                      <div className="flex items-center gap-3 p-3">
-                        <button onClick={() => setOpenFolders((d) => open ? d.filter((x) => x !== g.id) : [...d, g.id])}
-                          className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                          <span className="relative h-16 w-16 shrink-0">
-                            <span className="absolute -right-1 -top-1 h-full w-full rounded-xl border border-line bg-ink-2" aria-hidden />
-                            <span className="relative block h-16 w-16 overflow-hidden rounded-xl border border-line">
-                              <MediaThumb asset={cover} src={srcFor(cover)} className="h-full w-full object-cover" />
-                              <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-bold text-paper">{g.items.length}</span>
-                            </span>
-                          </span>
-                          <span className="min-w-0">
-                            <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-paper"><Images size={14} className="shrink-0 text-brand" /> {g.name}</span>
-                            <span className="mt-0.5 block text-xs text-paper-dim">{label} · {open ? (t.panel.tapClose || (isEs ? 'toca para cerrar' : 'tap to close')) : (t.panel.tapOpen || (isEs ? 'toca para ver' : 'tap to view'))}</span>
-                          </span>
-                        </button>
-                        {!selectMode && (
-                          <button onClick={() => downloadMany(g.items)} className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:inline-flex"><Download size={13} /> {t.panel.downloadAll}</button>
-                        )}
-                        <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
+              /* Vista CARPETAS: una cajita por carpeta (situación), colapsable.
+                 Las «Padre / Hijo» se anidan bajo un encabezado del padre. */
+              <div className="mt-6 space-y-5">
+                {folderSections.map((sec) => (
+                  <div key={sec.parent || sec.folders[0].id}>
+                    {sec.parent && (
+                      <div className="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-paper-dim">
+                        <Images size={13} className="text-brand" /> {sec.parent}
+                        <span className="text-paper-dim/60">· {sec.folders.reduce((s, f) => s + f.items.length, 0)}</span>
                       </div>
-                      {open && (
-                        <div className="border-t border-line p-3">
-                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                            {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={g.name} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
+                    )}
+                    <div className={`space-y-3 ${sec.parent ? 'border-l border-line pl-3' : ''}`}>
+                      {sec.folders.map((g) => {
+                        const open = openFolders.includes(g.id);
+                        const cover = g.items[0];
+                        const label = `${g.items.length} ${g.items.length === 1 ? t.panel.mPhotos.slice(0, -1).toLowerCase() : t.panel.mPhotos.toLowerCase()}`;
+                        return (
+                          <div key={g.id} className="overflow-hidden rounded-2xl border border-line bg-card">
+                            <div className="flex items-center gap-3 p-3">
+                              <button onClick={() => setOpenFolders((d) => open ? d.filter((x) => x !== g.id) : [...d, g.id])}
+                                className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                                <span className="relative h-16 w-16 shrink-0">
+                                  <span className="absolute -right-1 -top-1 h-full w-full rounded-xl border border-line bg-ink-2" aria-hidden />
+                                  <span className="relative block h-16 w-16 overflow-hidden rounded-xl border border-line">
+                                    <MediaThumb asset={cover} src={srcFor(cover)} className="h-full w-full object-cover" />
+                                    <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-bold text-paper">{g.items.length}</span>
+                                  </span>
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-paper">{!sec.parent && <Images size={14} className="shrink-0 text-brand" />} {g.displayName}</span>
+                                  <span className="mt-0.5 block text-xs text-paper-dim">{label} · {open ? (t.panel.tapClose || (isEs ? 'toca para cerrar' : 'tap to close')) : (t.panel.tapOpen || (isEs ? 'toca para ver' : 'tap to view'))}</span>
+                                </span>
+                              </button>
+                              {!selectMode && (
+                                <button onClick={() => downloadMany(g.items)} className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:inline-flex"><Download size={13} /> {t.panel.downloadAll}</button>
+                              )}
+                              <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
+                            </div>
+                            {open && (
+                              <div className="border-t border-line p-3">
+                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                                  {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={g.name} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
+                                </div>
+                                {!selectMode && (
+                                  <button onClick={() => downloadMany(g.items)} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:hidden"><Download size={13} /> {t.panel.downloadAll}</button>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          {!selectMode && (
-                            <button onClick={() => downloadMany(g.items)} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:hidden"><Download size={13} /> {t.panel.downloadAll}</button>
-                          )}
-                        </div>
-                      )}
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             ) : (
               /* Vista DÍAS: cajitas colapsables — portada + fecha + Download

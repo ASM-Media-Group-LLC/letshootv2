@@ -1116,6 +1116,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
               <p className="flex items-center gap-1 text-[10px] font-medium text-paper-dim"><ImageIcon size={11} className="text-sky-300" /><Film size={11} className="text-fuchsia-300" /> Fotos y videos juntos</p>
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nueva entrega…"
                 className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-center text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              <p className="text-center text-[10px] leading-tight text-paper-dim">Tip: usa «Situación / subcarpeta» (ej. <span className="text-paper-mute">Cafetería / mañana</span>) y se agrupa como subcarpeta.</p>
               <button type="submit" disabled={creating || !newName.trim()}
                 className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-40">
                 {creating ? 'Creando…' : 'Crear entrega'}
