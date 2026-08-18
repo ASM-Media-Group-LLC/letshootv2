@@ -100,12 +100,13 @@ function PanelPageInner() {
   const [numCard, setNumCard] = useState('revenue');  // photos | videos | revenue — qué detalle se ve
   const [month, setMonth] = useState(null);
   const [openDays, setOpenDays] = useState([]);   // gallery day-folders expanded
+  const [openFolders, setOpenFolders] = useState([]); // gallery folder-boxes expanded
   const [myFeedback, setMyFeedback] = useState({}); // asset_id -> 'love' | 'change'
   // Modo selección estilo iPhone/AirDrop: toca fotos para marcarlas y bajarlas
   // todas de un tirón. Se activa con el botón «Seleccionar» y se sale con «X».
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
-  const [contentLayout, setContentLayout] = useState('grid'); // grid | days
+  const [contentLayout, setContentLayout] = useState('grid'); // grid | days | folders
   const [bulkDownloading, setBulkDownloading] = useState(false);
   function toggleSel(id) { setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
   function clearSel() { setSelected(new Set()); }
@@ -616,6 +617,17 @@ function PanelPageInner() {
         {view === 'contenido' && (() => {
           const allVisible = groups.flatMap((g) => g.items);
           const allIds = allVisible.map((a) => a.id);
+          // Agrupar por carpeta (situación) para la vista «Carpetas» — le da a la
+          // creadora el mismo orden por carpetas que ve el equipo interno.
+          const folderGroups = (() => {
+            const map = new Map();
+            allVisible.forEach((a) => {
+              const key = a.folder_id || '__none__';
+              if (!map.has(key)) map.set(key, { id: key, name: state.folders[a.folder_id] || (isEs ? 'General' : 'General'), items: [] });
+              map.get(key).items.push(a);
+            });
+            return [...map.values()].sort((x, y) => x.name.localeCompare(y.name, locale, { numeric: true }));
+          })();
           const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
           const selectAll = () => setSelected(new Set(allIds));
           async function downloadSelected() {
@@ -636,6 +648,8 @@ function PanelPageInner() {
               <p className="text-[11px] text-paper-dim">
                 {contentLayout === 'grid'
                   ? (isEs ? 'Toca «Seleccionar» para marcar varias y bajarlas juntas.' : 'Tap “Select” to mark several and download them together.')
+                  : contentLayout === 'folders'
+                  ? (isEs ? 'Cada carpeta tiene su «Descargar todo».' : 'Each folder has its own “Download all”.')
                   : (isEs ? 'Cada entrega tiene su «Descargar todo».' : 'Each delivery has its own “Download all”.')}
               </p>
               <div className="flex items-center gap-2">
@@ -644,6 +658,7 @@ function PanelPageInner() {
                   <div className="inline-flex items-center rounded-full border border-line bg-ink-2 p-0.5 text-[11px] font-semibold">
                     {[
                       { k: 'grid', l: isEs ? 'Galería' : 'Gallery' },
+                      { k: 'folders', l: isEs ? 'Carpetas' : 'Folders' },
                       { k: 'days', l: isEs ? 'Entregas' : 'Deliveries' },
                     ].map((t) => {
                       const on = contentLayout === t.k;
@@ -696,6 +711,50 @@ function PanelPageInner() {
                  grid, sin separadores por día. Orden: lo último subido primero. */
               <div className="mt-6 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
                 {allVisible.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} bare locale={locale} />)}
+              </div>
+            ) : contentLayout === 'folders' ? (
+              /* Vista CARPETAS: una cajita por carpeta (situación), colapsable,
+                 con portada + nombre + conteo + Descargar todo. */
+              <div className="mt-6 space-y-3">
+                {folderGroups.map((g) => {
+                  const open = openFolders.includes(g.id);
+                  const cover = g.items[0];
+                  const label = `${g.items.length} ${g.items.length === 1 ? t.panel.mPhotos.slice(0, -1).toLowerCase() : t.panel.mPhotos.toLowerCase()}`;
+                  return (
+                    <div key={g.id} className="overflow-hidden rounded-2xl border border-line bg-card">
+                      <div className="flex items-center gap-3 p-3">
+                        <button onClick={() => setOpenFolders((d) => open ? d.filter((x) => x !== g.id) : [...d, g.id])}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                          <span className="relative h-16 w-16 shrink-0">
+                            <span className="absolute -right-1 -top-1 h-full w-full rounded-xl border border-line bg-ink-2" aria-hidden />
+                            <span className="relative block h-16 w-16 overflow-hidden rounded-xl border border-line">
+                              <MediaThumb asset={cover} src={srcFor(cover)} className="h-full w-full object-cover" />
+                              <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-bold text-paper">{g.items.length}</span>
+                            </span>
+                          </span>
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-paper"><Images size={14} className="shrink-0 text-brand" /> {g.name}</span>
+                            <span className="mt-0.5 block text-xs text-paper-dim">{label} · {open ? (t.panel.tapClose || (isEs ? 'toca para cerrar' : 'tap to close')) : (t.panel.tapOpen || (isEs ? 'toca para ver' : 'tap to view'))}</span>
+                          </span>
+                        </button>
+                        {!selectMode && (
+                          <button onClick={() => downloadMany(g.items)} className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:inline-flex"><Download size={13} /> {t.panel.downloadAll}</button>
+                        )}
+                        <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
+                      </div>
+                      {open && (
+                        <div className="border-t border-line p-3">
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                            {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={g.name} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
+                          </div>
+                          {!selectMode && (
+                            <button onClick={() => downloadMany(g.items)} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:hidden"><Download size={13} /> {t.panel.downloadAll}</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               /* Vista DÍAS: cajitas colapsables — portada + fecha + Download
