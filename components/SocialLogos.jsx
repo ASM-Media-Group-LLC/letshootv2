@@ -42,33 +42,39 @@ const SVGS = {
   },
 };
 
-// Chip circular glassy. Tamaño más grande y presencia clara.
-function LogoChip({ children, label, size = 'md' }) {
-  const cls = size === 'lg'
-    ? 'h-14 w-14 sm:h-16 sm:w-16'
-    : 'h-11 w-11 sm:h-12 sm:w-12';
+// Chip circular glassy — todos del mismo tamaño para que la fila se lea como
+// un conjunto uniforme. Presencia clara sin desalinear al resto.
+function LogoChip({ children, label }) {
   return (
     <span
       aria-label={label}
       title={label}
-      className={`${cls} inline-flex items-center justify-center rounded-full border border-white/15 bg-white/[0.08] shadow-[0_2px_24px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:scale-110 hover:border-white/30 hover:bg-white/[0.14]`}
+      className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] shadow-[0_2px_24px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:scale-110 hover:border-white/30 hover:bg-white/[0.14] sm:h-12 sm:w-12"
     >
       {children}
     </span>
   );
 }
 
-function OnlyFansChip() {
+// El PNG de OnlyFans es horizontal (marca + wordmark), así que en vez de
+// meterlo dentro del mismo chip circular donde queda micro, lo usamos como
+// «pastilla» horizontal — mantiene la altura de los otros chips pero deja
+// que la marca respire y sea legible.
+function OnlyFansPill() {
   return (
-    <LogoChip label="OnlyFans" size="lg">
+    <span
+      aria-label="OnlyFans"
+      title="OnlyFans"
+      className="inline-flex h-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] px-4 shadow-[0_2px_24px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:scale-[1.06] hover:border-white/30 hover:bg-white/[0.14] sm:h-12 sm:px-5"
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={ONLYFANS_PNG}
         alt="OnlyFans"
-        className="h-6 w-auto drop-shadow-[0_1px_10px_rgba(0,175,240,0.7)] sm:h-7"
+        className="h-5 w-auto drop-shadow-[0_1px_10px_rgba(0,175,240,0.7)] sm:h-[22px]"
         draggable={false}
       />
-    </LogoChip>
+    </span>
   );
 }
 
@@ -86,10 +92,10 @@ export default function SocialLogos({ sellOn, trafficFrom }) {
   const labelCls = 'font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60 drop-shadow-[0_1px_10px_rgba(0,0,0,0.6)] sm:text-[11px]';
   return (
     <div className="mt-7 flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
-      {/* Grupo 1 — VENTA */}
+      {/* Grupo 1 — OnlyFans (enganche) */}
       <div className="flex flex-col items-start gap-2.5">
         <span className={labelCls}>{sellOn}</span>
-        <OnlyFansChip />
+        <OnlyFansPill />
       </div>
 
       {/* Divisor elegante */}
