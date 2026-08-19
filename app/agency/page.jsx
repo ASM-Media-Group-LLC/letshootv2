@@ -9,10 +9,12 @@
 // la aprueba el admin desde /admin (invita al dueño de la agencia y luego a
 // sus empleados).
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { ArrowRight, Building2, TrendingUp, LayoutDashboard, Users, Play, Sparkles } from 'lucide-react';
+import { ArrowRight, Building2, TrendingUp, LayoutDashboard, Users, Play, Sparkles, X, Loader2, CheckCircle2 } from 'lucide-react';
 import { useLang } from '@/app/providers';
+import { getSupabase } from '@/lib/supabase/client';
 import Nav from '@/components/Nav';
 import Footer from '@/components/Footer';
 import SocialLogos from '@/components/SocialLogos';
@@ -40,6 +42,17 @@ const COPY = {
     ],
     finalTitle: 'Ready to run your whole agency from one place?',
     finalSub: 'Tell us about your operation and we\'ll set you up.',
+    formTitle: 'Register your agency',
+    formSub: 'Tell us the basics. We\'ll reach out within 24h to set you up.',
+    fName: 'Agency name', fNamePh: 'e.g. Kash Agency',
+    fEmail: 'Contact email', fEmailPh: 'you@agency.com',
+    fSite: 'Website or social', fSitePh: 'agency.com · @handle',
+    fCount: 'How many creators?', fCountPh: '1–5, 6–20, 20+',
+    fNotes: 'Anything else', fNotesPh: 'Regions, focus, current stack…',
+    submit: 'Submit registration', submitting: 'Sending…',
+    thanksTitle: 'Got it — we\'ll be in touch',
+    thanksBody: 'Thanks for your interest. We\'ll email you within 24h from hello@letshoot.ai to set up your agency workspace.',
+    close: 'Close',
   },
   es: {
     eyebrow: 'Para agencias de OnlyFans',
@@ -61,13 +74,115 @@ const COPY = {
     ],
     finalTitle: '¿Lista para operar toda tu agencia desde un solo lugar?',
     finalSub: 'Cuéntanos de tu operación y te lo dejamos listo.',
+    formTitle: 'Registra tu agencia',
+    formSub: 'Cuéntanos lo básico. Te contactamos en menos de 24h para configurarte.',
+    fName: 'Nombre de la agencia', fNamePh: 'ej. Kash Agency',
+    fEmail: 'Correo de contacto', fEmailPh: 'tu@agencia.com',
+    fSite: 'Sitio o redes', fSitePh: 'agencia.com · @handle',
+    fCount: '¿Cuántas creadoras?', fCountPh: '1–5, 6–20, 20+',
+    fNotes: 'Algo más', fNotesPh: 'Regiones, foco, stack actual…',
+    submit: 'Enviar registro', submitting: 'Enviando…',
+    thanksTitle: 'Recibido — te contactamos',
+    thanksBody: 'Gracias por tu interés. Te escribimos en menos de 24h desde hello@letshoot.ai para configurar tu workspace de agencia.',
+    close: 'Cerrar',
   },
 };
+
+// Modal de registro de agencia — captura el interés y lo guarda en
+// agency_leads (RLS permite insert público). El admin ve los leads en su
+// panel y aprueba/onboardea a mano.
+function RegisterAgencyModal({ open, onClose, c }) {
+  const [f, setF] = useState({ agency_name: '', contact_email: '', website: '', creators_count: '', notes: '' });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [done, setDone] = useState(false);
+
+  if (!open) return null;
+
+  const upd = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  async function submit(e) {
+    e.preventDefault();
+    setErr('');
+    if (!f.agency_name.trim() || !f.contact_email.trim()) { setErr('Nombre y correo son obligatorios.'); return; }
+    setBusy(true);
+    const { error } = await getSupabase().from('agency_leads').insert({
+      agency_name: f.agency_name.trim(),
+      contact_email: f.contact_email.trim(),
+      website: f.website.trim() || null,
+      creators_count: f.creators_count.trim() ? Number(f.creators_count.trim().replace(/\D/g, '')) || null : null,
+      notes: f.notes.trim() || null,
+    });
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    setDone(true);
+  }
+
+  const input = 'w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60';
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+      <div className="relative w-full max-w-lg rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-7" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} aria-label={c.close} className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+          <X size={16} />
+        </button>
+        {done ? (
+          <div className="text-center">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-brand/15 text-brand">
+              <CheckCircle2 size={30} />
+            </div>
+            <h3 className="mt-5 font-display text-xl font-bold text-paper">{c.thanksTitle}</h3>
+            <p className="mt-2.5 text-sm leading-relaxed text-paper-mute">{c.thanksBody}</p>
+            <button onClick={onClose} className="mt-6 w-full rounded-full bg-brand py-3 text-sm font-semibold text-on-accent transition-colors hover:bg-brand/90">{c.close}</button>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <div className="mb-4 flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand/12 text-brand"><Building2 size={19} /></span>
+              <div>
+                <h3 className="font-display text-lg font-bold text-paper">{c.formTitle}</h3>
+                <p className="mt-0.5 text-sm text-paper-mute">{c.formSub}</p>
+              </div>
+            </div>
+            <div className="grid gap-3">
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-paper-dim">{c.fName}</span>
+                <input required value={f.agency_name} onChange={upd('agency_name')} placeholder={c.fNamePh} className={input} />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-paper-dim">{c.fEmail}</span>
+                <input required type="email" value={f.contact_email} onChange={upd('contact_email')} placeholder={c.fEmailPh} className={input} />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-paper-dim">{c.fSite}</span>
+                  <input value={f.website} onChange={upd('website')} placeholder={c.fSitePh} className={input} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-paper-dim">{c.fCount}</span>
+                  <input value={f.creators_count} onChange={upd('creators_count')} placeholder={c.fCountPh} className={input} />
+                </label>
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-medium text-paper-dim">{c.fNotes}</span>
+                <textarea rows={3} value={f.notes} onChange={upd('notes')} placeholder={c.fNotesPh} className={`${input} resize-none`} />
+              </label>
+            </div>
+            {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
+            <button type="submit" disabled={busy}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:opacity-60">
+              {busy ? <><Loader2 size={16} className="animate-spin" /> {c.submitting}</> : <><Building2 size={16} /> {c.submit}</>}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AgencyLandingPage() {
   const { lang } = useLang();
   const c = COPY[lang] || COPY.en;
-  const mailtoHref = `mailto:hello@letshoot.ai?subject=${encodeURIComponent('Agency partnership — LetShoot')}&body=${encodeURIComponent('Hi LetShoot team,\n\nWe run an OnlyFans agency and would like to know more.\n\nAgency name:\nWebsite / social:\nNumber of creators:\nBest contact:\n\nThanks!')}`;
+  const [regOpen, setRegOpen] = useState(false);
 
   return (
     <main className="relative z-10 min-h-screen bg-ink">
@@ -136,13 +251,13 @@ export default function AgencyLandingPage() {
                   transition={{ duration: 0.75, ease, delay: 0.72 }}
                   className="mt-8 flex flex-wrap items-center gap-3.5"
                 >
-                  <a
-                    href={mailtoHref}
+                  <button type="button"
+                    onClick={() => setRegOpen(true)}
                     className="group inline-flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.04]"
                   >
                     <Building2 size={17} /> {c.ctaPrimary}
                     <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" aria-hidden />
-                  </a>
+                  </button>
                   <Link
                     href="/login"
                     className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/5 px-7 py-3.5 text-base font-medium text-white backdrop-blur transition-colors hover:bg-white/10"
@@ -197,13 +312,13 @@ export default function AgencyLandingPage() {
           <h3 className="font-display text-2xl font-bold text-paper sm:text-3xl">{c.finalTitle}</h3>
           <p className="mt-3 text-base text-paper-mute">{c.finalSub}</p>
           <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-            <a
-              href={mailtoHref}
+            <button type="button"
+              onClick={() => setRegOpen(true)}
               className="group inline-flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.04]"
             >
               <Building2 size={17} /> {c.ctaPrimary}
               <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" aria-hidden />
-            </a>
+            </button>
             <Link
               href="/login"
               className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-7 py-3.5 text-base font-medium text-paper transition-colors hover:border-brand/40"
@@ -215,6 +330,8 @@ export default function AgencyLandingPage() {
       </section>
 
       <Footer />
+
+      <RegisterAgencyModal open={regOpen} onClose={() => setRegOpen(false)} c={c} />
     </main>
   );
 }
