@@ -198,25 +198,25 @@ export default function OwnerPage() {
             </button>
           </div>
 
-          {/* Creadora «en proceso» — ya verificada, le falta PAGAR y subir fotos
-              del clon. Aterriza en el hub de onboarding con esos dos pasos abiertos. */}
+          {/* Preview «en proceso» — vista SIN auth, solo layout. Muestra cómo se
+              ve la cuenta cuando la CC ya está verificada pero le falta pagar
+              y subir fotos del clon. Independiente del backend: nada guarda. */}
           <div className="flex flex-col rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
             <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-hair/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-paper-mute">
               <User size={14} /> Creadora · en proceso
             </span>
             <p className="text-sm text-paper-mute">
-              <strong className="text-paper">Ya verificada</strong> — le falta <strong className="text-paper">pagar</strong> y
-              <strong className="text-paper"> subir las fotos del clon</strong>. Aterriza en el hub con esos dos pasos listos
-              para probar el pago y la subida.
+              <strong className="text-paper">Vista independiente</strong> — cómo se ve la cuenta cuando la creadora ya está
+              verificada pero le falta <strong className="text-paper">pagar</strong> y
+              <strong className="text-paper"> subir las fotos del clon</strong>. Preview puro: no requiere login, nada guarda.
             </p>
-            <div className="mt-3 space-y-1 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
-              <div>{ENPROCESO.email}</div>
-              <div>{ENPROCESO.password}</div>
+            <div className="mt-3 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
+              /preview/enproceso
             </div>
-            <button onClick={() => enter(ENPROCESO, 'enproceso')} disabled={!!busy}
-              className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-              {busy === 'enproceso' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como creadora en proceso <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
-            </button>
+            <Link href="/preview/enproceso"
+              className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+              Ver layout de creadora en proceso <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
+            </Link>
             <button onClick={resetUser} disabled={!!busy}
               title={`Entra como ${USER.email} desde el paso 1 (datos → ID → consentimiento)`}
               className="mt-2 flex items-center justify-center gap-2 rounded-xl border border-line py-2.5 text-sm font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper disabled:opacity-60">
