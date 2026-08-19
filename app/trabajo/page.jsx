@@ -25,6 +25,7 @@ import { PACKS } from '@/lib/packs';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
+import ProposalEditor from '@/components/ProposalEditor';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import WelcomeTour from '@/components/WelcomeTour';
 
@@ -810,6 +811,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   const [reqSel, setReqSel] = useState('');     // pedido al que corresponde esta entrega
   const [lora, setLora] = useState(null); // {total, groups: [{key,label,slug,items:[{url,ext}]}]}
   const [showLora, setShowLora] = useState(false);
+  const [showProposal, setShowProposal] = useState(false);
   const [downloading, setDownloading] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
@@ -1073,14 +1075,26 @@ function CreatorDetail({ creator, me, flash, onBack }) {
             <div className="mt-1.5"><SubBadge creator={creator} /></div>
           </div>
         </div>
-        <button onClick={toggleLora}
-          className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
-          <Sparkles size={14} /> Fotos LoRA {showLora ? '▴' : '▾'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setShowProposal((v) => !v)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
+            <Sparkles size={14} /> Propuesta
+          </button>
+          <button onClick={toggleLora}
+            className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
+            <Sparkles size={14} /> Fotos LoRA {showLora ? '▴' : '▾'}
+          </button>
+        </div>
       </div>
 
+      {/* Editor de propuesta — a pantalla completa dentro del detalle. Si está
+          activo, oculta la galería / LoRA para dar todo el ancho al editor. */}
+      {showProposal && (
+        <ProposalEditor creator={creator} onClose={() => setShowProposal(false)} flash={flash} />
+      )}
+
       {/* Lo que ella tiene pendiente — el trabajador lo ve de entrada */}
-      {openReqs.length > 0 && (
+      {!showProposal && openReqs.length > 0 && (
         <div className="mt-3 rounded-2xl border border-amber-500/25 bg-amber-500/[0.04] p-3.5">
           <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-200">
             <Inbox size={13} /> Pedidos abiertos de {creator.full_name} · {openReqs.length} — súbele la entrega y márcalo abajo
@@ -1095,7 +1109,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
         </div>
       )}
 
-      {showLora && (
+      {!showProposal && showLora && (
         <div className="mt-3 rounded-2xl border border-line bg-card p-4">
           {!lora ? <p className="text-sm text-paper-dim">Cargando…</p> : lora.total === 0 ? (
             <p className="text-sm text-paper-dim">Aún no ha subido fotos para su clon.</p>
@@ -1140,7 +1154,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
       )}
 
       {/* ── Su biblioteca: carpetas con portada → dentro, subir + ver fotos ── */}
-      {!folder ? (
+      {!showProposal && (!folder ? (
         <div className="mt-5">
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
             Biblioteca de {creator.full_name} · {(folders || []).length} carpetas — toca una para ver y subir
@@ -1368,7 +1382,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
             <p className="mt-4 rounded-xl border border-dashed border-line p-6 text-center text-sm text-paper-dim">Entrega vacía — sube fotos y videos arriba.</p>
           )}
         </div>
-      )}
+      ))}
 
       {/* Lightbox: ver la pieza en grande con controles reales */}
       <MediaLightbox asset={preview} src={preview ? srcOf(preview) : null} onClose={() => setPreview(null)} onRename={renameAsset} />

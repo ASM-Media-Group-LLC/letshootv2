@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
+import ProposalEditor from '@/components/ProposalEditor';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
@@ -2445,6 +2446,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
             { id: 'identidad', label: 'Identidad', icon: IdCard, state: idApproved ? 'ok' : idRejected ? 'bad' : idPending ? 'warn' : 'todo' },
             { id: 'suscripcion', label: 'Suscripción', icon: CreditCard, state: paid ? 'ok' : 'todo' },
             { id: 'clon', label: 'Clon', icon: Sparkles, state: lc >= LORA_MIN ? 'ok' : 'todo' },
+            { id: 'propuesta', label: 'Propuesta', icon: Sparkles, state: 'todo' },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium transition-colors ${
@@ -2728,6 +2730,10 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
               </div>
             </div>
           </Row>
+          )}
+
+          {tab === 'propuesta' && (
+            <ProposalEditor creator={creator} onClose={() => setTab('datos')} flash={flash} />
           )}
 
           {/* Danger zone — eliminar la creadora por completo (libera su correo). */}

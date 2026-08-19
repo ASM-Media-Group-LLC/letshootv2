@@ -19,6 +19,7 @@ import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
 import CloneSetup from '@/components/CloneSetup';
 import ShotArt from '@/components/ShotArt';
+import ProposalDeck from '@/components/ProposalDeck';
 import { PACKS, PERIODS, PRICING_COPY } from '@/components/Pricing';
 
 export default function OnboardingPage() {
@@ -27,15 +28,32 @@ export default function OnboardingPage() {
   const [me, setMe] = useState(undefined);
   const [tab, setTab] = useState('pago');
   const [loraCount, setLoraCount] = useState(0);
+  const [proposal, setProposal] = useState(null); // { id, intro } si está publicada
+  const [proposalSlides, setProposalSlides] = useState([]);
+  const [showProposal, setShowProposal] = useState(false); // control de si el deck está abierto
+  const [choosingPack, setChoosingPack] = useState(false);
 
   const refresh = useCallback(async () => {
     const up = await getUserProfile();
     if (!up) { router.replace('/login'); return; }
     if (up.profile?.role && up.profile.role !== 'creator') { router.replace(homeForRole(up.profile.role)); return; }
     if (up.profile?.onboarding_status === 'active') { router.replace('/panel'); return; }
-    const { count } = await getSupabase().from('lora_photos')
-      .select('id', { count: 'exact', head: true }).eq('user_id', up.user.id);
+    const supabase = getSupabase();
+    const [{ count }, { data: pr }] = await Promise.all([
+      supabase.from('lora_photos').select('id', { count: 'exact', head: true }).eq('user_id', up.user.id),
+      supabase.from('creator_proposals').select('id, intro, published_at, status').eq('creator_id', up.user.id).maybeSingle(),
+    ]);
     setLoraCount(count || 0);
+    if (pr && pr.status === 'published') {
+      setProposal(pr);
+      const { data: sl } = await supabase.from('proposal_slides').select('*').eq('proposal_id', pr.id).order('position');
+      setProposalSlides(sl || []);
+      // Autoabrir el deck si la CC aún NO ha pagado y no lo cerró antes en esta sesión.
+      const dismissed = typeof window !== 'undefined' && window.sessionStorage.getItem(`proposal-dismissed-${pr.id}`);
+      if (up.profile?.payment_status !== 'paid' && !dismissed) setShowProposal(true);
+    } else {
+      setProposal(null); setProposalSlides([]);
+    }
     setMe(up);
   }, [router]);
 
@@ -68,8 +86,41 @@ export default function OnboardingPage() {
 
   const done = () => refresh();
 
+  // Elegir pack desde el deck de propuesta = marcar plan + payment_status
+  // pending. La CC vuelve al hub, donde el step de pago le confirma que su
+  // pago está en revisión y el equipo lo activa a mano.
+  async function chooseFromProposal(packKey) {
+    if (choosingPack) return;
+    setChoosingPack(true);
+    await getSupabase().from('profiles').update({ plan: packKey, payment_status: 'pending' }).eq('id', me.user.id);
+    setChoosingPack(false);
+    if (proposal) window.sessionStorage.setItem(`proposal-dismissed-${proposal.id}`, '1');
+    setShowProposal(false);
+    setTab('pago');
+    await refresh();
+  }
+
+  function closeProposal() {
+    if (proposal) window.sessionStorage.setItem(`proposal-dismissed-${proposal.id}`, '1');
+    setShowProposal(false);
+  }
+
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
+      {/* Lookbook full-screen — se muestra automáticamente si hay propuesta
+          publicada y la CC aún no pagó. Puede cerrarse (queda accesible por
+          el botón «Ver mi propuesta» abajo). */}
+      {showProposal && proposal && (
+        <ProposalDeck
+          creatorName={p.stage_name || p.legal_first_name || p.full_name}
+          intro={proposal.intro}
+          slides={proposalSlides}
+          onClose={closeProposal}
+          onChoosePack={chooseFromProposal}
+          chosenPack={p.plan}
+          packDisabled={choosingPack}
+        />
+      )}
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3.5">
           <div className="flex items-center gap-3">
@@ -105,6 +156,22 @@ export default function OnboardingPage() {
             <div className="whitespace-pre-line text-xs leading-tight text-paper-mute">{h.stepsDone}</div>
           </div>
         </div>
+
+        {proposal && !showProposal && (
+          <button onClick={() => setShowProposal(true)}
+            className="mt-6 flex w-full items-center justify-between gap-3 rounded-2xl border border-brand/40 bg-gradient-to-br from-brand/[0.12] to-brand/[0.03] p-4 text-left transition-colors hover:from-brand/[0.18]">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand/20 text-brand">
+                <Sparkles size={18} />
+              </span>
+              <div>
+                <p className="font-display text-sm font-semibold text-paper">{esL ? 'Tu propuesta personalizada' : 'Your personalized proposal'}</p>
+                <p className="text-xs text-paper-mute">{esL ? 'Mira cómo se vería tu clon con tus fotos + elige tu pack' : 'See how your clone would look with your photos + pick your pack'}</p>
+              </div>
+            </div>
+            <ArrowRight size={16} className="shrink-0 text-brand" />
+          </button>
+        )}
 
         {canActivate && (
           <div className="mt-6 flex flex-col items-start gap-3 rounded-xl border border-brand/40 bg-brand/[0.05] p-5 sm:flex-row sm:items-center sm:justify-between">
