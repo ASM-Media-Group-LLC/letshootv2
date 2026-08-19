@@ -59,7 +59,7 @@ export default function Nav() {
   const links = [
     { href: '#delivery', label: t.nav.delivery },
     { href: '#pricing', label: t.nav.packages },
-    { href: '#results', label: t.nav.results },
+    { href: '/agency', label: t.nav.agencies },
   ];
 
   return (
