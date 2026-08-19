@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { useLang } from '@/app/providers';
 import PanoramaCarousel from './PanoramaCarousel';
+import SocialLogos from './SocialLogos';
 
 const ease = [0.22, 1, 0.36, 1];
 
@@ -108,6 +109,18 @@ export default function CinematicHero() {
                   {t.hero.sub}
                 </motion.p>
               )}
+
+              {/* Logos de plataformas: OnlyFans (venta) + redes sociales (tráfico
+                  que engancha y dirige a OnlyFans). Refuerza que el contenido
+                  sirve para ambos flujos, no solo para venta directa. */}
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.85, ease, delay: 0.58 }}
+              >
+                <SocialLogos caption={t.hero.platformsLabel} />
+              </motion.div>
+
 
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
