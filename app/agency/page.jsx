@@ -208,7 +208,7 @@ export default function AgencyLandingPage() {
             transition={{ duration: 1.1, ease }}
             className="relative z-10 flex w-full flex-1 items-center"
           >
-            <div className="mx-auto flex w-full max-w-6xl px-6 pt-24 sm:px-10">
+            <div className="mx-auto flex w-full max-w-6xl px-6 sm:px-10">
               <div className="max-w-[46rem] text-left">
                 <motion.span
                   initial={{ opacity: 0, y: 14 }}

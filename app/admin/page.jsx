@@ -91,6 +91,7 @@ export default function AdminPage() {
   const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
   const [agencyMembers, setAgencyMembers] = useState([]); // agency_members rows (empleados de cada agencia)
+  const [agencyLeads, setAgencyLeads] = useState([]);     // solicitudes desde el landing /agency
   const [assetStats, setAssetStats] = useState([]);   // per-creator sales/revenue for agency numbers
   const [agencySales, setAgencySales] = useState([]); // libro de ventas por venta (agency_sales)
   const [audit, setAudit] = useState([]);             // bitácora (audit_log)
@@ -165,6 +166,9 @@ export default function AdminPage() {
     setAudit(auditRows || []);
     const { data: inv } = await supabase.from('staff_invites').select('*').eq('status', 'pending').order('created_at', { ascending: false });
     setInvites(inv || []);
+    // Solicitudes de registro de agencia (landing /agency) — pendientes de revisar.
+    const { data: leads } = await supabase.from('agency_leads').select('*').eq('status', 'new').order('created_at', { ascending: false });
+    setAgencyLeads(leads || []);
     setMetrics({ requests: reqs || [], lora: loraCount || 0 });
     await loadKyc();
     setLoading(false);
@@ -491,7 +495,7 @@ export default function AdminPage() {
             { id: 'reacciones', label: 'Reacciones', icon: Heart },
             { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
             { id: 'equipo', label: 'Equipo interno', icon: Users },
-            { id: 'agencias', label: 'Agencias', icon: Building2 },
+            { id: 'agencias', label: 'Agencias', icon: Building2, badge: agencyLeads.length },
             { id: 'actividad', label: 'Actividad', icon: Activity },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
@@ -1038,7 +1042,7 @@ export default function AdminPage() {
             })()}
           </div>
         ) : tab === 'agencias' ? (
-          <AgenciasTab agencies={profiles.filter((p) => p.role === 'agency')} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} agencySales={agencySales} profiles={profiles} onAssign={setAgConfirm} onDeleted={load} reload={load} flash={flash} />
+          <AgenciasTab agencies={profiles.filter((p) => p.role === 'agency')} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} agencySales={agencySales} profiles={profiles} agencyLeads={agencyLeads} onAssign={setAgConfirm} onDeleted={load} reload={load} flash={flash} />
         ) : tab === 'actividad' ? (
           <div className="mt-6">
             <EmailStudio defaultTo="rusin24@gmail.com" />
@@ -1643,7 +1647,7 @@ function RowActions({ items }) {
 
 // Pestaña Agencias — escalable: buscador arriba, cada agencia colapsada
 // (nombre · # modelos · $ ventas). Se abre para gestionar sus modelos.
-function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySales, profiles, onAssign, onDeleted, reload, flash }) {
+function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySales, profiles, agencyLeads = [], onAssign, onDeleted, reload, flash }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');   // all | with | without | sales
   const [sort, setSort] = useState('name');       // name | models | sales
@@ -1678,6 +1682,26 @@ function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySal
       <p className="max-w-3xl text-sm text-paper-mute">
         Cada agencia entra a <em>sus</em> modelos, hace pedidos y registra ventas. Abre una para gestionar qué modelos maneja. Para crear una agencia usa <span className="text-paper-mute">«Crear agencia»</span> en <span className="text-paper-mute">Registros</span>.
       </p>
+
+      {/* Solicitudes de agencia — vienen del formulario público en /agency.
+          Cada una queda en agency_leads status='new'. Aquí se aprueban (crea
+          la cuenta de agencia y le manda invitación) o se archivan. */}
+      {agencyLeads.length > 0 && (
+        <div className="rounded-2xl border border-brand/40 bg-brand/[0.06] p-4 shadow-glow-sm">
+          <div className="flex items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-xl bg-brand/15 text-brand"><Building2 size={15} /></span>
+            <div>
+              <p className="text-sm font-semibold text-paper">Solicitudes nuevas · {agencyLeads.length}</p>
+              <p className="text-[11px] text-paper-dim">Agencias que aplicaron desde <span className="text-paper-mute">/agency</span> — aprueba para crear su cuenta y enviarle la invitación.</p>
+            </div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {agencyLeads.map((l) => (
+              <AgencyLeadRow key={l.id} lead={l} onDone={reload} flash={flash} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Buscador + filtros + orden — siempre visibles */}
       <div className="relative">
@@ -2027,6 +2051,63 @@ function InviteAgencyMemberModal({ ag, agencyModels, onClose, onDone }) {
           </>
         )}
       </form>
+    </div>
+  );
+}
+
+// Fila para una solicitud de agencia (agency_leads). Muestra los datos que
+// mandó, un botón «Aprobar» que crea la cuenta de agencia via create-user
+// (con correo real, invitación automática), y un botón «Archivar» que
+// simplemente marca la solicitud como revisada.
+function AgencyLeadRow({ lead, onDone, flash }) {
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  async function approve() {
+    setBusy('approve'); setErr('');
+    const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
+    const { data, error } = await getSupabase().functions.invoke('create-user', {
+      body: { role: 'agency', email: lead.contact_email, password: pw, full_name: lead.agency_name },
+    });
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    if (!out?.ok) { setBusy(''); setErr(out?.error || 'No se pudo crear la agencia.'); return; }
+    await getSupabase().from('agency_leads').update({ status: 'approved' }).eq('id', lead.id);
+    setBusy('');
+    flash && flash(`Agencia ${lead.agency_name} creada — le llegó la invitación.`);
+    onDone && onDone();
+  }
+  async function archive() {
+    setBusy('archive'); setErr('');
+    const { error } = await getSupabase().from('agency_leads').update({ status: 'archived' }).eq('id', lead.id);
+    setBusy('');
+    if (error) { setErr(error.message); return; }
+    onDone && onDone();
+  }
+  const when = new Date(lead.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  return (
+    <div className="rounded-xl border border-line bg-ink-2 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-paper">{lead.agency_name}</p>
+          <p className="mt-0.5 truncate text-[11px] text-paper-dim">
+            {lead.contact_email}
+            {lead.creators_count ? <span className="ml-1.5 text-paper-mute">· {lead.creators_count} creadoras</span> : null}
+            {lead.website ? <span className="ml-1.5 text-paper-mute">· {lead.website}</span> : null}
+          </p>
+          {lead.notes && <p className="mt-1.5 text-xs text-paper-mute">{lead.notes}</p>}
+          <p className="mt-1 text-[10px] text-paper-dim">Recibida {when}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button onClick={approve} disabled={!!busy}
+            className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+            {busy === 'approve' ? <><Loader2 size={12} className="animate-spin" /> Creando…</> : <><Check size={12} /> Aprobar</>}
+          </button>
+          <button onClick={archive} disabled={!!busy}
+            className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper disabled:opacity-60">
+            {busy === 'archive' ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />} Archivar
+          </button>
+        </div>
+      </div>
+      {err && <p className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs text-rose-300">{err}</p>}
     </div>
   );
 }
