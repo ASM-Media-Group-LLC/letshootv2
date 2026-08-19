@@ -22,21 +22,32 @@ const PAIRS = [
 // Ejemplos reales de los ángulos que necesitamos para entrenar el clon.
 // La modelo los ve ANTES de darle «crear cuenta» — así llega con el material
 // listo, no perdida cuando aparece el uploader.
+// 12 ejemplos en 2 filas — enseñan claro qué tipo de fotos subir. Fila 1: cara
+// y ángulos (lo esencial para entrenar rasgos). Fila 2: cuerpo, poses y estilo
+// (para que el clon sepa vestirse, posar y variar contextos).
 const PREP_SHOTS = [
-  { src: '/lib/julia-frontal-1.jpg', k: 'Frontal', d: 'Mirando al lente' },
-  { src: '/lib/julia-angulo-1.jpg',  k: '¾',       d: 'Torso girado' },
-  { src: '/lib/julia-perfil-1.jpg',  k: 'Perfil',   d: '90° de lado' },
-  { src: '/lib/julia-risa-1.jpg',    k: 'Expresión', d: 'Risa, guiño…' },
-  { src: '/lib/julia-medio-1.jpg',   k: 'Medio cuerpo', d: 'De cintura para arriba' },
-  { src: '/lib/julia-vestida-1.jpg', k: 'Cuerpo entero', d: 'De pies a cabeza' },
+  // Fila 1 — cara y ángulos
+  { src: '/lib/julia-frontal-1.jpg',  k: 'Frontal',       kEn: 'Front',           d: 'Mirando al lente',      dEn: 'Facing camera' },
+  { src: '/lib/julia-angulo-1.jpg',   k: '¾',             kEn: '¾ turn',          d: 'Torso girado',          dEn: 'Torso turned' },
+  { src: '/lib/julia-perfil-1.jpg',   k: 'Perfil',        kEn: 'Profile',         d: '90° de lado',           dEn: '90° side' },
+  { src: '/lib/julia-perfil-2.jpg',   k: 'Perfil opuesto',kEn: 'Other profile',   d: 'El otro lado',          dEn: 'The other side' },
+  { src: '/lib/julia-risa-1.jpg',     k: 'Risa',          kEn: 'Smile',           d: 'Natural, sin forzar',   dEn: 'Natural, no forcing it' },
+  { src: '/lib/julia-guino-1.jpg',    k: 'Guiño',         kEn: 'Wink',            d: 'Otra expresión',        dEn: 'Another expression' },
+  // Fila 2 — cuerpo, poses y estilo
+  { src: '/lib/julia-medio-1.jpg',    k: 'Medio cuerpo',  kEn: 'Half body',       d: 'De cintura para arriba',dEn: 'Waist up' },
+  { src: '/lib/julia-vestida-1.jpg',  k: 'Cuerpo entero', kEn: 'Full body',       d: 'De pies a cabeza',      dEn: 'Head to toe' },
+  { src: '/lib/julia-body-1.jpg',     k: 'Casual',        kEn: 'Casual',          d: 'Ropa del día',          dEn: 'Everyday clothes' },
+  { src: '/lib/julia-mano-1.jpg',     k: 'Con gesto',     kEn: 'With gesture',    d: 'Mano en pelo, cara…',   dEn: 'Hand on hair, face…' },
+  { src: '/lib/julia-bikini-1.jpg',   k: 'Bikini / ropa íntima', kEn: 'Swim / intimate', d: 'Si vendes esto, sube',   dEn: 'If you sell this, upload' },
+  { src: '/lib/julia-marca-1.jpg',    k: 'Tu estilo',     kEn: 'Your style',      d: 'Outfit que te define',  dEn: 'Outfit that defines you' },
 ];
 
 const COPY = {
   es: {
     login: 'Iniciar sesión',
     eyebrow: 'Hora de despedir a tu fotógrafo',
-    h1a: 'Te hacemos tu clon con IA',
-    h1b: 'y nadie se dará cuenta.',
+    h1a: 'Tu mejor sesión de fotos.',
+    h1b: 'Sin estar ahí.',
     sub: 'Tú solo subes tus fotos y nos dices qué quieres. Nosotros te entregamos contenido listo para vender — cada día. Sin cámara, sin sesiones, sin fotógrafo. Y gratis: crear tu clon no cuesta nada.',
     cta: 'Registrarme gratis',
     ctaNote: 'Crear tu clon no cuesta nada. Solo pagas el contenido si te gusta.',
@@ -44,7 +55,8 @@ const COPY = {
     prepEyebrow: 'Antes de empezar',
     prepTitle: 'Así vas a preparar tus fotos.',
     prepSub: 'Para que tu clon salga idéntica a ti, necesitamos verte desde varios ángulos y con distintas expresiones. Reúne unas 20 fotos para empezar — 50 o más si quieres el resultado perfecto. La mayoría ya las tienes en tu galería.',
-    prepAnglesLabel: 'Los 6 ángulos que necesitamos',
+    prepAnglesLabel: '12 ejemplos que necesitamos',
+    prepAnglesNote: '12 ejemplos · variedad = mejor clon',
     prepDoLabel: 'Sí queremos', prepDontLabel: 'Evita',
     prepDo: [
       'Buena luz — natural es lo mejor',
@@ -75,10 +87,12 @@ const COPY = {
       ['Airbnb o locación', '$150–$500'],
       ['Fotógrafo', '$200–$800'],
     ],
-    oldPains: ['Esperas su agenda — días o semanas', 'Te entrega pocas fotos', 'Ediciones que no te gustan', 'Y a repetir todo el próximo mes'],
+    oldPains: ['Esperas su agenda — días o semanas', 'Ediciones que no te gustan', 'Y a repetir todo el próximo mes'],
+    oldVolume: '~10 fotos', oldVolumeNote: 'que te da por toda la sesión',
     oldTotal: '$530–$1,900', oldTotalNote: 'por UNA sola sesión',
     newTitle: 'Con LetShoot',
-    newWins: ['Tu clon: gratis — solo subes fotos', 'Sin cámara, sin sesión, sin fotógrafo', 'Cientos de fotos y videos', 'Entrega cada día, al instante', 'Siempre a tu gusto — pides cambios', 'Tú eres la dueña de tu contenido'],
+    newWins: ['Tu clon: gratis — solo subes fotos', 'Sin cámara, sin sesión, sin fotógrafo', 'Entrega cada día, al instante', 'Siempre a tu gusto — pides cambios', 'Tú eres la dueña de tu contenido'],
+    newVolume: '200+ fotos y videos', newVolumeNote: 'cada mes, entregados día a día',
     newTotal: 'Desde $249/mes', newTotalNote: 'menos que una sola sesión — todo el mes',
     howEyebrow: 'Cómo funciona', howTitle: 'Así de simple',
     steps: [
@@ -94,8 +108,8 @@ const COPY = {
   en: {
     login: 'Log in',
     eyebrow: 'Time to fire your photographer',
-    h1a: 'We build your AI clone',
-    h1b: 'and nobody will know.',
+    h1a: 'Your best photoshoot.',
+    h1b: 'Without being there.',
     sub: 'You just upload your photos and tell us what you want. We deliver sell-ready content — every day. No camera, no shoots, no photographer. And free: building your clone costs nothing.',
     cta: 'Sign up free',
     ctaNote: 'Building your clone costs nothing. You only pay for content if you love it.',
@@ -103,7 +117,8 @@ const COPY = {
     prepEyebrow: 'Before you start',
     prepTitle: 'Here’s how you’ll prep your photos.',
     prepSub: 'For your clone to look identical to you, we need to see you from a few angles and in different expressions. Gather around 20 photos to start — 50 or more for the best result. You probably already have most of them in your gallery.',
-    prepAnglesLabel: 'The 6 angles we need',
+    prepAnglesLabel: '12 examples we need',
+    prepAnglesNote: '12 examples · variety = better clone',
     prepDoLabel: 'Do', prepDontLabel: 'Avoid',
     prepDo: [
       'Good light — natural is best',
@@ -134,10 +149,12 @@ const COPY = {
       ['Airbnb or location', '$150–$500'],
       ['Photographer', '$200–$800'],
     ],
-    oldPains: ['You wait for their schedule — days or weeks', 'You get only a few photos', 'Edits you don’t like', 'And you redo it all next month'],
+    oldPains: ['You wait for their schedule — days or weeks', 'Edits you don’t like', 'And you redo it all next month'],
+    oldVolume: '~10 photos', oldVolumeNote: 'what you get from the whole shoot',
     oldTotal: '$530–$1,900', oldTotalNote: 'for ONE single shoot',
     newTitle: 'With LetShoot',
-    newWins: ['Your clone: free — you just upload photos', 'No camera, no shoot, no photographer', 'Hundreds of photos and videos', 'Delivered every day, instantly', 'Always your way — request changes', 'You own your content'],
+    newWins: ['Your clone: free — you just upload photos', 'No camera, no shoot, no photographer', 'Delivered every day, instantly', 'Always your way — request changes', 'You own your content'],
+    newVolume: '200+ photos & videos', newVolumeNote: 'every month, delivered day by day',
     newTotal: 'From $249/mo', newTotalNote: 'less than one shoot — for the whole month',
     howEyebrow: 'How it works', howTitle: 'This simple',
     steps: [
@@ -238,23 +255,30 @@ export default function StartPage() {
               <span className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-brand sm:text-[11px]">
                 <Aperture size={13} /> {c.prepAnglesLabel}
               </span>
-              <span className="hidden text-[11px] font-medium text-paper/50 sm:inline">6 categorías · variedad = mejor clon</span>
+              <span className="hidden text-[11px] font-medium text-paper/50 sm:inline">{c.prepAnglesNote}</span>
             </div>
+            {/* 12 ejemplos en 2 filas de 6 (mobile 2 col, sm 3, lg 6). Los primeros
+                6 = cara y ángulos; los siguientes 6 = cuerpo, poses y estilo. */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
-              {PREP_SHOTS.map((s, i) => (
-                <figure key={i} className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-ink-2 shadow-lg ring-1 ring-white/[0.04]">
-                  <div className="aspect-[3/4] overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={s.src} alt={s.k} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]" />
-                  </div>
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" aria-hidden />
-                  <figcaption className="absolute inset-x-0 bottom-0 p-3">
-                    <span className="block font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-brand">0{i + 1}</span>
-                    <span className="mt-0.5 block font-display text-sm font-semibold text-white">{s.k}</span>
-                    <span className="block text-[11px] text-white/70">{s.d}</span>
-                  </figcaption>
-                </figure>
-              ))}
+              {PREP_SHOTS.map((s, i) => {
+                const label = lang === 'en' ? (s.kEn || s.k) : s.k;
+                const desc = lang === 'en' ? (s.dEn || s.d) : s.d;
+                const n = String(i + 1).padStart(2, '0');
+                return (
+                  <figure key={i} className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-ink-2 shadow-lg ring-1 ring-white/[0.04]">
+                    <div className="aspect-[3/4] overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={s.src} alt={label} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]" />
+                    </div>
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" aria-hidden />
+                    <figcaption className="absolute inset-x-0 bottom-0 p-3">
+                      <span className="block font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-brand">{n}</span>
+                      <span className="mt-0.5 block font-display text-sm font-semibold text-white">{label}</span>
+                      <span className="block text-[11px] text-white/70">{desc}</span>
+                    </figcaption>
+                  </figure>
+                );
+              })}
             </div>
           </div>
 
@@ -332,6 +356,13 @@ export default function StartPage() {
           {/* Tradicional */}
           <div className="rounded-3xl border border-rose-500/20 bg-rose-500/[0.03] p-5 sm:p-6">
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-rose-300/80">{c.oldTitle}</h3>
+            {/* Métrica destacada — cuánto contenido te llevas */}
+            <div className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/[0.05] p-3.5">
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-display text-3xl font-bold text-rose-200">{c.oldVolume}</span>
+              </div>
+              <div className="mt-0.5 text-[11px] uppercase tracking-wide text-rose-300/70">{c.oldVolumeNote}</div>
+            </div>
             <ul className="mt-4 space-y-2.5">
               {c.oldCosts.map(([label, cost], i) => (
                 <li key={i} className="flex items-center justify-between gap-3 text-sm">
@@ -352,6 +383,13 @@ export default function StartPage() {
           {/* LetShoot */}
           <div className="relative overflow-hidden rounded-3xl border border-brand/40 bg-gradient-to-br from-brand/[0.10] to-transparent p-5 shadow-glow-sm sm:p-6">
             <h3 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-brand"><Sparkles size={13} /> {c.newTitle}</h3>
+            {/* Métrica destacada — cuánto contenido recibes cada mes */}
+            <div className="mt-4 rounded-2xl border border-brand/30 bg-brand/[0.08] p-3.5">
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-display text-3xl font-bold text-brand">{c.newVolume}</span>
+              </div>
+              <div className="mt-0.5 text-[11px] uppercase tracking-wide text-brand/80">{c.newVolumeNote}</div>
+            </div>
             <ul className="mt-4 space-y-2.5">
               {c.newWins.map((w, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-paper"><Check size={14} className="mt-0.5 shrink-0 text-brand" /> {w}</li>
