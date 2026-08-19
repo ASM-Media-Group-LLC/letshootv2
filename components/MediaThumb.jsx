@@ -69,8 +69,11 @@ export function MediaLightbox({ asset, src, onClose, onRename }) {
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4 backdrop-blur-md" onClick={onClose}>
-      <button onClick={onClose} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-black/50 text-white transition-colors hover:bg-white/10" aria-label="Cerrar">
-        <span className="text-lg leading-none">×</span>
+      {/* Cerrar — botón X grande y contrastado. También cierra tocando el fondo o Esc. */}
+      <button onClick={onClose}
+        className="fixed right-3 top-3 z-[90] inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-black/80 text-white shadow-2xl backdrop-blur transition-transform hover:scale-105 hover:bg-white/15 sm:right-5 sm:top-5"
+        aria-label="Cerrar">
+        <span className="text-2xl font-light leading-none">×</span>
       </button>
       <div className="relative max-h-[92vh] max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
         {asset.type === 'video'

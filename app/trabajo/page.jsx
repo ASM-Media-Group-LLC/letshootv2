@@ -24,6 +24,7 @@ import { CAPS, CAP_SECTIONS, ALL_CAP_VALUES } from '@/lib/caps';
 import { PACKS } from '@/lib/packs';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
+import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import WelcomeTour from '@/components/WelcomeTour';
 
@@ -353,6 +354,11 @@ export default function TrabajoPage() {
                 <span className="block text-[10px] text-paper-dim">{me?.role === 'admin' ? 'Dueño' : (me?.job_title || 'Equipo')} · Equipo interno</span>
               </span>
             </div>
+            {/* «Ver como…» para todo el equipo interno con acceso a contenido —
+                así Cheryl/Grace y no solo admin pueden abrir el panel de una CC. */}
+            {(me?.role === 'admin' || can('content') || can('kyc') || can('requests') || can('feedback')) && creators?.length > 0 && (
+              <ImpersonateMenu creators={creators} />
+            )}
             {me?.role === 'admin' && (
               <Link href="/admin" className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
                 Admin
@@ -863,6 +869,29 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     setNewName(''); load(); flash('Entrega creada');
   }
 
+  // Crear subcarpeta dentro de la carpeta abierta. Sin cambio de esquema:
+  // usamos la convención de nombre «Padre / Hijo» que /panel ya anida en la
+  // vista Carpetas de la creadora. Ej: «Cafetería / mañana».
+  const [subOpen, setSubOpen] = useState(false);
+  const [subName, setSubName] = useState('');
+  const [subBusy, setSubBusy] = useState(false);
+  async function createSubfolder(e) {
+    e.preventDefault();
+    const parent = (folders || []).find((f) => f.id === folderSel);
+    if (!parent || !subName.trim()) return;
+    // Base del nombre = solo la parte superior si esta ya es «X / Y», así las
+    // subcarpetas anidadas siguen colgando del padre raíz (no del hijo).
+    const base = parent.name.includes(' / ') ? parent.name.split(' / ')[0] : parent.name;
+    const fullName = `${base} / ${subName.trim()}`;
+    setSubBusy(true);
+    const { data, error } = await getSupabase().from('folders').insert({ creator_id: creator.id, name: fullName }).select('id').maybeSingle();
+    setSubBusy(false);
+    if (error) { flash('Error: ' + error.message); return; }
+    setSubName(''); setSubOpen(false); await load();
+    if (data?.id) setFolderSel(data.id); // salta directo a la subcarpeta recién creada
+    flash('Subcarpeta creada');
+  }
+
   // Bulk-friendly: uploads in a small concurrency pool, survives per-file
   // failures (reports how many), and only closes the pedido if something landed.
   async function uploadFiles(list) {
@@ -1138,8 +1167,25 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                   <span className="inline-flex items-center gap-1"><Film size={12} className="text-fuchsia-300" /> {nV} videos</span>
                 </span>
               ); })()}
+              <button type="button" onClick={() => setSubOpen((v) => !v)}
+                className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-3 py-1 text-[11px] font-semibold text-brand transition-colors hover:bg-brand/20">
+                <Plus size={11} /> Subcarpeta
+              </button>
             </div>
           </div>
+          {subOpen && (
+            <form onSubmit={createSubfolder} className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-brand/30 bg-brand/[0.05] px-3 py-2.5">
+              <span className="text-[11px] font-medium text-paper-dim">Nombre de la subcarpeta dentro de <span className="text-paper">«{folder.name}»</span></span>
+              <input autoFocus value={subName} onChange={(e) => setSubName(e.target.value)} placeholder="Ej. mañana, lencería, casa…"
+                className="min-w-[180px] flex-1 rounded-lg border border-line bg-ink-2 px-3 py-1.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              <button type="submit" disabled={subBusy || !subName.trim()}
+                className="rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-on-accent transition-colors hover:brightness-110 disabled:opacity-40">
+                {subBusy ? 'Creando…' : 'Crear'}
+              </button>
+              <button type="button" onClick={() => { setSubOpen(false); setSubName(''); }}
+                className="rounded-full border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+            </form>
+          )}
 
           {/* Subida comodísima — la carpeta ya está elegida */}
           <div className="mt-3 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
