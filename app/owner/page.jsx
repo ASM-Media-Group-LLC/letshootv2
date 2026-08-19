@@ -20,12 +20,26 @@ const ADMIN = { email: 'admin@letshoot.ai', password: 'LetShoot!admin' };
 const USER = { email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' };
 // Fully paid + content-delivered demo creator — the post-payment experience.
 const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
+// Creator que ya recibió su propuesta personalizada — el lookbook cinemático
+// aparece automáticamente al entrar (aún no pagó, la propuesta está publicada).
+const PROPUESTA = { email: 'propuesta@letshoot.ai', password: 'LetShoot!propuesta' };
 // Agency / manager — manages its models, makes requests, records sales.
 const AGENCY = { email: 'agencia@letshoot.ai', password: 'LetShoot!agencia' };
 // Uploader: the person who uploads the product (photos/videos) into each
 // model's account. Real staff are created from Admin → «Equipo interno»
 // (the Uploader preset comes ready); this is a demo puesto to preview it.
 const TEAM = { email: 'equipo@letshoot.ai', password: 'LetShoot!equipo' };
+
+// Slides de muestra del lookbook de PROPUESTA demo — usan fotos de Julia que
+// ya viven en /public/lib para no depender del bucket de storage.
+const PROPUESTA_SLIDES = [
+  { inspiration_url: '/lib/lluvia-cafe.jpg',   real_url: '/lib/julia-frontal-1.jpg', ai_url: '/lib/julia-angulo-1.jpg', caption: 'Escena: café, lluvia — mirada al lente' },
+  { inspiration_url: '/lib/julia-guino-1.jpg', real_url: '/lib/julia-medio-1.jpg',   ai_url: '/lib/julia-risa-1.jpg',   caption: 'Cama en la mañana — íntimo natural' },
+  { inspiration_url: '/lib/julia-body-1.jpg',  real_url: '/lib/julia-bikini-1.jpg',  ai_url: '/lib/julia-bikini-2.jpg', caption: 'Gym / fitness — post entreno' },
+  { inspiration_url: '/lib/julia-mano-1.jpg',  real_url: '/lib/julia-vestida-1.jpg', ai_url: '/lib/julia-vestida-2.jpg', caption: 'Sauna / robe — bienestar' },
+  { inspiration_url: '/lib/julia-perfil-1.jpg', real_url: '/lib/julia-marca-1.jpg', ai_url: '/lib/julia-perfil-2.jpg', caption: 'Salida de noche — outfit statement' },
+];
+const PROPUESTA_INTRO = 'Estas son solo 5 escenas para que te des una idea. Con tu clon podemos generar cualquier situación que tu audiencia pida — en minutos, sin producción.';
 
 // El acceso rápido con credenciales SOLO existe en desarrollo/staging.
 // En producción (dominio público) no se sirve, salvo que se active
@@ -95,6 +109,7 @@ export default function OwnerPage() {
       const demos = [
         { full_name: 'Creadora Demo', email: USER.email,    password: USER.password,    role: 'creator' },
         { full_name: 'Clienta Demo',  email: CLIENTA.email, password: CLIENTA.password, role: 'creator', profile: { activate: true, plan: 'core' } },
+        { full_name: 'Propuesta Demo', email: PROPUESTA.email, password: PROPUESTA.password, role: 'creator', profile: { stage_name: 'Alejandra' } },
         { full_name: 'Agencia Demo',  email: AGENCY.email,  password: AGENCY.password,  role: 'agency' },
         { full_name: 'Equipo Demo',   email: TEAM.email,    password: TEAM.password,    role: 'supervisor', capabilities: ALL_CAP_VALUES },
       ];
@@ -106,9 +121,22 @@ export default function OwnerPage() {
         else if (/ya existe|already/i.test(out?.error || '')) skipped++;
         else failed.push(`${d.email}: ${out?.error || 'sin respuesta'}`);
       }
+      // Seed del lookbook de la cuenta PROPUESTA (idempotente: reemplaza si ya existía).
+      const { data: propUser } = await sb.from('profiles').select('id').eq('email', PROPUESTA.email).maybeSingle();
+      if (propUser?.id) {
+        // Borra propuesta previa (cascade borra slides) para dejar la muestra limpia.
+        await sb.from('creator_proposals').delete().eq('creator_id', propUser.id);
+        const { data: pr } = await sb.from('creator_proposals').insert({
+          creator_id: propUser.id, status: 'published', intro: PROPUESTA_INTRO, published_at: new Date().toISOString(),
+        }).select('id').single();
+        if (pr?.id) {
+          const rows = PROPUESTA_SLIDES.map((s, i) => ({ proposal_id: pr.id, position: i, ...s }));
+          await sb.from('proposal_slides').insert(rows);
+        }
+      }
       setError(failed.length
         ? `Fallaron: ${failed.join(' · ')}`
-        : `Listo — ${created} creada(s), ${skipped} ya existían. Recarga y entra como cualquiera de abajo.`);
+        : `Listo — ${created} creada(s), ${skipped} ya existían. Propuesta demo con lookbook publicado. Recarga y entra como cualquiera de abajo.`);
     } catch (e) {
       setError('Error: ' + (e?.message || String(e)));
     } finally {
@@ -192,6 +220,35 @@ export default function OwnerPage() {
             className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
             {busy === 'clienta' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como cuenta completada <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
           </button>
+        </div>
+
+        {/* Propuesta demo — la CC entra y ve su lookbook cinemático a pantalla
+            completa (aún no ha pagado, la propuesta está publicada). */}
+        <div className="mt-4 flex flex-col rounded-3xl border border-brand/30 bg-gradient-to-br from-brand/10 to-transparent p-6 shadow-glow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
+                <Sparkles size={14} /> Propuesta personalizada
+              </span>
+              <p className="text-sm text-paper-mute">
+                Cómo se ve la cuenta <strong className="text-paper">antes de pagar, con su propuesta lista</strong>:
+                al entrar, la creadora ve su lookbook cinemático (trípticos Inspiración/Foto real/Resultado IA)
+                y elige su pack sin salir de la cuenta. Reemplaza al PDF de venta.
+              </p>
+              <div className="mt-3 inline-flex flex-col gap-0.5 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
+                <div>{PROPUESTA.email}</div>
+                <div>{PROPUESTA.password}</div>
+              </div>
+            </div>
+          </div>
+          <button onClick={() => enter(PROPUESTA, 'propuesta')} disabled={!!busy}
+            className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+            {busy === 'propuesta' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Propuesta demo <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+          </button>
+          <p className="mt-2 text-[11px] leading-relaxed text-paper-dim">
+            Si no ves el lookbook al entrar, dale <strong className="text-paper-mute">«Restaurar cuentas demo»</strong> arriba —
+            eso recrea la cuenta con la propuesta ya publicada.
+          </p>
         </div>
 
         {/* Agencia / Manager — gestiona sus modelos, pide contenido y lleva sus cuentas */}
