@@ -1,11 +1,11 @@
 'use client';
 
-// Fila estética de logos de las plataformas donde el contenido se vende o se
-// usa para tráfico. OnlyFans (venta directa) + redes sociales (enganche que
-// dirige tráfico a OnlyFans). Cada logo con su color oficial en un badge
-// «glassy» consistente con el estilo del hero.
-//
-// Los path SVG vienen de simpleicons.org (CC0). Colores oficiales de marca.
+// Dos grupos claros bajo el hero:
+//   1) VENDE EN → OnlyFans (destacado, más grande)
+//   2) Y TRAE TRÁFICO DESDE → Instagram, Reddit, Telegram, WhatsApp, TikTok, X
+// Separados por un divisor vertical elegante para reforzar la propuesta:
+// el contenido sirve para venta directa Y para tráfico que engancha y lleva
+// a OnlyFans. Consistente con el estilo glassy del hero.
 
 const ONLYFANS_PNG = '/onlyfans-logo.png';
 
@@ -42,40 +42,67 @@ const SVGS = {
   },
 };
 
-// Chip glassy que envuelve un logo — pinta el SVG con el color de marca, o la
-// imagen (OnlyFans) tal cual. Tamaño consistente para toda la fila.
-function LogoChip({ children, label }) {
+// Chip circular glassy. Tamaño más grande y presencia clara.
+function LogoChip({ children, label, size = 'md' }) {
+  const cls = size === 'lg'
+    ? 'h-14 w-14 sm:h-16 sm:w-16'
+    : 'h-11 w-11 sm:h-12 sm:w-12';
   return (
     <span
       aria-label={label}
       title={label}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/12 bg-white/[0.07] shadow-[0_2px_20px_rgba(0,0,0,0.35)] backdrop-blur-md transition-all hover:scale-110 hover:border-white/25 hover:bg-white/[0.12] sm:h-11 sm:w-11"
+      className={`${cls} inline-flex items-center justify-center rounded-full border border-white/15 bg-white/[0.08] shadow-[0_2px_24px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:scale-110 hover:border-white/30 hover:bg-white/[0.14]`}
     >
       {children}
     </span>
   );
 }
 
-export default function SocialLogos({ caption }) {
+function OnlyFansChip() {
   return (
-    <div className="mt-6 flex flex-col items-start gap-3">
-      {caption && (
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-white/60 drop-shadow-[0_1px_10px_rgba(0,0,0,0.5)] sm:text-[11px]">
-          {caption}
-        </span>
-      )}
-      <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-        <LogoChip label="OnlyFans">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={ONLYFANS_PNG} alt="OnlyFans" className="h-4 w-auto drop-shadow-[0_1px_6px_rgba(0,175,240,0.6)] sm:h-5" draggable={false} />
-        </LogoChip>
-        {Object.entries(SVGS).map(([key, s]) => (
-          <LogoChip key={key} label={s.label}>
-            <svg role="img" viewBox="0 0 24 24" className="h-4 w-4 sm:h-[18px] sm:w-[18px]" fill={s.color} aria-hidden>
-              <path d={s.path} />
-            </svg>
-          </LogoChip>
-        ))}
+    <LogoChip label="OnlyFans" size="lg">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={ONLYFANS_PNG}
+        alt="OnlyFans"
+        className="h-6 w-auto drop-shadow-[0_1px_10px_rgba(0,175,240,0.7)] sm:h-7"
+        draggable={false}
+      />
+    </LogoChip>
+  );
+}
+
+function SocialChip({ svg }) {
+  return (
+    <LogoChip label={svg.label}>
+      <svg role="img" viewBox="0 0 24 24" className="h-5 w-5 sm:h-[22px] sm:w-[22px]" fill={svg.color} aria-hidden>
+        <path d={svg.path} />
+      </svg>
+    </LogoChip>
+  );
+}
+
+export default function SocialLogos({ sellOn, trafficFrom }) {
+  const labelCls = 'font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-white/60 drop-shadow-[0_1px_10px_rgba(0,0,0,0.6)] sm:text-[11px]';
+  return (
+    <div className="mt-7 flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
+      {/* Grupo 1 — VENTA */}
+      <div className="flex flex-col items-start gap-2.5">
+        <span className={labelCls}>{sellOn}</span>
+        <OnlyFansChip />
+      </div>
+
+      {/* Divisor elegante */}
+      <span aria-hidden className="hidden h-16 w-px bg-gradient-to-b from-transparent via-white/20 to-transparent sm:block" />
+
+      {/* Grupo 2 — TRÁFICO */}
+      <div className="flex flex-col items-start gap-2.5">
+        <span className={labelCls}>{trafficFrom}</span>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          {Object.entries(SVGS).map(([key, s]) => (
+            <SocialChip key={key} svg={s} />
+          ))}
+        </div>
       </div>
     </div>
   );

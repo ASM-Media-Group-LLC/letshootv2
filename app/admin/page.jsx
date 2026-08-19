@@ -174,7 +174,15 @@ export default function AdminPage() {
     (async () => {
       const up = await getUserProfile();
       if (!up) { router.replace('/login'); return; }
-      if (up.profile?.role !== 'admin') { setMe(up.profile); return; } // non-admin staff: limited view
+      // Acceso a /admin: dueño (rol admin) o supervisor con caps de gestión
+      // (agencies, team, billing) — así management (Cheryl/Grace) tiene visibilidad
+      // del panel principal y puede invitar empleados a agencias.
+      const canAccess = up.profile?.role === 'admin' || (
+        up.profile?.role === 'supervisor'
+        && Array.isArray(up.profile?.capabilities)
+        && up.profile.capabilities.some((c) => ['agencies', 'team', 'billing'].includes(c))
+      );
+      if (!canAccess) { setMe(up.profile); return; }
       setMe(up.profile);
       load();
     })();
@@ -452,7 +460,12 @@ export default function AdminPage() {
   if (me === undefined) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
   // Non-admin staff work in /trabajo.
-  if (me?.role !== 'admin') { router.replace('/trabajo'); return null; }
+  const canAccessAdmin = me?.role === 'admin' || (
+    me?.role === 'supervisor'
+    && Array.isArray(me?.capabilities)
+    && me.capabilities.some((c) => ['agencies', 'team', 'billing'].includes(c))
+  );
+  if (!canAccessAdmin) { router.replace('/trabajo'); return null; }
 
   const creators = profiles.filter((p) => p.role === 'creator');
 

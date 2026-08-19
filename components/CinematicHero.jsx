@@ -118,7 +118,7 @@ export default function CinematicHero() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.85, ease, delay: 0.58 }}
               >
-                <SocialLogos caption={t.hero.platformsLabel} />
+                <SocialLogos sellOn={t.hero.platformsSellOn} trafficFrom={t.hero.platformsTrafficFrom} />
               </motion.div>
 
 

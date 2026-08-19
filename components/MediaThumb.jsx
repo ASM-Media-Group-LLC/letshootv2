@@ -96,6 +96,16 @@ export function MediaLightbox({ asset, src, onClose, onRename }) {
                 <div className="min-w-0">
                   <p className={`truncate text-sm font-medium ${asset.title ? 'text-white' : 'italic text-white/50'}`}>{asset.title || 'Sin título'}</p>
                   {asset.deliver_date && <p className="text-[11px] text-white/70">{new Date(asset.deliver_date).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
+                  {(Number(asset.sales_count) > 0 || Number(asset.revenue) > 0) && (
+                    <p className="mt-1.5 flex items-center gap-2.5 text-[11px] font-medium">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-brand/20 px-2 py-0.5 text-brand">
+                        {Number(asset.sales_count || 0)} venta{Number(asset.sales_count) === 1 ? '' : 's'}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-emerald-300">
+                        ${Number(asset.revenue || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                      </span>
+                    </p>
+                  )}
                 </div>
                 {canEdit && (
                   <button onClick={() => { setDraft(asset.title || ''); setEditing(true); }}

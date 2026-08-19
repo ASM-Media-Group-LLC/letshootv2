@@ -21,6 +21,7 @@ import MediaThumb from '@/components/MediaThumb';
 import { ymOf, ymLabel, shiftYm, aggregate, pct, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
+import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import WelcomeTour from '@/components/WelcomeTour';
 
@@ -493,6 +494,11 @@ export default function AgenciaPage() {
                 <span className="block text-[10px] text-paper-dim">Administra a tus modelos</span>
               </span>
             </div>
+            {/* Ver como… — la agencia puede abrir el panel de una de sus modelos
+                tal como ella lo ve. Solo si tiene modelos asignadas. */}
+            {models.length > 0 && (
+              <ImpersonateMenu creators={models.map((m) => ({ id: m.id, full_name: m.name, handle: m.handle, avatar_url: m.avatar_url, email: m.email }))} />
+            )}
             <button onClick={async () => { await signOut(); router.replace('/login'); }}
               className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
               <LogOut size={15} /> <span className="hidden sm:inline">Salir</span>

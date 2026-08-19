@@ -93,6 +93,7 @@ export default function TrabajoPage() {
   const [reqRows, setReqRows] = useState([]); // pedidos (filas) para la Cola del día
   const [fbRows, setFbRows] = useState([]);   // feedback (filas) para la Cola del día
   const [mine, setMine] = useState([]);       // piezas subidas por MÍ (Mi producción)
+  const [monthAssets, setMonthAssets] = useState([]); // TODAS las piezas del mes en curso — para medir pendientes por paquete
   const [focusCreator, setFocusCreator] = useState(null); // deep-link: abrir la biblioteca de una creadora
   const [colaOpen, setColaOpen] = useState(false); // Cola del día: viene colapsada, el usuario la extiende
   const [colaSeen, setColaSeen] = useState(false); // ¿ya abrió la cola en ESTA visita? (para dejar de palpitar)
@@ -121,7 +122,7 @@ export default function TrabajoPage() {
       ? ['datos', 'kyc', 'add_creators', 'content', 'requests', 'feedback', 'metrics', 'agencies', 'billing', 'team']
       : (profile.capabilities || []);
     const monthKey = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
-    const [{ data: cr }, { data: st }, rq, fb, bk, sales, myAssets, ag, bl] = await Promise.all([
+    const [{ data: cr }, { data: st }, rq, fb, bk, sales, myAssets, ag, bl, monthAssets] = await Promise.all([
       supabase.rpc('team_creators'),
       supabase.rpc('team_staff'),
       pcaps.includes('requests') ? supabase.from('requests').select('id, status, title, creator_id, created_at, producer_id') : Promise.resolve({ data: [] }),
@@ -131,6 +132,9 @@ export default function TrabajoPage() {
       pcaps.includes('content') ? supabase.from('assets').select('id, type, creator_id, created_at').eq('uploaded_by', profile.id) : Promise.resolve({ data: [] }),
       pcaps.includes('agencies') ? supabase.rpc('team_agencies') : Promise.resolve({ data: [] }),
       pcaps.includes('billing') ? supabase.rpc('team_billing') : Promise.resolve({ data: [] }),
+      // Assets del mes en curso (todos los creadores accesibles) — para calcular
+      // cuántas fotos faltan del paquete mensual de cada creadora.
+      pcaps.includes('content') ? supabase.from('assets').select('id, type, creator_id, created_at').gte('created_at', `${monthKey}-01`) : Promise.resolve({ data: [] }),
     ]);
     setCreators(cr || []);
     setStaff(st || []);
@@ -138,6 +142,7 @@ export default function TrabajoPage() {
     setAgencies(ag.data || []);
     setBillRows(bl.data || []);
     setMine(myAssets.data || []);
+    setMonthAssets(monthAssets.data || []);
     const srows = sales.data || [];
     setSalesRows(srows);
     setMs({
@@ -251,6 +256,26 @@ export default function TrabajoPage() {
   const myWeek = mine.filter((a) => (a.created_at || '').slice(0, 10) >= weekAgoISO).length;
   const myMonth = mine.filter((a) => (a.created_at || '').slice(0, 7) === monthKey).length;
 
+  // ── Fotos pendientes por CC este mes según su paquete ──
+  // Cuota mensual = PACKS[plan].photos (test=20, core=45, pro=90). Fotos ya
+  // subidas = assets del mes con type≠video para ESA creadora. Solo cuenta
+  // creadoras ACTIVAS (con suscripción). Devuelve un mapa {creatorId: pending}.
+  const photosByCreatorMonth = {};
+  monthAssets.forEach((a) => {
+    if (a.type === 'video') return;
+    photosByCreatorMonth[a.creator_id] = (photosByCreatorMonth[a.creator_id] || 0) + 1;
+  });
+  const quotaFor = (c) => (PACKS.find((p) => p.key === (c.plan || 'core')) || PACKS[1]).photos;
+  const pendingByCreator = {};
+  creators.forEach((c) => {
+    const isActive = ['active', 'paid'].includes(c.onboarding_status) && c.payment_status === 'paid';
+    if (!isActive) return;
+    const done = photosByCreatorMonth[c.id] || 0;
+    const pending = Math.max(0, quotaFor(c) - done);
+    if (pending > 0) pendingByCreator[c.id] = pending;
+  });
+  const creatorsPendingCount = Object.keys(pendingByCreator).length;
+
   // ── Cola del día: lo más urgente primero (pedidos nuevos → cambios → en producción) ──
   const nameById = {}; creators.forEach((c) => { nameById[c.id] = c.full_name || 'Creadora'; });
   const queue = [];
@@ -359,7 +384,7 @@ export default function TrabajoPage() {
             {(me?.role === 'admin' || can('content') || can('kyc') || can('requests') || can('feedback')) && creators?.length > 0 && (
               <ImpersonateMenu creators={creators} />
             )}
-            {me?.role === 'admin' && (
+            {(me?.role === 'admin' || can('agencies') || can('team') || can('billing')) && (
               <Link href="/admin" className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
                 Admin
               </Link>
@@ -398,9 +423,15 @@ export default function TrabajoPage() {
                     <span className="flex items-center gap-2 text-sm font-semibold text-paper">
                       Cola del día
                       {colaPulse && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold text-brand">{queue.length} por atender</span>}
+                      {creatorsPendingCount > 0 && (
+                        <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-300">{creatorsPendingCount} pendientes de contenido</span>
+                      )}
                     </span>
                     <span className="block truncate text-[11px] text-paper-dim">
-                      {queue.length === 0 ? 'estás al día' : `${queue.length} por atender · ${pendCount} pedidos${prodCount ? ` · ${prodCount} en producción` : ''}`}
+                      <span className="text-brand">activas {act}</span>
+                      {creatorsPendingCount > 0 && <> · <span className="text-rose-300">pendientes en cola {creatorsPendingCount}</span></>}
+                      {queue.length > 0 && <> · {queue.length} por atender · {pendCount} pedidos{prodCount ? ` · ${prodCount} en producción` : ''}</>}
+                      {queue.length === 0 && creatorsPendingCount === 0 && ' · estás al día'}
                     </span>
                   </span>
                   <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform group-hover:text-paper ${colaOpen ? 'rotate-180' : ''}`} />
@@ -475,7 +506,7 @@ export default function TrabajoPage() {
             })()}
             {tab === 'cuentas' && can('metrics') && <CuentasPanel rows={salesRows} bill={bill} billRows={billRows} onOpenSales={() => router.push('/sales')} onOpenCobros={() => can('billing') && setTab('cobros')} canBilling={can('billing')} />}
             {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} />}
-            {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} />}
+            {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} pendingByCreator={pendingByCreator} />}
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
             {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
             {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
@@ -687,7 +718,7 @@ function AltasTab({ creators, flash, reload }) {
   );
 }
 
-function CreadorasTab({ creators, me, flash, initialCreatorId }) {
+function CreadorasTab({ creators, me, flash, initialCreatorId, pendingByCreator = {} }) {
   const [sel, setSel] = useState(() => (initialCreatorId ? creators.find((c) => c.id === initialCreatorId) || null : null));
   const [q, setQ] = useState('');
   const [fCat, setFCat] = useState('all');
@@ -718,6 +749,11 @@ function CreadorasTab({ creators, me, flash, initialCreatorId }) {
             {OB_LABEL[c.onboarding_status] || c.onboarding_status}
           </span>
           <SubBadge creator={c} />
+          {pendingByCreator[c.id] > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-300">
+              {pendingByCreator[c.id]} fotos pending
+            </span>
+          )}
         </span>
       </span>
       <ChevronRight size={17} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
@@ -782,7 +818,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
     const supabase = getSupabase();
     const [{ data }, { data: reqs }] = await Promise.all([
       supabase.from('folders')
-        .select('id, name, kind, assets(id, storage_path, type, title, deliver_date, created_at)')
+        .select('id, name, kind, assets(id, storage_path, type, title, deliver_date, created_at, sales_count, revenue, purpose)')
         .eq('creator_id', creator.id).order('created_at'),
       supabase.from('requests').select('id, title, status').eq('creator_id', creator.id).neq('status', 'delivered').order('created_at', { ascending: false }),
     ]);
