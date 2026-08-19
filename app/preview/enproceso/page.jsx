@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { LogOut, IdCard, CreditCard, Sparkles, CheckCircle2, Circle, ArrowRight, Check, ShieldCheck, ArrowLeft, Upload, Camera } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { PACKS, PERIODS } from '@/lib/packs';
+import ProposalDeck from '@/components/ProposalDeck';
 
 const MOCK = {
   first: 'Camila',
@@ -22,6 +23,17 @@ const MOCK = {
   handle: 'camilademo',
 };
 
+// Slides mock del lookbook — mismas fotos de Julia que usa la cuenta PROPUESTA
+// demo. No dependen de storage: los path viven en /public/lib.
+const PROPOSAL_SLIDES = [
+  { id: '1', position: 0, inspiration_url: '/lib/lluvia-cafe.jpg',   real_url: '/lib/julia-frontal-1.jpg', ai_url: '/lib/julia-angulo-1.jpg', caption: 'Escena: café, lluvia — mirada al lente' },
+  { id: '2', position: 1, inspiration_url: '/lib/julia-guino-1.jpg', real_url: '/lib/julia-medio-1.jpg',   ai_url: '/lib/julia-risa-1.jpg',   caption: 'Cama en la mañana — íntimo natural' },
+  { id: '3', position: 2, inspiration_url: '/lib/julia-body-1.jpg',  real_url: '/lib/julia-bikini-1.jpg',  ai_url: '/lib/julia-bikini-2.jpg', caption: 'Gym / fitness — post entreno' },
+  { id: '4', position: 3, inspiration_url: '/lib/julia-mano-1.jpg',  real_url: '/lib/julia-vestida-1.jpg', ai_url: '/lib/julia-vestida-2.jpg', caption: 'Sauna / robe — bienestar' },
+  { id: '5', position: 4, inspiration_url: '/lib/julia-perfil-1.jpg', real_url: '/lib/julia-marca-1.jpg', ai_url: '/lib/julia-perfil-2.jpg', caption: 'Salida de noche — outfit statement' },
+];
+const PROPOSAL_INTRO = 'Estas son solo 5 escenas para que te des una idea. Con tu clon podemos generar cualquier situación que tu audiencia pida — en minutos, sin producción.';
+
 const TABS = [
   { key: 'pago',  label: 'Suscripción · Pago',   desc: 'Elige tu pack de contenido',    icon: CreditCard, done: false },
   { key: 'clon',  label: 'Fotos del clon',       desc: 'Sube tus fotos para entrenar tu clon', icon: Sparkles, done: false },
@@ -31,10 +43,24 @@ const TABS = [
 export default function PreviewEnProceso() {
   const [tab, setTab] = useState('pago');
   const [pack, setPack] = useState('core');
+  const [showProposal, setShowProposal] = useState(true); // arranca abierto — es lo primero que ve la CC
   const doneCount = TABS.filter((t) => t.done).length;
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
+      {/* Lookbook full-screen — se muestra abierto por default (como en la
+          experiencia real cuando entra la CC con propuesta publicada). */}
+      {showProposal && (
+        <ProposalDeck
+          creatorName={MOCK.first}
+          intro={PROPOSAL_INTRO}
+          slides={PROPOSAL_SLIDES}
+          onClose={() => setShowProposal(false)}
+          onChoosePack={(k) => { setPack(k); setShowProposal(false); setTab('pago'); }}
+          chosenPack={pack}
+        />
+      )}
+
       {/* Ribbon aviso «esto es un preview» */}
       <div className="border-b border-amber-500/25 bg-amber-500/[0.08] px-5 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-amber-200">
         Preview · Layout de una creadora en proceso — nada de esto guarda
@@ -75,6 +101,23 @@ export default function PreviewEnProceso() {
             <div className="whitespace-pre-line text-xs leading-tight text-paper-mute">{doneCount} de {TABS.length}{'\n'}pasos listos</div>
           </div>
         </div>
+
+        {/* Botón para reabrir el lookbook — visible cuando el deck está cerrado */}
+        {!showProposal && (
+          <button onClick={() => setShowProposal(true)}
+            className="mt-6 flex w-full items-center justify-between gap-3 rounded-2xl border border-brand/40 bg-gradient-to-br from-brand/[0.12] to-brand/[0.03] p-4 text-left transition-colors hover:from-brand/[0.18]">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand/20 text-brand">
+                <Sparkles size={18} />
+              </span>
+              <div>
+                <p className="font-display text-sm font-semibold text-paper">Tu propuesta personalizada</p>
+                <p className="text-xs text-paper-mute">Mira cómo se vería tu clon con tus fotos + elige tu pack</p>
+              </div>
+            </div>
+            <ArrowRight size={16} className="shrink-0 text-brand" />
+          </button>
+        )}
 
         {/* Tabs stepper */}
         <div className="mt-7 grid grid-cols-3 gap-3">
