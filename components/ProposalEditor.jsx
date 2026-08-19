@@ -1,30 +1,30 @@
 'use client';
 
-// Editor de la propuesta personalizada de una CC. Usado desde /trabajo (staff
-// con capability 'content') y desde /admin (dueño). Carga la propuesta de esa
-// CC (o la crea si no existe), deja subir 3-8 trípticos con las 3 fotos
-// (Inspiración / Foto real / Resultado), reordenar, escribir intro, y
-// publicar. Publicar = la CC ya lo ve en su cuenta.
+// Editor de la propuesta personalizada. Diseño pulido tipo herramienta:
+// hero card con estado + acciones grandes, slides con hover states y drag
+// handles visuales, autosave indicator, botón publicar prominente.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload, Plus, X, ArrowUp, ArrowDown, Loader2, Eye, CheckCircle2, ArrowLeft, Save } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Upload, Plus, X, ArrowUp, ArrowDown, Loader2, Eye, CheckCircle2, ArrowLeft, Save, Sparkles, GripVertical, Rocket, RotateCcw, Camera } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
 import ProposalDeck from '@/components/ProposalDeck';
 
 const MAX_SLIDES = 8;
+const MIN_SLIDES = 3;
 
 export default function ProposalEditor({ creator, onClose, flash }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [preview, setPreview] = useState(false);
-  const [proposal, setProposal] = useState(null); // { id, status, intro, published_at }
-  const [slides, setSlides] = useState([]);       // [{ id, position, inspiration_url, real_url, ai_url, caption }]
+  const [proposal, setProposal] = useState(null);
+  const [slides, setSlides] = useState([]);
   const [intro, setIntro] = useState('');
+  const [savedTick, setSavedTick] = useState(null); // muestra «guardado» por 2s
 
   const load = useCallback(async () => {
     const supabase = getSupabase();
-    // Buscar o crear propuesta para esta CC.
     let { data: pr } = await supabase.from('creator_proposals').select('*').eq('creator_id', creator.id).maybeSingle();
     if (!pr) {
       const { data: created, error } = await supabase.from('creator_proposals').insert({ creator_id: creator.id }).select('*').single();
@@ -40,6 +40,11 @@ export default function ProposalEditor({ creator, onClose, flash }) {
 
   useEffect(() => { load(); }, [load]);
 
+  function markSaved() {
+    setSavedTick(Date.now());
+    setTimeout(() => setSavedTick(null), 2000);
+  }
+
   async function saveIntro() {
     if (!proposal) return;
     setSaving(true);
@@ -47,7 +52,7 @@ export default function ProposalEditor({ creator, onClose, flash }) {
     setSaving(false);
     if (error) { flash && flash('Error al guardar intro: ' + error.message); return; }
     setProposal((p) => ({ ...p, intro: intro.trim() || null }));
-    flash && flash('Intro guardada');
+    markSaved();
   }
 
   async function addSlide() {
@@ -75,7 +80,6 @@ export default function ProposalEditor({ creator, onClose, flash }) {
     [arr[idx], arr[swap]] = [arr[swap], arr[idx]];
     const reordered = arr.map((s, i) => ({ ...s, position: i }));
     setSlides(reordered);
-    // Persistir orden — un update por slide movido.
     const supabase = getSupabase();
     await Promise.all([
       supabase.from('proposal_slides').update({ position: reordered[idx].position }).eq('id', reordered[idx].id),
@@ -87,6 +91,7 @@ export default function ProposalEditor({ creator, onClose, flash }) {
     setSlides((s) => s.map((x) => (x.id === id ? { ...x, ...patch } : x)));
     const { error } = await getSupabase().from('proposal_slides').update(patch).eq('id', id);
     if (error) flash && flash('Error al guardar: ' + error.message);
+    else markSaved();
   }
 
   async function uploadPhoto(slideId, kind, file) {
@@ -105,13 +110,12 @@ export default function ProposalEditor({ creator, onClose, flash }) {
 
   async function publish() {
     if (!proposal) return;
-    if (slides.length < 3) { flash && flash('Sube al menos 3 trípticos antes de publicar.'); return; }
+    if (slides.length < MIN_SLIDES) { flash && flash(`Sube al menos ${MIN_SLIDES} trípticos antes de publicar.`); return; }
     const incomplete = slides.filter((s) => !s.inspiration_url || !s.real_url || !s.ai_url).length;
     if (incomplete > 0) {
       if (!window.confirm(`Hay ${incomplete} tríptico${incomplete === 1 ? '' : 's'} con fotos faltantes. ¿Publicar de todos modos?`)) return;
     }
     setPublishing(true);
-    // Guardar intro por si cambió.
     await getSupabase().from('creator_proposals').update({
       intro: intro.trim() || null,
       status: 'published',
@@ -120,7 +124,7 @@ export default function ProposalEditor({ creator, onClose, flash }) {
     }).eq('id', proposal.id);
     setPublishing(false);
     setProposal((p) => ({ ...p, status: 'published', published_at: new Date().toISOString(), intro: intro.trim() || null }));
-    flash && flash(`Propuesta publicada — ${creator.full_name || 'la creadora'} ya la ve en su cuenta.`);
+    flash && flash(`✨ Propuesta publicada — ${creator.full_name || 'la creadora'} ya la ve en su cuenta.`);
   }
 
   async function unpublish() {
@@ -131,7 +135,14 @@ export default function ProposalEditor({ creator, onClose, flash }) {
     flash && flash('Propuesta en borrador');
   }
 
-  if (loading) return <div className="grid min-h-[60vh] place-items-center text-paper-dim">Cargando propuesta…</div>;
+  if (loading) {
+    return (
+      <div className="mt-8 grid min-h-[40vh] place-items-center gap-2 text-center text-paper-dim">
+        <Loader2 size={22} className="animate-spin text-brand" />
+        <p className="text-sm">Cargando propuesta…</p>
+      </div>
+    );
+  }
 
   if (preview) {
     return (
@@ -145,79 +156,140 @@ export default function ProposalEditor({ creator, onClose, flash }) {
   }
 
   const published = proposal?.status === 'published';
+  const complete = slides.length >= MIN_SLIDES && slides.every((s) => s.inspiration_url && s.real_url && s.ai_url);
 
   return (
     <div className="mt-2">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <button onClick={onClose} className="inline-flex items-center gap-1.5 text-sm text-paper-mute transition-colors hover:text-paper">
-          <ArrowLeft size={15} /> Volver
-        </button>
-        <div className="flex items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-            published ? 'border-brand/40 bg-brand/10 text-brand' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-          }`}>
-            {published ? <><CheckCircle2 size={11} /> Publicada</> : 'Borrador'}
-          </span>
-          <button onClick={() => setPreview(true)} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:border-brand/40 hover:text-brand">
-            <Eye size={13} /> Preview
-          </button>
-          {published ? (
-            <button onClick={unpublish} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:border-amber-500/40 hover:text-amber-300">Volver a borrador</button>
-          ) : (
-            <button onClick={publish} disabled={publishing}
-              className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-xs font-bold text-on-accent shadow-glow-sm hover:brightness-110 disabled:opacity-60">
-              {publishing ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Publicar
+      {/* Volver */}
+      <button onClick={onClose} className="mb-4 inline-flex items-center gap-1.5 text-sm text-paper-mute transition-colors hover:text-paper">
+        <ArrowLeft size={15} /> Volver
+      </button>
+
+      {/* HERO CARD — estado + acciones grandes */}
+      <div className={`relative overflow-hidden rounded-3xl border p-6 sm:p-7 ${
+        published
+          ? 'border-brand/40 bg-gradient-to-br from-brand/[0.10] to-transparent shadow-glow-sm'
+          : 'border-line bg-card'
+      }`}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${
+                published ? 'border-brand/40 bg-brand/15 text-brand' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+              }`}>
+                {published ? <><CheckCircle2 size={11} /> Publicada</> : <>Borrador</>}
+              </span>
+              {savedTick && (
+                <motion.span initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand">
+                  <CheckCircle2 size={10} /> Guardado
+                </motion.span>
+              )}
+            </div>
+            <h2 className="mt-2 font-display text-2xl font-bold leading-tight text-paper">
+              Propuesta de <span className="text-brand">{creator.stage_name || creator.full_name || 'la creadora'}</span>
+            </h2>
+            <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-paper-mute">
+              {published
+                ? 'La creadora ya la ve al entrar a su cuenta. Puedes seguir editándola — los cambios entran en vivo.'
+                : 'Arma su lookbook con 3–8 trípticos (Inspiración · Foto real · Resultado IA). Cuando esté listo, publícala y la verá al entrar sin haber pagado.'}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button onClick={() => setPreview(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-4 py-2 text-sm font-semibold text-paper transition-colors hover:border-brand/40 hover:text-brand">
+              <Eye size={14} /> Preview
             </button>
-          )}
+            {published ? (
+              <button onClick={unpublish}
+                className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-semibold text-paper-mute hover:border-amber-500/40 hover:text-amber-300">
+                <RotateCcw size={14} /> Volver a borrador
+              </button>
+            ) : (
+              <button onClick={publish} disabled={publishing || slides.length < MIN_SLIDES}
+                title={slides.length < MIN_SLIDES ? `Sube al menos ${MIN_SLIDES} trípticos` : 'Publicar y hacerla visible a la creadora'}
+                className="inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100">
+                {publishing ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />} Publicar
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Progress indicator */}
+        <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-5">
+          {Array.from({ length: MAX_SLIDES }).map((_, i) => {
+            const s = slides[i];
+            const filled = s && s.inspiration_url && s.real_url && s.ai_url;
+            const partial = s && !filled;
+            return (
+              <div key={i} className={`h-1.5 rounded-full transition-colors ${
+                filled ? 'bg-brand' : partial ? 'bg-brand/40' : 'bg-white/[0.05]'
+              }`} />
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-paper-dim">
+          {slides.length} / {MAX_SLIDES} trípticos · {complete ? 'lista para publicar' : slides.length < MIN_SLIDES ? `faltan ${MIN_SLIDES - slides.length} para el mínimo` : 'algunas fotos faltan'}
+        </p>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-line bg-card p-5">
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Propuesta para</p>
-        <p className="font-display text-xl font-semibold text-paper">{creator.stage_name || creator.full_name || 'Creadora'}</p>
-        <p className="mt-0.5 text-xs text-paper-dim">Se muestra a pantalla completa dentro de su cuenta cuando entra sin haber pagado.</p>
-      </div>
-
-      {/* Intro */}
-      <div className="mt-4 rounded-2xl border border-line bg-card p-5">
-        <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Intro personalizada (opcional)</label>
+      {/* INTRO editable */}
+      <div className="mt-5 rounded-3xl border border-line bg-card p-5 sm:p-6">
+        <label className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-paper-dim">
+          <Sparkles size={12} className="text-brand" /> Intro personalizada
+          <span className="ml-1 font-normal normal-case tracking-normal text-paper-dim/70">(opcional — reemplaza al copy por default)</span>
+        </label>
         <textarea value={intro} onChange={(e) => setIntro(e.target.value)} rows={3} placeholder="A partir de tus fotos reales construimos un modelo idéntico a ti…"
-          className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+          className="w-full resize-none rounded-2xl border border-line bg-ink-2 px-4 py-3 text-sm leading-relaxed text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
         <div className="mt-2 flex justify-end">
-          <button onClick={saveIntro} disabled={saving} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:border-brand/40 hover:text-brand disabled:opacity-50">
+          <button onClick={saveIntro} disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:border-brand/40 hover:text-brand disabled:opacity-50">
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Guardar intro
           </button>
         </div>
       </div>
 
-      {/* Slides */}
-      <div className="mt-4 flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Trípticos · {slides.length} / {MAX_SLIDES}</p>
+      {/* SLIDES */}
+      <div className="mt-6 flex items-center justify-between">
+        <div>
+          <p className="font-display text-lg font-semibold text-paper">Trípticos</p>
+          <p className="text-[11px] text-paper-dim">{slides.length} de {MAX_SLIDES} · mínimo {MIN_SLIDES} para publicar</p>
+        </div>
         <button onClick={addSlide} disabled={slides.length >= MAX_SLIDES}
-          className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/20 disabled:opacity-40">
-          <Plus size={13} /> Agregar tríptico
+          className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-40 disabled:hover:scale-100">
+          <Plus size={15} /> Agregar tríptico
         </button>
       </div>
 
-      <div className="mt-3 space-y-3">
-        {slides.length === 0 && (
-          <p className="rounded-2xl border border-dashed border-line px-4 py-8 text-center text-sm text-paper-dim">
-            Aún no hay trípticos. Agrega el primero — cada uno lleva Inspiración + Foto real + Resultado IA.
-          </p>
-        )}
-        {slides.map((s, i) => (
-          <SlideEditor
-            key={s.id}
-            slide={s}
-            index={i}
-            total={slides.length}
-            onDelete={() => delSlide(s.id)}
-            onMove={(dir) => moveSlide(s.id, dir)}
-            onUpload={(kind, file) => uploadPhoto(s.id, kind, file)}
-            onCaption={(v) => updateSlide(s.id, { caption: v.trim() || null })}
-          />
-        ))}
+      <div className="mt-4 space-y-3">
+        <AnimatePresence initial={false}>
+          {slides.length === 0 && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="rounded-3xl border-2 border-dashed border-line bg-card/30 p-10 text-center">
+              <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-brand/10 text-brand">
+                <Camera size={22} />
+              </div>
+              <p className="font-display text-base font-semibold text-paper">Aún no hay trípticos</p>
+              <p className="mt-1 text-sm text-paper-mute">Cada uno lleva 3 fotos: Inspiración, la foto real que tienes de la creadora, y el resultado que hace su clon.</p>
+              <button onClick={addSlide}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
+                <Plus size={14} /> Crear el primer tríptico
+              </button>
+            </motion.div>
+          )}
+          {slides.map((s, i) => (
+            <SlideEditor
+              key={s.id}
+              slide={s}
+              index={i}
+              total={slides.length}
+              onDelete={() => delSlide(s.id)}
+              onMove={(dir) => moveSlide(s.id, dir)}
+              onUpload={(kind, file) => uploadPhoto(s.id, kind, file)}
+              onCaption={(v) => updateSlide(s.id, { caption: v.trim() || null })}
+            />
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -225,30 +297,48 @@ export default function ProposalEditor({ creator, onClose, flash }) {
 
 function SlideEditor({ slide, index, total, onDelete, onMove, onUpload, onCaption }) {
   const [caption, setCaption] = useState(slide.caption || '');
+  const complete = slide.inspiration_url && slide.real_url && slide.ai_url;
   return (
-    <div className="rounded-2xl border border-line bg-card p-4">
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+      className={`group rounded-3xl border p-5 transition-colors ${
+        complete ? 'border-line bg-card' : 'border-amber-500/25 bg-amber-500/[0.03]'
+      }`}
+    >
       <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-paper">Tríptico {index + 1}</p>
+        <div className="flex items-center gap-3">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-hair/10 text-paper-mute">
+            <GripVertical size={14} />
+          </span>
+          <div>
+            <p className="font-display text-base font-semibold tabular-nums text-paper">Tríptico {String(index + 1).padStart(2, '0')}</p>
+            <p className="text-[10px] uppercase tracking-widest text-paper-dim">{complete ? 'Completo' : 'Faltan fotos'}</p>
+          </div>
+        </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => onMove(-1)} disabled={index === 0}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-line text-paper-mute hover:text-paper disabled:opacity-30" title="Subir">
-            <ArrowUp size={12} />
+          <button onClick={() => onMove(-1)} disabled={index === 0} title="Subir"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-paper-mute hover:border-brand/40 hover:text-brand disabled:opacity-30 disabled:hover:border-line disabled:hover:text-paper-mute">
+            <ArrowUp size={13} />
           </button>
-          <button onClick={() => onMove(1)} disabled={index === total - 1}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-line text-paper-mute hover:text-paper disabled:opacity-30" title="Bajar">
-            <ArrowDown size={12} />
+          <button onClick={() => onMove(1)} disabled={index === total - 1} title="Bajar"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-paper-mute hover:border-brand/40 hover:text-brand disabled:opacity-30 disabled:hover:border-line disabled:hover:text-paper-mute">
+            <ArrowDown size={13} />
           </button>
-          <button onClick={onDelete}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-line text-paper-mute hover:border-rose-500/50 hover:text-rose-300" title="Borrar">
-            <X size={12} />
+          <button onClick={onDelete} title="Borrar"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-paper-mute hover:border-rose-500/50 hover:text-rose-300">
+            <X size={13} />
           </button>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <PhotoSlot label="1 · Inspiración" url={slide.inspiration_url} onFile={(f) => onUpload('inspiration', f)} />
-        <PhotoSlot label="2 · Foto real" url={slide.real_url} onFile={(f) => onUpload('real', f)} />
-        <PhotoSlot label="3 · Resultado IA" url={slide.ai_url} onFile={(f) => onUpload('ai', f)} highlight />
+        <PhotoSlot label="Inspiración" n={1} url={slide.inspiration_url} onFile={(f) => onUpload('inspiration', f)} />
+        <PhotoSlot label="Foto real"   n={2} url={slide.real_url}        onFile={(f) => onUpload('real', f)} />
+        <PhotoSlot label="Resultado IA" n={3} url={slide.ai_url}         onFile={(f) => onUpload('ai', f)} highlight />
       </div>
 
       <div className="mt-3">
@@ -260,11 +350,11 @@ function SlideEditor({ slide, index, total, onDelete, onMove, onUpload, onCaptio
           className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60"
         />
       </div>
-    </div>
+    </motion.div>
   );
 }
 
-function PhotoSlot({ label, url, onFile, highlight }) {
+function PhotoSlot({ label, n, url, onFile, highlight }) {
   const ref = useRef(null);
   const [uploading, setUploading] = useState(false);
   async function handleFile(f) {
@@ -274,22 +364,32 @@ function PhotoSlot({ label, url, onFile, highlight }) {
   }
   return (
     <div>
-      <p className={`mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] ${highlight ? 'text-brand' : 'text-paper-dim'}`}>{label}</p>
+      <div className={`mb-1.5 flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.22em] ${highlight ? 'text-brand' : 'text-paper-dim'}`}>
+        <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${highlight ? 'bg-brand text-on-accent' : 'bg-hair/10 text-paper-mute'}`}>{n}</span>
+        {label}
+      </div>
       <button type="button" onClick={() => ref.current?.click()} disabled={uploading}
-        className={`relative aspect-[3/4] w-full overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
-          url ? 'border-brand/40' : 'border-line hover:border-brand/40'
+        className={`relative aspect-[3/4] w-full overflow-hidden rounded-2xl border-2 border-dashed transition-all ${
+          url ? (highlight ? 'border-brand/40' : 'border-line') : 'border-line hover:border-brand/40 hover:bg-brand/[0.04]'
         } ${uploading ? 'opacity-60' : ''}`}>
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt={label} className="h-full w-full object-cover" />
         ) : (
-          <div className="grid h-full w-full place-items-center gap-1 text-paper-dim">
-            <Upload size={18} />
-            <span className="text-[11px]">Subir</span>
+          <div className="grid h-full w-full place-items-center gap-2 text-paper-dim">
+            <Upload size={20} />
+            <span className="text-[11px] font-medium">Subir foto</span>
           </div>
         )}
         {uploading && (
-          <div className="absolute inset-0 grid place-items-center bg-black/50 text-white"><Loader2 size={20} className="animate-spin" /></div>
+          <div className="absolute inset-0 grid place-items-center bg-black/60 text-white backdrop-blur-sm">
+            <Loader2 size={22} className="animate-spin" />
+          </div>
+        )}
+        {url && !uploading && (
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-gradient-to-t from-black/60 to-transparent py-1.5 text-[10px] font-semibold uppercase tracking-widest text-white opacity-0 transition-opacity hover:opacity-100">
+            <Upload size={11} /> Reemplazar
+          </div>
         )}
       </button>
       <input type="file" ref={ref} accept="image/*" hidden onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
