@@ -17,7 +17,13 @@ import { ALL_CAP_VALUES } from '@/lib/caps';
 import Logo from '@/components/Logo';
 
 const ADMIN = { email: 'admin@letshoot.ai', password: 'LetShoot!admin' };
+// «Empezar de cero» — la usa el botón «Reiniciar onboarding y entrar» para
+// probar el registro desde el paso 1 (datos → ID → consentimiento).
 const USER = { email: 'creadora@letshoot.ai', password: 'LetShoot!creadora' };
+// «En proceso» — ya verificada (ID aprobado), le falta PAGAR y SUBIR FOTOS
+// del clon. Al entrar cae en el hub de onboarding con esos dos pasos abiertos
+// para que puedas probarlos sin arrancar todo el flujo desde 0.
+const ENPROCESO = { email: 'enproceso@letshoot.ai', password: 'LetShoot!enproceso' };
 // Fully paid + content-delivered demo creator — the post-payment experience.
 const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
 // Creator que ya recibió su propuesta personalizada — el lookbook cinemático
@@ -108,6 +114,7 @@ export default function OwnerPage() {
       const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined;
       const demos = [
         { full_name: 'Creadora Demo', email: USER.email,    password: USER.password,    role: 'creator' },
+        { full_name: 'En Proceso Demo', email: ENPROCESO.email, password: ENPROCESO.password, role: 'creator', profile: { stage_name: 'Camila', legal_first_name: 'Camila', legal_last_name: 'Demo', date_of_birth: '1998-05-14', country: 'MX' } },
         { full_name: 'Clienta Demo',  email: CLIENTA.email, password: CLIENTA.password, role: 'creator', profile: { activate: true, plan: 'core' } },
         { full_name: 'Propuesta Demo', email: PROPUESTA.email, password: PROPUESTA.password, role: 'creator', profile: { stage_name: 'Alejandra' } },
         { full_name: 'Agencia Demo',  email: AGENCY.email,  password: AGENCY.password,  role: 'agency' },
@@ -120,6 +127,20 @@ export default function OwnerPage() {
         if (out?.ok) created++;
         else if (/ya existe|already/i.test(out?.error || '')) skipped++;
         else failed.push(`${d.email}: ${out?.error || 'sin respuesta'}`);
+      }
+      // Ajuste post-seed de ENPROCESO: ID aprobado + sin pago + limpia consent
+      // para que caiga en el hub con los pasos «Pago» y «Fotos del clon» abiertos.
+      const { data: procUser } = await sb.from('profiles').select('id').eq('email', ENPROCESO.email).maybeSingle();
+      if (procUser?.id) {
+        await sb.from('profiles').update({
+          onboarding_status: 'id_approved',
+          payment_status: 'unpaid',
+          plan: null,
+          consent_clone: false,
+          consent_billing: false,
+          consent_at: null,
+          lora_status: 'none',
+        }).eq('id', procUser.id);
       }
       // Seed del lookbook de la cuenta PROPUESTA (idempotente: reemplaza si ya existía).
       const { data: propUser } = await sb.from('profiles').select('id').eq('email', PROPUESTA.email).maybeSingle();
@@ -177,23 +198,29 @@ export default function OwnerPage() {
             </button>
           </div>
 
-          {/* User */}
+          {/* Creadora «en proceso» — ya verificada, le falta PAGAR y subir fotos
+              del clon. Aterriza en el hub de onboarding con esos dos pasos abiertos. */}
           <div className="flex flex-col rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
             <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-hair/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-paper-mute">
-              <User size={14} /> Usuario (creadora)
+              <User size={14} /> Creadora · en proceso
             </span>
-            <p className="text-sm text-paper-mute">Para probar el registro: datos → ID + consentimiento → aprobación → pago. Fotos del clon: opcionales, en cualquier momento.</p>
+            <p className="text-sm text-paper-mute">
+              <strong className="text-paper">Ya verificada</strong> — le falta <strong className="text-paper">pagar</strong> y
+              <strong className="text-paper"> subir las fotos del clon</strong>. Aterriza en el hub con esos dos pasos listos
+              para probar el pago y la subida.
+            </p>
             <div className="mt-3 space-y-1 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
-              <div>{USER.email}</div>
-              <div>{USER.password}</div>
+              <div>{ENPROCESO.email}</div>
+              <div>{ENPROCESO.password}</div>
             </div>
-            <button onClick={() => enter(USER, 'user')} disabled={!!busy}
+            <button onClick={() => enter(ENPROCESO, 'enproceso')} disabled={!!busy}
               className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-              {busy === 'user' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Usuario <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+              {busy === 'enproceso' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como creadora en proceso <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
             </button>
             <button onClick={resetUser} disabled={!!busy}
+              title={`Entra como ${USER.email} desde el paso 1 (datos → ID → consentimiento)`}
               className="mt-2 flex items-center justify-center gap-2 rounded-xl border border-line py-2.5 text-sm font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper disabled:opacity-60">
-              {busy === 'reset' ? <Loader2 size={16} className="animate-spin" /> : <><RotateCcw size={15} /> Reiniciar onboarding y entrar</>}
+              {busy === 'reset' ? <Loader2 size={16} className="animate-spin" /> : <><RotateCcw size={15} /> Registro desde 0 (creadora@)</>}
             </button>
           </div>
         </div>
