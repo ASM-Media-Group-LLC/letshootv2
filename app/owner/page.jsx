@@ -10,7 +10,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles, Building2, ClipboardList, Upload } from 'lucide-react';
+import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles, Building2, ClipboardList, Upload, UserPlus } from 'lucide-react';
 import { signIn, signOut, homeForProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { ALL_CAP_VALUES } from '@/lib/caps';
@@ -31,6 +31,9 @@ const CLIENTA = { email: 'clienta@letshoot.ai', password: 'LetShoot!clienta' };
 const PROPUESTA = { email: 'propuesta@letshoot.ai', password: 'LetShoot!propuesta' };
 // Agency / manager — manages its models, makes requests, records sales.
 const AGENCY = { email: 'agencia@letshoot.ai', password: 'LetShoot!agencia' };
+// Agente vendedor — refiere modelos con solo su correo. La modelo referida
+// recibe invitación para registrarse; el agente lleva el récord.
+const AGENTE = { email: 'agente@letshoot.ai', password: 'LetShoot!agente' };
 // Uploader: the person who uploads the product (photos/videos) into each
 // model's account. Real staff are created from Admin → «Equipo interno»
 // (the Uploader preset comes ready); this is a demo puesto to preview it.
@@ -118,6 +121,7 @@ export default function OwnerPage() {
         { full_name: 'Clienta Demo',  email: CLIENTA.email, password: CLIENTA.password, role: 'creator', profile: { activate: true, plan: 'core' } },
         { full_name: 'Propuesta Demo', email: PROPUESTA.email, password: PROPUESTA.password, role: 'creator', profile: { stage_name: 'Alejandra' } },
         { full_name: 'Agencia Demo',  email: AGENCY.email,  password: AGENCY.password,  role: 'agency' },
+        { full_name: 'Agente Demo',   email: AGENTE.email,  password: AGENTE.password,  role: 'agent' },
         { full_name: 'Equipo Demo',   email: TEAM.email,    password: TEAM.password,    role: 'supervisor', capabilities: ALL_CAP_VALUES },
       ];
       let created = 0, skipped = 0; const failed = [];
@@ -141,6 +145,16 @@ export default function OwnerPage() {
           consent_at: null,
           lora_status: 'none',
         }).eq('id', procUser.id);
+      }
+      // Seed de referrals demo para AGENTE — 3 estados distintos para probar UI.
+      const { data: agentUser } = await sb.from('profiles').select('id').eq('email', AGENTE.email).maybeSingle();
+      if (agentUser?.id) {
+        await sb.from('agent_referrals').delete().eq('agent_id', agentUser.id);
+        await sb.from('agent_referrals').insert([
+          { agent_id: agentUser.id, invited_email: 'lucia.demo@example.com', invited_name: 'Lucía (demo)', status: 'invited', notes: 'Amiga de IG, potencial Core Pack' },
+          { agent_id: agentUser.id, invited_email: 'sofia.demo@example.com', invited_name: 'Sofía (demo)', status: 'registered', notes: 'Se registró, aún no paga', registered_at: new Date().toISOString() },
+          { agent_id: agentUser.id, invited_email: 'valentina.demo@example.com', invited_name: 'Valentina (demo)', status: 'paid', notes: 'Ya activa con Pro Pack', registered_at: new Date().toISOString(), paid_at: new Date().toISOString() },
+        ]);
       }
       // Seed del lookbook de la cuenta PROPUESTA (idempotente: reemplaza si ya existía).
       const { data: propUser } = await sb.from('profiles').select('id').eq('email', PROPUESTA.email).maybeSingle();
@@ -295,6 +309,26 @@ export default function OwnerPage() {
           <button onClick={() => enter(AGENCY, 'agency')} disabled={!!busy}
             className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
             {busy === 'agency' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Agencia <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+          </button>
+        </div>
+
+        {/* Agente vendedor — refiere modelos con solo su correo */}
+        <div className="mt-4 flex flex-col rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
+          <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/12 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
+            <UserPlus size={14} /> Agente vendedor
+          </span>
+          <p className="text-sm text-paper-mute">
+            La cuenta que <strong className="text-paper">refiere modelos</strong>: pone el correo de una creadora
+            potencial y a ella le llega la invitación para registrarse y crear su clon. El agente lleva el récord
+            de sus referidas (invitada · registrada · pagó); admin también las ve.
+          </p>
+          <div className="mt-3 inline-flex w-fit flex-col gap-0.5 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
+            <div>{AGENTE.email}</div>
+            <div>{AGENTE.password}</div>
+          </div>
+          <button onClick={() => enter(AGENTE, 'agente')} disabled={!!busy}
+            className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+            {busy === 'agente' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como Agente <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
           </button>
         </div>
 

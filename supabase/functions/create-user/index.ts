@@ -11,7 +11,7 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
-const VALID_ROLES = ['admin', 'supervisor', 'chatter', 'producer', 'creator', 'agency'];
+const VALID_ROLES = ['admin', 'supervisor', 'chatter', 'producer', 'creator', 'agency', 'agent'];
 const VALID_CAPS = ['datos', 'kyc', 'add_creators', 'content', 'requests', 'feedback', 'metrics', 'billing', 'agencies', 'team'];
 const VALID_AGENCY_CAPS = ['content', 'sales', 'requests', 'metrics']; // funciones del sub-equipo de agencia
 const APP = 'https://letshoot.ai';
