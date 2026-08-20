@@ -13,7 +13,7 @@ import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
   ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart, KeyRound,
-  UserPlus, Trash2, Check, Mail, AlertTriangle, Search,
+  UserPlus, Trash2, Check, Mail, AlertTriangle, Search, Pencil,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -481,7 +481,7 @@ export default function AgenciaPage() {
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
           <div className="flex min-w-0 items-center gap-3">
-            <Link href="/agencia" aria-label="Ir al inicio" className="flex shrink-0 items-center transition-opacity hover:opacity-80"><Logo size="sm" /></Link>
+            <Link href="/" aria-label="Ir al home de LetShoot" className="flex shrink-0 items-center transition-opacity hover:opacity-80" title="Volver al home"><Logo size="sm" /></Link>
             <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
               <Building2 size={12} /> Agencia · Manager
             </span>
@@ -758,7 +758,15 @@ export default function AgenciaPage() {
 
                 {mtab === 'pedidos' && (
                   <div className="mt-4 space-y-5">
-                    {modelRequests.length === 0 && <p className="rounded-xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Sin pedidos. Usa «Pedir contenido» para crear uno.</p>}
+                    {modelRequests.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center">
+                        <p className="text-sm text-paper-mute">Sin pedidos todavía.</p>
+                        <button onClick={() => setReqOpen(true)}
+                          className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+                          <Plus size={15} /> Nueva petición
+                        </button>
+                      </div>
+                    )}
                     {[
                       { key: 'in_progress', title: 'En proceso', hint: 'El equipo ya está trabajando en esto' },
                       { key: 'pending', title: 'Enviados', hint: 'El equipo ya lo recibió, aún no empieza' },
@@ -778,7 +786,36 @@ export default function AgenciaPage() {
                               <div key={r.id} className="rounded-xl border border-line bg-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                   <p className="text-sm font-semibold text-paper">{r.title}</p>
-                                  <span className="shrink-0 text-[11px] text-paper-dim">{new Date(r.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span>
+                                  <div className="flex shrink-0 items-center gap-1.5">
+                                    <span className="text-[11px] text-paper-dim">{new Date(r.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span>
+                                    {/* Editar / Borrar — solo si aún no lo empezaron. Si ya está en_progress o
+                                        delivered, el pedido queda inmutable (el equipo trabaja en él). */}
+                                    {r.status === 'pending' && (
+                                      <>
+                                        <button onClick={async () => {
+                                          const next = window.prompt('Título del pedido', r.title);
+                                          if (next === null) return;
+                                          const t = next.trim(); if (!t) return;
+                                          const desc = window.prompt('Descripción (opcional)', r.description || '') || '';
+                                          const { error } = await getSupabase().from('requests').update({ title: t, description: desc.trim() || null }).eq('id', r.id);
+                                          if (error) { flash('Error: ' + error.message); return; }
+                                          flash('Pedido actualizado'); refresh();
+                                        }}
+                                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-brand" title="Editar">
+                                          <Pencil size={12} />
+                                        </button>
+                                        <button onClick={async () => {
+                                          if (!window.confirm(`¿Borrar pedido «${r.title}»? El equipo dejará de verlo.`)) return;
+                                          const { error } = await getSupabase().from('requests').delete().eq('id', r.id);
+                                          if (error) { flash('Error: ' + error.message); return; }
+                                          flash('Pedido borrado'); refresh();
+                                        }}
+                                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-rose-500/40 hover:text-rose-300" title="Borrar">
+                                          <Trash2 size={12} />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                                 <p className="mt-0.5 text-[11px] text-paper-dim">{r.chatter_id === r.creator_id ? 'Lo pidió ella' : 'Lo pediste tú'}</p>
                                 {r.description && <p className="mt-1 text-xs leading-relaxed text-paper-mute">{r.description}</p>}
@@ -1185,9 +1222,11 @@ function NewRequest({ creatorId, agencyId, onDone }) {
             </span>
           ))}
           {refFiles.length < 6 && (
-            <button type="button" onClick={() => refInput.current?.click()} className="grid h-14 w-14 place-items-center rounded-lg border border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-brand"><Plus size={18} /></button>
+            <label className="grid h-14 w-14 cursor-pointer place-items-center rounded-lg border border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-brand">
+              <Plus size={18} />
+              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
+            </label>
           )}
-          <input ref={refInput} type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
         </div>
       </div>
 

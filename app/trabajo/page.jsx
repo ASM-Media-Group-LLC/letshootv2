@@ -366,7 +366,7 @@ export default function TrabajoPage() {
       <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
           <div className="flex min-w-0 items-center gap-3">
-            <Link href="/trabajo" aria-label="Ir al inicio" className="flex shrink-0 items-center transition-opacity hover:opacity-80"><Logo size="sm" /></Link>
+            <Link href="/" aria-label="Ir al home de LetShoot" className="flex shrink-0 items-center transition-opacity hover:opacity-80" title="Volver al home"><Logo size="sm" /></Link>
             <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
               <Users size={12} /> Equipo interno
             </span>

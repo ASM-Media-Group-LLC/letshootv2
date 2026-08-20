@@ -576,21 +576,24 @@ export default function AdminPage() {
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {stats.map((s) => {
                       const active = regFilter === s.key;
+                      // Click SIEMPRE aplica el filtro (sin toggle a null). Antes,
+                      // clickear la misma tarjeta la cerraba y el usuario terminaba
+                      // sin filtros sin darse cuenta. Ahora, para «ver todas» usas
+                      // la tarjeta «Registradas» o el botón «Limpiar filtro».
                       return (
-                        <button key={s.key} onClick={() => { setRegFilter(active ? null : s.key); setRegSub('all'); if (active) setRegQuery(''); }}
+                        <button key={s.key} onClick={() => { setRegFilter(s.key); setRegSub('all'); setRegQuery(''); }}
                           className={`rounded-2xl border p-4 text-left transition-all ${TONE[s.tone]} ${active ? 'ring-2 ring-brand/60 ring-offset-2 ring-offset-ink' : 'opacity-90 hover:opacity-100'}`}>
                           <div className="flex items-start justify-between">
                             <div className="font-display text-3xl font-bold">{s.value}</div>
-                            <span className={`mt-1 text-[10px] transition-transform ${active ? 'rotate-180' : ''}`}>▾</span>
+                            {active && <span className="mt-1 rounded-full bg-brand/20 px-2 py-0.5 text-[9px] font-bold uppercase text-brand">activo</span>}
                           </div>
                           <div className="text-xs opacity-80">{s.label}</div>
                         </button>
                       );
                     })}
                   </div>
-                  {!regFilter && <p className="mt-3 text-xs text-paper-dim">Toca una tarjeta para ver esas creadoras.</p>}
 
-                  {regFilter && (
+                  {(
                     <>
                       <div className="mt-4 flex flex-wrap items-center gap-2">
                         <div className="relative min-w-[220px] flex-1">
@@ -605,7 +608,7 @@ export default function AdminPage() {
                       {(overdueList.length > 0 || dueSoonList.length > 0) && (
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {overdueList.length > 0 && (
-                            <button onClick={() => { setRegSub('overdue'); setRegFilter(null); }}
+                            <button onClick={() => { setRegSub('overdue'); setRegFilter('all'); }}
                               className="group flex items-center justify-between gap-3 rounded-2xl border border-rose-500/50 bg-rose-500/[0.08] p-3.5 text-left transition-colors hover:bg-rose-500/[0.14]">
                               <div>
                                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-rose-300">
@@ -617,7 +620,7 @@ export default function AdminPage() {
                             </button>
                           )}
                           {dueSoonList.length > 0 && (
-                            <button onClick={() => { setRegSub('due_soon'); setRegFilter(null); }}
+                            <button onClick={() => { setRegSub('due_soon'); setRegFilter('all'); }}
                               className="group flex items-center justify-between gap-3 rounded-2xl border border-amber-500/50 bg-amber-500/[0.06] p-3.5 text-left transition-colors hover:bg-amber-500/[0.12]">
                               <div>
                                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-300">
@@ -633,7 +636,7 @@ export default function AdminPage() {
 
                       {/* Filtrar + Ordenar — dropdowns compactos, no botones abiertos. */}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Dropdown icon={SlidersHorizontal} label="Filtrar" value={regSub} onChange={(v) => { setRegSub(v); setRegFilter(null); }}
+                        <Dropdown icon={SlidersHorizontal} label="Filtrar" value={regSub} onChange={(v) => { setRegSub(v); setRegFilter('all'); }}
                           options={[
                             { value: 'all', label: 'Todas' },
                             { value: 'active', label: 'Suscripción activa' },
@@ -2978,7 +2981,7 @@ function Header({ me, router, creators }) {
     <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
         <div className="flex min-w-0 items-center gap-3">
-          <Link href="/admin" aria-label="Ir al inicio de Administración" className="flex shrink-0 items-center transition-opacity hover:opacity-80"><Logo size="sm" /></Link>
+          <Link href="/" aria-label="Ir al home de LetShoot" className="flex shrink-0 items-center transition-opacity hover:opacity-80" title="Volver al home"><Logo size="sm" /></Link>
           <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
             <ShieldCheck size={12} /> Administración
           </span>
