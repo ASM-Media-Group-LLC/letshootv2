@@ -3005,6 +3005,12 @@ function Header({ me, router, creators }) {
       <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
         <div className="flex min-w-0 items-center gap-3">
           <Link href="/" aria-label="Ir al home de LetShoot" className="flex shrink-0 items-center transition-opacity hover:opacity-80" title="Volver al home"><Logo size="sm" /></Link>
+          {/* Back visible: si vienes de otra ruta, te devuelve; si no, va al home */}
+          <button onClick={() => (typeof window !== 'undefined' && window.history.length > 1 ? router.back() : router.push('/'))}
+            title="Volver"
+            className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+            <ChevronDown size={13} className="rotate-90" /> Volver
+          </button>
           <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
             <ShieldCheck size={12} /> Administración
           </span>

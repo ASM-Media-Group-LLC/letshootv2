@@ -106,7 +106,9 @@ function PanelPageInner() {
   // todas de un tirón. Se activa con el botón «Seleccionar» y se sale con «X».
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
-  const [contentLayout, setContentLayout] = useState('grid'); // grid | days | folders
+  // Default view: la CC ve galería plana (más natural para descubrir). En modo
+  // impersonate (staff QA-ing) arrancar en «Carpetas» para ver el orden real.
+  const [contentLayout, setContentLayout] = useState(() => (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('as')) ? 'folders' : 'grid'); // grid | days | folders
   const [bulkDownloading, setBulkDownloading] = useState(false);
   function toggleSel(id) { setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
   function clearSel() { setSelected(new Set()); }
@@ -124,10 +126,24 @@ function PanelPageInner() {
     ]);
     const folderMap = {}; (folders || []).forEach((f) => { folderMap[f.id] = f.name; });
     const assets = (folders || []).flatMap((f) => f.assets || []);
+    // Signed URLs — el bucket es privado. Firmar en CHUNKS de 100 evita
+    // requests gigantes que hacen que la primera pantalla tarde. Los chunks
+    // corren en paralelo (Promise.all) — el UI se actualiza incrementalmente
+    // vía setUrls, así las primeras fotos aparecen mientras las últimas
+    // todavía se firman.
     const toSign = assets.filter((a) => !isDirect(a.storage_path));
     if (toSign.length) {
-      const { data: signed } = await supabase.storage.from('deliveries').createSignedUrls(toSign.map((a) => a.storage_path), 3600);
-      const map = {}; (signed || []).forEach((s, i) => { if (s?.signedUrl) map[toSign[i].id] = s.signedUrl; }); setUrls(map);
+      const CHUNK = 100;
+      const chunks = [];
+      for (let i = 0; i < toSign.length; i += CHUNK) chunks.push(toSign.slice(i, i + CHUNK));
+      await Promise.all(chunks.map(async (batch) => {
+        const { data: signed } = await supabase.storage.from('deliveries').createSignedUrls(batch.map((a) => a.storage_path), 3600);
+        setUrls((prev) => {
+          const next = { ...prev };
+          (signed || []).forEach((s, j) => { if (s?.signedUrl) next[batch[j].id] = s.signedUrl; });
+          return next;
+        });
+      }));
     }
     // Request threads: team questions + replies (copy always reaches her).
     const { data: reqMsgs } = await supabase.from('request_messages').select('*').order('created_at');
