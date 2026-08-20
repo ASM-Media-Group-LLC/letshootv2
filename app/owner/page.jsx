@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldCheck, User, ArrowRight, RotateCcw, Loader2, Sparkles, Building2, ClipboardList, Upload, UserPlus } from 'lucide-react';
-import { signIn, signOut, homeForProfile } from '@/lib/supabase/session';
+import { signIn, signOut, homeForProfile, getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { ALL_CAP_VALUES } from '@/lib/caps';
 import Logo from '@/components/Logo';
@@ -50,18 +50,29 @@ const PROPUESTA_SLIDES = [
 ];
 const PROPUESTA_INTRO = 'Estas son solo 5 escenas para que te des una idea. Con tu clon podemos generar cualquier situación que tu audiencia pida — en minutos, sin producción.';
 
-// El acceso rápido con credenciales SOLO existe en desarrollo/staging.
-// En producción (dominio público) no se sirve, salvo que se active
-// explícitamente con NEXT_PUBLIC_OWNER_ACCESS=1 en ese entorno.
-const OWNER_ENABLED = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_OWNER_ACCESS === '1';
+// El acceso rápido con credenciales existe SIEMPRE, pero en producción se
+// gate por rol: solo un usuario admin logueado puede verlo. En dev/staging
+// entra cualquiera. Antes el flag ENV impedía a admin verlo en prod y el
+// dueño se quedaba fuera (bug reportado).
+const IS_PROD = process.env.NODE_ENV === 'production';
 
 export default function OwnerPage() {
   const router = useRouter();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [gateChecked, setGateChecked] = useState(false);
 
-  useEffect(() => { if (!OWNER_ENABLED) router.replace('/login'); }, [router]);
-  if (!OWNER_ENABLED) return null;
+  useEffect(() => {
+    if (!IS_PROD) { setGateChecked(true); return; }
+    // En prod exige sesión admin. Si no la hay o el rol no es admin, redirige.
+    (async () => {
+      const up = await getUserProfile();
+      if (!up || up.profile?.role !== 'admin') { router.replace('/login?next=/owner'); return; }
+      setGateChecked(true);
+    })();
+  }, [router]);
+
+  if (IS_PROD && !gateChecked) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
   async function enter(acct, tag) {
     setBusy(tag); setError('');
