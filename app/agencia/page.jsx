@@ -13,7 +13,7 @@ import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
   ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart, KeyRound,
-  UserPlus, Trash2, Check, Mail, AlertTriangle, Search, Pencil,
+  UserPlus, Trash2, Check, Mail, AlertTriangle, Search, Pencil, RotateCcw, ImageOff, ArrowLeft,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -122,13 +122,16 @@ function WeeklySales({ creatorId, flash }) {
     setRows(data || []);
   }, [creatorId, supabase]);
   useEffect(() => { reload(); }, [reload]);
-  // Prefill al cambiar de semana.
+  // Prefill al cambiar de semana (pero NO cuando cambian rows por un save reciente,
+  // porque justo acabamos de limpiar los inputs y no queremos re-rellenarlos).
   useEffect(() => {
     const r = rows.find((x) => x.week_start === week);
     setSales(r ? String(r.sales) : '');
     setRevenue(r ? String(Number(r.revenue)) : '');
-  }, [week, rows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week]);
 
+  const [savedOk, setSavedOk] = useState(false);
   async function save() {
     setBusy(true);
     const { error } = await supabase.rpc('agency_set_week', {
@@ -137,6 +140,11 @@ function WeeklySales({ creatorId, flash }) {
     });
     setBusy(false);
     if (error) { flash('Error: ' + error.message); return; }
+    // Reset visual: limpia los inputs y muestra un tick verde 2.5s para que
+    // sea obvio que se guardó — antes los valores quedaban en el input y no
+    // había feedback claro. El total real vive en la BD y se ve en las barras.
+    setSales(''); setRevenue('');
+    setSavedOk(true); setTimeout(() => setSavedOk(false), 2500);
     flash('Semana guardada');
     await reload();
   }
@@ -167,8 +175,10 @@ function WeeklySales({ creatorId, flash }) {
           <input type="number" min="0" value={revenue} onChange={(e) => setRevenue(e.target.value)} placeholder="0"
             className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
         </label>
-        <button onClick={save} disabled={busy} className="col-span-2 inline-flex items-center justify-center gap-1.5 self-end rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-accent hover:brightness-110 disabled:opacity-60 sm:col-span-1">
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Guardar
+        <button onClick={save} disabled={busy} className={`col-span-2 inline-flex items-center justify-center gap-1.5 self-end rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-60 sm:col-span-1 ${
+          savedOk ? 'bg-emerald-500 text-white' : 'bg-brand text-on-accent hover:brightness-110'
+        }`}>
+          {busy ? <Loader2 size={14} className="animate-spin" /> : savedOk ? <><CheckCircle2 size={14} /> Guardado</> : <><Check size={14} /> Guardar</>}
         </button>
       </div>
       {bars.length > 0 && (
@@ -198,6 +208,7 @@ export default function AgenciaPage() {
   const [sel, setSel] = useState(null);           // selected creator id
   const [month, setMonth] = useState(null);       // 'YYYY-MM' for the selected model
   const [mtab, setMtab] = useState('content');    // content | pedidos
+  const [contentFilter, setContentFilter] = useState('all'); // all | photo | video | sold | revenue — filtra el tab Contenido
   const [detail, setDetail] = useState(null);     // asset being edited
   const [toast, setToast] = useState('');
   const [reqOpen, setReqOpen] = useState(false);
@@ -736,10 +747,14 @@ export default function AgenciaPage() {
                   <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={17} /></button>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                  <StatCard icon={ImageIcon} label="Fotos este mes" value={nf(curPhotos)} d={pct(curPhotos, prevPhotos)} />
-                  <StatCard icon={Film} label="Videos este mes" value={nf(curVideos)} d={pct(curVideos, prevVideos)} />
-                  <StatCard icon={ShoppingBag} label="Vendidas" value={nf(cur.sales)} d={pct(cur.sales, prev.sales)} />
-                  <StatCard icon={DollarSign} label="Ingresos" value={money(cur.revenue)} d={pct(cur.revenue, prev.revenue)} />
+                  <StatCard icon={ImageIcon} label="Fotos este mes" value={nf(curPhotos)} d={pct(curPhotos, prevPhotos)}
+                    onClick={() => { setMtab('content'); setContentFilter('photo'); }} />
+                  <StatCard icon={Film} label="Videos este mes" value={nf(curVideos)} d={pct(curVideos, prevVideos)}
+                    onClick={() => { setMtab('content'); setContentFilter('video'); }} />
+                  <StatCard icon={ShoppingBag} label="Vendidas" value={nf(cur.sales)} d={pct(cur.sales, prev.sales)}
+                    onClick={() => { setMtab('content'); setContentFilter('sold'); }} />
+                  <StatCard icon={DollarSign} label="Ingresos" value={money(cur.revenue)} d={pct(cur.revenue, prev.revenue)}
+                    onClick={() => { setMtab('content'); setContentFilter('revenue'); }} />
                 </div>
 
                 {/* Registro rápido de ventas por semana — alimenta el momentum de la modelo */}
@@ -831,14 +846,34 @@ export default function AgenciaPage() {
                 )}
 
                 {/* Delivered content this month — team uploads, agency records sales/price */}
-                {mtab === 'content' && (
+                {mtab === 'content' && (() => {
+                  // Aplica el filtro que viene de los banners KPI arriba.
+                  let filtered = [...monthAssets];
+                  if (contentFilter === 'photo') filtered = filtered.filter((a) => a.type !== 'video');
+                  else if (contentFilter === 'video') filtered = filtered.filter((a) => a.type === 'video');
+                  else if (contentFilter === 'sold') filtered = filtered.filter((a) => (a.sales_count || 0) > 0);
+                  else if (contentFilter === 'revenue') filtered = filtered.filter((a) => Number(a.revenue) > 0);
+                  const sorted = contentFilter === 'revenue'
+                    ? filtered.sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0))
+                    : contentFilter === 'sold'
+                    ? filtered.sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0))
+                    : filtered.sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || ''));
+                  const filterLabel = { photo: 'Solo fotos', video: 'Solo videos', sold: 'Vendidas', revenue: 'Con ingresos' }[contentFilter];
+                  return (
                 <div className="mt-5">
-                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-paper-dim"><ImageIcon size={12} /> Contenido de {ymLabel(month, 'es-US')} · toca para poner precio y ventas</div>
-                  {monthAssets.length === 0 ? (
-                    <p className="rounded-xl border border-line bg-card p-5 text-sm text-paper-dim">No hay contenido entregado en este mes.</p>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-paper-dim"><ImageIcon size={12} /> Contenido de {ymLabel(month, 'es-US')} · toca para poner precio y ventas</div>
+                    {contentFilter !== 'all' && (
+                      <button onClick={() => setContentFilter('all')} className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-[11px] font-semibold text-brand transition-colors hover:bg-brand/20">
+                        {filterLabel} · limpiar <X size={11} />
+                      </button>
+                    )}
+                  </div>
+                  {sorted.length === 0 ? (
+                    <p className="rounded-xl border border-line bg-card p-5 text-sm text-paper-dim">{contentFilter === 'all' ? 'No hay contenido entregado en este mes.' : `No hay contenido que coincida con «${filterLabel}» este mes.`}</p>
                   ) : (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                      {[...monthAssets].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || '')).map((a) => (
+                      {sorted.map((a) => (
                         <button key={a.id} onClick={() => setDetail(a)}
                           className="group relative overflow-hidden rounded-xl border border-line bg-card text-left">
                           <div className="aspect-[3/4] w-full overflow-hidden">
@@ -866,7 +901,8 @@ export default function AgenciaPage() {
                     </div>
                   )}
                 </div>
-                )}
+                  );
+                })()}
               </>
             </div>
           </div>
@@ -1100,20 +1136,26 @@ export default function AgenciaPage() {
 }
 
 // KPI card with a month-over-month delta chip.
-function StatCard({ icon: Icon, label, value, d }) {
+function StatCard({ icon: Icon, label, value, d, onClick }) {
   const chip = d === null
     ? { txt: 'nuevo', cls: 'text-brand', Ic: TrendingUp }
     : d > 0 ? { txt: `+${d}%`, cls: 'text-brand', Ic: TrendingUp }
     : d < 0 ? { txt: `${d}%`, cls: 'text-rose-300', Ic: TrendingDown }
     : { txt: '0%', cls: 'text-paper-dim', Ic: TrendingUp };
+  // Cuando recibe onClick es un botón — al click salta al detalle relacionado.
+  const Wrapper = onClick ? 'button' : 'div';
   return (
-    <div className="rounded-2xl border border-line bg-card p-4">
+    <Wrapper
+      {...(onClick ? { type: 'button', onClick } : {})}
+      className={`w-full text-left rounded-2xl border border-line bg-card p-4 transition-all ${onClick ? 'hover:border-brand/40 hover:shadow-glow-sm' : ''}`}
+    >
       <div className="flex items-center justify-between text-paper-dim">
         <span className="flex items-center gap-1.5"><Icon size={14} className="text-brand" /><span className="text-[11px] font-medium">{label}</span></span>
         <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${chip.cls}`}><chip.Ic size={12} /> {chip.txt}</span>
       </div>
       <div className="mt-1.5 font-display text-2xl font-semibold text-paper sm:text-3xl">{value}</div>
-    </div>
+      {onClick && <div className="mt-1 text-[10px] text-brand/70">Toca para ver →</div>}
+    </Wrapper>
   );
 }
 
@@ -1382,13 +1424,26 @@ function RecordSale({ asset, src, folderName, agencyId, soldBy, canSell = true, 
                   </div>
                 </div>
                 <div className="mt-4 flex items-center gap-2">
-                  <button onClick={dec} disabled={saving || sales <= 0} aria-label="Quitar una venta"
+                  <button onClick={dec} disabled={saving || sales <= 0} aria-label="Quitar una venta" title="Quitar una venta"
                     className="grid h-11 w-12 shrink-0 place-items-center rounded-xl border border-line text-lg font-bold text-paper-mute transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-40">−1</button>
-                  <button onClick={inc} disabled={saving}
-                    className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-brand text-base font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
+                  <button onClick={inc} disabled={saving || priceNum() <= 0} title={priceNum() <= 0 ? 'Pon un precio primero para poder sumar' : 'Registrar una venta'}
+                    className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-brand text-base font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-40">
                     {saving ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={17} /> +1 venta</>}
                   </button>
                 </div>
+                {/* Reset — poner sales y revenue en 0 (útil si te equivocaste) */}
+                {(sales > 0 || Number(revenue) > 0) && (
+                  <button onClick={async () => {
+                    if (!window.confirm('¿Borrar el conteo de ventas de esta pieza? Se pondrá en 0.')) return;
+                    setSales(0); setRevenue(0); persist(0, 0);
+                    // Borra TODAS las ventas registradas de esta pieza por esta agencia
+                    // (mantiene el histórico de otras agencias/admin intacto).
+                    await getSupabase().from('agency_sales').delete().eq('asset_id', asset.id).eq('agency_id', agencyId);
+                  }} disabled={saving}
+                    className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-lg border border-line px-3 py-1.5 text-[11px] font-semibold text-paper-mute transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-40">
+                    <RotateCcw size={11} /> Resetear a cero
+                  </button>
+                )}
               </div>
               <p className="mt-2 flex items-center gap-1.5 text-[11px] text-paper-dim"><CheckCircle2 size={12} className="text-brand" /> Cada venta es un récord — se atribuye a tu agencia y la ven la modelo y el admin.</p>
             </div>
