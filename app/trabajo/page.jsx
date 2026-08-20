@@ -5,8 +5,8 @@
 //        chatter → Pedidos only (creates requests for assigned creators).
 // Privacy: staff only ever sees stage names via the team_creators() RPC.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
@@ -84,8 +84,20 @@ function subEstimate(billRows, todayISO) {
   return { monthly, paying: paying.length, courtesy: courtesy.length, byPlan };
 }
 
+// Wrapper con Suspense — necesario porque TrabajoPageInner usa useSearchParams
+// (Next 14 requiere que esos hooks estén dentro de un boundary o el build falla).
+export const dynamic = 'force-dynamic';
 export default function TrabajoPage() {
+  return (
+    <Suspense fallback={<div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>}>
+      <TrabajoPageInner />
+    </Suspense>
+  );
+}
+
+function TrabajoPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [me, setMe] = useState(undefined);
   const [tab, setTab] = useState(null);       // null = todo cerrado; se abre al tocar una tarjeta
   const [creators, setCreators] = useState([]);
@@ -175,6 +187,13 @@ export default function TrabajoPage() {
   }, [router, load]);
 
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2600); }
+
+  // Permite abrir un tab directo via URL (?tab=pedidos, ?tab=feedback, etc).
+  // Se usa desde /admin (banner de pedidos pendientes) y desde emails.
+  useEffect(() => {
+    const t = searchParams?.get('tab');
+    if (t && ['creadoras', 'pedidos', 'feedback', 'altas', 'cobros', 'equipo', 'gestagencias'].includes(t)) setTab(t);
+  }, [searchParams]);
 
   // Live pop-up: when a new request notification lands for me, toast it.
   useEffect(() => {

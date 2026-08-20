@@ -230,12 +230,12 @@ export default function OwnerPage() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand">
-                <Sparkles size={14} /> Cuenta completada
+                <Sparkles size={14} /> QA · Modo Creadora (activa)
               </span>
               <p className="text-sm text-paper-mute">
-                Cómo se ve la cuenta <strong className="text-paper">después de pagar</strong>: contenido ya
-                entregado por el equipo, organizado en carpetas, con propósito de cada foto y el seguimiento
-                de ventas, ingresos y alcance. Así vive su cuenta un cliente activo.
+                <strong className="text-paper">La cuenta para hacer QA como creadora.</strong> Es una CC que ya pagó y tiene
+                contenido entregado — organizado en carpetas, con propósito de cada foto y seguimiento de
+                ventas, ingresos y alcance. Así vive su cuenta un cliente activo.
               </p>
               <div className="mt-3 inline-flex flex-col gap-0.5 rounded-xl border border-line bg-ink-2 px-3 py-2 font-mono text-xs text-paper-dim">
                 <div>{CLIENTA.email}</div>
@@ -245,7 +245,7 @@ export default function OwnerPage() {
           </div>
           <button onClick={() => enter(CLIENTA, 'clienta')} disabled={!!busy}
             className="group mt-4 flex items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-            {busy === 'clienta' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como cuenta completada <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+            {busy === 'clienta' ? <Loader2 size={18} className="animate-spin" /> : <>Entrar como creadora (QA) <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
           </button>
         </div>
 

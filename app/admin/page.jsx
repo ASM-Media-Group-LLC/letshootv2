@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ProposalEditor from '@/components/ProposalEditor';
@@ -488,6 +488,29 @@ export default function AdminPage() {
             <RefreshCw size={15} /> Actualizar
           </button>
         </div>
+
+        {/* Banner de peticiones pendientes — se ve en el dashboard admin
+            aunque no estés en el tab de pedidos, y linkea directo a /trabajo
+            donde el equipo las revisa y aprueba. */}
+        {(() => {
+          const pending = metrics.requests.filter((r) => r.status === 'pending').length;
+          const inProg = metrics.requests.filter((r) => r.status === 'in_progress').length;
+          if (pending === 0 && inProg === 0) return null;
+          return (
+            <a href="/trabajo?tab=pedidos" className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] p-4 transition-colors hover:bg-amber-500/[0.1]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-300"><Inbox size={16} /></span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-paper">
+                  {pending > 0 && <span className="text-amber-200">{pending} pedido{pending === 1 ? '' : 's'} por revisar</span>}
+                  {pending > 0 && inProg > 0 && <span className="text-paper-mute"> · </span>}
+                  {inProg > 0 && <span className="text-sky-300">{inProg} en producción</span>}
+                </p>
+                <p className="mt-0.5 text-[11px] text-paper-dim">Situaciones que agencias y modelos están pidiendo al equipo. Tócalo para revisar y avanzar.</p>
+              </div>
+              <span className="shrink-0 text-xs font-semibold text-amber-200">Ir a Pedidos →</span>
+            </a>
+          );
+        })()}
 
         <div className="mt-8 flex gap-1 overflow-x-auto border-b border-line">
           {[
