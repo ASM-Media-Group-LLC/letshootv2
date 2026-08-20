@@ -27,6 +27,7 @@ const ROLES = [
   { v: 'admin', l: 'Admin (acceso total)' },
   { v: 'supervisor', l: 'Empleado' },
   { v: 'agency', l: 'Agencia / Manager' },
+  { v: 'agent',  l: 'Agente vendedor' },
   { v: 'creator', l: 'Creadora' },
 ];
 const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), producer: 'Empleado', chatter: 'Empleado' };
@@ -255,6 +256,7 @@ export default function AdminPage() {
       : createdRole === 'agency' ? `Agencia creada${invitedNote} — la ves en la pestaña «Agencias»`
       : createdRole === 'creator' ? `Creadora creada${invitedNote} — la ves en «Registros» (quita el filtro si no aparece)`
       : createdRole === 'admin' ? `Admin creado${invitedNote}`
+      : createdRole === 'agent' ? `Agente creado${invitedNote} — entra a /agente para referir modelos`
       : 'Cuenta creada'
     );
     await load();
@@ -932,12 +934,27 @@ export default function AdminPage() {
                   <input value={nu.last_name} onChange={(e) => setNu((v) => ({ ...v, last_name: e.target.value }))} placeholder="Apellido"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 </div>
-                {/* Este modal crea SOLO empleados (equipo interno). Agencias y creadoras se
-                    crean del otro lado (Registros / Agencias). Por eso no hay selector de rol:
-                    aquí solo pones el puesto y marcas sus accesos. Para volver a alguien Admin,
-                    se cambia después desde su perfil (Tipo). */}
-                <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (opcional, ej. Coordinación)"
-                  className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                {/* Selector de rol: empleado interno (supervisor con caps) o agente vendedor.
+                    Agencias y creadoras se crean del otro lado (Registros / Agencias). */}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[
+                    { v: 'supervisor', l: 'Empleado del equipo', s: 'Sube contenido, atiende pedidos, etc.' },
+                    { v: 'agent',      l: 'Agente vendedor',      s: 'Solo refiere modelos por correo.' },
+                  ].map((r) => {
+                    const on = nu.role === r.v;
+                    return (
+                      <button type="button" key={r.v} onClick={() => setNu((v) => ({ ...v, role: r.v }))}
+                        className={`rounded-xl border p-3 text-left transition-colors ${on ? 'border-brand/60 bg-brand/[0.08]' : 'border-line bg-ink-2 hover:border-hair'}`}>
+                        <div className={`text-sm font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{r.l}</div>
+                        <div className="mt-0.5 text-[11px] text-paper-dim">{r.s}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {nu.role === 'supervisor' && (
+                  <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (opcional, ej. Coordinación)"
+                    className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                )}
                 {/* Sin campo de contraseña: la persona la pone ella misma por invitación (correo). */}
                 <input type="email" value={nu.email} onChange={(e) => setNu((v) => ({ ...v, email: e.target.value }))} placeholder="Correo (opcional)"
                   className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
@@ -975,7 +992,11 @@ export default function AdminPage() {
                 <button type="submit" disabled={creating}
                   className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
                   {creating ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />}
-                  {nu.role === 'supervisor' ? `Crear puesto con ${nuCaps.length} acceso${nuCaps.length === 1 ? '' : 's'}` : 'Crear cuenta'}
+                  {nu.role === 'supervisor'
+                    ? `Crear puesto con ${nuCaps.length} acceso${nuCaps.length === 1 ? '' : 's'}`
+                    : nu.role === 'agent'
+                    ? 'Crear cuenta de agente'
+                    : 'Crear cuenta'}
                 </button>
                 {nuError && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{nuError}</p>}
                 {createdCreds && (
