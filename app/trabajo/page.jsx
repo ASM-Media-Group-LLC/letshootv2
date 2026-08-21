@@ -337,7 +337,7 @@ function TrabajoPageInner() {
     ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
     ...(can('requests') ? [{ id: 'pedidos', icon: Inbox, label: 'Pedidos', value: nf((counts?.reqPend || 0) + (counts?.reqProg || 0)), sub: `${counts?.reqPend || 0} pendientes · ${counts?.reqProg || 0} en producción`, alert: (counts?.reqPend || 0) > 0 }] : []),
     ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} me encanta`, alert: (counts?.fbOpen || 0) > 0 }] : []),
-    ...(can('content') ? [{ id: 'miproduccion', icon: TrendingUp, label: 'Mi producción', value: nf(mine.length), sub: `${myWeek} en 7 días · ${myMonth} este mes` }] : []),
+    ...(can('content') ? [{ id: 'miproduccion', icon: TrendingUp, label: 'Lo que TÚ subiste', value: nf(mine.length), sub: `${myWeek} en 7 días · ${myMonth} este mes` }] : []),
   ];
   const BIZ_CARDS = [
     // «Cuentas» es la ENTRADA al dashboard de dinero — la cifra del mes en la
@@ -458,16 +458,57 @@ function TrabajoPageInner() {
                 </button>
 
                 {colaOpen && (
-                  queue.length === 0 ? (
-                    <div className="mt-2 flex items-center gap-3 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand"><Check size={17} /></span>
-                      <div>
-                        <p className="text-sm font-medium text-paper">Estás al día</p>
-                        <p className="text-[11px] text-paper-dim">Sin pedidos ni cambios pendientes.{can('content') ? ' Puedes adelantar contenido desde Creadoras.' : ''}</p>
+                  <>
+                    {/* Pendientes de contenido — modelos activas cuyo paquete mensual no está completo.
+                        Aparecen ARRIBA de los pedidos/feedback porque es la razón por la que la banda
+                        principal dice «N pendientes de contenido». */}
+                    {creatorsPendingCount > 0 && (
+                      <div className="mt-2">
+                        <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-rose-300">
+                          <ImageIcon size={11} /> Modelos con paquete incompleto · {creatorsPendingCount}
+                        </p>
+                        <div className="space-y-2">
+                          {Object.entries(pendingByCreator)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([cid, missing]) => {
+                              const c = creators.find((x) => x.id === cid);
+                              if (!c) return null;
+                              return (
+                                <button key={cid} onClick={() => { setFocusCreator(cid); setTab('creadoras'); }}
+                                  className="group flex w-full items-center gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/[0.04] p-3 text-left transition-colors hover:border-rose-500/50 hover:bg-rose-500/[0.08]">
+                                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-500/15 text-rose-300"><ImageIcon size={16} /></span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium text-paper">{c.stage_name || c.full_name || 'Creadora'}</span>
+                                    <span className="block truncate text-[11px] text-paper-dim">
+                                      Le faltan <span className="font-semibold text-rose-300">{missing} foto{missing === 1 ? '' : 's'}</span> del pack {(c.plan || 'core').toUpperCase()} de este mes
+                                    </span>
+                                  </span>
+                                  <span className="hidden shrink-0 items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-3 py-1.5 text-[11px] font-semibold text-brand sm:inline-flex">
+                                    <Upload size={12} /> Subir
+                                  </span>
+                                  <ChevronRight size={16} className="shrink-0 text-paper-dim transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+                                </button>
+                              );
+                            })}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="mt-2 space-y-2">
+                    )}
+
+                    {queue.length === 0 && creatorsPendingCount === 0 ? (
+                      <div className="mt-2 flex items-center gap-3 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand"><Check size={17} /></span>
+                        <div>
+                          <p className="text-sm font-medium text-paper">Estás al día</p>
+                          <p className="text-[11px] text-paper-dim">Sin pedidos ni cambios pendientes.{can('content') ? ' Puedes adelantar contenido desde Creadoras.' : ''}</p>
+                        </div>
+                      </div>
+                    ) : queue.length > 0 && (
+                      <div className={`space-y-2 ${creatorsPendingCount > 0 ? 'mt-3' : 'mt-2'}`}>
+                        {queue.length > 0 && creatorsPendingCount > 0 && (
+                          <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+                            <Inbox size={11} /> Pedidos y cambios · {queue.length}
+                          </p>
+                        )}
                       {queue.map((it) => {
                         const m = QMETA[it.kind];
                         return (
@@ -490,7 +531,8 @@ function TrabajoPageInner() {
                         );
                       })}
                     </div>
-                  )
+                    )}
+                  </>
                 )}
               </section>
             )}
@@ -1216,8 +1258,9 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                 className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-center text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               <p className="text-center text-[10px] leading-tight text-paper-dim">Tip: usa «Situación / subcarpeta» (ej. <span className="text-paper-mute">Cafetería / mañana</span>) y se agrupa como subcarpeta.</p>
               <button type="submit" disabled={creating || !newName.trim()}
-                className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20 disabled:opacity-40">
-                {creating ? 'Creando…' : 'Crear entrega'}
+                title={!newName.trim() ? 'Escribe primero el nombre de la entrega arriba' : 'Crear entrega'}
+                className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20 disabled:cursor-not-allowed disabled:opacity-40">
+                {creating ? 'Creando…' : !newName.trim() ? 'Escribe primero un nombre' : 'Crear entrega'}
               </button>
             </form>
           </div>

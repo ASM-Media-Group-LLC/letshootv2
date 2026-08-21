@@ -202,6 +202,7 @@ export default function AgenciaPage() {
   const [ctx, setCtx] = useState({ agencyId: null, agencyName: '', isOwner: true, caps: ['content', 'sales', 'requests', 'metrics'] });
   const can = (c) => ctx.caps.includes(c);
   const [models, setModels] = useState([]);       // [{id, name, status, assets:[...]}]
+  const [weeklyByCreator, setWeeklyByCreator] = useState({}); // { creator_id: [{week_start, sales, revenue}, ...] } — para sumar al KPI mensual
   const [folders, setFolders] = useState({});     // folderId -> name
   const [requests, setRequests] = useState([]);
   const [urls, setUrls] = useState({});
@@ -212,6 +213,7 @@ export default function AgenciaPage() {
   const [detail, setDetail] = useState(null);     // asset being edited
   const [toast, setToast] = useState('');
   const [reqOpen, setReqOpen] = useState(false);
+  const [editReq, setEditReq] = useState(null); // request seleccionado para editar en modal
   const [modelProfile, setModelProfile] = useState(null); // creator_profile of the selected model (status only)
   const [atab, setAtab] = useState(null);         // null (cerrado) | modelos | contenido | ingresos | reacciones
   const [likeCount, setLikeCount] = useState(0);  // total de likes + comentarios de sus modelos
@@ -305,6 +307,16 @@ export default function AgenciaPage() {
     // Solicitudes de salida pendientes (modelos que piden dejar la agencia).
     const { data: leaves } = await supabase.rpc('agency_leave_requests');
     setLeaveReqs(leaves || []);
+
+    // Weekly sales por modelo — para SUMAR al KPI de Ingresos/Vendidas del mes.
+    // Antes la agencia veía Ingresos ($20 de assets) pero no reflejaba los
+    // totales semanales que metía en «Ventas de la semana». Ahora suman.
+    const { data: weekly } = await supabase.from('agency_weekly_sales')
+      .select('creator_id, week_start, sales, revenue')
+      .in('creator_id', ids);
+    const weeklyByCreator = {};
+    (weekly || []).forEach((w) => { (weeklyByCreator[w.creator_id] = weeklyByCreator[w.creator_id] || []).push(w); });
+    setWeeklyByCreator(weeklyByCreator);
 
     setFolders(folderMap);
     setModels(list);
@@ -441,6 +453,14 @@ export default function AgenciaPage() {
   const prevAssets = model ? model.assets.filter((a) => ymOf(a.deliver_date) === shiftYm(month || '2026-01', -1)) : [];
   const cur = aggregate(monthAssets);
   const prev = aggregate(prevAssets);
+  // Suma las «Ventas de la semana» del mes en curso (weekly bulk totals).
+  // Esa métrica vive en agency_weekly_sales — antes no se reflejaba en el KPI
+  // de Ingresos/Vendidas y confundía cuando había ventas semanales sin +1 individual.
+  const wkRows = model ? (weeklyByCreator[model.id] || []) : [];
+  const wkCur = wkRows.filter((w) => ymOf(w.week_start) === month).reduce((a, w) => ({ sales: a.sales + (w.sales || 0), revenue: a.revenue + Number(w.revenue || 0) }), { sales: 0, revenue: 0 });
+  const wkPrev = wkRows.filter((w) => ymOf(w.week_start) === shiftYm(month || '2026-01', -1)).reduce((a, w) => ({ sales: a.sales + (w.sales || 0), revenue: a.revenue + Number(w.revenue || 0) }), { sales: 0, revenue: 0 });
+  cur.sales += wkCur.sales; cur.revenue += wkCur.revenue;
+  prev.sales += wkPrev.sales; prev.revenue += wkPrev.revenue;
   const curPhotos = monthAssets.filter((a) => a.type !== 'video').length;
   const curVideos = monthAssets.filter((a) => a.type === 'video').length;
   const prevPhotos = prevAssets.filter((a) => a.type !== 'video').length;
@@ -807,15 +827,7 @@ export default function AgenciaPage() {
                                         delivered, el pedido queda inmutable (el equipo trabaja en él). */}
                                     {r.status === 'pending' && (
                                       <>
-                                        <button onClick={async () => {
-                                          const next = window.prompt('Título del pedido', r.title);
-                                          if (next === null) return;
-                                          const t = next.trim(); if (!t) return;
-                                          const desc = window.prompt('Descripción (opcional)', r.description || '') || '';
-                                          const { error } = await getSupabase().from('requests').update({ title: t, description: desc.trim() || null }).eq('id', r.id);
-                                          if (error) { flash('Error: ' + error.message); return; }
-                                          flash('Pedido actualizado'); refresh();
-                                        }}
+                                        <button onClick={() => setEditReq(r)}
                                           className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-brand" title="Editar">
                                           <Pencil size={12} />
                                         </button>
@@ -1052,6 +1064,14 @@ export default function AgenciaPage() {
         />
       )}
 
+      {/* Edit request — modal con textarea para editar título/descripción largos.
+          Antes se usaba window.prompt que corta textos largos. */}
+      {editReq && (
+        <EditRequestModal req={editReq} onClose={() => setEditReq(null)}
+          onSaved={async () => { setEditReq(null); await refresh(); flash('Pedido actualizado'); }}
+          onError={(msg) => flash('Error: ' + msg)} />
+      )}
+
       {/* New request — pop-up */}
       {reqOpen && model && (
         <div className="fixed inset-0 z-[55] flex items-center justify-center bg-ink/80 p-5 backdrop-blur-sm" onClick={() => setReqOpen(false)}>
@@ -1208,6 +1228,56 @@ function AgencyReqThread({ req, onSent, flash }) {
           </form>
         </div>
       )}
+    </div>
+  );
+}
+
+// Modal para editar título + descripción de un pedido pending. Reemplaza al
+// window.prompt() que se cortaba en textos largos.
+function EditRequestModal({ req, onClose, onSaved, onError }) {
+  const [title, setTitle] = useState(req.title || '');
+  const [description, setDescription] = useState(req.description || '');
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    const t = title.trim(); if (!t) return;
+    setSaving(true);
+    const { error } = await getSupabase().from('requests').update({ title: t, description: description.trim() || null }).eq('id', req.id);
+    setSaving(false);
+    if (error) { onError && onError(error.message); return; }
+    onSaved && onSaved();
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/85 p-5 backdrop-blur-sm" onClick={() => !saving && onClose()}>
+      <form onSubmit={save} onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-2xl rounded-3xl border border-line bg-card p-6 shadow-glow-sm sm:p-7">
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="font-display text-lg font-semibold text-paper">Editar pedido</h3>
+            <p className="mt-0.5 text-xs text-paper-dim">Solo mientras el equipo no lo haya empezado.</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={saving} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
+        </div>
+        <label className="mb-3 block">
+          <span className="mb-1 block text-[11px] font-medium text-paper-dim">Título</span>
+          <input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)}
+            className="w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-medium text-paper-dim">Descripción</span>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={10}
+            placeholder="Describe con detalle: escenas, outfits, tono, ejemplos…"
+            className="w-full resize-y rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm leading-relaxed text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+        </label>
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={saving}
+            className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper disabled:opacity-50">Cancelar</button>
+          <button type="submit" disabled={saving || !title.trim()}
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-50">
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Guardar cambios
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
