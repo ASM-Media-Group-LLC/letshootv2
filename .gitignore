@@ -13,3 +13,7 @@ next-env.d.ts
 *.log
 
 .vercel
+
+# Handoff
+.handoff-passphrase.txt
+.env.production.gpg
