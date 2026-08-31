@@ -7,7 +7,6 @@
 // Sales live HERE (attributed to the agency), not on the creator's own panel.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
@@ -21,6 +20,7 @@ import MediaThumb from '@/components/MediaThumb';
 import { ymOf, ymLabel, shiftYm, aggregate, pct, initials } from '@/lib/portal-stats';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
+import PortalHeader from '@/components/PortalHeader';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import WelcomeTour from '@/components/WelcomeTour';
@@ -402,29 +402,46 @@ export default function AgenciaPage() {
     return rows.sort((x, y) => (y.deliver_date || '').localeCompare(x.deliver_date || ''));
   }, [models]);
 
+  // Suma las «Ventas de la semana» (agency_weekly_sales) de una modelo. El
+  // dashboard mensual por modelo ya las suma; los roll-ups de abajo deben
+  // hacerlo también o subcontarían — las agencias meten el total semanal de
+  // un tirón, no foto por foto.
+  const weeklyTotalsFor = (id) =>
+    (weeklyByCreator[id] || []).reduce(
+      (a, w) => ({ sales: a.sales + (w.sales || 0), revenue: a.revenue + Number(w.revenue || 0) }),
+      { sales: 0, revenue: 0 },
+    );
+
   // Per-model income roll-up — for the Ingresos tab.
   const income = useMemo(() => {
     const rows = models.map((m) => {
-      const sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
-      const revenue = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
+      const wk = weeklyTotalsFor(m.id);
+      const sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0) + wk.sales;
+      const revenue = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0) + wk.revenue;
       return { id: m.id, name: m.name, handle: m.handle, avatar_url: m.avatar_url,
         delivered: m.assets.length, sales, revenue };
     }).sort((a, b) => b.revenue - a.revenue);
     const total = rows.reduce((s, r) => s + r.revenue, 0);
     return { rows, total };
-  }, [models]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, weeklyByCreator]);
 
   // Agency-wide books.
   const books = useMemo(() => {
     const all = models.flatMap((m) => m.assets);
+    const wkAll = models.reduce((acc, m) => {
+      const wk = weeklyTotalsFor(m.id);
+      return { sales: acc.sales + wk.sales, revenue: acc.revenue + wk.revenue };
+    }, { sales: 0, revenue: 0 });
     return {
       models: models.length,
       delivered: all.length,
-      sales: all.reduce((s, a) => s + (a.sales_count || 0), 0),
-      revenue: all.reduce((s, a) => s + Number(a.revenue || 0), 0),
+      sales: all.reduce((s, a) => s + (a.sales_count || 0), 0) + wkAll.sales,
+      revenue: all.reduce((s, a) => s + Number(a.revenue || 0), 0) + wkAll.revenue,
       reach: all.reduce((s, a) => s + (a.reach || 0), 0),
     };
-  }, [models]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, weeklyByCreator]);
 
   if (loading) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
@@ -509,34 +526,19 @@ export default function AgenciaPage() {
         { eyebrow: 'Contenido e ingresos', title: 'Contenido y ventas', body: 'Revisa todo lo entregado y registra las ventas de cada modelo, mes a mes.' },
         { eyebrow: 'Pedidos', title: 'Pide sets', body: 'Solicita contenido específico para una modelo y el equipo de LetShoot lo produce.' },
       ]} />
-      <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
-          <div className="flex min-w-0 items-center gap-3">
-            <Link href="/" aria-label="Ir al home de LetShoot" className="flex shrink-0 items-center transition-opacity hover:opacity-80" title="Volver al home"><Logo size="sm" /></Link>
-            <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
-              <Building2 size={12} /> Agencia · Manager
-            </span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3">
-              <Avatar src={me?.avatar_url} name={me?.full_name} size="xs" />
-              <span className="hidden leading-tight sm:block">
-                <span className="block text-xs font-semibold text-paper">{me?.full_name}</span>
-                <span className="block text-[10px] text-paper-dim">Administra a tus modelos</span>
-              </span>
-            </div>
-            {/* Ver como… — la agencia puede abrir el panel de una de sus modelos
-                tal como ella lo ve. Solo si tiene modelos asignadas. */}
-            {models.length > 0 && (
-              <ImpersonateMenu creators={models.map((m) => ({ id: m.id, full_name: m.name, handle: m.handle, avatar_url: m.avatar_url, email: m.email }))} />
-            )}
-            <button onClick={async () => { await signOut(); router.replace('/login'); }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-              <LogOut size={15} /> <span className="hidden sm:inline">Salir</span>
-            </button>
-          </div>
-        </div>
-      </header>
+      <PortalHeader
+        section="Agencia"
+        sectionIcon={Building2}
+        me={me}
+        roleLabel={ctx.isOwner ? (ctx.agencyName || me?.full_name || 'Agencia') : `Empleado · ${ctx.agencyName || 'Agencia'}`}
+        extras={models.length > 0 ? (
+          /* Ver como… — la agencia puede abrir el panel de una de sus modelos
+             tal como ella lo ve. Solo si tiene modelos asignadas. */
+          <ImpersonateMenu creators={models.map((m) => ({ id: m.id, full_name: m.name, handle: m.handle, avatar_url: m.avatar_url, email: m.email }))} />
+        ) : null}
+        backHref="/"
+        maxW="max-w-6xl"
+      />
 
       <main className="mx-auto max-w-6xl px-5 py-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -635,7 +637,7 @@ export default function AgenciaPage() {
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {BOOK_KPIS.map((k) => (
                     <button key={k.label} onClick={() => { setAtab(k.view); setSel(null); }}
-                      className="group rounded-2xl border border-line bg-card p-4 text-left transition-colors hover:border-brand/40">
+                      className="card3d group rounded-2xl border border-line bg-card p-4 text-left hover:border-brand/40">
                       <div className="flex items-center justify-between gap-2 text-paper-dim">
                         <span className="flex items-center gap-2"><k.icon size={15} className="text-brand" /><span className="text-xs font-medium">{k.label}</span></span>
                         <ChevronRight size={15} className="shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
@@ -714,7 +716,7 @@ export default function AgenciaPage() {
                     </div>
                   </div>
                   <button onClick={() => setReqOpen(true)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
+                    className="btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold">
                     <Plus size={15} /> Nueva petición
                   </button>
                 </div>
@@ -784,9 +786,9 @@ export default function AgenciaPage() {
                 <div className="mt-6 inline-flex rounded-full border border-line bg-card p-1">
                   {[{ id: 'content', l: 'Contenido', Ic: ImageIcon }, { id: 'pedidos', l: 'Pedidos', Ic: Clock }].map((tb) => (
                     <button key={tb.id} onClick={() => setMtab(tb.id)}
-                      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${mtab === tb.id ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'}`}>
+                      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${mtab === tb.id ? 'tab3d-active' : 'text-paper-mute hover:text-paper'}`}>
                       <tb.Ic size={15} /> {tb.l}
-                      {tb.id === 'pedidos' && modelRequests.length > 0 && <span className={`rounded-full px-1.5 text-[10px] font-bold ${mtab === tb.id ? 'bg-on-accent/20' : 'bg-brand/15 text-brand'}`}>{modelRequests.length}</span>}
+                      {tb.id === 'pedidos' && modelRequests.length > 0 && <span className="rounded-full bg-brand/15 px-1.5 text-[10px] font-bold text-brand">{modelRequests.length}</span>}
                     </button>
                   ))}
                 </div>
@@ -797,7 +799,7 @@ export default function AgenciaPage() {
                       <div className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center">
                         <p className="text-sm text-paper-mute">Sin pedidos todavía.</p>
                         <button onClick={() => setReqOpen(true)}
-                          className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+                          className="btn3d mt-4 inline-flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold">
                           <Plus size={15} /> Nueva petición
                         </button>
                       </div>
@@ -1111,7 +1113,7 @@ export default function AgenciaPage() {
                   <input readOnly value={newLink} onFocus={(e) => e.target.select()}
                     className="min-w-0 flex-1 rounded-lg border border-line bg-ink px-3 py-2 text-xs text-paper" />
                   <button onClick={() => copyLink(newLink.split('/unirse/')[1])}
-                    className="shrink-0 rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-xs font-semibold text-brand hover:bg-brand/20">Copiar</button>
+                    className="btn3d-ghost shrink-0 rounded-lg px-3 py-2 text-xs font-semibold">Copiar</button>
                 </div>
               </div>
             )}
@@ -1167,7 +1169,7 @@ function StatCard({ icon: Icon, label, value, d, onClick }) {
   return (
     <Wrapper
       {...(onClick ? { type: 'button', onClick } : {})}
-      className={`w-full text-left rounded-2xl border border-line bg-card p-4 transition-all ${onClick ? 'hover:border-brand/40 hover:shadow-glow-sm' : ''}`}
+      className={`card3d w-full text-left rounded-2xl border border-line bg-card p-4 ${onClick ? 'hover:border-brand/40' : ''}`}
     >
       <div className="flex items-center justify-between text-paper-dim">
         <span className="flex items-center gap-1.5"><Icon size={14} className="text-brand" /><span className="text-[11px] font-medium">{label}</span></span>
@@ -1615,7 +1617,7 @@ function AgencyTeamTab({ agencyId, models, flash }) {
         </div>
         {!open && (
           <button onClick={() => { setOpen(true); setErr(''); setCreds(null); }}
-            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+            className="btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold">
             <UserPlus size={15} /> Invitar empleado
           </button>
         )}

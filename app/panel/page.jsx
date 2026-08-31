@@ -9,20 +9,18 @@
 
 import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import {
-  LogOut, Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, MessageSquare, User, Bell,
+  Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, MessageSquare, Bell,
   X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
   ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff, Eye, Clock, Loader2, TrendingUp, TrendingDown, Maximize2,
 } from 'lucide-react';
-import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
+import { getUserProfile, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
-import { usePortal } from '@/lib/portal-i18n';
+import { usePortal, CREATOR_TOUR, HEADER_LABELS } from '@/lib/portal-i18n';
 import { ymOf, ymLabel, shiftYm, initials } from '@/lib/portal-stats';
-import Logo from '@/components/Logo';
+import PortalHeader from '@/components/PortalHeader';
 import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import Avatar from '@/components/Avatar';
-import LangToggle from '@/components/LangToggle';
 import WelcomeTour from '@/components/WelcomeTour';
 import LoraUploader from '@/components/LoraUploader';
 
@@ -427,7 +425,7 @@ function PanelPageInner() {
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
       {readOnly && (
-        <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-amber-400/30 bg-amber-400/10 px-4 py-2 text-amber-200">
+        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-amber-400/30 bg-amber-400/10 px-4 py-2 text-amber-200">
           <span className="inline-flex items-center gap-2 text-[13px] font-medium">
             <Eye size={15} /> {isEs ? <>Vista del equipo — estás viendo el panel de <b className="text-amber-100">{viewAs?.name}</b> tal como ella lo ve. Solo lectura.</> : <>Team view — you're seeing <b className="text-amber-100">{viewAs?.name}</b>'s panel exactly as she sees it. Read-only.</>}
           </span>
@@ -438,19 +436,16 @@ function PanelPageInner() {
         </div>
       )}
       {!readOnly && (
-      <WelcomeTour storageKey="ls_tour_creator_v1" steps={[
-        { eyebrow: 'Bienvenida', title: 'Te damos la bienvenida', body: 'Aquí recibes tu contenido listo para vender, cada día. Te mostramos lo básico en 20 segundos.' },
-        { eyebrow: 'Calendario', title: 'Tu calendario', body: 'Los días que tu equipo sube contenido quedan marcados. Toca un día para ver y descargar lo de esa fecha.' },
-        { eyebrow: 'Galería', title: 'Toda tu galería', body: 'Todo tu contenido en un solo lugar, listo para descargar y vender donde quieras.' },
-        { eyebrow: 'Pedidos', title: 'Pide lo que necesites', body: '¿Quieres un set específico? Crea un pedido y tu equipo lo produce por ti.' },
-      ]} />
+      <WelcomeTour storageKey="ls_tour_creator_v1" steps={CREATOR_TOUR[lang] || CREATOR_TOUR.en} />
       )}
-      <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
-          <div className="flex items-center gap-3"><Logo size="sm" /><span className="hidden text-sm text-paper-dim sm:inline">· {(lang || 'es').startsWith('es') ? 'Tu portal' : 'Your portal'}</span></div>
-          <div className="flex items-center gap-2.5">
-            <span className="hidden text-sm text-paper-mute md:inline">{t.panel.hello} {state.profile?.full_name || t.panel.creator}</span>
-            <LangToggle />
+      <PortalHeader
+        section="Panel"
+        sectionIcon={Sparkles}
+        me={state.profile}
+        roleLabel={state.profile?.stage_name || t.panel.creator}
+        labels={HEADER_LABELS[lang] || HEADER_LABELS.en}
+        extras={
+          <>
             <div className="relative">
               <button onClick={openBell} aria-label={t.panel.notifications} className="relative flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
                 <Bell size={16} />
@@ -495,13 +490,12 @@ function PanelPageInner() {
                 </>
               )}
             </div>
-            <Link href="/cuenta" aria-label={t.panel.myAccount} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><User size={16} /></Link>
-            {readOnly
-              ? <button onClick={() => { window.close(); if (!window.closed) router.push('/admin'); }} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><X size={15} /> <span className="hidden sm:inline">{isEs ? 'Cerrar' : 'Close'}</span></button>
-              : <button onClick={async () => { await signOut(); router.replace('/login'); }} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><LogOut size={15} /> <span className="hidden sm:inline">{t.common.exit}</span></button>}
-          </div>
-        </div>
-      </header>
+            {readOnly && (
+              <button onClick={() => { window.close(); if (!window.closed) router.push('/admin'); }} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><X size={15} /> <span className="hidden sm:inline">{isEs ? 'Cerrar' : 'Close'}</span></button>
+            )}
+          </>
+        }
+      />
 
       <main className="mx-auto max-w-5xl px-5 py-8">
         <div className="flex items-center gap-4">
@@ -546,11 +540,11 @@ function PanelPageInner() {
           </div>
         </div>
 
-        <div className="mt-5 inline-flex max-w-full overflow-x-auto rounded-full border border-line bg-card p-1">
+        <div className="mt-5 flex max-w-full overflow-x-auto border-b border-line">
           {NAV.map((n) => (
-            <button key={n.id} onClick={() => setView(n.id)} className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${view === n.id ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'}`}>
+            <button key={n.id} onClick={() => setView(n.id)} className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-semibold transition-colors ${view === n.id ? 'tab3d-active' : 'text-paper-mute hover:text-paper'}`}>
               <n.icon size={15} /> {n.label}
-              {n.id === 'requests' && requests.length > 0 && <span className={`rounded-full px-1.5 text-[10px] font-bold ${view === n.id ? 'bg-on-accent/20' : 'bg-brand/15 text-brand'}`}>{requests.length}</span>}
+              {n.id === 'requests' && requests.length > 0 && <span className="rounded-full bg-brand/15 px-1.5 text-[10px] font-bold text-brand">{requests.length}</span>}
             </button>
           ))}
         </div>
@@ -570,7 +564,7 @@ function PanelPageInner() {
                 const on = numCard === k.id;
                 return (
                   <button key={k.id} onClick={() => setNumCard(k.id)}
-                    className={`rounded-2xl border p-3.5 text-center transition-colors sm:text-left ${on ? 'border-brand/60 bg-brand/[0.08] shadow-glow-sm' : 'border-line bg-card hover:border-brand/40'}`}>
+                    className={`card3d rounded-2xl border p-3.5 text-center sm:text-left ${on ? 'card3d-active border-brand/60 bg-brand/[0.08]' : 'border-line bg-card'}`}>
                     <div className="flex items-center justify-center gap-1.5 text-paper-dim sm:justify-start"><k.icon size={13} className={on ? 'text-brand' : 'text-brand'} /><span className="text-[11px] font-medium">{k.label}</span></div>
                     <div className="mt-1 font-display text-xl font-semibold sm:text-2xl">{k.value}</div>
                   </button>
@@ -734,7 +728,7 @@ function PanelPageInner() {
                   {selected.size} {selected.size === 1 ? (isEs ? 'seleccionada' : 'selected') : (isEs ? 'seleccionadas' : 'selected')}
                 </span>
                 <button onClick={downloadSelected} disabled={bulkDownloading}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-xs font-semibold text-on-accent transition-colors hover:brightness-110 disabled:opacity-60">
+                  className="btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-xs font-bold">
                   <Download size={13} /> {isEs ? `Descargar ${selected.size}` : `Download ${selected.size}`}
                 </button>
               </div>
@@ -889,7 +883,7 @@ function PanelPageInner() {
           <div className="mt-6">
             <div className="flex items-center justify-between">
               <p className="text-sm text-paper-mute">{t.panel.requests}</p>
-              {!readOnly && <button onClick={() => setReqOpen((v) => !v)} className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20"><Plus size={15} /> {t.panel.askContent}</button>}
+              {!readOnly && <button onClick={() => setReqOpen((v) => !v)} className="btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold"><Plus size={15} /> {t.panel.askContent}</button>}
             </div>
             {reqOpen && !readOnly && <RequestForm t={t} onSubmit={createRequest} />}
             <div className="mt-4 space-y-2.5">
@@ -1019,7 +1013,7 @@ function MomentumBand({ weekly, locale, isEs }) {
   const wLabel = (d) => new Date(d + 'T00:00:00').toLocaleDateString(locale || 'es-US', { day: 'numeric', month: 'short' });
 
   return (
-    <div className="mb-4 overflow-hidden rounded-2xl border border-brand/30 bg-gradient-to-br from-brand/[0.10] to-transparent p-4 sm:p-5">
+    <div className="card3d mb-4 overflow-hidden rounded-2xl border border-brand/30 bg-gradient-to-br from-brand/[0.10] to-transparent p-4 sm:p-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand">
@@ -1149,7 +1143,7 @@ function RequestForm({ t, onSubmit }) {
         </div>
       </div>
 
-      <button type="submit" disabled={saving} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60"><Send size={14} /> {saving ? t.common.saving : t.panel.reqSend}</button>
+      <button type="submit" disabled={saving} className="btn3d mt-3 inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold"><Send size={14} /> {saving ? t.common.saving : t.panel.reqSend}</button>
     </form>
   );
 }

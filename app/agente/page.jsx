@@ -8,12 +8,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { LogOut, UserPlus, Loader2, Mail, CheckCircle2, Clock, DollarSign, X, Users, Send, RotateCcw } from 'lucide-react';
-import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
+import { UserPlus, Loader2, Mail, CheckCircle2, Clock, DollarSign, X, Users, Send, RotateCcw } from 'lucide-react';
+import { getUserProfile, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
-import Logo from '@/components/Logo';
-import Avatar from '@/components/Avatar';
+import PortalHeader from '@/components/PortalHeader';
 
 const STATUS = {
   invited:   { label: 'Invitada',    Ic: Mail,          cls: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
@@ -60,24 +58,14 @@ export default function AgentePage() {
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
-      <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3.5">
-          <Link href="/" aria-label="Ir al home" className="flex items-center transition-opacity hover:opacity-80"><Logo size="sm" /></Link>
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3">
-              <Avatar src={me.profile?.avatar_url} name={me.profile?.full_name} size="xs" />
-              <span className="hidden leading-tight sm:block">
-                <span className="block text-xs font-semibold text-paper">{me.profile?.full_name}</span>
-                <span className="block text-[10px] text-paper-dim">Agente · Vendedor</span>
-              </span>
-            </div>
-            <button onClick={async () => { await signOut(); router.replace('/login'); }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-              <LogOut size={15} /> <span className="hidden sm:inline">Salir</span>
-            </button>
-          </div>
-        </div>
-      </header>
+      <PortalHeader
+        section="Agente"
+        sectionIcon={Users}
+        me={me.profile}
+        roleLabel={me.profile?.role === 'admin' ? 'Administración' : 'Agente vendedor'}
+        backHref="/"
+        maxW="max-w-4xl"
+      />
 
       <main className="mx-auto max-w-4xl px-5 py-10">
         {/* Hero */}
@@ -87,7 +75,7 @@ export default function AgentePage() {
             <p className="mt-1.5 text-sm text-paper-mute">Refiere modelos con solo su correo. Le llega la invitación para clonarse; tú llevas el récord.</p>
           </div>
           <button onClick={() => setReOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+            className="btn3d inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold">
             <UserPlus size={15} /> Referir nueva modelo
           </button>
         </div>
@@ -110,7 +98,7 @@ export default function AgentePage() {
               <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-brand/10 text-brand"><UserPlus size={20} /></div>
               <p className="font-display text-base font-semibold text-paper">Aún no has referido a nadie</p>
               <p className="mt-1 text-sm text-paper-mute">Empieza con la primera. Solo necesitas su correo.</p>
-              <button onClick={() => setReOpen(true)} className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
+              <button onClick={() => setReOpen(true)} className="btn3d mt-4 inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold">
                 <UserPlus size={14} /> Referir primera modelo
               </button>
             </div>
@@ -155,7 +143,7 @@ function Stat({ n, label, Ic, tone }) {
   const tones = { amber: 'text-amber-300', brand: 'text-brand', emerald: 'text-emerald-300' };
   const cls = tones[tone] || 'text-paper-mute';
   return (
-    <div className="rounded-2xl border border-line bg-card p-4">
+    <div className="card3d rounded-2xl border border-line bg-card p-4">
       <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-paper-dim">
         <Ic size={12} className={cls} /> {label}
       </div>
@@ -225,7 +213,7 @@ function ReferModal({ onClose, onDone }) {
         </div>
         {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
         <button type="submit" disabled={busy}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3 text-sm font-bold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:opacity-60">
+          className="btn3d mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold">
           {busy ? <><Loader2 size={15} className="animate-spin" /> Enviando…</> : <><Send size={15} /> Enviar invitación</>}
         </button>
       </form>

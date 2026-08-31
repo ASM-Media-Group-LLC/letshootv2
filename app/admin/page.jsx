@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox } from 'lucide-react';
 import Avatar from '@/components/Avatar';
+import StatusDot, { StatusBanner } from '@/components/StatusDot';
+import PortalHeader from '@/components/PortalHeader';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ProposalEditor from '@/components/ProposalEditor';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
@@ -36,15 +38,6 @@ const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), produc
 const OWNER_EMAIL = 'rusin24@gmail.com';
 const isOwnerAccount = (u) => !!u && u.email === OWNER_EMAIL;
 
-// Presets de puesto: cada uno arma un rol de equipo listo (título + accesos). El admin
-// elige uno y puede ajustar los accesos abajo. «Personalizado» parte de cero.
-const TEAM_PRESETS = [
-  { id: 'uploader', label: 'Uploader', icon: Upload,        title: 'Uploader',            caps: ['content', 'requests', 'feedback'] },
-  { id: 'kyc',      label: 'Verificación', icon: IdCard,    title: 'Verificación',        caps: ['datos', 'kyc'] },
-  { id: 'soporte',  label: 'Servicio al cliente', icon: Users, title: 'Servicio al cliente', caps: ['requests', 'feedback'] },
-  { id: 'manager',  label: 'Manager (todo)', icon: ShieldCheck, title: 'Manager',          caps: ['datos', 'kyc', 'content', 'requests', 'feedback', 'metrics', 'team'] },
-  { id: 'custom',   label: 'Personalizado', icon: SlidersHorizontal, title: '',            caps: [] },
-];
 
 // Dynamic staff functions — assigned one by one to internal team members.
 // Only the admin has all functions implicitly. There is NO "servicio al
@@ -68,12 +61,16 @@ const OB = {
   paid:        { label: 'Activa',                   tone: 'brand' }, // legacy
   active:      { label: 'Activa',                   tone: 'brand' },
 };
+// Cada KPI card combina TONE (color acento del borde/texto) con la clase
+// 3D correspondiente (card3d / card3d-warn / card3d-bad / card3d-ok) que
+// aporta el gradiente + biseles + sombras. Están en globals.css y aplican
+// a toda la plataforma.
 const TONE = {
-  zinc:  'border-line bg-hair/5 text-paper-mute',
-  amber: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-  rose:  'border-rose-500/40 bg-rose-500/10 text-rose-300',
-  sky:   'border-sky-500/40 bg-sky-500/10 text-sky-300',
-  brand: 'border-brand/40 bg-brand/10 text-brand',
+  zinc:  'border-line text-paper-mute',
+  amber: 'border-amber-500/40 text-amber-300 card3d-warn',
+  rose:  'border-rose-500/40 text-rose-300 card3d-bad',
+  sky:   'border-brand/40 text-brand card3d-active',
+  brand: 'border-brand/40 text-brand card3d-active',
 };
 
 export default function AdminPage() {
@@ -87,7 +84,6 @@ export default function AdminPage() {
   const [toast, setToast] = useState('');
   const [nu, setNu] = useState({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
   const [nuCaps, setNuCaps] = useState([]); // accesos del puesto — se marcan a mano (sin preset)
-  const [nuPreset, setNuPreset] = useState('uploader'); // preset de puesto seleccionado
   const [createdCreds, setCreatedCreds] = useState(null); // { email, password } para mostrar tras crear
   const [selCreator, setSelCreator] = useState(null); // creator id whose profile drawer is open
   const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
@@ -150,7 +146,7 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: agSales }, { data: auditRows }] = await Promise.all([
+    const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: agSales }, { data: auditRows }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
@@ -160,6 +156,10 @@ export default function AdminPage() {
       supabase.from('agency_sales').select('id, agency_id, creator_id, amount_cents, created_at').order('created_at', { ascending: false }).limit(400),
       supabase.from('audit_log').select('id, actor_id, action, target_id, meta, created_at').order('created_at', { ascending: false }).limit(200),
     ]);
+    // Si la query base de perfiles falla (RLS/red), no pintamos listas vacías
+    // como si la DB estuviera vacía — el admin toma decisiones de facturación
+    // desde acá. Avisamos y cortamos la carga.
+    if (profErr) { flash && flash('Error cargando datos: ' + profErr.message); return; }
     setProfiles(profs || []);
     setAgencyLinks(agLinks || []);
     setAgencyMembers(agMembers || []);
@@ -245,7 +245,7 @@ export default function AdminPage() {
     const showCreds = out.generated_email;
     if (showCreds) setCreatedCreds({ email: out.login_email || nu.email.trim(), password: pw, generated: true });
     setNu({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
-    setNuCaps([]); setNuPreset('custom');
+    setNuCaps([]);
     if (!showCreds) setEquipoPanel(null);
     // Tell the admin exactly what happened + WHERE the account landed (agency/creator don't
     // live in this Equipo interno roster, so "created" would otherwise look like nothing).
@@ -480,41 +480,48 @@ export default function AdminPage() {
     <div className="min-h-[100svh] bg-ink text-paper">
       <Header me={me} router={router} creators={creators} />
 
-      <main className="mx-auto max-w-5xl px-5 py-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="font-display text-2xl font-semibold sm:text-3xl">Administración</h1>
-            <p className="mt-1 text-sm text-paper-mute">Registros, verificaciones y tu equipo interno — todo desde aquí.</p>
-          </div>
-          <button onClick={load} className="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-2 text-sm text-paper-mute hover:text-paper">
-            <RefreshCw size={15} /> Actualizar
-          </button>
-        </div>
-
-        {/* Banner de peticiones pendientes — se ve en el dashboard admin
-            aunque no estés en el tab de pedidos, y linkea directo a /trabajo
-            donde el equipo las revisa y aprueba. */}
+      <main className="mx-auto max-w-5xl px-5 py-6">
+        {/* ── Header denso: título compacto, alerts inline, acciones a la
+            derecha. Nada de banner separado ni "sub-subtítulo" explicativo. ── */}
         {(() => {
           const pending = metrics.requests.filter((r) => r.status === 'pending').length;
-          const inProg = metrics.requests.filter((r) => r.status === 'in_progress').length;
-          if (pending === 0 && inProg === 0) return null;
+          const inProg  = metrics.requests.filter((r) => r.status === 'in_progress').length;
+          const hasAlert = pending + inProg > 0;
           return (
-            <a href="/trabajo?tab=pedidos" className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] p-4 transition-colors hover:bg-amber-500/[0.1]">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-300"><Inbox size={16} /></span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-paper">
-                  {pending > 0 && <span className="text-amber-200">{pending} pedido{pending === 1 ? '' : 's'} por revisar</span>}
-                  {pending > 0 && inProg > 0 && <span className="text-paper-mute"> · </span>}
-                  {inProg > 0 && <span className="text-sky-300">{inProg} en producción</span>}
-                </p>
-                <p className="mt-0.5 text-[11px] text-paper-dim">Situaciones que agencias y modelos están pidiendo al equipo. Tócalo para revisar y avanzar.</p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <h1 className="font-display text-2xl font-bold tracking-tight sm:text-[1.75rem]">Administración</h1>
+                {hasAlert && (
+                  <a href="/trabajo?tab=pedidos"
+                    className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1.5 text-xs font-medium text-paper transition-colors hover:border-brand/40">
+                    <Inbox size={12} className={pending > 0 ? 'text-amber-400' : 'text-brand'} />
+                    {pending > 0 && <><b className="tabular-nums">{pending}</b> por revisar</>}
+                    {pending > 0 && inProg > 0 && <span className="text-paper-dim">·</span>}
+                    {inProg > 0 && <><b className="tabular-nums">{inProg}</b> en producción</>}
+                    <span className="text-paper-dim">→</span>
+                  </a>
+                )}
               </div>
-              <span className="shrink-0 text-xs font-semibold text-amber-200">Ir a Pedidos →</span>
-            </a>
+              <div className="flex shrink-0 items-center gap-2">
+                <button onClick={load} title="Actualizar"
+                  className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+                  <RefreshCw size={14} />
+                </button>
+                <button onClick={() => { setNewAgency({ full_name: '', email: '', password: '' }); setNaErr(''); }}
+                  className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">
+                  <Building2 size={14} /> Crear agencia
+                </button>
+                <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
+                  className="btn3d inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
+                  <UserPlus size={14} /> Alta de creadora
+                </button>
+              </div>
+            </div>
           );
         })()}
 
-        <div className="mt-8 flex gap-1 overflow-x-auto border-b border-line">
+        {/* Tabs compactos */}
+        <div className="mt-5 flex gap-1 overflow-x-auto border-b border-line">
           {[
             { id: 'registros', label: 'Registros', icon: ClipboardList },
             { id: 'metricas', label: 'Métricas', icon: BarChart3 },
@@ -525,10 +532,9 @@ export default function AdminPage() {
             { id: 'actividad', label: 'Actividad', icon: Activity },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
-              className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${tab === tb.id ? 'text-brand' : 'text-paper-mute hover:text-paper'}`}>
-              <tb.icon size={15} /> {tb.label}
-              {tb.badge ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-on-accent">{tb.badge}</span> : null}
-              {tab === tb.id && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand" />}
+              className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-2.5 text-sm font-medium transition-colors ${tab === tb.id ? 'tab3d-active' : 'text-paper-mute hover:text-paper'}`}>
+              <tb.icon size={14} /> {tb.label}
+              {tb.badge ? <span className="grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent">{tb.badge}</span> : null}
             </button>
           ))}
         </div>
@@ -537,19 +543,6 @@ export default function AdminPage() {
           <p className="mt-8 text-paper-dim">Cargando datos…</p>
         ) : tab === 'registros' ? (
           <div className="mt-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-paper-mute">Da de alta una creadora o una agencia — le llega su invitación por correo.</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <button onClick={() => { setNewAgency({ full_name: '', email: '', password: '' }); setNaErr(''); }}
-                  className="inline-flex items-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
-                  <Building2 size={15} /> Crear agencia
-                </button>
-                <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
-                  className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
-                  <UserPlus size={15} /> Add creator
-                </button>
-              </div>
-            </div>
             {(() => {
               const cr = profiles.filter((p) => p.role === 'creator');
               const inCat = (p, cat) => cat === 'all' ? true
@@ -597,25 +590,47 @@ export default function AdminPage() {
                 .sort(sorters[regSort] || sorters.recent);
               return (
                 <>
-                  {/* Dashboard limpio: solo las cajitas. Tocas una → se abre su lista; tocas de nuevo → se cierra. */}
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {stats.map((s) => {
+                  {/* MetricStrip — 1 sola fila densa, tipo Linear/Vercel: KPIs
+                      + alerts de vencimiento en el mismo bloque, divisores
+                      verticales, click filtra la lista. Cero cards separadas. */}
+                  <div className="card3d flex flex-wrap items-stretch overflow-hidden rounded-2xl border border-line bg-card">
+                    {stats.map((s, i) => {
                       const active = regFilter === s.key;
-                      // Click SIEMPRE aplica el filtro (sin toggle a null). Antes,
-                      // clickear la misma tarjeta la cerraba y el usuario terminaba
-                      // sin filtros sin darse cuenta. Ahora, para «ver todas» usas
-                      // la tarjeta «Registradas» o el botón «Limpiar filtro».
+                      const dotTone = s.tone === 'brand' ? 'brand' : s.tone === 'amber' ? 'warn' : s.tone === 'rose' ? 'bad' : s.tone === 'sky' ? 'brand' : 'zinc';
                       return (
                         <button key={s.key} onClick={() => { setRegFilter(s.key); setRegSub('all'); setRegQuery(''); }}
-                          className={`rounded-2xl border p-4 text-left transition-all ${TONE[s.tone]} ${active ? 'ring-2 ring-brand/60 ring-offset-2 ring-offset-ink' : 'opacity-90 hover:opacity-100'}`}>
-                          <div className="flex items-start justify-between">
-                            <div className="font-display text-3xl font-bold">{s.value}</div>
-                            {active && <span className="mt-1 rounded-full bg-brand/20 px-2 py-0.5 text-[9px] font-bold uppercase text-brand">activo</span>}
-                          </div>
-                          <div className="text-xs opacity-80">{s.label}</div>
+                          className={`group relative min-w-[140px] flex-1 px-5 py-4 text-left transition-colors ${
+                            i !== 0 ? 'border-l border-line' : ''
+                          } ${active ? 'bg-brand/[0.06]' : 'hover:bg-hair/[0.04]'}`}>
+                          <div className={`font-display text-[28px] font-bold leading-none tabular-nums ${active ? 'text-brand' : 'text-paper'}`}>{s.value}</div>
+                          <div className="mt-2"><StatusDot tone={dotTone} pulse={active}>{s.label}</StatusDot></div>
+                          {active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-brand shadow-[0_0_10px_rgba(0,177,246,0.7)]" />}
                         </button>
                       );
                     })}
+                    {/* Alerts embedded en la strip como items extras si hay */}
+                    {overdueList.length > 0 && (
+                      <button onClick={() => { setRegSub('overdue'); setRegFilter('all'); }}
+                        className={`group relative min-w-[140px] flex-1 border-l border-line px-5 py-4 text-left transition-colors ${regSub === 'overdue' ? 'bg-rose-500/[0.05]' : 'hover:bg-hair/[0.04]'}`}>
+                        <div className="flex items-baseline gap-2">
+                          <div className={`font-display text-[28px] font-bold leading-none tabular-nums ${regSub === 'overdue' ? 'text-rose-300' : 'text-paper'}`}>{overdueList.length}</div>
+                          <AlertTriangle size={12} className="text-rose-300" />
+                        </div>
+                        <div className="mt-2"><StatusDot tone="bad" pulse={regSub === 'overdue'}>Vencidas</StatusDot></div>
+                        {regSub === 'overdue' && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.7)]" />}
+                      </button>
+                    )}
+                    {dueSoonList.length > 0 && (
+                      <button onClick={() => { setRegSub('due_soon'); setRegFilter('all'); }}
+                        className={`group relative min-w-[140px] flex-1 border-l border-line px-5 py-4 text-left transition-colors ${regSub === 'due_soon' ? 'bg-amber-500/[0.05]' : 'hover:bg-hair/[0.04]'}`}>
+                        <div className="flex items-baseline gap-2">
+                          <div className={`font-display text-[28px] font-bold leading-none tabular-nums ${regSub === 'due_soon' ? 'text-amber-300' : 'text-paper'}`}>{dueSoonList.length}</div>
+                          <Clock size={12} className="text-amber-300" />
+                        </div>
+                        <div className="mt-2"><StatusDot tone="warn" pulse={regSub === 'due_soon'}>Vencen pronto</StatusDot></div>
+                        {regSub === 'due_soon' && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.7)]" />}
+                      </button>
+                    )}
                   </div>
 
                   {(
@@ -626,35 +641,17 @@ export default function AdminPage() {
                           <input value={regQuery} onChange={(e) => setRegQuery(e.target.value)} placeholder="Buscar por nombre, @ o correo…"
                             className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                         </div>
-                        <span className="text-xs text-paper-dim">{shown.length} de {cr.length} · toca la tarjeta para cerrar</span>
+                        <span className="text-xs text-paper-dim">{shown.length} de {cr.length} · usa «Limpiar filtro» para ver todas</span>
                       </div>
 
-                      {/* Notificador de vencimientos — el dueño lo ve arriba y toca para ir a esa lista */}
-                      {(overdueList.length > 0 || dueSoonList.length > 0) && (
+                      {/* Alerts VENCIDAS/VENCEN PRONTO fusionados en la MetricStrip de arriba (adiós banners duplicados) */}
+                      {false && (
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {overdueList.length > 0 && (
-                            <button onClick={() => { setRegSub('overdue'); setRegFilter('all'); }}
-                              className="group flex items-center justify-between gap-3 rounded-2xl border border-rose-500/50 bg-rose-500/[0.08] p-3.5 text-left transition-colors hover:bg-rose-500/[0.14]">
-                              <div>
-                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-rose-300">
-                                  <AlertTriangle size={13} /> Vencidas
-                                </div>
-                                <p className="mt-1 text-sm text-paper">{overdueList.length} cuenta{overdueList.length === 1 ? '' : 's'} vencida{overdueList.length === 1 ? '' : 's'} — cobra o desactiva</p>
-                              </div>
-                              <span className="text-xs font-semibold text-rose-300">Ver →</span>
-                            </button>
+                            <span></span>
                           )}
                           {dueSoonList.length > 0 && (
-                            <button onClick={() => { setRegSub('due_soon'); setRegFilter('all'); }}
-                              className="group flex items-center justify-between gap-3 rounded-2xl border border-amber-500/50 bg-amber-500/[0.06] p-3.5 text-left transition-colors hover:bg-amber-500/[0.12]">
-                              <div>
-                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-300">
-                                  <Clock size={13} /> Vencen pronto
-                                </div>
-                                <p className="mt-1 text-sm text-paper">{dueSoonList.length} cuenta{dueSoonList.length === 1 ? '' : 's'} en ≤7 días — avisa y cobra</p>
-                              </div>
-                              <span className="text-xs font-semibold text-amber-300">Ver →</span>
-                            </button>
+                            <span></span>
                           )}
                         </div>
                       )}
@@ -715,16 +712,16 @@ export default function AdminPage() {
                                   const d = daysUntil(u);
                                   if (!isPaying(u) || d === null) return <span className="text-paper-dim">—</span>;
                                   const dateLabel = new Date(u.subscription_ends_at + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short' });
-                                  if (d < 0) return <span className="inline-block rounded-full border border-rose-500/50 bg-rose-500/10 px-2 py-0.5 font-semibold text-rose-300">Venció {dateLabel}</span>;
-                                  if (d <= 7) return <span className="inline-block rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 font-semibold text-amber-300">{d}d · {dateLabel}</span>;
+                                  if (d < 0) return <StatusDot tone="bad">Venció {dateLabel}</StatusDot>;
+                                  if (d <= 7) return <StatusDot tone="warn">{d}d · {dateLabel}</StatusDot>;
                                   return <span className="text-paper-mute">{dateLabel}</span>;
                                 })()}
                               </span>
-                              {/* ESTADO: solo los badges — limpio y alineado siempre */}
-                              <span className="flex flex-wrap items-center gap-1.5">
-                                <span className={`inline-block whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${TONE[st.tone]}`}>{st.label}</span>
-                                {planLabel && <span className="inline-block rounded-full border border-brand/40 bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">{planLabel}</span>}
-                                {u.is_test && <span className="inline-block rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300">Prueba</span>}
+                              {/* ESTADO: pills minimal dot + texto (Linear/Notion) */}
+                              <span className="flex flex-wrap items-center gap-3">
+                                <StatusDot tone={st.tone === 'brand' ? 'brand' : st.tone === 'amber' ? 'warn' : st.tone === 'rose' ? 'bad' : st.tone === 'sky' ? 'brand' : 'zinc'}>{st.label}</StatusDot>
+                                {planLabel && <StatusDot tone="zinc">{planLabel}</StatusDot>}
+                                {u.is_test && <StatusDot tone="warn">Prueba</StatusDot>}
                               </span>
                               {/* Acciones: «Ver como ella» siempre visible (abre su panel en otra pestaña) + menú ⋯ */}
                               <span className="flex items-center justify-end gap-1.5">
@@ -802,28 +799,27 @@ export default function AdminPage() {
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-2">
                     {[
-                      { l: 'Pedidos pendientes', v: reqPending, tone: 'amber' },
+                      { l: 'Pedidos pendientes', v: reqPending, tone: 'warn' },
                       { l: 'Pedidos entregados', v: reqDelivered, tone: 'brand' },
-                      { l: 'Fotos LoRA subidas', v: metrics.lora, tone: 'sky' },
+                      { l: 'Fotos LoRA subidas', v: metrics.lora, tone: 'brand' },
                     ].map((x) => (
-                      <div key={x.l} className={`rounded-2xl border p-4 ${TONE[x.tone]}`}>
-                        <div className="font-display text-3xl font-bold">{x.v}</div>
-                        <div className="text-xs opacity-80">{x.l}</div>
+                      <div key={x.l} className="card3d rounded-2xl border border-line bg-card p-5">
+                        <div className="font-display text-4xl font-bold tabular-nums text-paper">{x.v}</div>
+                        <div className="mt-2"><StatusDot tone={x.tone}>{x.l}</StatusDot></div>
                       </div>
                     ))}
                   </div>
                   {/* Libro de ventas real (manual_sales) — vive en /sales */}
-                  <button onClick={() => router.push('/sales')}
-                    className="group flex items-center justify-between gap-3 rounded-2xl border border-line bg-card p-5 text-left transition-colors hover:border-brand/40 lg:col-span-2">
-                    <div className="flex items-center gap-3">
-                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"><CreditCard size={20} /></span>
-                      <div>
-                        <div className="font-display font-semibold text-paper">Ventas · libro de ingresos</div>
-                        <div className="mt-0.5 text-xs text-paper-dim">Registro manual exacto de ventas y rebills (en centavos). Aquí vive el dinero real.</div>
-                      </div>
-                    </div>
-                    <span className="shrink-0 text-sm font-semibold text-brand">Abrir /sales →</span>
-                  </button>
+                  <div className="lg:col-span-2">
+                    <StatusBanner
+                      tone="brand"
+                      icon={CreditCard}
+                      title="Ventas · libro de ingresos"
+                      subtitle="Registro manual exacto de ventas y rebills (en centavos). Aquí vive el dinero real."
+                      action="Abrir /sales →"
+                      onClick={() => router.push('/sales')}
+                    />
+                  </div>
                 </div>
               );
             })()}
@@ -1191,7 +1187,7 @@ export default function AdminPage() {
             className="mx-5 w-full max-w-2xl rounded-3xl border border-line bg-card p-6 shadow-glow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><UserPlus size={18} className="text-brand" /> Add creator</h3>
+                <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><UserPlus size={18} className="text-brand" /> Alta de creadora</h3>
                 <p className="mt-1 text-sm text-paper-mute">Deja la cuenta lista con lo que ya sepas: acceso, contacto, identidad y suscripción. Todo es opcional menos el acceso.</p>
               </div>
               <button type="button" onClick={() => setNewCreator(null)} className="rounded-full p-1 text-paper-dim hover:text-paper"><X size={18} /></button>
@@ -1370,7 +1366,7 @@ export default function AdminPage() {
               <button type="button" onClick={() => { setNewCreator(null); setDupUser(null); setNcErr(''); }} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
               <button type="submit" disabled={ncBusy}
                 className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
-                {ncBusy ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={15} />} Add creator
+                {ncBusy ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={15} />} Alta de creadora
               </button>
             </div>
           </form>
@@ -2118,7 +2114,16 @@ function AgencyLeadRow({ lead, onDone, flash }) {
     });
     let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
     if (!out?.ok) { setBusy(''); setErr(out?.error || 'No se pudo crear la agencia.'); return; }
-    await getSupabase().from('agency_leads').update({ status: 'approved' }).eq('id', lead.id);
+    // La cuenta ya se creó. Si marcar la solicitud como aprobada falla, NO
+    // mostramos éxito: el lead reaparecería en la cola y un segundo "Aprobar"
+    // fallaría con "ya existe una cuenta". Avisamos y salimos.
+    const { error: upErr } = await getSupabase().from('agency_leads').update({ status: 'approved' }).eq('id', lead.id);
+    if (upErr) {
+      setBusy('');
+      setErr(`Cuenta creada, pero no se pudo marcar la solicitud como aprobada: ${upErr.message}`);
+      onDone && onDone();
+      return;
+    }
     setBusy('');
     flash && flash(`Agencia ${lead.agency_name} creada — le llegó la invitación.`);
     onDone && onDone();
@@ -3021,38 +3026,21 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
 }
 
 function Header({ me, router, creators }) {
+  // Rol dinámico — antes decía "Dueño · Administración" para cualquiera.
+  const roleLabel = isOwnerAccount(me)
+    ? 'Dueño · Administración'
+    : me?.role === 'admin' ? 'Administración'
+    : me?.job_title || 'Equipo';
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link href="/" aria-label="Ir al home de LetShoot" className="flex shrink-0 items-center transition-opacity hover:opacity-80" title="Volver al home"><Logo size="sm" /></Link>
-          {/* Back visible: si vienes de otra ruta, te devuelve; si no, va al home */}
-          <button onClick={() => (typeof window !== 'undefined' && window.history.length > 1 ? router.back() : router.push('/'))}
-            title="Volver"
-            className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-            <ChevronDown size={13} className="rotate-90" /> Volver
-          </button>
-          <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
-            <ShieldCheck size={12} /> Administración
-          </span>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3 md:flex">
-            <Avatar src={me?.avatar_url} name={me?.full_name} size="xs" />
-            <span className="hidden leading-tight sm:block">
-              <span className="block text-xs font-semibold text-paper">{me?.full_name}</span>
-              <span className="block text-[10px] text-paper-dim">Dueño · Administración</span>
-            </span>
-          </div>
-          <ImpersonateMenu creators={creators} />
-          <a href="/trabajo" className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20 sm:px-3.5">Trabajo</a>
-          <button onClick={async () => { await signOut(); router.replace('/login'); }}
-            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper sm:px-3.5">
-            <LogOut size={15} /> <span className="hidden sm:inline">Salir</span>
-          </button>
-        </div>
-      </div>
-    </header>
+    <PortalHeader
+      section="Administración"
+      sectionIcon={ShieldCheck}
+      me={me}
+      roleLabel={roleLabel}
+      switchTo={{ href: '/trabajo', label: 'Trabajo' }}
+      extras={<ImpersonateMenu creators={creators} />}
+      backHref="/"
+    />
   );
 }
 

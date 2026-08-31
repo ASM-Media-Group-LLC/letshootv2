@@ -7,7 +7,6 @@
 
 import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
@@ -24,6 +23,7 @@ import { CAPS, CAP_SECTIONS, ALL_CAP_VALUES } from '@/lib/caps';
 import { PACKS } from '@/lib/packs';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
+import PortalHeader from '@/components/PortalHeader';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ProposalEditor from '@/components/ProposalEditor';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
@@ -358,7 +358,7 @@ function TrabajoPageInner() {
     // area view (setTab). The arrow signals "enter", never "expand".
     return (
       <button key={k.id} onClick={() => { if (k.href) return router.push(k.href); setFocusCreator(null); setTab(k.id); }}
-        className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition-all ${
+        className={`card3d group relative overflow-hidden rounded-2xl border p-4 text-left transition-all ${
           k.alert ? 'border-amber-500/30 bg-amber-500/[0.04] hover:border-amber-400/50'
           : 'border-line bg-card hover:border-brand/40 hover:bg-card/80'}`}>
         <div className="flex items-center justify-between">
@@ -369,7 +369,7 @@ function TrabajoPageInner() {
         </div>
         <div className="mt-3 font-display text-2xl font-semibold leading-none text-paper">{k.value}</div>
         <div className="mt-1.5 text-sm font-medium text-paper">{k.label}</div>
-        <div className={`mt-0.5 truncate text-[11px] ${k.alert && !open ? 'text-amber-200' : 'text-paper-dim'}`}>{k.sub}</div>
+        <div className={`mt-0.5 truncate text-[11px] ${k.alert ? 'text-amber-200' : 'text-paper-dim'}`}>{k.sub}</div>
       </button>
     );
   };
@@ -382,40 +382,22 @@ function TrabajoPageInner() {
         { eyebrow: 'Áreas', title: 'Entra a trabajar', body: 'Creadoras, Pedidos, Verificaciones… ves solo las áreas a las que tienes acceso.' },
         { eyebrow: 'Entrega', title: 'Entrega en 3 pasos', body: 'Sube el contenido a la creadora correcta de forma simple y guiada.' },
       ]} />
-      <header className="sticky top-0 z-20 border-b border-line bg-ink/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
-          <div className="flex min-w-0 items-center gap-3">
-            <Link href="/" aria-label="Ir al home de LetShoot" className="flex shrink-0 items-center transition-opacity hover:opacity-80" title="Volver al home"><Logo size="sm" /></Link>
-            <span className="hidden items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
-              <Users size={12} /> Equipo interno
-            </span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            {/* Who am I + where — always visible */}
-            <div className="flex items-center gap-2 rounded-full border border-line bg-card py-1 pl-1 pr-3">
-              <Avatar src={me?.avatar_url} name={me?.full_name} size="xs" />
-              <span className="hidden leading-tight sm:block">
-                <span className="block text-xs font-semibold text-paper">{me?.full_name}</span>
-                <span className="block text-[10px] text-paper-dim">{me?.role === 'admin' ? 'Dueño' : (me?.job_title || 'Equipo')} · Equipo interno</span>
-              </span>
-            </div>
-            {/* «Ver como…» para todo el equipo interno con acceso a contenido —
-                así Cheryl/Grace y no solo admin pueden abrir el panel de una CC. */}
-            {(me?.role === 'admin' || can('content') || can('kyc') || can('requests') || can('feedback')) && creators?.length > 0 && (
-              <ImpersonateMenu creators={creators} />
-            )}
-            {(me?.role === 'admin' || can('agencies') || can('team') || can('billing')) && (
-              <Link href="/admin" className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
-                Admin
-              </Link>
-            )}
-            <button onClick={async () => { await signOut(); router.replace('/login'); }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-              <LogOut size={15} /> <span className="hidden sm:inline">Salir</span>
-            </button>
-          </div>
-        </div>
-      </header>
+      <PortalHeader
+        section="Trabajo"
+        sectionIcon={Users}
+        me={me}
+        roleLabel={`${me?.role === 'admin' ? 'Dueño' : (me?.job_title || 'Equipo')} · Equipo interno`}
+        switchTo={(me?.role === 'admin' || can('agencies') || can('team') || can('billing')) ? { href: '/admin', label: 'Admin' } : undefined}
+        extras={
+          /* «Ver como…» para todo el equipo interno con acceso a contenido —
+             así Cheryl/Grace y no solo admin pueden abrir el panel de una CC. */
+          (me?.role === 'admin' || can('content') || can('kyc') || can('requests') || can('feedback')) && creators?.length > 0
+            ? <ImpersonateMenu creators={creators} />
+            : null
+        }
+        backHref="/"
+        maxW="max-w-6xl"
+      />
 
       <main className="mx-auto max-w-6xl px-5 py-8">
         {!tab ? (
@@ -428,8 +410,8 @@ function TrabajoPageInner() {
             {(can('content') || can('requests') || can('feedback')) && (
               <section className="mt-6">
                 <button onClick={toggleCola}
-                  className={`group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-colors ${
-                    colaPulse ? 'border-brand/50 bg-brand/[0.06] shadow-glow-sm' : 'border-line bg-card hover:border-brand/40'}`}>
+                  className={`card3d group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left ${
+                    colaPulse ? 'border-brand/40 bg-card' : 'border-line bg-card'}`}>
                   <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand">
                     <ListChecks size={17} />
                     {colaPulse && (
@@ -673,7 +655,7 @@ function AltasTab({ creators, flash, reload }) {
         </div>
         {!open && (
           <button onClick={() => { setOpen(true); setErr(''); setCreds(null); }}
-            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
+            className="btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold">
             <UserPlus size={15} /> Dar de alta creadora
           </button>
         )}
@@ -753,7 +735,7 @@ function AltasTab({ creators, flash, reload }) {
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => { setOpen(false); setErr(''); setCreds(null); }} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cerrar</button>
             <button type="submit" disabled={busy}
-              className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] disabled:opacity-60">
+              className="btn3d inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-bold">
               {busy ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={15} />} Dar de alta
             </button>
           </div>
@@ -813,7 +795,7 @@ function CreadorasTab({ creators, me, flash, initialCreatorId, pendingByCreator 
           <SubBadge creator={c} />
           {pendingByCreator[c.id] > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-300">
-              {pendingByCreator[c.id]} fotos pending
+              {pendingByCreator[c.id]} fotos pendientes
             </span>
           )}
         </span>
@@ -930,6 +912,11 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   // seleccionarla; una barra sticky arriba deja borrarlas todas de un tirón.
   const [selected, setSelected] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  // Al cambiar de carpeta (o volver a la biblioteca) limpiamos la selección:
+  // si no, la barra "Borrar N" seguiría apuntando a assets de la carpeta
+  // anterior — que ya no se ven — y los borraría sin querer, dejando además
+  // sus archivos huérfanos en el bucket.
+  useEffect(() => { setSelected(new Set()); }, [folderSel]);
   // Filtro de la galería: todo (default), fotos o videos. Mezclamos por defecto.
   const [mediaFilter, setMediaFilter] = useState('all');
   // Lightbox: al hacer click (sin selección) se abre la pieza en grande.
@@ -1138,11 +1125,11 @@ function CreatorDetail({ creator, me, flash, onBack }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setShowProposal((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
+            className="btn3d-ghost inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold">
             <Sparkles size={14} /> Propuesta
           </button>
           <button onClick={toggleLora}
-            className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-sm font-semibold text-brand transition-colors hover:bg-brand/20">
+            className="btn3d-ghost inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold">
             <Sparkles size={14} /> Fotos LoRA {showLora ? '▴' : '▾'}
           </button>
         </div>
@@ -1259,7 +1246,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
               <p className="text-center text-[10px] leading-tight text-paper-dim">Tip: usa «Situación / subcarpeta» (ej. <span className="text-paper-mute">Cafetería / mañana</span>) y se agrupa como subcarpeta.</p>
               <button type="submit" disabled={creating || !newName.trim()}
                 title={!newName.trim() ? 'Escribe primero el nombre de la entrega arriba' : 'Crear entrega'}
-                className="rounded-full border border-brand/40 bg-brand/10 px-3.5 py-1.5 text-xs font-semibold text-brand transition-colors hover:bg-brand/20 disabled:cursor-not-allowed disabled:opacity-40">
+                className="btn3d rounded-xl px-3.5 py-1.5 text-xs font-bold">
                 {creating ? 'Creando…' : !newName.trim() ? 'Escribe primero un nombre' : 'Crear entrega'}
               </button>
             </form>
@@ -2132,7 +2119,7 @@ function CuentasPanel({ rows, bill, billRows, onOpenSales, onOpenCobros, canBill
 // opcional y subtítulo pequeño. `big` la resalta y `alert` la pinta ámbar.
 function MoneyStat({ label, value, sub, delta, big, alert }) {
   return (
-    <div className={`rounded-xl border p-3.5 ${big ? 'border-brand/40 bg-brand/[0.06]' : alert ? 'border-amber-400/40 bg-amber-400/[0.05]' : 'border-line bg-ink-2'}`}>
+    <div className={`card3d rounded-xl border p-3.5 ${big ? 'border-brand/40 bg-brand/[0.06]' : alert ? 'border-amber-400/40 bg-amber-400/[0.05]' : 'border-line bg-ink-2'}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{label}</span>
         {delta !== undefined && delta !== null && (
@@ -2151,7 +2138,7 @@ function MoneyStat({ label, value, sub, delta, big, alert }) {
 // Small stat tile with an optional month-over-month delta chip.
 function Stat({ icon: Icon, label, value, sub, delta }) {
   return (
-    <div className="rounded-2xl border border-line bg-card p-4">
+    <div className="card3d rounded-2xl border border-line bg-card p-4">
       <div className="flex items-center justify-between">
         <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand/10 text-brand"><Icon size={17} /></span>
         {delta !== undefined && delta !== null && (
@@ -2475,7 +2462,7 @@ function CobrosTab({ rows, flash, reload, isAdmin }) {
           return (
             <div key={c.id} className="rounded-2xl border border-line bg-card/60">
               <button onClick={() => setOpenId(expOpen ? null : c.id)} className="flex w-full items-center gap-3 p-4 text-left">
-                <Avatar url={c.avatar_url} name={c.full_name} size={36} />
+                <Avatar src={c.avatar_url} name={c.full_name} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 truncate font-display font-semibold text-paper">
                     <span className="truncate">{c.full_name}</span>
@@ -2643,7 +2630,7 @@ function EquipoTab({ staff, me, flash, reload }) {
     <div className="mt-6 space-y-6">
       {!showCreate ? (
         <button onClick={() => setShowCreate(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand/10 px-5 py-4 font-display font-semibold text-brand transition-colors hover:bg-brand/20">
+          className="btn3d-ghost flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 font-display font-semibold">
           <UserPlus size={18} /> Crear cuenta de empleado
         </button>
       ) : (
