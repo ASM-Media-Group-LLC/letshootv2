@@ -220,3 +220,143 @@ button:focus-visible,
     scroll-behavior: auto !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LetShoot 3D — profundidad estilo juego, SIEMPRE en la familia azul.
+   Biseles, push-down al click, sombras en capas y glow de marca.
+   Uso: .btn3d (CTA primario) · .btn3d-ghost (secundario) · .card3d
+   (tarjetas/KPIs) · .tab3d-active (tab activo). Funcionan en dark y light.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* CTA primario: gradiente azul + bisel inferior 3D + brillo superior. */
+.btn3d {
+  position: relative;
+  background: linear-gradient(180deg, #22c3ff 0%, #00b1f6 45%, #0a84ff 100%);
+  color: #06101a;
+  border: none;
+  border-bottom: 4px solid #0063c4;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 8px 24px -8px rgba(0, 177, 246, 0.55);
+  transition: transform 0.12s ease, border-bottom-width 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.btn3d:hover {
+  filter: brightness(1.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 12px 32px -8px rgba(0, 177, 246, 0.7);
+}
+.btn3d:active {
+  transform: translateY(3px);
+  border-bottom-width: 1px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 3px 10px -4px rgba(0, 177, 246, 0.5);
+}
+.btn3d:disabled {
+  filter: grayscale(0.6) brightness(0.75);
+  transform: none;
+  border-bottom-width: 4px;
+  cursor: not-allowed;
+}
+
+/* Secundario: mismo lenguaje, sin gradiente lleno. */
+.btn3d-ghost {
+  position: relative;
+  background: rgba(0, 177, 246, 0.08);
+  color: #00b1f6;
+  border: 1px solid rgba(0, 177, 246, 0.35);
+  border-bottom: 3px solid rgba(0, 130, 200, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.12s ease, border-bottom-width 0.12s ease, background 0.15s ease;
+}
+.btn3d-ghost:hover { background: rgba(0, 177, 246, 0.16); }
+.btn3d-ghost:active { transform: translateY(2px); border-bottom-width: 1px; }
+
+/* ── Card con profundidad SOBRIA (tipo Linear/Notion, no Fortnite) ──
+ * Diseño intencional pero sin gritar: bisel superior muy fino, sombra
+ * externa corta, nada de gradientes internos gritones, nada de glow
+ * permanente. El "3D" viene del bisel + la sombra suave que da peso.
+ * Los colores tonales (warn/bad/ok) suman apenas un tinte de borde y
+ * texto — sin halos ni gradientes teñidos.
+ */
+.card3d {
+  position: relative;
+  box-shadow:
+    inset 0 1px 0 rgb(var(--overlay) / 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 6px 14px -6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+.card3d:hover {
+  transform: translateY(-1px);
+  border-color: rgb(var(--overlay) / 0.18);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--overlay) / 0.08),
+    0 2px 4px rgba(0, 0, 0, 0.28),
+    0 10px 22px -8px rgba(0, 0, 0, 0.45);
+}
+.card3d:active {
+  transform: translateY(0);
+  box-shadow:
+    inset 0 1px 0 rgb(var(--overlay) / 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+}
+/* Activa/seleccionada — apenas un tinte azul en el borde, sin halo. */
+.card3d-active {
+  box-shadow:
+    inset 0 1px 0 rgba(127, 224, 255, 0.14),
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 6px 14px -6px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 177, 246, 0.28);
+}
+/* Tonales — solo bisel superior tinto y ring 1px; sin gradiente relleno. */
+.card3d-warn {
+  box-shadow:
+    inset 0 1px 0 rgba(253, 224, 71, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 6px 14px -6px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(245, 158, 11, 0.22);
+}
+.card3d-bad {
+  box-shadow:
+    inset 0 1px 0 rgba(254, 205, 211, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 6px 14px -6px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(244, 63, 94, 0.22);
+}
+.card3d-ok {
+  box-shadow:
+    inset 0 1px 0 rgba(167, 243, 208, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 6px 14px -6px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(16, 185, 129, 0.22);
+}
+/* En tema claro, las sombras oscuras se atenúan aún más. */
+[data-theme='light'] .card3d,
+[data-theme='light'] .card3d-active,
+[data-theme='light'] .card3d-warn,
+[data-theme='light'] .card3d-bad,
+[data-theme='light'] .card3d-ok {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(12, 20, 32, 0.08),
+    0 6px 14px -6px rgba(12, 20, 32, 0.12);
+}
+
+/* Tab activo con glow inferior. */
+.tab3d-active {
+  position: relative;
+  color: #00b1f6;
+}
+.tab3d-active::after {
+  content: '';
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #00b1f6, transparent);
+  box-shadow: 0 0 14px rgba(0, 177, 246, 0.8);
+}

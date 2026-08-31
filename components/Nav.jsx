@@ -57,8 +57,8 @@ export default function Nav() {
 
   const biblioteca = { href: '/success', label: t.nav.howWeWork };
   const links = [
-    { href: '#delivery', label: t.nav.delivery },
-    { href: '#pricing', label: t.nav.packages },
+    { href: '/#delivery', label: t.nav.delivery },
+    { href: '/#pricing', label: t.nav.packages },
     { href: '/agency', label: t.nav.agencies },
   ];
 
@@ -102,7 +102,7 @@ export default function Nav() {
             {LOGIN_LABEL[lang] || LOGIN_LABEL.en}
           </a>
           <a
-            href="#pricing"
+            href="/#pricing"
             className="hidden rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.04] sm:inline-block"
           >
             {t.nav.cta}
@@ -152,7 +152,7 @@ export default function Nav() {
             {LOGIN_LABEL[lang] || LOGIN_LABEL.en}
           </a>
           <a
-            href="#pricing"
+            href="/#pricing"
             onClick={() => setOpen(false)}
             className="mt-1 rounded-xl bg-brand px-4 py-3 text-center text-base font-semibold text-on-accent shadow-glow-sm"
           >

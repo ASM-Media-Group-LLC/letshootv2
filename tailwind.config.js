@@ -40,9 +40,11 @@ module.exports = {
         widest2: '0.34em',
       },
       boxShadow: {
-        glow: '0 14px 50px -12px rgba(0,177,246,0.55)',
-        'glow-sm': '0 8px 30px -10px rgba(0,177,246,0.45)',
-        soft: '0 30px 80px -40px rgba(0,0,0,0.8)',
+        // Glow SOBRIO — antes gritaba (0.55/0.45), ahora solo sugiere.
+        // Cambia aquí para modular en TODA la plataforma de una.
+        glow: '0 10px 32px -14px rgba(0,177,246,0.28)',
+        'glow-sm': '0 5px 18px -10px rgba(0,177,246,0.22)',
+        soft: '0 30px 80px -40px rgba(0,0,0,0.5)',
       },
       animation: {
         marquee: 'marquee 36s linear infinite',

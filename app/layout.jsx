@@ -1,18 +1,21 @@
-import { Inter, Poppins, JetBrains_Mono } from 'next/font/google';
+import { Onest, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { AppProviders } from './providers';
 
-// Body / UI — clean, neutral, premium.
-const inter = Inter({
+// Fuente principal — Onest. Fresca, moderna, súper legible (2024).
+// Reemplaza Inter (cuerpo) y Poppins (display) — ahora TODA la plataforma
+// respira con el mismo lenguaje tipográfico limpio y actual.
+// Mantengo los MISMOS nombres de variables (--font-inter, --font-poppins,
+// --font-mono) para no romper Tailwind ni ningún componente.
+const onest = Onest({
   subsets: ['latin'],
   variable: '--font-inter',
   display: 'swap',
 });
 
-// Headlines + logo — geometric rounded sans, matching the LetShoot logo.
-const poppins = Poppins({
+const onestDisplay = Onest({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
+  weight: ['500', '600', '700', '800'],
   variable: '--font-poppins',
   display: 'swap',
 });
@@ -22,6 +25,9 @@ const mono = JetBrains_Mono({
   variable: '--font-mono',
   display: 'swap',
 });
+
+const inter = onest;
+const poppins = onestDisplay;
 
 export const metadata = {
   title: 'LetShoot — Tu fotógrafo IA',
