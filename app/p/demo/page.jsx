@@ -5,6 +5,9 @@
 //   · Cada slide 100svh: INSPIRACIÓN + MODELO REAL = RESULTADO (hero).
 //   · Feedback por look (❤ / ✕ / 💬), watermark + anti-descarga siempre.
 //   · Lee el draft del editor desde localStorage 'ls_propuesta_draft'.
+//   · Al enviar, escribe el feedback en localStorage 'ls_propuesta_feedback'
+//     ({ v, code, recipientName, at, items:[{id, caption, result, status, note}] })
+//     — el wizard lo lee en el paso 4.
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -14,6 +17,7 @@ import Logo from '@/components/Logo';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
 
 const DRAFT_KEY = 'ls_propuesta_draft';
+const FEEDBACK_KEY = 'ls_propuesta_feedback';
 const pBig = (s) => `https://picsum.photos/seed/${s}/900/1125`;
 const pSm = (s) => `https://picsum.photos/seed/${s}/600/750`;
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -93,8 +97,12 @@ export default function Propuesta() {
   const [state, setState] = useState({});
   const [openComment, setOpenComment] = useState(null);
   const [currentIdx, setCurrentIdx] = useState(-1);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [sent, setSent] = useState(false);
   const slidesRef = useRef([]);
   const coverRef = useRef(null);
+  const closingRef = useRef(null);
+  const summaryShownRef = useRef(false);
 
   const fb = (id) => state[id] || EMPTY_FB;
   const setLook = (id, patch) => setState((s) => ({ ...s, [id]: { ...(s[id] || EMPTY_FB), ...patch } }));
@@ -135,6 +143,39 @@ export default function Propuesta() {
     [coverRef.current, ...slidesRef.current].forEach((el) => el && io.observe(el));
     return () => io.disconnect();
   }, [looks]);
+
+  // Al llegar por primera vez a la pantalla de cierre → abre el resumen (una sola vez).
+  useEffect(() => {
+    const el = closingRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting && !summaryShownRef.current) {
+          summaryShownRef.current = true;
+          setSummaryOpen(true);
+        }
+      });
+    }, { threshold: 0.4 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const sendFeedback = () => {
+    try {
+      window.localStorage.setItem(FEEDBACK_KEY, JSON.stringify({
+        v: 1,
+        code: cfg.code,
+        recipientName: cfg.recipient?.name || '',
+        at: new Date().toISOString(),
+        items: looks.map((l) => {
+          const st = fb(l.id);
+          return { id: l.id, caption: l.caption, result: l.result, status: st.status ?? null, note: st.note || '' };
+        }),
+      }));
+      setSent(true);
+    } catch {}
+    setSummaryOpen(false);
+  };
 
   return (
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
@@ -193,16 +234,18 @@ export default function Propuesta() {
           <Watermark code={cfg.code} uid="cover" />
         </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-16 sm:px-10 sm:pb-24">
-          <div className="mb-5 inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.07] py-1.5 pl-4 pr-3.5 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md">
+          <div className="mb-5 inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.07] py-1.5 pl-4 pr-3.5 text-xs font-semibold tracking-normal backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
-            {t.privateSel} · {cfg.model.name}
+            <span className="text-white/75">{t.privateSel}</span>
+            <span className="text-white/40">·</span>
+            <span className="text-white">{cfg.model.name}</span>
           </div>
           {cfg.recipient?.name && (
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-white/60">
-              {t.preparedFor} <span className="text-white">{cfg.recipient.name}</span>
+            <div className="mb-2 text-base text-white/75 sm:text-lg">
+              {t.preparedFor} <span className="font-semibold text-white">{cfg.recipient.name}</span>
             </div>
           )}
-          <div className="mb-4 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-white/60">
+          <div className="mb-4 text-[11px] uppercase tracking-[0.14em] text-white/45">
             {t.formula}
           </div>
           <h1 className="font-display text-[clamp(2.4rem,7vw,5.5rem)] font-bold leading-[0.98] tracking-[-0.03em] text-white drop-shadow-[0_2px_34px_rgba(0,0,0,0.75)]">
@@ -220,7 +263,7 @@ export default function Propuesta() {
           >
             {t.start} <ChevronDown size={16} />
           </button>
-          <div className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-white/60">
+          <div className="mt-3 text-xs tracking-wide text-white/55">
             {total} {t.looks} · {t.tapHint}
           </div>
         </div>
@@ -230,7 +273,8 @@ export default function Propuesta() {
       {looks.map((l, i) => {
         const st = fb(l.id);
         const active = currentIdx === i;
-        const enter = `transition-all duration-700 ${active ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'}`;
+        const fade = `transition-opacity duration-700 ease-out delay-500 ${active ? 'opacity-100' : 'opacity-0'}`;
+        const badgeFade = (delay) => `transition-opacity duration-700 ease-out ${delay} ${active ? 'opacity-100' : 'opacity-0'}`;
         return (
           <section
             key={l.id}
@@ -239,26 +283,26 @@ export default function Propuesta() {
             className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-4 py-6 sm:px-10"
           >
             {/* Desktop: columna fuentes + operadores + hero */}
-            <div className={`hidden w-full max-w-5xl items-center justify-center gap-4 sm:flex lg:gap-6 ${enter}`}>
+            <div className="hidden w-full max-w-5xl items-center justify-center gap-4 sm:flex lg:gap-6 [perspective:1200px]">
               <div className="flex w-[30%] max-w-[300px] shrink-0 flex-col">
-                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} className="aspect-[4/5] max-h-[36vh] w-full rounded-2xl ring-white/10" />
-                <div className="relative z-10 -my-4 flex justify-center">
+                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="aspect-[4/5] max-h-[36vh] w-full rounded-2xl ring-white/10" />
+                <div className={`relative z-10 -my-4 flex justify-center ${badgeFade('delay-150')}`}>
                   <OpBadge className="h-9 w-9 text-base">+</OpBadge>
                 </div>
-                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} className="aspect-[4/5] max-h-[36vh] w-full rounded-2xl ring-white/10" />
+                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="aspect-[4/5] max-h-[36vh] w-full rounded-2xl ring-white/10" />
               </div>
-              <OpBadge className="h-9 w-9 text-base">=</OpBadge>
+              <OpBadge className={`h-9 w-9 text-base ${badgeFade('delay-300')}`}>=</OpBadge>
               <div className="min-w-0 flex-1">
                 <div className="mx-auto w-full max-w-[64vh]">
-                  <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} className="aspect-[4/5] max-h-[80vh] w-full rounded-3xl shadow-glow ring-brand/30" />
-                  <div className="mt-4 flex items-baseline justify-between gap-3">
+                  <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} active={active} delay="delay-300" className="aspect-[4/5] max-h-[80vh] w-full rounded-3xl shadow-glow ring-brand/30" />
+                  <div className={`mt-4 flex items-baseline justify-between gap-3 ${fade}`}>
                     <div className="text-sm text-white/80">{l.caption}</div>
                     <div className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
                       {t.look} {pad2(i + 1)} · {pad2(total)}
                     </div>
                   </div>
                   {st.note?.trim() && (
-                    <div className="mt-2 flex items-start gap-1.5 text-[13px] italic text-white/70">
+                    <div className={`mt-2 flex items-start gap-1.5 text-[13px] italic text-white/70 ${fade}`}>
                       <MessageSquare size={12} className="mt-0.5 shrink-0" />
                       <span>{st.note.trim()}</span>
                     </div>
@@ -268,19 +312,19 @@ export default function Propuesta() {
             </div>
 
             {/* Mobile: fila fuentes + = + hero abajo */}
-            <div className={`w-full pt-8 sm:hidden ${enter}`}>
+            <div className="w-full pt-8 sm:hidden [perspective:1200px]">
               <div className="relative grid grid-cols-2 gap-2">
-                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-min`} className="h-[22vh] w-full rounded-2xl ring-white/10" />
-                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-mre`} className="h-[22vh] w-full rounded-2xl ring-white/10" />
-                <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-min`} active={active} delay="delay-0" className="h-[22vh] w-full rounded-2xl ring-white/10" />
+                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-mre`} active={active} delay="delay-150" className="h-[22vh] w-full rounded-2xl ring-white/10" />
+                <div className={`absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${badgeFade('delay-150')}`}>
                   <OpBadge className="h-7 w-7 text-sm">+</OpBadge>
                 </div>
               </div>
-              <div className="my-1.5 flex justify-center">
+              <div className={`my-1.5 flex justify-center ${badgeFade('delay-300')}`}>
                 <OpBadge className="h-7 w-7 text-sm">=</OpBadge>
               </div>
-              <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-mai`} className="h-[52svh] w-full rounded-3xl shadow-glow ring-brand/30" />
-              <div className="mt-3 px-1">
+              <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-mai`} active={active} delay="delay-300" className="h-[52svh] w-full rounded-3xl shadow-glow ring-brand/30" />
+              <div className={`mt-3 px-1 ${fade}`}>
                 <div className="text-sm text-white/80">{l.caption}</div>
                 <div className="mt-1 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
                   {t.look} {pad2(i + 1)} · {pad2(total)}
@@ -326,7 +370,7 @@ export default function Propuesta() {
       })}
 
       {/* ═════════════ CIERRE ═════════════ */}
-      <section className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-6 py-24">
+      <section ref={closingRef} className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-6 py-24">
         {cfg.closingUrl && (
           <div className="absolute inset-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -357,6 +401,22 @@ export default function Propuesta() {
           </div>
 
           <div className="mt-12 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            {sent ? (
+              <button
+                onClick={() => setSummaryOpen(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-semibold text-paper hover:border-brand/40"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                {t.feedbackSent}
+              </button>
+            ) : (
+              <button
+                onClick={() => setSummaryOpen(true)}
+                className="inline-flex items-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02]"
+              >
+                <Send size={14} /> {t.sendFeedback}
+              </button>
+            )}
             <button
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
               className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-medium text-paper-mute hover:border-brand/40 hover:text-paper"
@@ -372,6 +432,19 @@ export default function Propuesta() {
           </div>
         </div>
       </section>
+
+      {/* ═════════════ RESUMEN FINAL ═════════════ */}
+      {summaryOpen && (
+        <SummaryModal
+          t={t}
+          looks={looks}
+          fb={fb}
+          setLook={setLook}
+          onComment={(id) => setOpenComment(id)}
+          onClose={() => setSummaryOpen(false)}
+          onSend={sendFeedback}
+        />
+      )}
 
       {/* ═════════════ COMMENT SHEET ═════════════ */}
       {openComment && (
@@ -389,9 +462,12 @@ export default function Propuesta() {
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
-function Shot({ src, alt, label, dot, code, uid, big = false, className = '' }) {
+function Shot({ src, alt, label, dot, code, uid, big = false, active = true, delay = '', className = '' }) {
+  const flip = active
+    ? 'opacity-100 [transform:rotateY(0deg)_translateY(0)_scale(1)]'
+    : 'opacity-0 [transform:rotateY(-50deg)_translateY(28px)_scale(0.92)]';
   return (
-    <div className={`relative overflow-hidden ring-1 ${className}`}>
+    <div className={`relative overflow-hidden ring-1 transition-all duration-700 ease-out ${delay} ${flip} ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={src} alt={alt} draggable={false} className="h-full w-full object-cover" style={{ WebkitUserDrag: 'none' }} />
       <Watermark code={code} uid={uid} />
@@ -418,7 +494,7 @@ function BigActionBtn({ children, active, onClick, tone, label }) {
     tone === 'like' ? 'bg-emerald-500 text-white shadow-[0_10px_40px_-8px_rgba(16,185,129,0.7)]'
     : tone === 'reject' ? 'bg-rose-500 text-white shadow-[0_10px_40px_-8px_rgba(244,63,94,0.7)]'
     : 'bg-brand text-on-accent shadow-glow';
-  const idle = 'bg-white/12 text-white/95 hover:bg-white/22 backdrop-blur-md border border-white/15';
+  const idle = 'bg-white/[0.12] text-white/95 hover:bg-white/[0.22] backdrop-blur-md border border-white/15';
   return (
     <button
       type="button"
@@ -455,6 +531,99 @@ function FinalStat({ value, label, tone, icon }) {
         {icon}{value}
       </div>
       <div className="mt-1 font-mono text-[10px] font-semibold uppercase tracking-widest text-paper-dim">{label}</div>
+    </div>
+  );
+}
+
+function MiniToggle({ active, onClick, tone, label, children }) {
+  const activeCls =
+    tone === 'like' ? 'bg-emerald-500 text-white'
+    : tone === 'reject' ? 'bg-rose-500 text-white'
+    : 'bg-brand text-on-accent';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={`grid h-8 w-8 place-items-center rounded-full transition-all active:scale-95 ${
+        active ? activeCls : 'border border-line text-paper-mute hover:border-hair hover:text-paper'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SummaryModal({ t, looks, fb, setLook, onComment, onClose, onSend }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div
+        className="flex max-h-[85svh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-line bg-card shadow-2xl sm:m-4 sm:rounded-3xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 pt-5">
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
+          <div className="font-display text-xl font-bold text-paper">{t.summaryTitle}</div>
+          <p className="mt-1 text-sm text-paper-mute">{t.summarySub}</p>
+        </div>
+        <div className="mt-3 flex-1 overflow-y-auto px-4 pb-3">
+          {looks.map((l) => {
+            const st = fb(l.id);
+            return (
+              <div key={l.id} className="flex items-center gap-3 rounded-2xl px-2 py-2.5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={l.result} alt="" className="h-14 w-11 shrink-0 rounded-md object-cover" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+                <div className="min-w-0 flex-1">
+                  <div className="line-clamp-1 text-sm text-paper">{l.caption}</div>
+                  {st.status === null && !st.note?.trim() && (
+                    <div className="mt-0.5 text-[11px] text-paper-dim">{t.noMark}</div>
+                  )}
+                  {st.note?.trim() && (
+                    <div className="mt-0.5 truncate text-[12px] italic text-paper-mute">{st.note.trim()}</div>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <MiniToggle
+                    active={st.status === 'liked'}
+                    onClick={() => setLook(l.id, { status: st.status === 'liked' ? null : 'liked' })}
+                    tone="like"
+                    label={t.like}
+                  >
+                    <Heart size={14} fill={st.status === 'liked' ? 'currentColor' : 'none'} />
+                  </MiniToggle>
+                  <MiniToggle
+                    active={st.status === 'rejected'}
+                    onClick={() => setLook(l.id, { status: st.status === 'rejected' ? null : 'rejected' })}
+                    tone="reject"
+                    label={t.reject}
+                  >
+                    <X size={14} />
+                  </MiniToggle>
+                  <MiniToggle
+                    active={!!st.note?.trim()}
+                    onClick={() => onComment(l.id)}
+                    tone="comment"
+                    label={t.comment}
+                  >
+                    <MessageSquare size={13} />
+                  </MiniToggle>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-line px-6 py-4">
+          <button onClick={onClose} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:border-hair hover:text-paper">
+            {t.keepLooking}
+          </button>
+          <button
+            onClick={onSend}
+            className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02]"
+          >
+            <Send size={14} /> {t.sendFeedback}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

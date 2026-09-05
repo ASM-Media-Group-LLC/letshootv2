@@ -7,7 +7,7 @@
 // exactamente lo que el dueño armó, personalizado para el destinatario.
 // ─────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft, ArrowRight, Check, ChevronUp, ChevronDown, Trash2, Plus,
@@ -17,7 +17,30 @@ import {
 import { useProp, PROP_LANGS, PROP_LANG_LABELS, PROP_LANG_FLAG } from '@/lib/propuesta-i18n';
 
 const DRAFT_KEY = 'ls_propuesta_draft';
+const FEEDBACK_KEY = 'ls_propuesta_feedback';
 const LAN_HOST = '10.0.0.67:3001';
+
+// Países para el teléfono del destinatario (Telegram/WhatsApp). Default CO.
+const COUNTRIES = [
+  { flag: '🇨🇴', code: 'CO', dial: '+57' },
+  { flag: '🇺🇸', code: 'US', dial: '+1' },
+  { flag: '🇲🇽', code: 'MX', dial: '+52' },
+  { flag: '🇦🇷', code: 'AR', dial: '+54' },
+  { flag: '🇪🇸', code: 'ES', dial: '+34' },
+  { flag: '🇩🇪', code: 'DE', dial: '+49' },
+  { flag: '🇮🇹', code: 'IT', dial: '+39' },
+  { flag: '🇫🇷', code: 'FR', dial: '+33' },
+  { flag: '🇬🇧', code: 'GB', dial: '+44' },
+  { flag: '🇧🇷', code: 'BR', dial: '+55' },
+  { flag: '🇵🇪', code: 'PE', dial: '+51' },
+  { flag: '🇨🇱', code: 'CL', dial: '+56' },
+  { flag: '🇻🇪', code: 'VE', dial: '+58' },
+  { flag: '🇪🇨', code: 'EC', dial: '+593' },
+  { flag: '🇺🇾', code: 'UY', dial: '+598' },
+  { flag: '🇵🇦', code: 'PA', dial: '+507' },
+  { flag: '🇨🇷', code: 'CR', dial: '+506' },
+  { flag: '🇩🇴', code: 'DO', dial: '+1' },
+];
 
 const SM = (seed) => `https://picsum.photos/seed/${seed}/600/750`;
 const LG = (seed) => `https://picsum.photos/seed/${seed}/900/1125`;
@@ -93,6 +116,9 @@ export default function PropuestaAdmin() {
 
   const [step, setStep] = useState(1);
   const [recipient, setRecipient] = useState({ ...DEMO_RECIPIENT });
+  const [phoneCountry, setPhoneCountry] = useState('CO');
+  const [phoneLocal, setPhoneLocal] = useState('');
+  const [feedback, setFeedback] = useState(null);
   const [template, setTemplate] = useState('exclusive');
   const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
   const [closingUrl, setClosingUrl] = useState(DEMO_CLOSING);
@@ -145,6 +171,19 @@ export default function PropuestaAdmin() {
           email: typeof d.recipient.email === 'string' ? d.recipient.email : '',
           kind: ['prospect', 'client', 'model'].includes(d.recipient.kind) ? d.recipient.kind : 'prospect',
         });
+        if (typeof d.recipient.phone === 'string' && d.recipient.phone.trim()) {
+          const ph = d.recipient.phone.trim();
+          const match = [...COUNTRIES]
+            .sort((a, b) => b.dial.length - a.dial.length)
+            .find((c) => ph.startsWith(c.dial));
+          if (match) {
+            setPhoneCountry(match.code);
+            setPhoneLocal(ph.slice(match.dial.length).trim());
+          } else {
+            setPhoneCountry('CO');
+            setPhoneLocal(ph);
+          }
+        }
       }
       if (Array.isArray(d.looks) && d.looks.length > 0) {
         const seeded = d.looks.map((l) => ({
@@ -169,7 +208,11 @@ export default function PropuestaAdmin() {
   const qrTarget = isLocal ? `${proto}//${LAN_HOST}/p/demo?lang=${lang}` : publicUrl;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(qrTarget)}`;
   const greet = firstName ? `Hola ${firstName}!` : 'Hola!';
-  const waHref = `https://wa.me/?text=${encodeURIComponent(`${greet} Te preparé una propuesta: ${name}. Mirala acá: ${publicUrl}`)}`;
+  const dial = COUNTRIES.find((c) => c.code === phoneCountry)?.dial ?? '+57';
+  const fullPhone = phoneLocal.trim() ? `${dial} ${phoneLocal.trim()}` : '';
+  const phoneDigits = fullPhone.replace(/\D/g, '');
+  const waText = encodeURIComponent(`${greet} Te preparé una propuesta: ${name}. Mirala acá: ${publicUrl}`);
+  const waHref = phoneDigits ? `https://wa.me/${phoneDigits}?text=${waText}` : `https://wa.me/?text=${waText}`;
   const mailHref = `mailto:${recipient.email.trim()}?subject=${encodeURIComponent(name)}&body=${encodeURIComponent(`${greet}\n\nTe preparé una propuesta: ${name}.\nMirala acá: ${publicUrl}`)}`;
 
   const setLook = (id, patch) => setLooks((s) => s.map((l) => (l.id === id ? { ...l, ...patch } : l)));
@@ -184,7 +227,11 @@ export default function PropuestaAdmin() {
 
   // Mientras el dueño no toque los textos a mano, el preset del molde se
   // regenera solo al cambiar de destinatario o de molde (nombre siempre actual).
+  // El primer run se saltea: en el mount este effect encolaría el preset demo
+  // DESPUÉS de los setState de la rehidratación y pisaría el draft guardado.
+  const firstRegen = useRef(true);
   useEffect(() => {
+    if (firstRegen.current) { firstRegen.current = false; return; }
     if (copyTouched) return;
     const preset = TEMPLATES[template](firstName || 'Hola');
     setName(preset.name);
@@ -238,7 +285,7 @@ export default function PropuestaAdmin() {
       name, subtitle, intro, lang, days, code,
       expiresAt: new Date(Date.now() + days * 86400000).toISOString(),
       model: { name: 'Julia Parker', agency: 'Kash Agency' },
-      recipient: { name: recipient.name.trim(), email: recipient.email.trim(), kind: recipient.kind },
+      recipient: { name: recipient.name.trim(), email: recipient.email.trim(), phone: fullPhone, kind: recipient.kind },
       template,
       coverUrl: coverUrl || null,
       closingUrl: closingUrl || null,
@@ -250,6 +297,29 @@ export default function PropuestaAdmin() {
   useEffect(() => {
     if (step === 4) saveDraft();
   }, [step]);
+
+  // Respuestas de la persona: en el paso 4 leemos el feedback que la vista
+  // pública dejó en localStorage y refrescamos cada 5s (si responde en otra
+  // pestaña, el admin lo ve sin recargar).
+  useEffect(() => {
+    if (step !== 4) return;
+    const load = () => {
+      try {
+        const raw = localStorage.getItem(FEEDBACK_KEY);
+        if (!raw) { setFeedback(null); return; }
+        const f = JSON.parse(raw);
+        setFeedback(f?.v === 1 && Array.isArray(f.items) ? f : null);
+      } catch { setFeedback(null); }
+    };
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
+  }, [step]);
+
+  const fbItems = feedback?.items ?? [];
+  const fbLiked = fbItems.filter((i) => i.status === 'liked').length;
+  const fbRejected = fbItems.filter((i) => i.status === 'rejected').length;
+  const fbNotes = fbItems.filter((i) => (i.note || '').trim()).length;
 
   const canNext = step === 1
     ? recipient.name.trim().length > 0
@@ -361,6 +431,35 @@ export default function PropuestaAdmin() {
                   placeholder={t.recipEmailPh}
                   className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
                 />
+              </Field>
+              <Field label={t.phone}>
+                <div className="flex items-center gap-2">
+                  <div className="relative w-[110px] shrink-0">
+                    <select
+                      value={phoneCountry}
+                      onChange={(e) => setPhoneCountry(e.target.value)}
+                      aria-label={t.country}
+                      className="w-full appearance-none rounded-xl border border-line bg-ink-2 py-2.5 pl-3 pr-7 text-sm text-paper outline-none focus:border-brand/60"
+                    >
+                      {COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code}>{c.flag} {c.dial}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                  </div>
+                  <input
+                    type="tel"
+                    value={phoneLocal}
+                    onChange={(e) => {
+                      let v = e.target.value.replace(/[^\d\s+]/g, '');
+                      const dial = COUNTRIES.find((c) => c.code === phoneCountry)?.dial;
+                      if (dial && v.trim().startsWith(dial)) v = v.trim().slice(dial.length).trim();
+                      setPhoneLocal(v.replace(/\+/g, ''));
+                    }}
+                    placeholder="300 123 4567"
+                    className="min-w-0 flex-1 rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                  />
+                </div>
               </Field>
               <Field label={t.recipKind}>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -694,6 +793,61 @@ export default function PropuestaAdmin() {
                 <Mail size={14} /> {t.sendEmail}
               </a>
             </div>
+          </section>
+
+          <section className="card3d rounded-3xl border border-line bg-card p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="min-w-0 truncate font-display text-base font-bold text-paper">
+                {t.responsesOf} {feedback?.recipientName || recipient.name}
+              </h3>
+              {feedback && (
+                <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-paper-dim">
+                  {new Date(feedback.at).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+
+            {!feedback ? (
+              <div className="flex items-center gap-2 rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper-mute">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-400" /> {t.noResponses}
+              </div>
+            ) : (
+              <>
+                <div className="mb-3 flex items-center gap-2 font-mono text-[11px] font-bold tabular-nums text-paper">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> {fbLiked}
+                  </span>
+                  <span className="text-paper-dim">·</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> {fbRejected}
+                  </span>
+                  <span className="text-paper-dim">·</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" /> {fbNotes}
+                  </span>
+                </div>
+                <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
+                  {fbItems.map((it) => (
+                    <div key={it.id} className="flex items-start gap-3 rounded-xl border border-line bg-ink-2 p-2.5">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={it.result} alt="" className="h-12 w-10 shrink-0 rounded-md object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-paper">{it.caption || '—'}</div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-paper-mute">
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                            it.status === 'liked' ? 'bg-emerald-400' : it.status === 'rejected' ? 'bg-rose-400' : 'bg-zinc-400'
+                          }`} />
+                          {it.status === 'liked' ? t.like : it.status === 'rejected' ? t.reject : t.noMark}
+                        </div>
+                        {(it.note || '').trim() && (
+                          <p className="mt-1 text-[12px] italic leading-relaxed text-paper-mute">{it.note.trim()}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </section>
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
