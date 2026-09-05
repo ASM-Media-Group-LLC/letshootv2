@@ -41,14 +41,14 @@ const DEMO_CLOSING = LG('lsai-night');
 
 const TEMPLATES = {
   exclusive: (n) => ({
-    name: 'Tu contenido, otro nivel',
+    name: 'Contenido que engancha',
     subtitle: 'Julia Parker × LetShoot',
-    intro: `${n}, esto es lo que podemos producir sin sesión y sin viajes. Elegí los looks que quieras para tu contenido.`,
+    intro: `${n}, esto es contenido de enganche para tus fans: fotos pensadas para traer tráfico, sumar suscriptores y mantener tu página viva — sin sesión, sin viajes, sin logística. Elegí los looks que quieras para tu feed.`,
   }),
   normal: (n) => ({
     name: 'Selección editorial',
     subtitle: 'Verano · 2026',
-    intro: `${n}, sentí el estilo antes de confirmar la sesión. Deslizá y contanos qué te gusta.`,
+    intro: `${n}, esto es para tu marca personal: fotos editoriales para redes, prensa y colaboraciones. Sentí el estilo antes de confirmar la sesión y contanos qué te gusta.`,
   }),
 };
 
@@ -283,8 +283,8 @@ export default function PropuestaAdmin() {
             </Link>
             <div className="min-w-0">
               <div className="flex items-center gap-2.5">
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute">Propuesta</span>
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-brand">{code}</span>
+                <span className="hidden font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute sm:inline">Propuesta</span>
+                <span className="hidden whitespace-nowrap font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-brand sm:inline">{code}</span>
                 <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">
                   <span className={`h-1.5 w-1.5 rounded-full ${step === 4 ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                   {step === 4 ? t.published : t.draft}
@@ -325,6 +325,16 @@ export default function PropuestaAdmin() {
                 <span className={`h-1.5 w-1.5 rounded-full ${completeCount === looks.length && looks.length > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                 {completeCount}/{looks.length} {t.looks}
               </span>
+            )}
+            {(step === 2 || step === 3) && (
+              <button
+                type="button"
+                onClick={() => { saveDraft(); window.open(publicUrl, '_blank', 'noopener'); }}
+                disabled={completeCount === 0}
+                className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold disabled:pointer-events-none disabled:opacity-40 sm:px-4 sm:text-sm"
+              >
+                <Eye size={14} /> <span className="hidden sm:inline">{t.viewAsClient}</span><span className="sm:hidden">{t.previewLbl}</span>
+              </button>
             )}
           </div>
         </div>
@@ -689,7 +699,7 @@ export default function PropuestaAdmin() {
           <section className="card3d rounded-3xl border border-line bg-card p-5">
             <div className="space-y-2">
               <StatRow dot="bg-brand" label={t.looks} value={String(completeCount)} />
-              <StatRow dot="bg-amber-400" label={t.expiresField} value={`${days}d · ${new Date(Date.now() + days * 86400000).toLocaleDateString()}`} />
+              <StatRow dot="bg-amber-400" label={t.expiresField} value={`${days}d · ${new Date(Date.now() + days * 86400000).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`} />
               <StatRow dot="bg-zinc-400" label={t.langField} value={`${PROP_LANG_FLAG[lang]} ${PROP_LANG_LABELS[lang]}`} />
             </div>
           </section>
