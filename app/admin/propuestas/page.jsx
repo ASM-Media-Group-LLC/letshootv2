@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Editor de PROPUESTA (admin) — wizard de 4 pasos: Destinatario → Molde →
 // Fotos → Link. Al publicar escribe el draft en localStorage
-// ('ls_propuesta_draft') y la vista pública /preview/propuesta renderiza
+// ('ls_propuesta_draft') y la vista pública /p/demo renderiza
 // exactamente lo que el dueño armó, personalizado para el destinatario.
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -165,8 +165,8 @@ export default function PropuestaAdmin() {
   }, [picker]);
 
   const firstName = (recipient.name || '').trim().split(/\s+/)[0] || '';
-  const publicUrl = `${proto}//${host}/preview/propuesta?lang=${lang}`;
-  const qrTarget = isLocal ? `${proto}//${LAN_HOST}/preview/propuesta?lang=${lang}` : publicUrl;
+  const publicUrl = `${proto}//${host}/p/demo?lang=${lang}`;
+  const qrTarget = isLocal ? `${proto}//${LAN_HOST}/p/demo?lang=${lang}` : publicUrl;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(qrTarget)}`;
   const greet = firstName ? `Hola ${firstName}!` : 'Hola!';
   const waHref = `https://wa.me/?text=${encodeURIComponent(`${greet} Te preparé una propuesta: ${name}. Mirala acá: ${publicUrl}`)}`;
@@ -278,7 +278,7 @@ export default function PropuestaAdmin() {
       <header className="sticky top-0 z-30 border-b border-line bg-ink/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-4 lg:px-8">
           <div className="flex min-w-0 items-center gap-4">
-            <Link href="/preview/admin" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper" title="Volver a Presentaciones">
+            <Link href="/admin" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper" title="Volver al admin">
               <ArrowLeft size={17} />
             </Link>
             <div className="min-w-0">

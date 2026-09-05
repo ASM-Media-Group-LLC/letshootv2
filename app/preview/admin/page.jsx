@@ -84,7 +84,7 @@ export default function AdminPresentacionesTab() {
             </p>
           </div>
           <Link
-            href="/preview/nueva-propuesta"
+            href="/admin/propuestas"
             className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.03]"
           >
             <Plus size={17} /> Crear presentación
@@ -258,7 +258,7 @@ function PresCard({ p }) {
               <Copy size={14} />
             </button>
           )}
-          <Link href="/preview/propuesta" title="Ver como receptor" className="grid h-8 w-8 place-items-center rounded-lg text-paper-mute hover:bg-hair/10 hover:text-paper">
+          <Link href="/p/demo" title="Ver como receptor" className="grid h-8 w-8 place-items-center rounded-lg text-paper-mute hover:bg-hair/10 hover:text-paper">
             <ExternalLink size={14} />
           </Link>
           <button title="Más" className="grid h-8 w-8 place-items-center rounded-lg text-paper-mute hover:bg-hair/10 hover:text-paper">
