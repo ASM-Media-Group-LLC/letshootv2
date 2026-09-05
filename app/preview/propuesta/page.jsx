@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send } from 'lucide-react';
+import Logo from '@/components/Logo';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
 
 const DRAFT_KEY = 'ls_propuesta_draft';
@@ -27,6 +28,10 @@ const DEMO = {
   code: 'JP-VE26-A31F',
   expiresAt: '2026-09-15T23:59:59Z',
   model: { name: 'Julia Parker', agency: 'Kash Agency' },
+  recipient: { name: 'Valentina Ríos', email: 'valentina@email.com', kind: 'prospect' },
+  template: 'exclusive',
+  coverUrl: pBig('lsai-dubai'),
+  closingUrl: pBig('lsai-night'),
   looks: [
     { id: 'lk1', caption: 'Dubai · balcón · golden hour',   inspiration: pSm('lsin-dubai'),  real: pSm('lsre-01'), result: pBig('lsai-dubai') },
     { id: 'lk2', caption: 'Playa · golden hour · lifestyle', inspiration: pSm('lsin-beach'),  real: pSm('lsre-02'), result: pBig('lsai-beach') },
@@ -134,6 +139,11 @@ export default function Propuesta() {
   return (
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
 
+      {/* Logo flotante top-left */}
+      <div className="fixed left-3 top-3 z-40 flex items-center rounded-full border border-white/15 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:left-6 sm:top-6">
+        <Logo size="sm" forceDark />
+      </div>
+
       {/* Nav flotante top-right */}
       <div className="fixed right-3 top-3 z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:right-6 sm:top-6">
         <span>{cfg.code}</span>
@@ -178,7 +188,7 @@ export default function Propuesta() {
       >
         <div className="absolute inset-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={looks[0]?.result} alt="" className="h-full w-full object-cover object-[center_30%]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+          <img src={cfg.coverUrl || looks[0]?.result} alt="" className="h-full w-full object-cover object-[center_30%]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
           <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/70 to-ink/40" />
           <Watermark code={cfg.code} uid="cover" />
         </div>
@@ -187,6 +197,11 @@ export default function Propuesta() {
             <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
             {t.privateSel} · {cfg.model.name}
           </div>
+          {cfg.recipient?.name && (
+            <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-white/60">
+              {t.preparedFor} <span className="text-white">{cfg.recipient.name}</span>
+            </div>
+          )}
           <div className="mb-4 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-white/60">
             {t.formula}
           </div>
@@ -311,8 +326,19 @@ export default function Propuesta() {
       })}
 
       {/* ═════════════ CIERRE ═════════════ */}
-      <section className="relative flex min-h-[100svh] w-full items-center justify-center bg-ink px-6 py-24">
-        <div className="mx-auto w-full max-w-2xl text-center">
+      <section className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-6 py-24">
+        {cfg.closingUrl && (
+          <div className="absolute inset-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={cfg.closingUrl} alt="" className="h-full w-full object-cover" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+            <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/85 to-ink/70" />
+            <Watermark code={cfg.code} uid="closing" />
+          </div>
+        )}
+        <div className="relative z-10 mx-auto w-full max-w-2xl text-center">
+          <div className="mb-8 flex justify-center">
+            <Logo size="lg" forceDark />
+          </div>
           <div className="mb-6 inline-flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute">
             <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
             {t.endTag}

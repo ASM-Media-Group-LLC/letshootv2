@@ -5,10 +5,10 @@
 //   • light mode → /logo-light.png ("LetS" cyan + "hoot" black)
 import { useTheme } from '@/app/providers';
 
-export default function Logo({ size = 'base', className = '' }) {
+export default function Logo({ size = 'base', className = '', forceDark = false }) {
   const { theme } = useTheme();
   const h = size === 'lg' ? 38 : size === 'sm' ? 22 : 28;
-  const src = theme === 'light' ? '/logo-light.png' : '/logo.png';
+  const src = !forceDark && theme === 'light' ? '/logo-light.png' : '/logo.png';
 
   return (
     <img

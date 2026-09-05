@@ -1,17 +1,18 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────
-// Editor de PROPUESTA (admin) — builder de looks en formato TRÍPTICO:
-// Inspiración + Modelo real = Resultado IA. Al guardar escribe el draft
-// en localStorage ('ls_propuesta_draft') y la vista pública
-// /preview/propuesta renderiza exactamente lo que el dueño armó.
+// Editor de PROPUESTA (admin) — wizard de 4 pasos: Destinatario → Molde →
+// Fotos → Link. Al publicar escribe el draft en localStorage
+// ('ls_propuesta_draft') y la vista pública /preview/propuesta renderiza
+// exactamente lo que el dueño armó, personalizado para el destinatario.
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, ChevronUp, ChevronDown, Trash2, Plus, ImagePlus, Search, X,
-  Copy, Check, Eye, ExternalLink, Link as LinkIcon, Smartphone, Save,
+  ArrowLeft, ArrowRight, Check, ChevronUp, ChevronDown, Trash2, Plus,
+  ImagePlus, Search, X, Copy, Eye, ExternalLink, Link as LinkIcon,
+  Smartphone, Mail, MessageCircle,
 } from 'lucide-react';
 import { useProp, PROP_LANGS, PROP_LANG_LABELS, PROP_LANG_FLAG } from '@/lib/propuesta-i18n';
 
@@ -33,6 +34,23 @@ const LOOK_SEEDS = [
 const DEMO_LOOKS = LOOK_SEEDS.map((s) => ({
   id: s.id, caption: s.caption, inspiration: SM(s.in), real: SM(s.re), result: LG(s.ai),
 }));
+
+const DEMO_RECIPIENT = { name: 'Valentina Ríos', email: 'valentina@email.com', kind: 'prospect' };
+const DEMO_COVER = LG('lsai-dubai');
+const DEMO_CLOSING = LG('lsai-night');
+
+const TEMPLATES = {
+  exclusive: (n) => ({
+    name: 'Tu contenido, otro nivel',
+    subtitle: 'Julia Parker × LetShoot',
+    intro: `${n}, esto es lo que podemos producir sin sesión y sin viajes. Elegí los looks que quieras para tu contenido.`,
+  }),
+  normal: (n) => ({
+    name: 'Selección editorial',
+    subtitle: 'Verano · 2026',
+    intro: `${n}, sentí el estilo antes de confirmar la sesión. Deslizá y contanos qué te gusta.`,
+  }),
+};
 
 const BAUL_EXTRAS = [
   ['lsin-yacht',   'ref',    'Yate · atardecer'],
@@ -68,35 +86,44 @@ const SLOTS = [
 ];
 
 const isComplete = (l) => Boolean(l.inspiration && l.real && l.result);
+const pad2 = (n) => String(n).padStart(2, '0');
 
 export default function PropuestaAdmin() {
   const t = useProp();
 
-  const [name, setName] = useState('Selección editorial');
-  const [subtitle, setSubtitle] = useState('Verano · 2026');
-  const [intro, setIntro] = useState('Sentí el estilo antes de confirmar la sesión.');
+  const [step, setStep] = useState(1);
+  const [recipient, setRecipient] = useState({ ...DEMO_RECIPIENT });
+  const [template, setTemplate] = useState('exclusive');
+  const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
+  const [closingUrl, setClosingUrl] = useState(DEMO_CLOSING);
+
+  const [name, setName] = useState(TEMPLATES.exclusive('Valentina').name);
+  const [subtitle, setSubtitle] = useState(TEMPLATES.exclusive('Valentina').subtitle);
+  const [intro, setIntro] = useState(TEMPLATES.exclusive('Valentina').intro);
   const [days, setDays] = useState(10);
   const [lang, setLang] = useState('es');
   const [code] = useState('JP-VE26-A31F');
   const [looks, setLooks] = useState(DEMO_LOOKS.map((l) => ({ ...l })));
+  const [selectedId, setSelectedId] = useState(DEMO_LOOKS[0]?.id ?? null);
 
   const [picker, setPicker] = useState(null);
   const [pickerQ, setPickerQ] = useState('');
   const [pickerKind, setPickerKind] = useState('all');
   const [copied, setCopied] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [copyTouched, setCopyTouched] = useState(false);
 
+  // El link/preview usa SIEMPRE el origen actual (el draft vive en localStorage
+  // de este origen); la IP LAN queda solo para el QR del teléfono en local.
   const [proto, setProto] = useState('http:');
   const [host, setHost] = useState(LAN_HOST);
+  const [isLocal, setIsLocal] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const current = window.location.host;
-    const isLocal = /^(localhost|127\.)/.test(current);
-    setHost(isLocal ? LAN_HOST : current);
+    setHost(window.location.host);
+    setIsLocal(/^(localhost|127\.)/.test(window.location.host));
     setProto(window.location.protocol);
   }, []);
 
-  // Rehidrata el draft guardado: recargar el editor no debe pisar lo editado.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -106,15 +133,28 @@ export default function PropuestaAdmin() {
       if (typeof d.name === 'string') setName(d.name);
       if (typeof d.subtitle === 'string') setSubtitle(d.subtitle);
       if (typeof d.intro === 'string') setIntro(d.intro);
+      setCopyTouched(true);
       if ([3, 7, 10, 14, 30].includes(d.days)) setDays(d.days);
       if (PROP_LANGS.includes(d.lang)) setLang(d.lang);
+      if (d.template === 'exclusive' || d.template === 'normal') setTemplate(d.template);
+      if (typeof d.coverUrl === 'string' || d.coverUrl === null) setCoverUrl(d.coverUrl);
+      if (typeof d.closingUrl === 'string' || d.closingUrl === null) setClosingUrl(d.closingUrl);
+      if (d.recipient && typeof d.recipient.name === 'string') {
+        setRecipient({
+          name: d.recipient.name,
+          email: typeof d.recipient.email === 'string' ? d.recipient.email : '',
+          kind: ['prospect', 'client', 'model'].includes(d.recipient.kind) ? d.recipient.kind : 'prospect',
+        });
+      }
       if (Array.isArray(d.looks) && d.looks.length > 0) {
-        setLooks(d.looks.map((l) => ({
+        const seeded = d.looks.map((l) => ({
           id: l.id, caption: l.caption || '',
           inspiration: l.inspiration || null, real: l.real || null, result: l.result || null,
-        })));
+        }));
+        setLooks(seeded);
+        setSelectedId(seeded[0]?.id ?? null);
       }
-    } catch { /* noop */ }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -124,24 +164,59 @@ export default function PropuestaAdmin() {
     return () => window.removeEventListener('keydown', onKey);
   }, [picker]);
 
+  const firstName = (recipient.name || '').trim().split(/\s+/)[0] || '';
   const publicUrl = `${proto}//${host}/preview/propuesta?lang=${lang}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(publicUrl)}`;
+  const qrTarget = isLocal ? `${proto}//${LAN_HOST}/preview/propuesta?lang=${lang}` : publicUrl;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(qrTarget)}`;
+  const greet = firstName ? `Hola ${firstName}!` : 'Hola!';
+  const waHref = `https://wa.me/?text=${encodeURIComponent(`${greet} Te preparé una propuesta: ${name}. Mirala acá: ${publicUrl}`)}`;
+  const mailHref = `mailto:${recipient.email.trim()}?subject=${encodeURIComponent(name)}&body=${encodeURIComponent(`${greet}\n\nTe preparé una propuesta: ${name}.\nMirala acá: ${publicUrl}`)}`;
 
   const setLook = (id, patch) => setLooks((s) => s.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const removeLook = (id) => setLooks((s) => s.filter((l) => l.id !== id));
   const moveUp = (i) => setLooks((s) => { if (i === 0) return s; const a = [...s]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; return a; });
   const moveDown = (i) => setLooks((s) => { if (i === s.length - 1) return s; const a = [...s]; [a[i + 1], a[i]] = [a[i], a[i + 1]]; return a; });
-  const addLook = () => setLooks((s) => [...s, {
-    id: `lk-${Math.random().toString(36).slice(2, 8)}`, caption: '', inspiration: null, real: null, result: null,
-  }]);
+  const addLook = () => {
+    const id = `lk-${Math.random().toString(36).slice(2, 8)}`;
+    setLooks((s) => [...s, { id, caption: '', inspiration: null, real: null, result: null }]);
+    setSelectedId(id);
+  };
+
+  // Mientras el dueño no toque los textos a mano, el preset del molde se
+  // regenera solo al cambiar de destinatario o de molde (nombre siempre actual).
+  useEffect(() => {
+    if (copyTouched) return;
+    const preset = TEMPLATES[template](firstName || 'Hola');
+    setName(preset.name);
+    setSubtitle(preset.subtitle);
+    setIntro(preset.intro);
+  }, [copyTouched, template, firstName]);
+
+  const pickTemplate = (tpl) => {
+    setTemplate(tpl);
+    setCopyTouched(false);
+    const preset = TEMPLATES[tpl](firstName || 'Hola');
+    setName(preset.name);
+    setSubtitle(preset.subtitle);
+    setIntro(preset.intro);
+  };
 
   const openPicker = (lookId, slot) => {
-    setPicker({ lookId, slotKey: slot.key, slotLabel: t[slot.tKey] });
+    setPicker({ target: 'look', lookId, slotKey: slot.key, slotLabel: t[slot.tKey] });
     setPickerKind(slot.kind);
     setPickerQ('');
   };
+  const openFramePicker = (target) => {
+    setPicker({ target, slotLabel: target === 'cover' ? t.coverPhoto : t.closingPhoto });
+    setPickerKind('ia');
+    setPickerQ('');
+  };
   const assign = (src) => {
-    if (picker) setLook(picker.lookId, { [picker.slotKey]: src });
+    if (picker) {
+      if (picker.target === 'cover') setCoverUrl(src);
+      else if (picker.target === 'closing') setClosingUrl(src);
+      else setLook(picker.lookId, { [picker.slotKey]: src });
+    }
     setPicker(null);
   };
 
@@ -152,6 +227,9 @@ export default function PropuestaAdmin() {
   }), [pickerKind, pickerQ]);
 
   const completeCount = looks.filter(isComplete).length;
+  const selIdx = looks.findIndex((l) => l.id === selectedId);
+  const selected = looks[selIdx >= 0 ? selIdx : 0];
+  const lookNo = selected ? pad2((selIdx >= 0 ? selIdx : 0) + 1) : '00';
 
   const saveDraft = () => {
     if (completeCount === 0) return;
@@ -160,32 +238,43 @@ export default function PropuestaAdmin() {
       name, subtitle, intro, lang, days, code,
       expiresAt: new Date(Date.now() + days * 86400000).toISOString(),
       model: { name: 'Julia Parker', agency: 'Kash Agency' },
+      recipient: { name: recipient.name.trim(), email: recipient.email.trim(), kind: recipient.kind },
+      template,
+      coverUrl: coverUrl || null,
+      closingUrl: closingUrl || null,
       looks: looks.filter(isComplete).map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
     };
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch { /* noop */ }
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch {}
   };
 
-  const saveAndView = () => {
-    saveDraft();
-    window.open(publicUrl, '_blank', 'noopener');
-  };
-  const saveOnly = () => {
-    saveDraft();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  useEffect(() => {
+    if (step === 4) saveDraft();
+  }, [step]);
+
+  const canNext = step === 1
+    ? recipient.name.trim().length > 0
+    : step === 3
+      ? completeCount > 0
+      : step < 4;
+
+  const goNext = () => {
+    if (step >= 4 || !canNext) return;
+    if (step === 3) saveDraft();
+    setStep(step + 1);
   };
 
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(publicUrl);
       setCopied(true); setTimeout(() => setCopied(false), 2000);
-    } catch { /* noop */ }
+    } catch {}
   };
+
+  const steps = [t.stepWho, t.stepMold, t.stepPhotos, t.stepLink];
 
   return (
     <div className="min-h-screen bg-ink text-paper">
 
-      {/* ═══════════ TOP BAR ═══════════ */}
       <header className="sticky top-0 z-30 border-b border-line bg-ink/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-4 lg:px-8">
           <div className="flex min-w-0 items-center gap-4">
@@ -197,58 +286,77 @@ export default function PropuestaAdmin() {
                 <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute">Propuesta</span>
                 <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-brand">{code}</span>
                 <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> {t.draft}
+                  <span className={`h-1.5 w-1.5 rounded-full ${step === 4 ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  {step === 4 ? t.published : t.draft}
                 </span>
               </div>
-              <div className="mt-0.5 flex items-baseline gap-3">
-                <h1 className="truncate font-display text-xl font-bold tracking-tight text-paper">{name}</h1>
-                <span className="hidden truncate font-medium italic text-paper-mute sm:inline">{subtitle}</span>
-              </div>
+              <h1 className="mt-0.5 truncate font-display text-xl font-bold tracking-tight text-paper">{name}</h1>
             </div>
           </div>
+
+          <div className="hidden items-center gap-2 md:flex">
+            {steps.map((label, i) => {
+              const n = i + 1;
+              const active = step === n;
+              const done = step > n;
+              return (
+                <div key={label} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { if (done) setStep(n); }}
+                    className={`flex items-center gap-2 rounded-full px-1 transition-opacity ${active || done ? '' : 'pointer-events-none opacity-45'}`}
+                  >
+                    <span className={`grid h-7 w-7 place-items-center rounded-full font-mono text-[11px] font-bold transition-all ${
+                      active ? 'bg-brand text-on-accent shadow-glow-sm' : done ? 'bg-brand/20 text-brand' : 'border border-line text-paper-mute'
+                    }`}>
+                      {done ? <Check size={13} /> : n}
+                    </span>
+                    <span className={`text-sm font-semibold ${active ? 'text-paper' : 'text-paper-mute'}`}>{label}</span>
+                  </button>
+                  {n < 4 && <div className={`h-px w-5 ${done ? 'bg-brand/40' : 'bg-line'}`} />}
+                </div>
+              );
+            })}
+          </div>
+
           <div className="flex shrink-0 items-center gap-3">
-            <span className="hidden items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute md:inline-flex">
-              <span className={`h-1.5 w-1.5 rounded-full ${completeCount === looks.length && looks.length > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-              {completeCount}/{looks.length} {t.looks}
-            </span>
-            <button type="button" onClick={saveAndView} disabled={completeCount === 0} className="btn3d inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold disabled:pointer-events-none disabled:opacity-40">
-              <Save size={15} /> {t.saveView}
-            </button>
+            {step === 3 && (
+              <span className="hidden items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute sm:inline-flex">
+                <span className={`h-1.5 w-1.5 rounded-full ${completeCount === looks.length && looks.length > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                {completeCount}/{looks.length} {t.looks}
+              </span>
+            )}
           </div>
         </div>
       </header>
 
-      {/* ═══════════ LAYOUT: config · builder · publicación ═══════════ */}
-      <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-4 py-6 lg:flex-row lg:items-start lg:px-8">
-
-        {/* ─── CONFIG (izq) ─── */}
-        <aside className="w-full shrink-0 space-y-4 lg:w-[300px]">
-          <section className="card3d rounded-3xl border border-line bg-card p-5">
-            <div className="mb-4 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">{t.details}</div>
-            <div className="space-y-3.5">
-              <Field label={t.pkgTitle}>
-                <input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+      {step === 1 && (
+        <div className="mx-auto w-full max-w-xl space-y-4 px-4 py-10">
+          <section className="card3d rounded-3xl border border-line bg-card p-6 sm:p-8">
+            <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.whoTitle}</h2>
+            <p className="mt-1.5 text-sm text-paper-mute">{t.whoSub}</p>
+            <div className="mt-6 space-y-4">
+              <Field label={t.recipName}>
+                <input
+                  value={recipient.name}
+                  onChange={(e) => setRecipient((r) => ({ ...r, name: e.target.value }))}
+                  placeholder={t.recipNamePh}
+                  className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                />
               </Field>
-              <Field label={t.subtitle}>
-                <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+              <Field label={t.recipEmail}>
+                <input
+                  value={recipient.email}
+                  onChange={(e) => setRecipient((r) => ({ ...r, email: e.target.value }))}
+                  placeholder={t.recipEmailPh}
+                  className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                />
               </Field>
-              <Field label={t.introduction}>
-                <textarea value={intro} onChange={(e) => setIntro(e.target.value)} rows={2} className="w-full resize-none rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
-              </Field>
-              <Field label={t.expiresField}>
-                <div className="flex items-center gap-1.5">
-                  {[3, 7, 10, 14, 30].map((n) => (
-                    <Chip key={n} active={days === n} onClick={() => setDays(n)} grow>{n}d</Chip>
-                  ))}
-                </div>
-              </Field>
-              <Field label={t.langField}>
-                <div className="flex flex-wrap gap-1.5">
-                  {PROP_LANGS.map((l) => (
-                    <Chip key={l} active={lang === l} onClick={() => setLang(l)}>
-                      {PROP_LANG_FLAG[l]} {PROP_LANG_LABELS[l]}
-                    </Chip>
-                  ))}
+              <Field label={t.recipKind}>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Chip active={recipient.kind === 'prospect'} onClick={() => setRecipient((r) => ({ ...r, kind: 'prospect' }))}>{t.kindProspect}</Chip>
+                  <Chip active={recipient.kind === 'client'} onClick={() => setRecipient((r) => ({ ...r, kind: 'client' }))}>{t.kindClient}</Chip>
+                  <Chip active={recipient.kind === 'model'} onClick={() => setRecipient((r) => ({ ...r, kind: 'model' }))}>{t.kindModel}</Chip>
                 </div>
               </Field>
             </div>
@@ -262,103 +370,267 @@ export default function PropuestaAdmin() {
               <div className="truncate text-[11px] text-paper-mute">Kash Agency</div>
             </div>
           </section>
-        </aside>
+        </div>
+      )}
 
-        {/* ─── BUILDER (centro) ─── */}
-        <main className="min-w-0 flex-1">
-          <div className="mb-3 flex items-center justify-between px-1">
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
-              {String(looks.length).padStart(2, '0')} {t.looks}
-            </span>
-            <span className="hidden text-[11px] italic text-paper-dim sm:block">{t.formula}</span>
+      {step === 2 && (
+        <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-10">
+          <div>
+            <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.moldTitle}</h2>
+            <p className="mt-1.5 text-sm text-paper-mute">{t.moldSub}</p>
           </div>
 
-          <div className="space-y-4">
-            {looks.map((l, i) => (
-              <article key={l.id} className="card3d rounded-3xl border border-line bg-card p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <span className="shrink-0 font-mono text-[11px] font-bold text-paper-dim">{String(i + 1).padStart(2, '0')}</span>
-                  <input
-                    value={l.caption}
-                    onChange={(e) => setLook(l.id, { caption: e.target.value })}
-                    placeholder={t.captionPh}
-                    className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-sm font-semibold text-paper placeholder:text-paper-dim outline-none transition-colors focus:border-brand"
-                  />
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    <IconBtn onClick={() => moveUp(i)} disabled={i === 0}><ChevronUp size={14} /></IconBtn>
-                    <IconBtn onClick={() => moveDown(i)} disabled={i === looks.length - 1}><ChevronDown size={14} /></IconBtn>
-                    <IconBtn danger onClick={() => removeLook(l.id)}><Trash2 size={14} /></IconBtn>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {['exclusive', 'normal'].map((tpl) => {
+              const active = template === tpl;
+              return (
+                <button
+                  key={tpl}
+                  type="button"
+                  onClick={() => pickTemplate(tpl)}
+                  className={`card3d relative rounded-3xl border bg-card p-5 text-left transition-all ${
+                    active ? 'border-brand ring-1 ring-brand/50 shadow-glow-sm' : 'border-line hover:border-hair'
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute right-4 top-4 grid h-6 w-6 place-items-center rounded-full bg-brand text-on-accent">
+                      <Check size={13} />
+                    </span>
+                  )}
+                  <div className="font-display text-base font-bold text-paper">{tpl === 'exclusive' ? t.tplExclusive : t.tplNormal}</div>
+                  <div className="mt-1 text-[12px] leading-relaxed text-paper-mute">{tpl === 'exclusive' ? t.tplExclusiveSub : t.tplNormalSub}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          <section className="card3d rounded-3xl border border-line bg-card p-5">
+            <div className="space-y-3.5">
+              <Field label={t.pkgTitle}>
+                <input value={name} onChange={(e) => { setName(e.target.value); setCopyTouched(true); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+              </Field>
+              <Field label={t.subtitle}>
+                <input value={subtitle} onChange={(e) => { setSubtitle(e.target.value); setCopyTouched(true); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+              </Field>
+              <Field label={t.introduction}>
+                <textarea value={intro} onChange={(e) => { setIntro(e.target.value); setCopyTouched(true); }} rows={3} className="w-full resize-none rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+              </Field>
+            </div>
+          </section>
+
+          <section className="card3d rounded-3xl border border-line bg-card p-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label={t.langField}>
+                <div className="flex flex-wrap gap-1.5">
+                  {PROP_LANGS.map((l) => (
+                    <Chip key={l} active={lang === l} onClick={() => setLang(l)}>
+                      {PROP_LANG_FLAG[l]} {PROP_LANG_LABELS[l]}
+                    </Chip>
+                  ))}
+                </div>
+              </Field>
+              <Field label={t.expiresField}>
+                <div className="flex items-center gap-1.5">
+                  {[3, 7, 10, 14, 30].map((n) => (
+                    <Chip key={n} active={days === n} onClick={() => setDays(n)} grow>{n}d</Chip>
+                  ))}
+                </div>
+              </Field>
+            </div>
+          </section>
+
+          <section className="card3d rounded-3xl border border-line bg-card p-5">
+            <div className="flex flex-wrap gap-6">
+              <FrameSlot
+                label={t.coverPhoto}
+                url={coverUrl}
+                changeLbl={t.change}
+                removeLbl={t.remove}
+                pickLbl={t.pickFromVault}
+                onPick={() => openFramePicker('cover')}
+                onClear={() => setCoverUrl(null)}
+              />
+              <FrameSlot
+                label={t.closingPhoto}
+                url={closingUrl}
+                changeLbl={t.change}
+                removeLbl={t.remove}
+                pickLbl={t.pickFromVault}
+                onPick={() => openFramePicker('closing')}
+                onClear={() => setClosingUrl(null)}
+              />
+            </div>
+          </section>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="mx-auto flex w-full max-w-[1200px] items-start gap-6 px-4 py-8 lg:px-8">
+          <main className="min-w-0 flex-1">
+            <div className="mb-4 flex items-end justify-between gap-3 px-1">
+              <div>
+                <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.photosTitle}</h2>
+                <p className="mt-1 hidden text-[12px] italic text-paper-dim sm:block">{t.formula}</p>
+              </div>
+              <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
+                {pad2(looks.length)} {t.looks}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {looks.map((l, i) => (
+                <article
+                  key={l.id}
+                  onClick={() => setSelectedId(l.id)}
+                  className={`card3d cursor-pointer rounded-3xl border bg-card p-3.5 transition-colors ${
+                    selected?.id === l.id ? 'border-brand/60' : 'border-line hover:border-hair'
+                  }`}
+                >
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <span className="shrink-0 font-mono text-[11px] font-bold text-paper-dim">{pad2(i + 1)}</span>
+                    <input
+                      value={l.caption}
+                      onChange={(e) => setLook(l.id, { caption: e.target.value })}
+                      placeholder={t.captionPh}
+                      className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-semibold text-paper placeholder:text-paper-dim outline-none transition-colors focus:border-brand"
+                    />
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <IconBtn onClick={() => moveUp(i)} disabled={i === 0}><ChevronUp size={14} /></IconBtn>
+                      <IconBtn onClick={() => moveDown(i)} disabled={i === looks.length - 1}><ChevronDown size={14} /></IconBtn>
+                      <IconBtn danger onClick={() => removeLook(l.id)}><Trash2 size={14} /></IconBtn>
+                    </div>
                   </div>
+
+                  <div className="flex items-stretch">
+                    {SLOTS.map((slot, si) => (
+                      <SlotFragment key={slot.key} first={si === 0} sign={si === 1 ? '+' : '='} small>
+                        <div className="mb-1 flex items-center gap-1 px-0.5">
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${slot.dot}`} />
+                          <span className="truncate font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-paper-mute">{t[slot.tKey]}</span>
+                        </div>
+                        {l[slot.key] ? (
+                          <div className="group relative h-28 overflow-hidden rounded-xl border border-line bg-ink-2 sm:h-32">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={l[slot.key]} alt="" className="h-full w-full object-cover" />
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                              <button type="button" onClick={(e) => { e.stopPropagation(); openPicker(l.id, slot); }} className="rounded-full bg-white/95 px-2.5 py-0.5 text-[10px] font-semibold text-ink">
+                                {t.change}
+                              </button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); setLook(l.id, { [slot.key]: null }); }} className="rounded-full bg-black/60 px-2.5 py-0.5 text-[10px] font-semibold text-white/85">
+                                {t.remove}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openPicker(l.id, slot); }}
+                            className="grid h-28 w-full place-items-center rounded-xl border-2 border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-paper-mute sm:h-32"
+                          >
+                            <span className="flex flex-col items-center gap-1 px-2 text-center">
+                              <ImagePlus size={15} />
+                              <span className="text-[9px] font-medium leading-tight">{t.pickFromVault}</span>
+                            </span>
+                          </button>
+                        )}
+                      </SlotFragment>
+                    ))}
+                  </div>
+
+                  {!isComplete(l) && (
+                    <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-paper-mute">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> {t.lookEmpty}
+                    </div>
+                  )}
+                </article>
+              ))}
+
+              <button
+                type="button"
+                onClick={addLook}
+                className="grid w-full place-items-center rounded-3xl border-2 border-dashed border-line py-6 text-paper-mute transition-colors hover:border-brand/50 hover:text-paper"
+              >
+                <span className="inline-flex items-center gap-2 text-sm font-semibold"><Plus size={16} /> {t.addLook}</span>
+              </button>
+            </div>
+          </main>
+
+          <aside className="hidden w-[340px] shrink-0 lg:block">
+            <div className="lg:sticky lg:top-[97px]">
+              <div className="mb-2 flex items-center justify-between px-1">
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">{t.livePreview}</span>
+                <span className="font-mono text-[10px] text-paper-dim">{t.look} {lookNo}</span>
+              </div>
+              <div className="card3d overflow-hidden rounded-3xl border border-line bg-black p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="font-mono text-[8px] font-semibold uppercase tracking-[0.24em] text-white/40">{t.privateSel}</span>
+                  <span className="font-mono text-[8px] text-white/30">Julia Parker</span>
                 </div>
 
-                <div className="flex items-stretch">
+                <div className="flex items-center gap-1.5">
                   {SLOTS.map((slot, si) => (
-                    <SlotFragment key={slot.key} first={si === 0} sign={si === 1 ? '+' : '='}>
-                      <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
-                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${slot.dot}`} />
-                        <span className="truncate font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-paper-mute">{t[slot.tKey]}</span>
-                      </div>
-                      {l[slot.key] ? (
-                        <div className="group relative aspect-[4/5] overflow-hidden rounded-2xl border border-line bg-ink-2">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={l[slot.key]} alt="" className="h-full w-full object-cover" />
-                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                            <button type="button" onClick={() => openPicker(l.id, slot)} className="rounded-full bg-white/95 px-3 py-1 text-[11px] font-semibold text-ink">
-                              {t.change}
-                            </button>
-                            <button type="button" onClick={() => setLook(l.id, { [slot.key]: null })} className="rounded-full bg-black/60 px-3 py-1 text-[11px] font-semibold text-white/85">
-                              {t.remove}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => openPicker(l.id, slot)}
-                          className="grid aspect-[4/5] w-full place-items-center rounded-2xl border-2 border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-paper-mute"
-                        >
-                          <span className="flex flex-col items-center gap-1.5 px-2 text-center">
-                            <ImagePlus size={18} />
-                            <span className="text-[10px] font-medium leading-tight">{t.pickFromVault}</span>
-                          </span>
-                        </button>
+                    <div key={slot.key} className="contents">
+                      {si > 0 && (
+                        <span className="mt-4 shrink-0 font-mono text-[10px] font-bold text-white/40">{si === 1 ? '+' : '='}</span>
                       )}
-                    </SlotFragment>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center gap-1">
+                          <span className={`h-1 w-1 shrink-0 rounded-full ${slot.dot}`} />
+                          <span className="truncate font-mono text-[7px] font-semibold uppercase tracking-[0.18em] text-white/45">{t[slot.tKey]}</span>
+                        </div>
+                        {selected?.[slot.key] ? (
+                          <div className="h-14 overflow-hidden rounded-lg bg-white/5">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={selected[slot.key]} alt="" className="h-full w-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="grid h-14 place-items-center rounded-lg bg-white/5 text-white/20">
+                            <ImagePlus size={12} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
 
-                {!isComplete(l) && (
-                  <div className="mt-3 flex items-center gap-1.5 text-[11px] text-paper-mute">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> {t.lookEmpty}
-                  </div>
-                )}
-              </article>
-            ))}
+                <div className="mt-3 overflow-hidden rounded-2xl bg-white/5">
+                  {selected?.result ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={selected.result} alt="" className="aspect-[4/5] w-full object-cover" />
+                  ) : (
+                    <div className="grid aspect-[4/5] w-full place-items-center text-white/20">
+                      <ImagePlus size={22} />
+                    </div>
+                  )}
+                </div>
 
-            <button
-              type="button"
-              onClick={addLook}
-              className="grid w-full place-items-center rounded-3xl border-2 border-dashed border-line py-8 text-paper-mute transition-colors hover:border-brand/50 hover:text-paper"
-            >
-              <span className="inline-flex items-center gap-2 text-sm font-semibold"><Plus size={16} /> {t.addLook}</span>
-            </button>
-          </div>
-        </main>
-
-        {/* ─── PUBLICACIÓN (der, sticky) ─── */}
-        <aside className="w-full shrink-0 space-y-4 lg:sticky lg:top-[89px] lg:w-[330px] lg:self-start">
-          <section className="card3d rounded-3xl border border-brand/40 bg-gradient-to-br from-brand/[0.10] to-brand/[0.02] p-5 shadow-glow-sm">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-brand text-on-accent shadow-glow-sm">
-                <LinkIcon size={17} />
-              </div>
-              <div className="min-w-0">
-                <div className="font-display text-base font-bold">{t.shareLink}</div>
-                <div className="truncate text-[11px] text-paper-mute">{t.publicAnon} · {days}d</div>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <span className="truncate text-[12px] font-semibold text-white">{selected?.caption || '—'}</span>
+                  <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.18em] text-white/40">
+                    {t.look} {lookNo} · {pad2(looks.length)}
+                  </span>
+                </div>
               </div>
             </div>
+          </aside>
+        </div>
+      )}
 
-            <div className="mb-3 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
+      {step === 4 && (
+        <div className="mx-auto w-full max-w-lg space-y-4 px-4 py-10">
+          <div className="text-center">
+            <div className="inline-flex items-center gap-2.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.linkTitle}</h2>
+            </div>
+            <p className="mt-1.5 text-sm text-paper-mute">{t.linkSub}</p>
+            <p className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
+              {t.preparedFor} <span className="text-brand">{recipient.name}</span>
+            </p>
+          </div>
+
+          <section className="card3d rounded-3xl border border-line bg-card p-5">
+            <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
               <LinkIcon size={13} className="shrink-0 text-paper-dim" />
               <input
                 readOnly
@@ -377,13 +649,13 @@ export default function PropuestaAdmin() {
               </button>
             </div>
 
-            <div className="mb-3 rounded-2xl border border-line bg-ink p-4">
+            <div className="mb-4 rounded-2xl border border-line bg-ink p-4">
               <div className="mb-3 inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">
                 <Smartphone size={11} /> {t.scanPhone}
               </div>
               <div className="grid place-items-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrUrl} alt="QR" className="h-44 w-44 rounded-lg" />
+                <img src={qrUrl} alt="QR" className="h-40 w-40 rounded-lg" />
               </div>
             </div>
 
@@ -396,34 +668,64 @@ export default function PropuestaAdmin() {
             >
               <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
             </a>
-            <button
-              type="button"
-              onClick={saveOnly}
-              disabled={completeCount === 0}
-              className="btn3d-ghost inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold disabled:pointer-events-none disabled:opacity-40"
-            >
-              <Save size={14} /> {t.save}
-            </button>
-            {saved && (
-              <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-paper-mute">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" /> {t.savedOk}
-              </div>
-            )}
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noreferrer"
+                className="btn3d-ghost inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-semibold"
+              >
+                <MessageCircle size={14} /> {t.sendWhatsApp}
+              </a>
+              <a
+                href={mailHref}
+                className="btn3d-ghost inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-semibold"
+              >
+                <Mail size={14} /> {t.sendEmail}
+              </a>
+            </div>
           </section>
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
-            <div className="mb-3 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">{t.activity}</div>
             <div className="space-y-2">
-              <StatRow dot="bg-brand" label={t.opens} value="3" />
-              <StatRow dot="bg-emerald-400" label={t.liked} value="8" />
-              <StatRow dot="bg-rose-400" label={t.rejected} value="2" />
-              <StatRow dot="bg-zinc-400" label={t.comments} value="4" />
+              <StatRow dot="bg-brand" label={t.looks} value={String(completeCount)} />
+              <StatRow dot="bg-amber-400" label={t.expiresField} value={`${days}d · ${new Date(Date.now() + days * 86400000).toLocaleDateString()}`} />
+              <StatRow dot="bg-zinc-400" label={t.langField} value={`${PROP_LANG_FLAG[lang]} ${PROP_LANG_LABELS[lang]}`} />
             </div>
           </section>
-        </aside>
+        </div>
+      )}
+
+      <div className="sticky bottom-0 z-30 border-t border-line bg-ink/90 backdrop-blur">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-3 lg:px-8">
+          <button
+            type="button"
+            onClick={() => setStep((s) => Math.max(1, s - 1))}
+            disabled={step === 1}
+            className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-paper-mute transition-colors hover:border-brand/40 hover:text-paper disabled:pointer-events-none disabled:opacity-40"
+          >
+            <ArrowLeft size={15} /> {t.back}
+          </button>
+          <div className="hidden font-mono text-[10px] uppercase tracking-[0.24em] text-paper-dim sm:block">
+            {steps[step - 1]} — <span className="text-brand">{step}/4</span>
+          </div>
+          {step < 4 ? (
+            <button
+              type="button"
+              onClick={goNext}
+              disabled={!canNext}
+              className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold disabled:pointer-events-none disabled:opacity-40"
+            >
+              {step === 3 ? t.publishNow : t.next} <ArrowRight size={15} />
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> {t.savedOk}
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* ═══════════ PICKER DEL BAÚL (modal) ═══════════ */}
       {picker && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
@@ -495,13 +797,43 @@ export default function PropuestaAdmin() {
   );
 }
 
-// ── Sub components ────────────────────────────────────────────────────────
-function SlotFragment({ first, sign, children }) {
+function FrameSlot({ label, url, changeLbl, removeLbl, pickLbl, onPick, onClear }) {
+  return (
+    <div>
+      <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">{label}</div>
+      {url ? (
+        <div className="group relative h-40 aspect-[4/5] overflow-hidden rounded-2xl border border-line bg-ink-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt="" className="h-full w-full object-cover" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+            <button type="button" onClick={onPick} className="rounded-full bg-white/95 px-3 py-1 text-[11px] font-semibold text-ink">{changeLbl}</button>
+            <button type="button" onClick={onClear} className="rounded-full bg-black/60 px-3 py-1 text-[11px] font-semibold text-white/85">{removeLbl}</button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onPick}
+          className="grid h-40 aspect-[4/5] place-items-center rounded-2xl border-2 border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-paper-mute"
+        >
+          <span className="flex flex-col items-center gap-1.5 px-2 text-center">
+            <ImagePlus size={16} />
+            <span className="text-[9px] font-medium leading-tight">{pickLbl}</span>
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SlotFragment({ first, sign, small, children }) {
   return (
     <>
       {!first && (
-        <div className="z-10 -mx-3 self-center">
-          <span className="grid h-7 w-7 place-items-center rounded-full border border-line bg-ink font-mono text-sm font-bold text-paper-mute">
+        <div className={`z-10 self-center ${small ? '-mx-2' : '-mx-3'}`}>
+          <span className={`grid place-items-center rounded-full border border-line bg-ink font-mono font-bold text-paper-mute ${
+            small ? 'h-5 w-5 text-[10px]' : 'h-7 w-7 text-sm'
+          }`}>
             {sign}
           </span>
         </div>
@@ -541,7 +873,7 @@ function IconBtn({ onClick, disabled, danger, children }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
       disabled={disabled}
       className={`grid h-8 w-8 place-items-center rounded-lg text-paper-mute transition-colors disabled:opacity-30 ${
         danger ? 'hover:bg-rose-500/10 hover:text-rose-300' : 'hover:bg-hair/10 hover:text-paper'
