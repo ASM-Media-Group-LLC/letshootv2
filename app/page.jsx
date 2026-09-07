@@ -5,6 +5,7 @@ import RealVsAI from '@/components/RealVsAI';
 import Comparison from '@/components/Comparison';
 import Solution from '@/components/Solution';
 import Showcase from '@/components/Showcase';
+import VoiceSection from '@/components/VoiceSection';
 import HowItWorks from '@/components/HowItWorks';
 import Results from '@/components/Results';
 import Pricing from '@/components/Pricing';
@@ -22,6 +23,7 @@ export default function Page() {
       <Comparison />
       <Solution />
       <Showcase />
+      <VoiceSection />
       <HowItWorks />
       <Results />
       <Pricing />
