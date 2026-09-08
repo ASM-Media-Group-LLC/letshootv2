@@ -84,7 +84,7 @@ export default function AdminPresentacionesTab() {
             </p>
           </div>
           <Link
-            href="/admin/propuestas"
+            href="/propuestas"
             className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.03]"
           >
             <Plus size={17} /> Crear presentación

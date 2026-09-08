@@ -8,7 +8,7 @@
 // receptor (le gustó / rechazó / comentó / abrió).
 //
 // HONESTO: hoy el backend real no existe. Las propuestas viven en el
-// localStorage del navegador (las publica el wizard en /admin/propuestas).
+// localStorage del navegador (las publica el wizard en /propuestas).
 // Por eso, además de las reales que encuentre, SEMBRAMOS unas de ejemplo
 // (solo en memoria — NO se escriben a localStorage) para que el dueño vea la
 // vista completa aunque todavía no haya publicado nada. Cuando llegue el
