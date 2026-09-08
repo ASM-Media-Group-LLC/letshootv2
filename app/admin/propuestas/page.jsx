@@ -251,11 +251,70 @@ export default function PropuestaAdmin() {
     setPicker(null);
   };
 
-  const pickerItems = useMemo(() => BAUL.filter((p) => {
+  // ── Subida desde la computadora del operador ──
+  // Las fotos se comprimen a JPEG (máx 1000px) para que quepan en el draft de
+  // localStorage. Persisten en 'ls_prop_uploads' (best-effort: si se llena la
+  // cuota, quedan solo en memoria de esta pestaña).
+  const [uploads, setUploads] = useState([]);
+  const fileInputRef = useRef(null);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('ls_prop_uploads');
+      if (raw) {
+        const u = JSON.parse(raw);
+        if (Array.isArray(u)) setUploads(u.filter((x) => x?.id && typeof x.src === 'string'));
+      }
+    } catch {}
+  }, []);
+
+  const compressImage = (file) => new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1000;
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+
+  const onFilesPicked = async (e) => {
+    const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'));
+    e.target.value = '';
+    if (!files.length) return;
+    const kind = picker?.target === 'look' ? (SLOTS.find((s) => s.key === picker.slotKey)?.kind || 'ia') : 'ia';
+    const nuevos = [];
+    for (const f of files) {
+      const src = await compressImage(f);
+      if (!src) continue;
+      nuevos.push({
+        id: `up-${Math.random().toString(36).slice(2, 9)}`,
+        src, kind,
+        caption: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').slice(0, 40) || 'Subida',
+        uploaded: true,
+      });
+    }
+    if (!nuevos.length) return;
+    setUploads((prev) => {
+      const next = [...nuevos, ...prev];
+      try { localStorage.setItem('ls_prop_uploads', JSON.stringify(next)); } catch {}
+      return next;
+    });
+    // Si subió una sola, asignarla directo al slot que estaba eligiendo.
+    if (nuevos.length === 1 && picker) assign(nuevos[0].src);
+  };
+
+  const pickerItems = useMemo(() => [...uploads, ...BAUL].filter((p) => {
     if (pickerKind !== 'all' && p.kind !== pickerKind) return false;
     if (pickerQ && !p.caption.toLowerCase().includes(pickerQ.toLowerCase())) return false;
     return true;
-  }), [pickerKind, pickerQ]);
+  }), [uploads, pickerKind, pickerQ]);
 
   const completeCount = looks.filter(isComplete).length;
   const selIdx = looks.findIndex((l) => l.id === selectedId);
@@ -909,6 +968,14 @@ export default function PropuestaAdmin() {
                 <Chip active={pickerKind === 'selfie'} onClick={() => setPickerKind('selfie')} dot="bg-emerald-400">{t.tipoSelfie}</Chip>
                 <Chip active={pickerKind === 'ia'} onClick={() => setPickerKind('ia')} dot="bg-brand">{t.tipoIa}</Chip>
               </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="btn3d inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold"
+              >
+                <ImagePlus size={13} /> Subir de tu computadora
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFilesPicked} />
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
