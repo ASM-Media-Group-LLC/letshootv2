@@ -131,7 +131,7 @@ export default function CinematicHero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.85, ease, delay: 0.85 }}
-          className="relative z-10 w-full pb-10 sm:pb-12"
+          className="relative z-10 hidden w-full pb-10 sm:block sm:pb-12"
         >
           <div className="mx-auto max-w-6xl px-6 sm:px-10">
             <div className="grid grid-cols-3 divide-x divide-white/10 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-md">
