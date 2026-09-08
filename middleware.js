@@ -5,7 +5,7 @@ import { createServerClient } from '@supabase/ssr';
 // público (marketing, landings, /make). Reproduce EXACTAMENTE lo que antes
 // hacía el `matcher`, ahora como comprobación explícita para poder ampliar
 // el matcher sin gate accidental en páginas públicas.
-const PROTECTED = ['/panel', '/admin', '/onboarding', '/trabajo', '/cuenta', '/agencia', '/agente', '/owner', '/sales', '/numbers', '/propuestas'];
+const PROTECTED = ['/panel', '/admin', '/onboarding', '/trabajo', '/cuenta', '/agencia', '/agente', '/owner', '/propuestas'];
 
 function needsAuth(pathname) {
   return PROTECTED.some((p) => pathname === p || pathname.startsWith(p + '/'));

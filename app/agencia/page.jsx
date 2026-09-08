@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  LogOut, Users, ImageIcon, ShoppingBag, DollarSign, Building2, Target, Film,
+  LogOut, Users, ImageIcon, ShoppingBag, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
   ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart, KeyRound,
   UserPlus, Trash2, Check, Mail, AlertTriangle, Search, Pencil, RotateCcw, ImageOff, ArrowLeft,
@@ -27,7 +27,6 @@ import WelcomeTour from '@/components/WelcomeTour';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
-const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 // Mismo lenguaje que la modelo y el equipo: Enviado → En proceso → Completado.
 const REQ_STATUS = {
@@ -94,106 +93,6 @@ function AgencyResetPasswordBox({ userId, name }) {
   );
 }
 
-// Lunes (YYYY-MM-DD) de la semana de una fecha.
-function mondayOf(d) {
-  const dt = new Date(d);
-  const day = (dt.getDay() + 6) % 7; // 0 = lunes
-  dt.setHours(0, 0, 0, 0);
-  dt.setDate(dt.getDate() - day);
-  return dt.toISOString().slice(0, 10);
-}
-
-// Registro RÁPIDO de ventas por SEMANA (totales) — la agencia mete el total de
-// la semana de una modelo de un tirón. Alimenta la banda de momentum de la modelo.
-function WeeklySales({ creatorId, flash }) {
-  const supabase = getSupabase();
-  const nf = (n) => Number(n || 0).toLocaleString('en-US');
-  const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
-  const [week, setWeek] = useState(() => mondayOf(new Date()));
-  const [rows, setRows] = useState([]);
-  const [sales, setSales] = useState('');
-  const [revenue, setRevenue] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const reload = useCallback(async () => {
-    const { data } = await supabase.from('agency_weekly_sales')
-      .select('week_start, sales, revenue').eq('creator_id', creatorId)
-      .order('week_start', { ascending: false }).limit(10);
-    setRows(data || []);
-  }, [creatorId, supabase]);
-  useEffect(() => { reload(); }, [reload]);
-  // Prefill al cambiar de semana (pero NO cuando cambian rows por un save reciente,
-  // porque justo acabamos de limpiar los inputs y no queremos re-rellenarlos).
-  useEffect(() => {
-    const r = rows.find((x) => x.week_start === week);
-    setSales(r ? String(r.sales) : '');
-    setRevenue(r ? String(Number(r.revenue)) : '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [week]);
-
-  const [savedOk, setSavedOk] = useState(false);
-  async function save() {
-    setBusy(true);
-    const { error } = await supabase.rpc('agency_set_week', {
-      p_creator: creatorId, p_week_start: week,
-      p_sales: parseInt(sales || '0', 10), p_revenue: parseFloat(revenue || '0'),
-    });
-    setBusy(false);
-    if (error) { flash('Error: ' + error.message); return; }
-    // Reset visual: limpia los inputs y muestra un tick verde 2.5s para que
-    // sea obvio que se guardó — antes los valores quedaban en el input y no
-    // había feedback claro. El total real vive en la BD y se ve en las barras.
-    setSales(''); setRevenue('');
-    setSavedOk(true); setTimeout(() => setSavedOk(false), 2500);
-    flash('Semana guardada');
-    await reload();
-  }
-
-  const bars = [...rows].sort((a, b) => a.week_start.localeCompare(b.week_start)).slice(-8);
-  const peak = Math.max(1, ...bars.map((b) => b.sales));
-  const wLabel = (d) => new Date(d + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short' });
-
-  return (
-    <div className="mt-4 rounded-2xl border border-brand/25 bg-brand/[0.04] p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-brand"><TrendingUp size={13} /> Ventas de la semana</div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setWeek(mondayOf(new Date(week + 'T00:00:00').getTime() - 7 * 864e5))} className="grid h-7 w-7 place-items-center rounded-full border border-line text-paper-mute hover:text-paper"><ChevronLeft size={14} /></button>
-          <span className="min-w-[110px] text-center text-xs font-semibold text-paper">Semana del {wLabel(week)}</span>
-          <button onClick={() => setWeek(mondayOf(new Date(week + 'T00:00:00').getTime() + 7 * 864e5))} className="grid h-7 w-7 place-items-center rounded-full border border-line text-paper-mute hover:text-paper"><ChevronRight size={14} /></button>
-        </div>
-      </div>
-      <p className="mt-1 text-[11px] text-paper-dim">Mete el total de la semana de un tirón — no foto por foto. La modelo lo ve como momentum.</p>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-[1fr_1fr_auto]">
-        <label className="block">
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-paper-dim">Ventas</span>
-          <input type="number" min="0" value={sales} onChange={(e) => setSales(e.target.value)} placeholder="0"
-            className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-paper-dim">Ingresos ($)</span>
-          <input type="number" min="0" value={revenue} onChange={(e) => setRevenue(e.target.value)} placeholder="0"
-            className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
-        </label>
-        <button onClick={save} disabled={busy} className={`col-span-2 inline-flex items-center justify-center gap-1.5 self-end rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-60 sm:col-span-1 ${
-          savedOk ? 'bg-emerald-500 text-white' : 'bg-brand text-on-accent hover:brightness-110'
-        }`}>
-          {busy ? <Loader2 size={14} className="animate-spin" /> : savedOk ? <><CheckCircle2 size={14} /> Guardado</> : <><Check size={14} /> Guardar</>}
-        </button>
-      </div>
-      {bars.length > 0 && (
-        <div className="mt-3 flex h-12 items-end gap-1.5">
-          {bars.map((b) => (
-            <div key={b.week_start} className="flex flex-1 flex-col items-center" title={`${wLabel(b.week_start)}: ${nf(b.sales)} ventas · ${money(b.revenue)}`}>
-              <div className={`w-full rounded-t ${b.week_start === week ? 'bg-brand' : 'bg-brand/30'}`} style={{ height: `${Math.max(8, Math.round((b.sales / peak) * 100))}%` }} />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function AgenciaPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -202,14 +101,13 @@ export default function AgenciaPage() {
   const [ctx, setCtx] = useState({ agencyId: null, agencyName: '', isOwner: true, caps: ['content', 'sales', 'requests', 'metrics'] });
   const can = (c) => ctx.caps.includes(c);
   const [models, setModels] = useState([]);       // [{id, name, status, assets:[...]}]
-  const [weeklyByCreator, setWeeklyByCreator] = useState({}); // { creator_id: [{week_start, sales, revenue}, ...] } — para sumar al KPI mensual
   const [folders, setFolders] = useState({});     // folderId -> name
   const [requests, setRequests] = useState([]);
   const [urls, setUrls] = useState({});
   const [sel, setSel] = useState(null);           // selected creator id
   const [month, setMonth] = useState(null);       // 'YYYY-MM' for the selected model
   const [mtab, setMtab] = useState('content');    // content | pedidos
-  const [contentFilter, setContentFilter] = useState('all'); // all | photo | video | sold | revenue — filtra el tab Contenido
+  const [contentFilter, setContentFilter] = useState('all'); // all | photo | video | sold — filtra el tab Contenido
   const [detail, setDetail] = useState(null);     // asset being edited
   const [toast, setToast] = useState('');
   const [reqOpen, setReqOpen] = useState(false);
@@ -228,7 +126,7 @@ export default function AgenciaPage() {
   // Lista de modelos escalable: buscador + filtro + orden (para 10+ modelos).
   const [mQuery, setMQuery] = useState('');
   const [mFilter, setMFilter] = useState('all');   // all | active | onboarding | sales
-  const [mSort, setMSort] = useState('sales');     // name | sales | revenue | pending
+  const [mSort, setMSort] = useState('sales');     // name | sales | pending
 
   // Select a model and jump to its latest delivery month.
   function pickModel(m) {
@@ -307,16 +205,6 @@ export default function AgenciaPage() {
     // Solicitudes de salida pendientes (modelos que piden dejar la agencia).
     const { data: leaves } = await supabase.rpc('agency_leave_requests');
     setLeaveReqs(leaves || []);
-
-    // Weekly sales por modelo — para SUMAR al KPI de Ingresos/Vendidas del mes.
-    // Antes la agencia veía Ingresos ($20 de assets) pero no reflejaba los
-    // totales semanales que metía en «Ventas de la semana». Ahora suman.
-    const { data: weekly } = await supabase.from('agency_weekly_sales')
-      .select('creator_id, week_start, sales, revenue')
-      .in('creator_id', ids);
-    const weeklyByCreator = {};
-    (weekly || []).forEach((w) => { (weeklyByCreator[w.creator_id] = weeklyByCreator[w.creator_id] || []).push(w); });
-    setWeeklyByCreator(weeklyByCreator);
 
     setFolders(folderMap);
     setModels(list);
@@ -402,46 +290,27 @@ export default function AgenciaPage() {
     return rows.sort((x, y) => (y.deliver_date || '').localeCompare(x.deliver_date || ''));
   }, [models]);
 
-  // Suma las «Ventas de la semana» (agency_weekly_sales) de una modelo. El
-  // dashboard mensual por modelo ya las suma; los roll-ups de abajo deben
-  // hacerlo también o subcontarían — las agencias meten el total semanal de
-  // un tirón, no foto por foto.
-  const weeklyTotalsFor = (id) =>
-    (weeklyByCreator[id] || []).reduce(
-      (a, w) => ({ sales: a.sales + (w.sales || 0), revenue: a.revenue + Number(w.revenue || 0) }),
-      { sales: 0, revenue: 0 },
-    );
-
-  // Per-model income roll-up — for the Ingresos tab.
+  // Per-model roll-up — for the Ventas tab (solo conteos, sin dinero).
   const income = useMemo(() => {
     const rows = models.map((m) => {
-      const wk = weeklyTotalsFor(m.id);
-      const sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0) + wk.sales;
-      const revenue = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0) + wk.revenue;
+      const sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
       return { id: m.id, name: m.name, handle: m.handle, avatar_url: m.avatar_url,
-        delivered: m.assets.length, sales, revenue };
-    }).sort((a, b) => b.revenue - a.revenue);
-    const total = rows.reduce((s, r) => s + r.revenue, 0);
+        delivered: m.assets.length, sales };
+    }).sort((a, b) => b.sales - a.sales);
+    const total = rows.reduce((s, r) => s + r.sales, 0);
     return { rows, total };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, weeklyByCreator]);
+  }, [models]);
 
-  // Agency-wide books.
+  // Agency-wide books (solo conteos).
   const books = useMemo(() => {
     const all = models.flatMap((m) => m.assets);
-    const wkAll = models.reduce((acc, m) => {
-      const wk = weeklyTotalsFor(m.id);
-      return { sales: acc.sales + wk.sales, revenue: acc.revenue + wk.revenue };
-    }, { sales: 0, revenue: 0 });
     return {
       models: models.length,
       delivered: all.length,
-      sales: all.reduce((s, a) => s + (a.sales_count || 0), 0) + wkAll.sales,
-      revenue: all.reduce((s, a) => s + Number(a.revenue || 0), 0) + wkAll.revenue,
+      sales: all.reduce((s, a) => s + (a.sales_count || 0), 0),
       reach: all.reduce((s, a) => s + (a.reach || 0), 0),
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, weeklyByCreator]);
+  }, [models]);
 
   if (loading) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">Cargando…</div>;
 
@@ -470,14 +339,6 @@ export default function AgenciaPage() {
   const prevAssets = model ? model.assets.filter((a) => ymOf(a.deliver_date) === shiftYm(month || '2026-01', -1)) : [];
   const cur = aggregate(monthAssets);
   const prev = aggregate(prevAssets);
-  // Suma las «Ventas de la semana» del mes en curso (weekly bulk totals).
-  // Esa métrica vive en agency_weekly_sales — antes no se reflejaba en el KPI
-  // de Ingresos/Vendidas y confundía cuando había ventas semanales sin +1 individual.
-  const wkRows = model ? (weeklyByCreator[model.id] || []) : [];
-  const wkCur = wkRows.filter((w) => ymOf(w.week_start) === month).reduce((a, w) => ({ sales: a.sales + (w.sales || 0), revenue: a.revenue + Number(w.revenue || 0) }), { sales: 0, revenue: 0 });
-  const wkPrev = wkRows.filter((w) => ymOf(w.week_start) === shiftYm(month || '2026-01', -1)).reduce((a, w) => ({ sales: a.sales + (w.sales || 0), revenue: a.revenue + Number(w.revenue || 0) }), { sales: 0, revenue: 0 });
-  cur.sales += wkCur.sales; cur.revenue += wkCur.revenue;
-  prev.sales += wkPrev.sales; prev.revenue += wkPrev.revenue;
   const curPhotos = monthAssets.filter((a) => a.type !== 'video').length;
   const curVideos = monthAssets.filter((a) => a.type === 'video').length;
   const prevPhotos = prevAssets.filter((a) => a.type !== 'video').length;
@@ -489,7 +350,6 @@ export default function AgenciaPage() {
   const BOOK_KPIS = [
     ...(can('content') ? [{ icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo', view: 'contenido' }] : []),
     ...(can('metrics') ? [{ icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades', view: 'ingresos' }] : []),
-    ...(can('metrics') ? [{ icon: DollarSign, label: 'Ingresos generados', value: money(books.revenue), sub: 'total histórico', view: 'ingresos' }] : []),
     ...(can('content') ? [{ icon: Heart, label: 'Reacciones', value: nf(likeCount), sub: 'likes y comentarios', view: 'reacciones' }] : []),
     ...(ctx.isOwner ? [{ icon: UserPlus, label: 'Equipo', value: '+', sub: 'empleados y accesos', view: 'equipo' }] : []),
   ];
@@ -499,9 +359,8 @@ export default function AgenciaPage() {
   const shownModels = (() => {
     let list = models.map((m) => {
       const _sales = m.assets.reduce((s, a) => s + (a.sales_count || 0), 0);
-      const _rev = m.assets.reduce((s, a) => s + Number(a.revenue || 0), 0);
       const _ck = completion(checklists[m.id]);
-      return { ...m, _sales, _rev, _ck, _pct: _ck.total ? _ck.done / _ck.total : 0 };
+      return { ...m, _sales, _ck, _pct: _ck.total ? _ck.done / _ck.total : 0 };
     });
     const q = mQuery.trim().toLowerCase();
     if (q) list = list.filter((m) => `${m.name} ${m.handle || ''}`.toLowerCase().includes(q));
@@ -511,7 +370,6 @@ export default function AgenciaPage() {
     const cmp = {
       name: (a, b) => a.name.localeCompare(b.name),
       sales: (a, b) => b._sales - a._sales || a.name.localeCompare(b.name),
-      revenue: (a, b) => b._rev - a._rev || a.name.localeCompare(b.name),
       pending: (a, b) => a._pct - b._pct || a.name.localeCompare(b.name),
     };
     list.sort(cmp[mSort] || cmp.sales);
@@ -523,7 +381,7 @@ export default function AgenciaPage() {
       <WelcomeTour storageKey="ls_tour_agency_v1" steps={[
         { eyebrow: 'Bienvenida', title: 'Tu panel de agencia', body: 'Gestiona a todas tus modelos desde un solo lugar. Te mostramos lo básico en 20 segundos.' },
         { eyebrow: 'Modelos', title: 'Tus modelos', body: 'Entra a cada modelo para ver su contenido, su estado y todo lo que le falta.' },
-        { eyebrow: 'Contenido e ingresos', title: 'Contenido y ventas', body: 'Revisa todo lo entregado y registra las ventas de cada modelo, mes a mes.' },
+        { eyebrow: 'Contenido', title: 'Contenido y ventas', body: 'Revisa todo lo entregado y registra las ventas de cada modelo, mes a mes.' },
         { eyebrow: 'Pedidos', title: 'Pide sets', body: 'Solicita contenido específico para una modelo y el equipo de LetShoot lo produce.' },
       ]} />
       <PortalHeader
@@ -589,22 +447,21 @@ export default function AgenciaPage() {
                   <select value={mSort} onChange={(e) => setMSort(e.target.value)}
                     className="rounded-full border border-line bg-ink-2 px-3 py-2 text-xs font-semibold text-paper-mute outline-none focus:border-brand/60">
                     <option value="sales">Más ventas</option>
-                    <option value="revenue">Más ingresos</option>
                     <option value="pending">Más pendientes</option>
                     <option value="name">Nombre (A–Z)</option>
                   </select>
                 </div>
 
                 {/* Encabezados (desktop) */}
-                <div className="mt-3 hidden grid-cols-[1.6fr_0.7fr_0.8fr_0.9fr_auto] gap-3 px-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:grid">
-                  <span>Modelo</span><span className="text-right">Entregadas</span><span className="text-right">Ventas</span><span className="text-right">Ingresos</span><span className="text-right">Cuenta</span>
+                <div className="mt-3 hidden grid-cols-[1.6fr_0.7fr_0.8fr_auto] gap-3 px-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:grid">
+                  <span>Modelo</span><span className="text-right">Entregadas</span><span className="text-right">Ventas</span><span className="text-right">Cuenta</span>
                 </div>
                 {/* Filas densas */}
                 <div className="overflow-hidden rounded-2xl border border-line">
                   {shownModels.length === 0 && <p className="px-4 py-6 text-center text-sm text-paper-dim">Ninguna modelo coincide.</p>}
                   {shownModels.map((m) => (
                     <button key={m.id} onClick={() => pickModel(m)}
-                      className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-line px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-hair/[0.04] sm:grid-cols-[1.6fr_0.7fr_0.8fr_0.9fr_auto]">
+                      className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-line px-4 py-2.5 text-left transition-colors last:border-0 hover:bg-hair/[0.04] sm:grid-cols-[1.6fr_0.7fr_0.8fr_auto]">
                       <span className="flex min-w-0 items-center gap-2.5">
                         <Avatar src={m.avatar_url} name={m.name} size="sm" />
                         <span className="min-w-0">
@@ -614,12 +471,11 @@ export default function AgenciaPage() {
                               ? <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[8px] font-bold uppercase text-brand">Activa</span>
                               : <span className="rounded-full bg-hair/10 px-1.5 py-0.5 text-[8px] font-bold uppercase text-paper-dim">Onboarding</span>}
                           </span>
-                          <span className="block truncate text-[11px] text-paper-dim">{m.handle ? `@${m.handle}` : ''}<span className="sm:hidden"> · {nf(m._sales)} ventas · {money(m._rev)}</span></span>
+                          <span className="block truncate text-[11px] text-paper-dim">{m.handle ? `@${m.handle}` : ''}<span className="sm:hidden"> · {nf(m._sales)} ventas</span></span>
                         </span>
                       </span>
                       <span className="hidden text-right text-sm text-paper-mute sm:block">{nf(m.assets.length)}</span>
                       <span className="hidden text-right text-sm font-medium text-paper sm:block">{nf(m._sales)}</span>
-                      <span className="hidden text-right text-sm font-semibold text-brand sm:block">{money(m._rev)}</span>
                       <span className="flex items-center justify-end gap-2">
                         <span className={`hidden items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold sm:inline-flex ${m._ck.done === m._ck.total ? 'bg-brand/10 text-brand' : 'bg-amber-500/10 text-amber-300'}`}>{m._ck.done}/{m._ck.total}</span>
                         <ChevronRight size={16} className="shrink-0 text-paper-dim" />
@@ -768,19 +624,14 @@ export default function AgenciaPage() {
                   </div>
                   <button onClick={() => setMonth(shiftYm(month, 1))} className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"><ChevronRight size={17} /></button>
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
                   <StatCard icon={ImageIcon} label="Fotos este mes" value={nf(curPhotos)} d={pct(curPhotos, prevPhotos)}
                     onClick={() => { setMtab('content'); setContentFilter('photo'); }} />
                   <StatCard icon={Film} label="Videos este mes" value={nf(curVideos)} d={pct(curVideos, prevVideos)}
                     onClick={() => { setMtab('content'); setContentFilter('video'); }} />
                   <StatCard icon={ShoppingBag} label="Vendidas" value={nf(cur.sales)} d={pct(cur.sales, prev.sales)}
                     onClick={() => { setMtab('content'); setContentFilter('sold'); }} />
-                  <StatCard icon={DollarSign} label="Ingresos" value={money(cur.revenue)} d={pct(cur.revenue, prev.revenue)}
-                    onClick={() => { setMtab('content'); setContentFilter('revenue'); }} />
                 </div>
-
-                {/* Registro rápido de ventas por semana — alimenta el momentum de la modelo */}
-                {can('sales') && <WeeklySales creatorId={sel} flash={flash} />}
 
                 {/* Per-model sub-nav: content vs orders */}
                 <div className="mt-6 inline-flex rounded-full border border-line bg-card p-1">
@@ -866,17 +717,14 @@ export default function AgenciaPage() {
                   if (contentFilter === 'photo') filtered = filtered.filter((a) => a.type !== 'video');
                   else if (contentFilter === 'video') filtered = filtered.filter((a) => a.type === 'video');
                   else if (contentFilter === 'sold') filtered = filtered.filter((a) => (a.sales_count || 0) > 0);
-                  else if (contentFilter === 'revenue') filtered = filtered.filter((a) => Number(a.revenue) > 0);
-                  const sorted = contentFilter === 'revenue'
-                    ? filtered.sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0))
-                    : contentFilter === 'sold'
+                  const sorted = contentFilter === 'sold'
                     ? filtered.sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0))
                     : filtered.sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || ''));
-                  const filterLabel = { photo: 'Solo fotos', video: 'Solo videos', sold: 'Vendidas', revenue: 'Con ingresos' }[contentFilter];
+                  const filterLabel = { photo: 'Solo fotos', video: 'Solo videos', sold: 'Vendidas' }[contentFilter];
                   return (
                 <div className="mt-5">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-paper-dim"><ImageIcon size={12} /> Contenido de {ymLabel(month, 'es-US')} · toca para poner precio y ventas</div>
+                    <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-paper-dim"><ImageIcon size={12} /> Contenido de {ymLabel(month, 'es-US')} · toca para registrar ventas</div>
                     {contentFilter !== 'all' && (
                       <button onClick={() => setContentFilter('all')} className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-[11px] font-semibold text-brand transition-colors hover:bg-brand/20">
                         {filterLabel} · limpiar <X size={11} />
@@ -898,11 +746,6 @@ export default function AgenciaPage() {
                             {a.sales_count > 0 && (
                               <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur">
                                 <ShoppingBag size={10} className="text-brand" /> {nf(a.sales_count)}
-                              </span>
-                            )}
-                            {Number(a.revenue) > 0 && (
-                              <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur">
-                                <DollarSign size={10} className="text-brand" /> {money(a.revenue)}
                               </span>
                             )}
                           </div>
@@ -954,9 +797,6 @@ export default function AgenciaPage() {
                     {a.sales_count > 0 && (
                       <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><ShoppingBag size={10} className="text-brand" /> {nf(a.sales_count)}</span>
                     )}
-                    {Number(a.revenue) > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
-                    )}
                   </div>
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink via-ink/70 to-transparent p-2.5 pt-8">
                     <div className="flex items-center gap-1.5">
@@ -980,7 +820,7 @@ export default function AgenciaPage() {
                       </select>
                       <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-paper-dim" />
                     </div>
-                    <span className="text-xs text-paper-dim">{filtered.length} pieza{filtered.length === 1 ? '' : 's'} · toca una para precio y ventas</span>
+                    <span className="text-xs text-paper-dim">{filtered.length} pieza{filtered.length === 1 ? '' : 's'} · toca una para ver el detalle</span>
                   </div>
 
                   {/* Calendario: agrupado por día, lo más reciente arriba */}
@@ -1010,16 +850,16 @@ export default function AgenciaPage() {
           <ReactionsDashboard creators={models.map((m) => ({ id: m.id, name: m.name, avatar_url: m.avatar_url }))} />
         )}
 
-        {/* ── Ingresos: per-model roll-up with detail (los totales ya están arriba) ── */}
+        {/* ── Ventas: per-model roll-up with detail (solo conteos, sin dinero) ── */}
         {atab === 'ingresos' && (
         <div className="mt-6">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">Ingresos por modelo · quién genera qué</div>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-paper-dim">Piezas vendidas por modelo</div>
           {income.rows.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-line bg-card p-8 text-center text-sm text-paper-dim">Aún no hay ventas registradas.</p>
           ) : (
             <div className="space-y-2">
               {income.rows.map((r) => {
-                const share = income.total > 0 ? Math.round((r.revenue / income.total) * 100) : 0;
+                const share = income.total > 0 ? Math.round((r.sales / income.total) * 100) : 0;
                 return (
                   <div key={r.id} className="rounded-2xl border border-line bg-card p-4">
                     <div className="flex items-center gap-3">
@@ -1029,14 +869,14 @@ export default function AgenciaPage() {
                           <span className="truncate text-sm font-semibold text-paper">{r.name}</span>
                           {r.handle && <span className="truncate text-[11px] text-paper-dim">@{r.handle}</span>}
                         </div>
-                        <div className="mt-0.5 text-[11px] text-paper-dim">{r.delivered} entregadas · {nf(r.sales)} ventas</div>
+                        <div className="mt-0.5 text-[11px] text-paper-dim">{r.delivered} entregadas</div>
                         <div className="mt-1.5 flex items-center gap-2">
                           <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-brand/15"><span className="block h-full rounded-full bg-brand" style={{ width: `${share}%` }} /></span>
                           <span className="text-[10px] font-semibold text-paper-dim">{share}%</span>
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
-                        <div className="font-display text-lg font-semibold text-paper">{money(r.revenue)}</div>
+                        <div className="font-display text-lg font-semibold text-paper">{nf(r.sales)} <span className="text-xs font-normal text-paper-dim">ventas</span></div>
                         <button onClick={() => { const m = models.find((x) => x.id === r.id); if (m) { setAtab('modelos'); pickModel(m); } }}
                           className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand hover:underline">
                           Ver detalle <ChevronRight size={12} />
@@ -1360,9 +1200,6 @@ function NewRequest({ creatorId, agencyId, onDone }) {
 // acciones de venta (un empleado sin la función 'sales' solo mira).
 function RecordSale({ asset, src, folderName, agencyId, soldBy, canSell = true, agencyName, agencyHandle, agencyEmail, onClose, onSaved }) {
   const [sales, setSales] = useState(asset.sales_count || 0);
-  const [revenue, setRevenue] = useState(asset.revenue || 0);
-  // Precio por venta (el promedio) — arranca con lo que ya se vio y se puede cambiar.
-  const [price, setPrice] = useState(asset.sales_count > 0 ? String(Math.round((asset.revenue || 0) / asset.sales_count)) : '');
   const [saving, setSaving] = useState(false);
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
@@ -1389,36 +1226,31 @@ function RecordSale({ asset, src, folderName, agencyId, soldBy, canSell = true, 
 
   const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 
-  const priceNum = () => Math.max(0, parseFloat(price) || 0);
-  const avg = sales > 0 ? `$${Math.round(revenue / sales).toLocaleString('en-US')}` : '—';
-  const money = (n) => `$${Number(n || 0).toLocaleString('en-US')}`;
-
   // Persiste el conteo. Cada +1 / −1 es un récord real que la modelo y el admin ven.
-  async function persist(nSales, nRev) {
+  // Solo se toca el conteo — el resto de columnas queda tal cual está en la BD.
+  async function persist(nSales) {
     setSaving(true);
     const { error } = await getSupabase().rpc('agency_set_stats', {
-      aid: asset.id, p_sales: nSales, p_revenue: nRev,
+      aid: asset.id, p_sales: nSales, p_revenue: Number(asset.revenue || 0),
       p_reach: asset.reach || 0, p_interactions: asset.interactions || 0,
     });
     setSaving(false);
     if (error) { console.error(error); return; }
-    onSaved({ sales_count: nSales, revenue: nRev });
+    onSaved({ sales_count: nSales });
   }
   function inc() {
     const nS = sales + 1;
-    const nR = Math.round((Number(revenue) + priceNum()) * 100) / 100;
-    setSales(nS); setRevenue(nR); persist(nS, nR);
-    // Libro de ventas: cada +1 deja una fila auditable (fecha, pieza, precio, quién).
+    setSales(nS); persist(nS);
+    // Libro de ventas: cada +1 deja una fila auditable (fecha, pieza, quién).
     getSupabase().from('agency_sales').insert({
       creator_id: asset.creator_id, agency_id: agencyId, asset_id: asset.id,
-      amount_cents: Math.round(priceNum() * 100), sold_by: soldBy,
+      amount_cents: 0, sold_by: soldBy,
     }).then(() => {}, () => {});
   }
   async function dec() {
     if (sales <= 0) return;
     const nS = sales - 1;
-    const nR = Math.max(0, Math.round((Number(revenue) - priceNum()) * 100) / 100);
-    setSales(nS); setRevenue(nR); persist(nS, nR);
+    setSales(nS); persist(nS);
     // Deshacer: borra la última venta registrada de esta pieza por esta agencia.
     const supabase = getSupabase();
     const { data } = await supabase.from('agency_sales').select('id')
@@ -1474,14 +1306,7 @@ function RecordSale({ asset, src, folderName, agencyId, soldBy, canSell = true, 
             </div>
             <div>
               <div className="text-sm font-semibold text-paper">Registrar venta</div>
-              <p className="mt-0.5 text-xs text-paper-dim">Como una maquinita: cada vez que se vende en OnlyFans, le das <span className="font-semibold text-paper">+1</span>. Lleva el conteo y suma los ingresos solo.</p>
-
-              {/* Precio por venta — el promedio, editable */}
-              <label className="mt-3 block">
-                <span className="text-[11px] font-medium text-paper-dim">Precio por venta ($) — el promedio, lo puedes cambiar</span>
-                <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Ej. 15"
-                  className="mt-1 w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/50" />
-              </label>
+              <p className="mt-0.5 text-xs text-paper-dim">Como una maquinita: cada vez que se vende en OnlyFans, le das <span className="font-semibold text-paper">+1</span>. Lleva el conteo solo.</p>
 
               {/* Contador — el récord real de esta pieza */}
               <div className="mt-3 rounded-2xl border border-line bg-ink-2 p-4">
@@ -1490,24 +1315,20 @@ function RecordSale({ asset, src, folderName, agencyId, soldBy, canSell = true, 
                     <div className="font-display text-4xl font-bold leading-none text-paper">{sales}</div>
                     <div className="mt-1 text-[11px] text-paper-dim">veces vendida</div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-display text-2xl font-bold leading-none text-brand">{money(revenue)}</div>
-                    <div className="mt-1 text-[11px] text-paper-dim">ingresos · prom. {avg}</div>
-                  </div>
                 </div>
                 <div className="mt-4 flex items-center gap-2">
                   <button onClick={dec} disabled={saving || sales <= 0} aria-label="Quitar una venta" title="Quitar una venta"
                     className="grid h-11 w-12 shrink-0 place-items-center rounded-xl border border-line text-lg font-bold text-paper-mute transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-40">−1</button>
-                  <button onClick={inc} disabled={saving || priceNum() <= 0} title={priceNum() <= 0 ? 'Pon un precio primero para poder sumar' : 'Registrar una venta'}
+                  <button onClick={inc} disabled={saving} title="Registrar una venta"
                     className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-brand text-base font-bold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-40">
                     {saving ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={17} /> +1 venta</>}
                   </button>
                 </div>
-                {/* Reset — poner sales y revenue en 0 (útil si te equivocaste) */}
-                {(sales > 0 || Number(revenue) > 0) && (
+                {/* Reset — poner el conteo en 0 (útil si te equivocaste) */}
+                {sales > 0 && (
                   <button onClick={async () => {
                     if (!window.confirm('¿Borrar el conteo de ventas de esta pieza? Se pondrá en 0.')) return;
-                    setSales(0); setRevenue(0); persist(0, 0);
+                    setSales(0); persist(0);
                     // Borra TODAS las ventas registradas de esta pieza por esta agencia
                     // (mantiene el histórico de otras agencias/admin intacto).
                     await getSupabase().from('agency_sales').delete().eq('asset_id', asset.id).eq('agency_id', agencyId);
@@ -1556,9 +1377,9 @@ function RecordSale({ asset, src, folderName, agencyId, soldBy, canSell = true, 
 // ── Sub-equipo de la agencia: invitar empleados con funciones + modelos ──────
 const AGENCY_FUNCS = [
   { v: 'content', l: 'Ver contenido' },
-  { v: 'sales', l: 'Registrar ventas y precios' },
+  { v: 'sales', l: 'Registrar ventas' },
   { v: 'requests', l: 'Hacer pedidos' },
-  { v: 'metrics', l: 'Ver ingresos y números' },
+  { v: 'metrics', l: 'Ver números' },
 ];
 
 function AgencyTeamTab({ agencyId, models, flash }) {

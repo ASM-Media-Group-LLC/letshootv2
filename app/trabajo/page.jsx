@@ -11,14 +11,13 @@ import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
-  ImageIcon, DollarSign, Building2, Film, ShoppingBag, TrendingUp, TrendingDown,
+  ImageIcon, Building2, Film, TrendingUp, TrendingDown,
   CreditCard, ListChecks, ChevronDown, Trash2,
 } from 'lucide-react';
 import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
-import { sumCents, moneyCents } from '@/lib/money';
 import { CAPS, CAP_SECTIONS, ALL_CAP_VALUES } from '@/lib/caps';
 import { PACKS } from '@/lib/packs';
 import Logo from '@/components/Logo';
@@ -59,30 +58,11 @@ const REQ_STATUS = {
 const MSG_FROM = { team: 'Equipo LetShoot', creator: 'Modelo', agency: 'Agencia' };
 const OB_LABEL = {
   registered: 'Registrada', info: 'Falta ID', id_pending: 'ID en revisión',
-  id_rejected: 'ID rechazado', id_approved: 'Falta pago', authorized: 'Falta pago',
+  id_rejected: 'ID rechazado', id_approved: 'Falta activar', authorized: 'Falta activar',
   paid: 'Activa', active: 'Activa',
 };
 const nf = (n) => Number(n || 0).toLocaleString('en-US');
-const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
-
-// Estima el ingreso RECURRENTE mensual a partir de las suscripciones activas y su
-// plan (Test/Core/Pro tienen precio conocido). Excluye cortesías (gratis). Es un
-// ESTIMADO — el cobro real se lleva a mano en el libro (manual_sales).
-const PLAN_MONTHLY = Object.fromEntries(PACKS.map((p) => [p.key, p.m]));
-const PLAN_LABEL = Object.fromEntries(PACKS.map((p) => [p.key, p.name.replace(' Pack', '')]));
-function subEstimate(billRows, todayISO) {
-  const isPaid = (c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status);
-  const isCourtesy = (c) => !!c.comp_until && c.comp_until >= todayISO;
-  // Las modelos de prueba NO cuentan en contabilidad.
-  const real = (billRows || []).filter((c) => !c.is_test);
-  const paying = real.filter((c) => isPaid(c) && !isCourtesy(c));
-  const courtesy = real.filter((c) => isPaid(c) && isCourtesy(c));
-  const monthly = paying.reduce((a, c) => a + (PLAN_MONTHLY[c.plan] ?? PLAN_MONTHLY.core ?? 0), 0);
-  const byPlan = {};
-  paying.forEach((c) => { const k = c.plan || 'core'; byPlan[k] = (byPlan[k] || 0) + 1; });
-  return { monthly, paying: paying.length, courtesy: courtesy.length, byPlan };
-}
 
 // Wrapper con Suspense — necesario porque TrabajoPageInner usa useSearchParams
 // (Next 14 requiere que esos hooks estén dentro de un boundary o el build falla).
@@ -117,8 +97,6 @@ function TrabajoPageInner() {
   const [books, setBooks] = useState(null);   // números de empresa (producción/agencias)
   const [agencies, setAgencies] = useState([]); // agencias + sus modelos (acceso 'agencies')
   const [billRows, setBillRows] = useState([]); // creadoras con estado de suscripción (acceso 'billing')
-  const [ms, setMs] = useState(null);         // resumen del libro Manual Sales (centavos exactos)
-  const [salesRows, setSalesRows] = useState([]); // filas crudas del libro (para el dashboard de Cuentas)
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
   const meRef = useRef(null);
@@ -144,13 +122,12 @@ function TrabajoPageInner() {
       ? ['datos', 'kyc', 'add_creators', 'content', 'requests', 'feedback', 'metrics', 'agencies', 'billing', 'team']
       : (profile.capabilities || []);
     const monthKey = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
-    const [{ data: cr }, { data: st }, rq, fb, bk, sales, myAssets, ag, bl, monthAssets] = await Promise.all([
+    const [{ data: cr }, { data: st }, rq, fb, bk, myAssets, ag, bl, monthAssets] = await Promise.all([
       supabase.rpc('team_creators'),
       supabase.rpc('team_staff'),
       pcaps.includes('requests') ? supabase.from('requests').select('id, status, title, creator_id, created_at, producer_id') : Promise.resolve({ data: [] }),
       pcaps.includes('feedback') ? supabase.from('feedback').select('id, kind, resolved, creator_id, message, asset_id, created_at') : Promise.resolve({ data: [] }),
       pcaps.includes('metrics') ? supabase.rpc('team_books') : Promise.resolve({ data: null }),
-      pcaps.includes('metrics') ? supabase.from('manual_sales').select('id, amount, period_month, sold_on, model_name, concept, rebill_on').order('sold_on', { ascending: false }) : Promise.resolve({ data: [] }),
       pcaps.includes('content') ? supabase.from('assets').select('id, type, creator_id, created_at').eq('uploaded_by', profile.id) : Promise.resolve({ data: [] }),
       pcaps.includes('agencies') ? supabase.rpc('team_agencies') : Promise.resolve({ data: [] }),
       pcaps.includes('billing') ? supabase.rpc('team_billing') : Promise.resolve({ data: [] }),
@@ -165,13 +142,6 @@ function TrabajoPageInner() {
     setBillRows(bl.data || []);
     setMine(myAssets.data || []);
     setMonthAssets(monthAssets.data || []);
-    const srows = sales.data || [];
-    setSalesRows(srows);
-    setMs({
-      totalC: sumCents(srows, (r) => r.amount),
-      count: srows.length,
-      monthC: sumCents(srows.filter((r) => r.period_month === monthKey), (r) => r.amount),
-    });
     const reqs = rq.data || [], fbs = fb.data || [];
     setReqRows(reqs);
     setFbRows(fbs);
@@ -278,7 +248,6 @@ function TrabajoPageInner() {
 
   // Suscripciones (acceso 'billing'): activas y las que vencen en ≤7 días.
   const todayISO = new Date().toISOString().slice(0, 10);
-  const subEst = subEstimate(billRows, todayISO);
   const bill = {
     active: billRows.filter((c) => !c.is_test && (c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status))).length,
     soon: billRows.filter((c) => {
@@ -286,7 +255,6 @@ function TrabajoPageInner() {
       const d = Math.floor((new Date(c.subscription_ends_at + 'T00:00:00') - new Date(todayISO + 'T00:00:00')) / 864e5);
       return d >= 0 && d <= 7;
     }).length,
-    est: subEst,
   };
 
   // ── Mi producción: piezas que subió ESTE trabajador ──
@@ -359,10 +327,6 @@ function TrabajoPageInner() {
     ...(can('content') ? [{ id: 'miproduccion', icon: TrendingUp, label: 'Lo que TÚ subiste', value: nf(mine.length), sub: `${myWeek} en 7 días · ${myMonth} este mes` }] : []),
   ];
   const BIZ_CARDS = [
-    // «Cuentas» es la ENTRADA al dashboard de dinero — la cifra del mes en la
-    // tarjeta invita a entrar; el detalle (promedio, gráfico, últimas ventas) vive
-    // dentro, no desplegado en el panel.
-    ...(can('metrics') ? [{ id: 'cuentas', icon: DollarSign, label: 'Cuentas', value: money(subEst.monthly), sub: `estimado/mes · ${nf(subEst.paying)} suscripciones` }] : []),
     ...(can('metrics') ? [{ id: 'produccion', icon: ImageIcon, label: 'Producción', value: nf(books?.pieces || 0), sub: `piezas creadas en total` }] : []),
     // Con acceso 'agencies' la tarjeta es de GESTIÓN (crear + vincular modelos).
     // Sin él, pero con 'metrics', queda la vista de solo lectura.
@@ -585,7 +549,6 @@ function TrabajoPageInner() {
                 </>
               );
             })()}
-            {tab === 'cuentas' && can('metrics') && <CuentasPanel rows={salesRows} bill={bill} billRows={billRows} onOpenSales={() => router.push('/sales')} onOpenCobros={() => can('billing') && setTab('cobros')} canBilling={can('billing')} />}
             {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} readOnly={readOnly} />}
             {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} pendingByCreator={pendingByCreator} readOnly={readOnly} />}
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
@@ -618,7 +581,7 @@ const CREATOR_CAT = {
 };
 const CREATOR_FILTERS = [
   ['all', 'Todas'], ['active', 'Activas'], ['info', 'Falta ID'], ['id_pending', 'En revisión'],
-  ['id_rejected', 'Rechazado'], ['falta_pago', 'Falta pago'], ['registered', 'Registrada'],
+  ['id_rejected', 'Rechazado'], ['falta_pago', 'Falta activar'], ['registered', 'Registrada'],
 ];
 
 // ¿La creadora tiene suscripción activa (está pagando)?
@@ -738,24 +701,23 @@ function AltasTab({ creators, flash, reload, readOnly }) {
                 <button key={p.key} type="button" onClick={() => upd('plan', on ? '' : p.key)}
                   className={`rounded-xl border p-3 text-left transition-colors ${on ? 'border-brand bg-brand/10' : 'border-line hover:border-brand/40'}`}>
                   <div className="flex items-center justify-between"><span className={`text-xs font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{p.name}</span>{on && <Check size={13} className="text-brand" />}</div>
-                  <div className="mt-1 font-display text-lg font-bold text-paper">${p.m}<span className="text-[10px] font-normal text-paper-dim">/mes</span></div>
-                  <div className="text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid</div>
+                  <div className="mt-1 text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid</div>
                 </button>
               ); })}
             </div>
             <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-ink-2 p-3">
               <input type="checkbox" checked={f.activate} onChange={(e) => upd('activate', e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-brand focus:ring-brand" />
-              <span className="text-sm text-paper">Activar suscripción ya <span className="text-paper-dim">(ya pagó a mano)</span></span>
+              <span className="text-sm text-paper">Activar suscripción ya</span>
             </label>
             {f.activate && !f.comp && (
-              <div className="mt-2"><label className={lbl}>Vence el · próximo cobro</label><input type="date" value={f.ends_at} onChange={(e) => upd('ends_at', e.target.value)} className={inputCls} /></div>
+              <div className="mt-2"><label className={lbl}>Vence el</label><input type="date" value={f.ends_at} onChange={(e) => upd('ends_at', e.target.value)} className={inputCls} /></div>
             )}
             <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.05] p-3">
               <input type="checkbox" checked={f.comp} onChange={(e) => upd('comp', e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-amber-400 focus:ring-amber-400" />
-              <span className="text-sm text-paper">Cortesía <span className="text-paper-dim">(gratis — no pagó)</span></span>
+              <span className="text-sm text-paper">Cortesía</span>
             </label>
             {f.comp && (
-              <div className="mt-2"><label className={lbl}>Gratis hasta</label><input type="date" value={f.comp_until} onChange={(e) => upd('comp_until', e.target.value)} className={inputCls} /></div>
+              <div className="mt-2"><label className={lbl}>Cortesía hasta</label><input type="date" value={f.comp_until} onChange={(e) => upd('comp_until', e.target.value)} className={inputCls} /></div>
             )}
             <div className="mt-3"><label className={lbl}>Nota (opcional) — ej. «1 mes gratis de cortesía»</label>
               <input value={f.billing_note} onChange={(e) => upd('billing_note', e.target.value)} placeholder="Qué se le dio / por qué" className={inputCls} /></div>
@@ -902,7 +864,7 @@ function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
     const supabase = getSupabase();
     const [{ data }, { data: reqs }] = await Promise.all([
       supabase.from('folders')
-        .select('id, name, kind, assets(id, storage_path, type, title, deliver_date, created_at, sales_count, revenue, purpose)')
+        .select('id, name, kind, assets(id, storage_path, type, title, deliver_date, created_at, purpose)')
         .eq('creator_id', creator.id).order('created_at'),
       supabase.from('requests').select('id, title, status').eq('creator_id', creator.id).neq('status', 'delivered').order('created_at', { ascending: false }),
     ]);
@@ -1952,248 +1914,6 @@ function FeedbackTab({ creators, flash }) {
   );
 }
 
-/* ── CUENTAS · resumen persistente arriba del panel (acceso 'metrics') ──────
-   Es el «dashboard de dinero» que la dueña quería ver de un vistazo:
-   ingresos del mes en grande, delta vs. mes pasado, promedio por venta,
-   #ventas y suscripciones activas + un mini-bar de los últimos 6 meses y las
-   últimas 5 ventas. Todo lee de manual_sales (RLS ya guarda por 'metrics').
-   Se le puede dar a un empleado con «Ver números de la empresa». */
-function CuentasPanel({ rows, bill, billRows, onOpenSales, onOpenCobros, canBilling }) {
-  const [showBreakdown, setShowBreakdown] = useState(false);
-  const nowKey = new Date().toISOString().slice(0, 7);
-  const prevDate = new Date(); prevDate.setDate(1); prevDate.setMonth(prevDate.getMonth() - 1);
-  const prevKey = prevDate.toISOString().slice(0, 7);
-
-  // Sumas por mes (period_month es 'YYYY-MM' — de qué mes CUBRE la venta).
-  const byMonth = {};
-  (rows || []).forEach((r) => {
-    const k = r.period_month || (r.sold_on ? String(r.sold_on).slice(0, 7) : nowKey);
-    byMonth[k] = (byMonth[k] || 0) + Number(r.amount || 0);
-  });
-  const thisMonth = byMonth[nowKey] || 0;
-  const lastMonth = byMonth[prevKey] || 0;
-  const thisMonthRows = (rows || []).filter((r) => (r.period_month || (r.sold_on ? String(r.sold_on).slice(0, 7) : '')) === nowKey);
-  const lastMonthRows = (rows || []).filter((r) => (r.period_month || (r.sold_on ? String(r.sold_on).slice(0, 7) : '')) === prevKey);
-  const nSales = thisMonthRows.length;
-  const avgTicket = nSales > 0 ? thisMonth / nSales : 0;
-  const avgPrev = lastMonthRows.length > 0 ? lastMonth / lastMonthRows.length : 0;
-  const deltaPct = lastMonth > 0 ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100) : null;
-
-  // Últimos 6 meses en orden cronológico (para el mini bar-chart).
-  const months = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-    const key = d.toISOString().slice(0, 7);
-    months.push({ key, label: d.toLocaleDateString('es-US', { month: 'short' }).replace('.', ''), amount: byMonth[key] || 0 });
-  }
-  const peak = Math.max(1, ...months.map((m) => m.amount));
-
-  // Próximos cobros (rebills en los próximos 14 días).
-  const todayISO = new Date().toISOString().slice(0, 10);
-  // Ingreso RECURRENTE estimado a partir de las suscripciones activas y su plan.
-  const est = bill?.est || subEstimate(billRows, todayISO);
-  const planLine = Object.entries(est.byPlan || {})
-    .sort((a, b) => (PLAN_MONTHLY[b[0]] || 0) - (PLAN_MONTHLY[a[0]] || 0))
-    .map(([k, n]) => `${n} ${PLAN_LABEL[k] || k}`).join(' · ');
-  // Desglose por cuenta: cada suscripción que cuenta, con su plan y su aporte
-  // mensual. Las cortesías se listan pero aportan $0. Ordenado por aporte.
-  const isPaidC = (c) => c.payment_status === 'paid' || ['active', 'paid'].includes(c.onboarding_status);
-  const isCourtesyC = (c) => !!c.comp_until && c.comp_until >= todayISO;
-  const breakdown = (billRows || [])
-    .filter((c) => !c.is_test)
-    .filter(isPaidC)
-    .map((c) => {
-      const courtesy = isCourtesyC(c);
-      const plan = c.plan || 'core';
-      return {
-        id: c.id,
-        name: c.full_name || c.handle || 'Creadora',
-        handle: c.handle,
-        plan,
-        courtesy,
-        amount: courtesy ? 0 : (PLAN_MONTHLY[plan] ?? PLAN_MONTHLY.core ?? 0),
-        ends: c.subscription_ends_at,
-      };
-    })
-    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
-  const shownBreakdown = showBreakdown ? breakdown : breakdown.slice(0, 6);
-  const PLAN_TONE = { pro: 'border-brand/40 bg-brand/10 text-brand', core: 'border-sky-400/40 bg-sky-400/10 text-sky-300', test: 'border-paper-dim/30 bg-hair/10 text-paper-mute' };
-
-  const in14ISO = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
-  const upcomingRebills = (rows || []).filter((r) => r.rebill_on && r.rebill_on >= todayISO && r.rebill_on <= in14ISO);
-  const upcomingTotal = upcomingRebills.reduce((a, r) => a + Number(r.amount || 0), 0);
-
-  // Últimas 5 ventas para la lista de la derecha.
-  const latest = [...(rows || [])].slice(0, 5);
-
-  return (
-    <section className="mt-6 rounded-2xl border border-brand/25 bg-gradient-to-br from-brand/[0.05] to-transparent p-4 sm:p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Cuentas del mes</div>
-          <p className="text-xs text-paper-dim">Ingreso estimado de las suscripciones activas + lo cobrado a mano. Un vistazo sin abrir el libro.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {canBilling && (
-            <button onClick={onOpenCobros} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:border-brand/50 hover:text-paper">
-              <CreditCard size={13} /> Suscripciones
-            </button>
-          )}
-          <button onClick={onOpenSales} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/25">
-            <DollarSign size={13} /> Ver el libro
-          </button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
-        {/* Columna izquierda: números grandes + gráfico */}
-        <div className="space-y-3">
-          {/* El número que importa: ingreso RECURRENTE estimado de las suscripciones. */}
-          <div className="rounded-xl border border-brand/40 bg-brand/[0.07] p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-brand">Ingreso estimado / mes</div>
-                <div className="mt-1 font-display text-3xl font-semibold leading-none text-paper">{money(est.monthly)}</div>
-                <div className="mt-1.5 text-[11px] text-paper-dim">
-                  de {nf(est.paying)} suscripción{est.paying === 1 ? '' : 'es'} que paga{est.paying === 1 ? '' : 'n'}
-                  {est.courtesy > 0 ? ` · ${est.courtesy} en cortesía (no cuenta${est.courtesy === 1 ? '' : 'n'})` : ''}
-                </div>
-              </div>
-              {planLine && (
-                <div className="shrink-0 rounded-lg border border-brand/25 bg-ink-2 px-3 py-2 text-right">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-paper-dim">Por plan</div>
-                  <div className="mt-0.5 text-xs font-medium text-paper">{planLine}</div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <MoneyStat label="Cobrado este mes" value={money(thisMonth)} delta={deltaPct} sub={thisMonth > 0 || lastMonth > 0 ? `vs. ${money(lastMonth)} anterior` : 'a mano, en el libro'} />
-            <MoneyStat label="Promedio por venta" value={money(avgTicket)} sub={nSales > 0 ? `${nf(nSales)} venta${nSales === 1 ? '' : 's'} este mes` : 'aún sin ventas'} />
-            <MoneyStat label="Suscripciones activas" value={nf(bill?.active || 0)} sub={bill?.soon ? `${bill.soon} vencen esta semana` : 'todas al día'} alert={bill?.soon > 0} />
-          </div>
-
-          <div className="rounded-xl border border-line bg-ink-2 p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Últimos 6 meses</span>
-              <span className="text-[11px] text-paper-dim">pico: {money(peak)}</span>
-            </div>
-            <div className="flex h-24 items-end gap-2">
-              {months.map((m) => {
-                const h = Math.max(4, Math.round((m.amount / peak) * 100));
-                const isCurrent = m.key === nowKey;
-                return (
-                  <div key={m.key} className="flex flex-1 flex-col items-center gap-1.5">
-                    <div className="flex w-full flex-1 items-end">
-                      <div className={`w-full rounded-t ${isCurrent ? 'bg-brand' : 'bg-brand/30'}`} style={{ height: `${h}%` }} title={`${m.label}: ${money(m.amount)}`} />
-                    </div>
-                    <span className={`text-[10px] font-semibold uppercase ${isCurrent ? 'text-brand' : 'text-paper-dim'}`}>{m.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Columna derecha: próximos cobros + últimas ventas */}
-        <div className="space-y-3">
-          <div className="rounded-xl border border-line bg-ink-2 p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Próximos 14 días</span>
-              <span className="text-[11px] text-paper-dim">rebills</span>
-            </div>
-            <div className="font-display text-xl font-semibold text-paper">{money(upcomingTotal)}</div>
-            <div className="mt-0.5 text-[11px] text-paper-dim">
-              {upcomingRebills.length === 0 ? 'no hay cobros programados' : `${upcomingRebills.length} venta${upcomingRebills.length === 1 ? '' : 's'} para volver a cobrar`}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-line bg-ink-2 p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Últimas ventas</span>
-              <button onClick={onOpenSales} className="text-[11px] font-semibold text-brand hover:underline">ver todas</button>
-            </div>
-            {latest.length === 0 ? (
-              <p className="text-xs text-paper-dim">Aún no hay ventas registradas.</p>
-            ) : (
-              <ul className="divide-y divide-line/60">
-                {latest.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-3 py-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-paper">{r.model_name || '—'}</div>
-                      <div className="truncate text-[11px] text-paper-dim">
-                        {r.sold_on ? new Date(r.sold_on + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short' }) : '—'}
-                        {r.concept ? ` · ${r.concept}` : ''}
-                      </div>
-                    </div>
-                    <div className="shrink-0 font-display text-sm font-semibold text-brand">{money(Number(r.amount || 0))}</div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Desglose por cuenta — de dónde sale el ingreso estimado, nombre por nombre */}
-      {breakdown.length > 0 && (
-        <div className="mt-3 rounded-xl border border-line bg-ink-2 p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Desglose por cuenta</span>
-              <p className="text-[11px] text-paper-dim">{nf(est.paying)} pagan · {money(est.monthly)}/mes{est.courtesy > 0 ? ` · ${est.courtesy} en cortesía` : ''}</p>
-            </div>
-            {canBilling && (
-              <button onClick={onOpenCobros} className="text-[11px] font-semibold text-brand hover:underline">Gestionar</button>
-            )}
-          </div>
-          <ul className="divide-y divide-line/60">
-            {shownBreakdown.map((c, i) => (
-              <li key={c.id} className="flex items-center gap-3 py-2">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand/10 text-[11px] font-semibold text-brand">{(c.name[0] || '?').toUpperCase()}</span>
-                <span className="w-5 shrink-0 text-right font-mono text-[11px] text-paper-dim">{i + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-paper">{c.name}</div>
-                  {c.handle && <div className="truncate text-[11px] text-paper-dim">@{c.handle}</div>}
-                </div>
-                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${PLAN_TONE[c.plan] || PLAN_TONE.core}`}>{PLAN_LABEL[c.plan] || c.plan}</span>
-                <span className="w-16 shrink-0 text-right font-display text-sm font-semibold">
-                  {c.courtesy ? <span className="text-amber-300">cortesía</span> : <span className="text-paper">{money(c.amount)}</span>}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {breakdown.length > 6 && (
-            <button onClick={() => setShowBreakdown((v) => !v)} className="mt-2 w-full rounded-lg border border-line py-2 text-[11px] font-semibold text-paper-mute hover:border-brand/50 hover:text-paper">
-              {showBreakdown ? 'Ver menos' : `Ver todas (${breakdown.length})`}
-            </button>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-// Tarjeta compacta para las cuatro cifras de arriba: número grande, delta chip
-// opcional y subtítulo pequeño. `big` la resalta y `alert` la pinta ámbar.
-function MoneyStat({ label, value, sub, delta, big, alert }) {
-  return (
-    <div className={`card3d rounded-xl border p-3.5 ${big ? 'border-brand/40 bg-brand/[0.06]' : alert ? 'border-amber-400/40 bg-amber-400/[0.05]' : 'border-line bg-ink-2'}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{label}</span>
-        {delta !== undefined && delta !== null && (
-          <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${delta >= 0 ? 'text-brand' : 'text-rose-300'}`}>
-            {delta >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}{delta >= 0 ? '+' : ''}{delta}%
-          </span>
-        )}
-      </div>
-      <div className={`mt-1.5 font-display font-semibold leading-tight text-paper ${big ? 'text-2xl' : 'text-lg'}`}>{value}</div>
-      {sub && <div className="mt-1 text-[11px] text-paper-dim">{sub}</div>}
-    </div>
-  );
-}
-
 /* ── Métricas: embudo de creadoras + pedidos (función 'metrics') ────────── */
 // Small stat tile with an optional month-over-month delta chip.
 function Stat({ icon: Icon, label, value, sub, delta }) {
@@ -2215,7 +1935,8 @@ function Stat({ icon: Icon, label, value, sub, delta }) {
 }
 
 function AgencyRow({ r, total }) {
-  const share = total > 0 ? Math.round((Number(r.revenue) / total) * 100) : 0;
+  // share = % de la PRODUCCIÓN total (piezas creadas), no de dinero.
+  const share = total > 0 ? Math.round((Number(r.pieces) / total) * 100) : 0;
   return (
     <div className="rounded-2xl border border-line bg-card p-4">
       <div className="flex items-center gap-3">
@@ -2231,7 +1952,7 @@ function AgencyRow({ r, total }) {
             <span className="text-[10px] font-semibold text-paper-dim">{share}%</span>
           </div>
         </div>
-        <div className="shrink-0 text-right font-display text-lg font-semibold text-paper">{money(r.revenue)}</div>
+        <div className="shrink-0 text-right"><span className="font-display text-lg font-semibold text-paper">{nf(r.pieces)}</span><span className="block text-[10px] text-paper-dim">piezas</span></div>
       </div>
     </div>
   );
@@ -2453,7 +2174,7 @@ function GestAgenciasTab({ agencies, creators, flash, reload, readOnly }) {
             <p className="mt-2 text-sm leading-relaxed text-paper-mute">
               {confirm.action === 'remove' ? <>{confirm.creatorName} dejará de ser gestionada por <span className="font-semibold text-paper">{confirm.fromAgencyName}</span>. Quedará sin agencia.</>
                 : confirm.action === 'move' ? <>{confirm.creatorName} <span className="font-semibold text-amber-400">saldrá de {confirm.fromAgencyName}</span> y pasará a <span className="font-semibold text-paper">{confirm.toAgencyName}</span>. Una creadora solo puede estar en una agencia.</>
-                : <>{confirm.creatorName} pasará a ser gestionada por <span className="font-semibold text-paper">{confirm.toAgencyName}</span>, que verá su contenido, hará pedidos y registrará sus ventas.</>}
+                : <>{confirm.creatorName} pasará a ser gestionada por <span className="font-semibold text-paper">{confirm.toAgencyName}</span>, que verá su contenido y hará pedidos.</>}
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <button onClick={() => setConfirm(null)} disabled={saving} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:text-paper">Cancelar</button>
@@ -2470,7 +2191,7 @@ function GestAgenciasTab({ agencies, creators, flash, reload, readOnly }) {
   );
 }
 
-/* ── Suscripciones y cobros (acceso 'billing'): planes, cortesías, vencimiento ─ */
+/* ── Suscripciones (acceso 'billing'): planes, cortesías, vencimiento ───── */
 function CobrosTab({ rows, flash, reload, isAdmin, readOnly }) {
   const supabase = getSupabase();
   const [q, setQ] = useState('');
@@ -2507,7 +2228,7 @@ function CobrosTab({ rows, flash, reload, isAdmin, readOnly }) {
   return (
     <div className="mt-6 space-y-4">
       <div>
-        <h2 className="font-display text-lg font-semibold text-paper">Suscripciones y cobros</h2>
+        <h2 className="font-display text-lg font-semibold text-paper">Suscripciones</h2>
         <p className="text-xs text-paper-dim">Activa planes, da cortesías y ajusta fechas de vencimiento — igual que el administrador.</p>
       </div>
       <div className="relative">
@@ -2532,7 +2253,7 @@ function CobrosTab({ rows, flash, reload, isAdmin, readOnly }) {
                     {c.is_test && <span className="shrink-0 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">Prueba</span>}
                   </p>
                   <p className="truncate text-[11px] text-paper-dim">
-                    {c.is_test ? <span className="text-amber-300">No cuenta en contabilidad</span> : paid ? <span className="text-emerald-400">Activa</span> : <span className="text-paper-dim">Inactiva</span>}
+                    {c.is_test ? <span className="text-amber-300">Cuenta de prueba</span> : paid ? <span className="text-emerald-400">Activa</span> : <span className="text-paper-dim">Inactiva</span>}
                     {c.plan && <> · {c.plan.toUpperCase()}</>}
                     {c.comp_until && <> · <span className="text-amber-400">Cortesía</span></>}
                     {d != null && <> · vence en {d} día{d === 1 ? '' : 's'}</>}
@@ -2565,7 +2286,7 @@ function CobrosTab({ rows, flash, reload, isAdmin, readOnly }) {
                         className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
                     </div>
                     <div>
-                      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Cortesía (gratis) hasta</p>
+                      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Cortesía hasta</p>
                       <input type="date" defaultValue={c.comp_until || ''} disabled={readOnly || savingId === c.id}
                         onChange={(e) => act(c.id, 'comp', { p_comp_until: e.target.value || null }, 'Cortesía actualizada')}
                         className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
@@ -2599,7 +2320,7 @@ function CobrosTab({ rows, flash, reload, isAdmin, readOnly }) {
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">Modelo de prueba</p>
-                          <p className="mt-0.5 text-[11px] text-paper-dim">Si está activo, esta cuenta no cuenta en el ingreso estimado ni en el desglose. Solo el dueño puede cambiarlo.</p>
+                          <p className="mt-0.5 text-[11px] text-paper-dim">Si está activo, esta cuenta es de prueba interna y no cuenta como cliente real. Solo el dueño puede cambiarlo.</p>
                         </div>
                         <button disabled={readOnly || savingId === c.id} onClick={() => setTest(c.id, !c.is_test)}
                           className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${c.is_test ? 'border-amber-400/50 bg-amber-400/15 text-amber-300' : 'border-line text-paper-mute hover:border-amber-400/40 hover:text-amber-300'}`}>
@@ -2624,17 +2345,16 @@ function AgenciasTab({ books }) {
   const rows = [...(books.agency_rows || [])];
   return (
     <div className="mt-6 space-y-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-3 gap-3">
         <Stat icon={Building2} label="Agencias" value={nf(books.agencies)} sub="en la plataforma" />
         <Stat icon={Users} label="Creadoras" value={nf(books.creators)} sub="en la plataforma" />
         <Stat icon={ImageIcon} label="Contenido" value={nf(books.pieces)} sub="piezas producidas" />
-        <Stat icon={DollarSign} label="Ingresos" value={money(books.revenue)} sub="generados en total" />
       </div>
       <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Cada agencia · modelos, contenido e ingresos</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Cada agencia · modelos y contenido</p>
         <div className="space-y-2">
           {rows.length === 0 && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Aún no hay agencias.</p>}
-          {rows.map((r) => <AgencyRow key={r.id} r={r} total={Number(books.revenue)} />)}
+          {rows.map((r) => <AgencyRow key={r.id} r={r} total={Number(books.pieces)} />)}
         </div>
       </div>
     </div>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox } from 'lucide-react';
 import Avatar from '@/components/Avatar';
-import StatusDot, { StatusBanner } from '@/components/StatusDot';
+import StatusDot from '@/components/StatusDot';
 import PortalHeader from '@/components/PortalHeader';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ProposalEditor from '@/components/ProposalEditor';
@@ -15,8 +15,6 @@ import { sendEmail } from '@/lib/notify';
 import { CAPS, CAP_SECTIONS } from '@/lib/caps';
 import { PACKS } from '@/lib/packs';
 
-// Format an integer amount of cents as USD, e.g. 12999 -> "$129.99".
-const moneyCents = (c) => `$${((Number(c) || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import AdminPropuestas from '@/components/AdminPropuestas';
 import Logo from '@/components/Logo';
@@ -57,8 +55,8 @@ const OB = {
   info:        { label: 'Datos listos · falta ID',  tone: 'zinc' },
   id_pending:  { label: 'Por revisar',              tone: 'amber' },
   id_rejected: { label: 'ID rechazado',             tone: 'rose' },
-  id_approved: { label: 'Aprobada · falta pago',    tone: 'sky' },
-  authorized:  { label: 'Aprobada · falta pago',    tone: 'sky' }, // legacy
+  id_approved: { label: 'Aprobada · sin activar',   tone: 'sky' },
+  authorized:  { label: 'Aprobada · sin activar',   tone: 'sky' }, // legacy
   paid:        { label: 'Activa',                   tone: 'brand' }, // legacy
   active:      { label: 'Activa',                   tone: 'brand' },
 };
@@ -91,8 +89,7 @@ export default function AdminPage() {
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
   const [agencyMembers, setAgencyMembers] = useState([]); // agency_members rows (empleados de cada agencia)
   const [agencyLeads, setAgencyLeads] = useState([]);     // solicitudes desde el landing /agency
-  const [assetStats, setAssetStats] = useState([]);   // per-creator sales/revenue for agency numbers
-  const [agencySales, setAgencySales] = useState([]); // libro de ventas por venta (agency_sales)
+  const [assetStats, setAssetStats] = useState([]);   // una fila por foto entregada (conteo de producción)
   const [audit, setAudit] = useState([]);             // bitácora (audit_log)
   const [invites, setInvites] = useState([]);         // pending staff invite links
   const [invBusy, setInvBusy] = useState(false);
@@ -147,14 +144,13 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: agSales }, { data: auditRows }] = await Promise.all([
+    const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: auditRows }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
       supabase.from('agency_members').select('agency_id, member_id, capabilities'),
-      supabase.from('assets').select('creator_id, sales_count, revenue'),
-      supabase.from('agency_sales').select('id, agency_id, creator_id, amount_cents, created_at').order('created_at', { ascending: false }).limit(400),
+      supabase.from('assets').select('creator_id'),
       supabase.from('audit_log').select('id, actor_id, action, target_id, meta, created_at').order('created_at', { ascending: false }).limit(200),
     ]);
     // Si la query base de perfiles falla (RLS/red), no pintamos listas vacías
@@ -165,7 +161,6 @@ export default function AdminPage() {
     setAgencyLinks(agLinks || []);
     setAgencyMembers(agMembers || []);
     setAssetStats(assetRows || []);
-    setAgencySales(agSales || []);
     setAudit(auditRows || []);
     const { data: inv } = await supabase.from('staff_invites').select('*').eq('status', 'pending').order('created_at', { ascending: false });
     setInvites(inv || []);
@@ -332,11 +327,11 @@ export default function AdminPage() {
       ? 'Creadora dada de alta en CORTESÍA (gratis) — queda registrada'
       : f.activate
       ? 'Creadora dada de alta y ACTIVA — lista para trabajar'
-      : 'Creadora creada (inactiva) — actívala en Suscripción cuando pague para que la vea ella y su agencia');
+      : 'Creadora creada (inactiva) — actívala en Suscripción cuando corresponda para que la vea ella y su agencia');
     await load();
   }
 
-  // Alta de agencia — la agencia entra a sus modelos, pide y registra ventas.
+  // Alta de agencia — la agencia entra a sus modelos y pide contenido.
   // Con correo real le llega la invitación para poner su clave; con contraseña
   // temporal escrita, nace con esa clave (útil para recrear la agencia demo).
   async function createAgency(e) {
@@ -461,7 +456,7 @@ export default function AdminPage() {
         sendEmail(approve ? 'model_approved' : 'model_rejected', link.agency_id, modelName);
       }
     } catch { /* no bloquear la revisión si falla el aviso a la agencia */ }
-    flash(approve ? 'Aprobada — ya puede pagar' : 'Verificación rechazada');
+    flash(approve ? 'Aprobada — lista para activar' : 'Verificación rechazada');
     return true;
   }
 
@@ -667,7 +662,7 @@ export default function AdminPage() {
                             { value: 'due_soon', label: 'Vencen en ≤7 días' },
                             { value: 'overdue', label: 'Vencidas' },
                             { value: 'inactive', label: 'Sin suscripción' },
-                            { value: 'falta_pago', label: 'Aprobada · falta pago' },
+                            { value: 'falta_pago', label: 'Aprobada · sin activar' },
                             { value: 'id_pending', label: 'ID por revisar' },
                           ]} />
                         <Dropdown icon={ArrowUpDown} label="Ordenar" value={regSort} onChange={setRegSort}
@@ -758,7 +753,7 @@ export default function AdminPage() {
                 { l: 'Datos completos', f: () => cr.filter((p) => p.onboarding_status !== 'registered').length },
                 { l: 'ID enviado', f: () => cr.filter((p) => ['id_pending', 'id_approved', 'authorized', 'paid', 'active'].includes(p.onboarding_status)).length },
                 { l: 'Aprobadas', f: () => cr.filter((p) => ['id_approved', 'authorized', 'paid', 'active'].includes(p.onboarding_status)).length },
-                { l: 'Activas (pagando)', f: () => cr.filter((p) => ['active', 'paid'].includes(p.onboarding_status)).length },
+                { l: 'Activas', f: () => cr.filter((p) => ['active', 'paid'].includes(p.onboarding_status)).length },
               ].map((x) => ({ l: x.l, v: x.f() }));
               const max = Math.max(1, ...FUNNEL.map((x) => x.v));
               // Weekly signups, last 6 weeks.
@@ -810,17 +805,6 @@ export default function AdminPage() {
                         <div className="mt-2"><StatusDot tone={x.tone}>{x.l}</StatusDot></div>
                       </div>
                     ))}
-                  </div>
-                  {/* Libro de ventas real (manual_sales) — vive en /sales */}
-                  <div className="lg:col-span-2">
-                    <StatusBanner
-                      tone="brand"
-                      icon={CreditCard}
-                      title="Ventas · libro de ingresos"
-                      subtitle="Registro manual exacto de ventas y rebills (en centavos). Aquí vive el dinero real."
-                      action="Abrir /sales →"
-                      onClick={() => router.push('/sales')}
-                    />
                   </div>
                 </div>
               );
@@ -1088,7 +1072,7 @@ export default function AdminPage() {
             })()}
           </div>
         ) : tab === 'agencias' ? (
-          <AgenciasTab agencies={profiles.filter((p) => p.role === 'agency')} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} agencySales={agencySales} profiles={profiles} agencyLeads={agencyLeads} onAssign={setAgConfirm} onDeleted={load} reload={load} flash={flash} />
+          <AgenciasTab agencies={profiles.filter((p) => p.role === 'agency')} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} profiles={profiles} agencyLeads={agencyLeads} onAssign={setAgConfirm} onDeleted={load} reload={load} flash={flash} />
         ) : tab === 'actividad' ? (
           <div className="mt-6">
             <EmailStudio defaultTo="rusin24@gmail.com" />
@@ -1139,7 +1123,7 @@ export default function AdminPage() {
               </> : agConfirm.action === 'remove' ? <>
                 Quedará <strong className="text-paper">sin agencia</strong>: {agConfirm.fromAgencyName} deja de verla y de gestionar su contenido. Su cuenta y su contenido no se borran.
               </> : <>
-                {agConfirm.creatorName} pasará a ser gestionada por <strong className="text-paper">{agConfirm.toAgencyName}</strong>, que verá su contenido, hará pedidos y registrará sus ventas.
+                {agConfirm.creatorName} pasará a ser gestionada por <strong className="text-paper">{agConfirm.toAgencyName}</strong>, que verá su contenido y hará sus pedidos.
               </>}
             </p>
             <div className="mt-5 flex justify-end gap-2">
@@ -1284,8 +1268,7 @@ export default function AdminPage() {
                         <span className={`text-xs font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{p.name}</span>
                         {on && <Check size={13} className="text-brand" />}
                       </div>
-                      <div className="mt-1 font-display text-lg font-bold text-paper">${p.m}<span className="text-[10px] font-normal text-paper-dim">/mes</span></div>
-                      <div className="text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid</div>
+                      <div className="mt-1 text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid al mes</div>
                     </button>
                   );
                 })}
@@ -1294,16 +1277,16 @@ export default function AdminPage() {
                 <input type="checkbox" checked={!!newCreator.activate} onChange={(e) => setNewCreator((v) => ({ ...v, activate: e.target.checked }))}
                   className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-brand focus:ring-brand" />
                 <span className="min-w-0 text-sm text-paper">
-                  Activar suscripción ya <span className="text-paper-dim">(ya pagó a mano)</span>
-                  <span className="mt-0.5 block text-[11px] text-paper-dim">La cuenta nace «Activa» y la ve la modelo, la agencia y los uploaders. Si no, queda esperando pago.</span>
+                  Activar suscripción ya
+                  <span className="mt-0.5 block text-[11px] text-paper-dim">La cuenta nace «Activa» y la ve la modelo, la agencia y los uploaders. Si no, queda inactiva hasta que la actives.</span>
                 </span>
               </label>
               {newCreator.activate && !newCreator.comp && (
                 <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-                  <label className="mb-1 block text-xs font-medium text-emerald-200">Vence el · próximo cobro</label>
+                  <label className="mb-1 block text-xs font-medium text-emerald-200">Vence el</label>
                   <input type="date" value={newCreator.ends_at || ''} onChange={(e) => setNewCreator((v) => ({ ...v, ends_at: e.target.value }))}
                     className="w-full rounded-lg border border-emerald-500/40 bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-emerald-400" />
-                  <p className="mt-1 text-[11px] text-emerald-200/80">El admin te avisa (banner) cuando esté por vencer o vencida. El cobro es manual: al vencer la marcas inactiva a mano y deja de verla la modelo y la agencia.</p>
+                  <p className="mt-1 text-[11px] text-emerald-200/80">El admin te avisa (banner) cuando esté por vencer o vencida. Al vencer la marcas inactiva a mano y deja de verla la modelo y la agencia.</p>
                 </div>
               )}
 
@@ -1312,8 +1295,8 @@ export default function AdminPage() {
                 <input type="checkbox" checked={!!newCreator.comp} onChange={(e) => setNewCreator((v) => ({ ...v, comp: e.target.checked, activate: e.target.checked ? true : v.activate }))}
                   className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-amber-400 focus:ring-amber-400" />
                 <span className="min-w-0 text-sm text-paper">
-                  Cortesía <span className="text-paper-dim">(gratis — no pagó)</span>
-                  <span className="mt-0.5 block text-[11px] text-paper-dim">Nace activa sin cobro. Elige hasta cuándo es gratis; queda registrado que fue cortesía.</span>
+                  Cortesía <span className="text-paper-dim">(gratis)</span>
+                  <span className="mt-0.5 block text-[11px] text-paper-dim">Nace activa como cortesía. Elige hasta cuándo; queda registrado que fue cortesía.</span>
                 </span>
               </label>
               {newCreator.comp && (
@@ -1421,8 +1404,8 @@ const OB2 = {
   info:        { label: 'Datos listos · falta ID',  tone: 'zinc' },
   id_pending:  { label: 'Por revisar',              tone: 'amber' },
   id_rejected: { label: 'ID rechazado',             tone: 'rose' },
-  id_approved: { label: 'Aprobada · falta pago',    tone: 'sky' },
-  authorized:  { label: 'Aprobada · falta pago',    tone: 'sky' },
+  id_approved: { label: 'Aprobada · sin activar',   tone: 'sky' },
+  authorized:  { label: 'Aprobada · sin activar',   tone: 'sky' },
   paid:        { label: 'Activa',                   tone: 'brand' },
   active:      { label: 'Activa',                   tone: 'brand' },
 };
@@ -1696,17 +1679,16 @@ function RowActions({ items }) {
 }
 
 // Pestaña Agencias — escalable: buscador arriba, cada agencia colapsada
-// (nombre · # modelos · $ ventas). Se abre para gestionar sus modelos.
-function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySales, profiles, agencyLeads = [], onAssign, onDeleted, reload, flash }) {
+// (nombre · # modelos). Se abre para gestionar sus modelos.
+function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, profiles, agencyLeads = [], onAssign, onDeleted, reload, flash }) {
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState('all');   // all | with | without | sales
-  const [sort, setSort] = useState('name');       // name | models | sales
+  const [filter, setFilter] = useState('all');   // all | with | without
+  const [sort, setSort] = useState('name');       // name | models
 
   // Métricas por agencia para filtrar/ordenar.
   const meta = (a) => {
     const models = agencyLinks.filter((l) => l.agency_id === a.id).length;
-    const cents = agencySales.filter((s) => s.agency_id === a.id).reduce((s, r) => s + (r.amount_cents || 0), 0);
-    return { models, cents };
+    return { models };
   };
   const selCount = { all: agencies.length };
 
@@ -1715,13 +1697,11 @@ function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySal
     const m = meta(a);
     if (filter === 'with') return m.models > 0;
     if (filter === 'without') return m.models === 0;
-    if (filter === 'sales') return m.cents > 0;
     return true;
   });
   list = [...list].sort((a, b) => {
     const ma = meta(a), mb = meta(b);
     if (sort === 'models') return mb.models - ma.models;
-    if (sort === 'sales') return mb.cents - ma.cents;
     return (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '');
   });
 
@@ -1730,7 +1710,7 @@ function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySal
   return (
     <div className="mt-6 space-y-3">
       <p className="max-w-3xl text-sm text-paper-mute">
-        Cada agencia entra a <em>sus</em> modelos, hace pedidos y registra ventas. Abre una para gestionar qué modelos maneja. Para crear una agencia usa <span className="text-paper-mute">«Crear agencia»</span> en <span className="text-paper-mute">Registros</span>.
+        Cada agencia entra a <em>sus</em> modelos y hace pedidos de contenido. Abre una para gestionar qué modelos maneja. Para crear una agencia usa <span className="text-paper-mute">«Crear agencia»</span> en <span className="text-paper-mute">Registros</span>.
       </p>
 
       {/* Solicitudes de agencia — vienen del formulario público en /agency.
@@ -1766,7 +1746,6 @@ function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySal
             <option value="all">Todas</option>
             <option value="with">Con modelos</option>
             <option value="without">Sin modelos</option>
-            <option value="sales">Con ventas</option>
           </select>
           <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
         </div>
@@ -1775,7 +1754,6 @@ function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySal
           <select value={sort} onChange={(e) => setSort(e.target.value)} className={selCls}>
             <option value="name">Nombre (A–Z)</option>
             <option value="models">Más modelos</option>
-            <option value="sales">Más ventas</option>
           </select>
           <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
         </div>
@@ -1789,25 +1767,21 @@ function AgenciasTab({ agencies, creators, agencyLinks, agencyMembers, agencySal
         <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">Ninguna agencia coincide con el filtro.</p>
       )}
       {list.map((ag) => (
-        <AgencyAdminCard key={ag.id} ag={ag} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} agencySales={agencySales} profiles={profiles} onAssign={onAssign} onDeleted={onDeleted} reload={reload} flash={flash} />
+        <AgencyAdminCard key={ag.id} ag={ag} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} profiles={profiles} onAssign={onAssign} onDeleted={onDeleted} reload={reload} flash={flash} />
       ))}
     </div>
   );
 }
 
-function AgencyAdminCard({ ag, creators, agencyLinks, agencyMembers, agencySales, profiles, onAssign, onDeleted, reload, flash }) {
+function AgencyAdminCard({ ag, creators, agencyLinks, agencyMembers, profiles, onAssign, onDeleted, reload, flash }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
-  const [showBook, setShowBook] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const linkedIds = agencyLinks.filter((l) => l.agency_id === ag.id).map((l) => l.creator_id);
   const linked = creators.filter((c) => linkedIds.includes(c.id));
   // Empleados de esta agencia (usuarios rol 'agency' vinculados por agency_members).
   const memberRows = (agencyMembers || []).filter((m) => m.agency_id === ag.id);
   const memberProfiles = memberRows.map((m) => ({ ...(profiles.find((p) => p.id === m.member_id) || {}), _caps: m.capabilities || [] })).filter((p) => p.id);
-  const salesRows = agencySales.filter((s) => s.agency_id === ag.id);
-  const cents = salesRows.reduce((s, r) => s + (r.amount_cents || 0), 0);
-  const nameOf = (cid) => { const c = profiles.find((p) => p.id === cid); return c?.stage_name || c?.full_name || 'Modelo'; };
   const crName = (cr) => cr.full_name || cr.stage_name || cr.email;
   // Buscar modelos para AGREGAR (excluye las que ya maneja esta agencia).
   const results = q.trim()
@@ -1824,7 +1798,6 @@ function AgencyAdminCard({ ag, creators, agencyLinks, agencyMembers, agencySales
         </span>
         <span className="shrink-0 text-right">
           <span className="block text-sm font-semibold text-paper">{linked.length} <span className="text-xs font-normal text-paper-dim">modelo{linked.length === 1 ? '' : 's'}</span></span>
-          <span className="block text-[11px] text-brand">{moneyCents(cents)}</span>
         </span>
         <ChevronDown size={16} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -1874,32 +1847,6 @@ function AgencyAdminCard({ ag, creators, agencyLinks, agencyMembers, agencySales
                     </button>
                   );
                 })}
-              </div>
-            )}
-          </div>
-
-          {/* Libro de ventas — compacto, se despliega si lo pides */}
-          <div className="rounded-xl border border-line bg-ink-2">
-            <button onClick={() => setShowBook((v) => !v)} className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left">
-              <span className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim"><CreditCard size={13} className="text-brand" /> Libro de ventas</span>
-              <span className="inline-flex items-center gap-2 text-xs">
-                <span className="text-paper-dim">{salesRows.length} venta{salesRows.length === 1 ? '' : 's'}</span>
-                <span className="font-semibold text-brand">{moneyCents(cents)}</span>
-                {salesRows.length > 0 && <ChevronDown size={13} className={`text-paper-dim transition-transform ${showBook ? 'rotate-180' : ''}`} />}
-              </span>
-            </button>
-            {showBook && salesRows.length > 0 && (
-              <div className="border-t border-line">
-                {salesRows.slice(0, 8).map((r, i) => (
-                  <div key={r.id} className={`flex items-center justify-between gap-3 px-3.5 py-2 text-xs ${i > 0 ? 'border-t border-line/60' : ''}`}>
-                    <span className="min-w-0 truncate text-paper">{nameOf(r.creator_id)}</span>
-                    <span className="flex shrink-0 items-center gap-3 text-paper-dim">
-                      <span>{new Date(r.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span>
-                      <span className="font-semibold text-brand">{moneyCents(r.amount_cents)}</span>
-                    </span>
-                  </div>
-                ))}
-                {salesRows.length > 8 && <div className="border-t border-line px-3 py-1.5 text-center text-[10px] text-paper-dim">+{salesRows.length - 8} más</div>}
               </div>
             )}
           </div>
@@ -1962,11 +1909,10 @@ function AgencyAdminCard({ ag, creators, agencyLinks, agencyMembers, agencySales
 const AGENCY_CAPS = [
   { key: 'content', label: 'Ver contenido' },
   { key: 'requests', label: 'Hacer pedidos' },
-  { key: 'sales', label: 'Registrar ventas' },
   { key: 'metrics', label: 'Ver métricas' },
 ];
 function InviteAgencyMemberModal({ ag, agencyModels, onClose, onDone }) {
-  const [f, setF] = useState({ full_name: '', email: '', caps: ['content', 'requests', 'sales'], creators: agencyModels.map((c) => c.id) });
+  const [f, setF] = useState({ full_name: '', email: '', caps: ['content', 'requests'], creators: agencyModels.map((c) => c.id) });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [creds, setCreds] = useState(null);
@@ -2586,7 +2532,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-300"><AlertTriangle size={13} /> Modelo de prueba</div>
-                <p className="mt-1 text-[11px] text-paper-dim">Si está activo, esta cuenta NO cuenta en el ingreso estimado ni en el desglose de contabilidad. Úsalo para demos y cuentas internas.</p>
+                <p className="mt-1 text-[11px] text-paper-dim">Si está activo, esta cuenta NO cuenta en los números administrativos. Úsalo para demos y cuentas internas.</p>
               </div>
               <button onClick={() => patch({ is_test: !creator.is_test }, creator.is_test ? 'Ya no es modelo de prueba' : 'Marcada como modelo de prueba')} disabled={saving}
                 className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${creator.is_test ? 'border-amber-400/50 bg-amber-400/15 text-amber-300' : 'border-line text-paper-mute hover:border-amber-400/40 hover:text-amber-300'}`}>
@@ -2658,7 +2604,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                       </button>
                     </div>
                     <p className="mt-2 text-[11px] text-paper-dim">
-                      Al <strong className="text-paper-mute">aprobar</strong>, la creadora pasa a «Aprobada · falta pago» y al pagar queda <strong className="text-paper-mute">Activa</strong>. Los documentos quedan guardados y cifrados (solo los ve quien tenga «Verificar identidad»). Al <strong className="text-paper-mute">rechazar</strong>, vuelve al paso de identidad con tu motivo.
+                      Al <strong className="text-paper-mute">aprobar</strong>, la creadora pasa a «Aprobada · sin activar» y al activar su suscripción queda <strong className="text-paper-mute">Activa</strong>. Los documentos quedan guardados y cifrados (solo los ve quien tenga «Verificar identidad»). Al <strong className="text-paper-mute">rechazar</strong>, vuelve al paso de identidad con tu motivo.
                     </p>
                   </>
                 )}
@@ -2690,13 +2636,13 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                 {paid ? (
                   <>
                     <div className="mt-2 flex items-baseline gap-2">
-                      <span className="font-display text-3xl font-bold text-paper">{pack ? `$${pack.m}` : '—'}</span>
-                      <span className="text-sm text-paper-mute">/mes · {pack ? pack.name : (creator.plan || 'sin plan')}</span>
+                      <span className="font-display text-2xl font-bold text-paper">{pack ? pack.name : (creator.plan || 'Sin plan')}</span>
+                      <span className="text-sm text-paper-mute">plan mensual</span>
                     </div>
-                    {ends && <p className="mt-1 text-[11px] text-paper-dim">Próximo cobro: {ends.toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
+                    {ends && <p className="mt-1 text-[11px] text-paper-dim">Renueva: {ends.toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' })}</p>}
                   </>
                 ) : (
-                  <p className="mt-1 text-sm text-paper-dim">No ha pagado. Elige su plan y actívala cuando pague.</p>
+                  <p className="mt-1 text-sm text-paper-dim">Elige su plan y actívala cuando corresponda.</p>
                 )}
                 {pack && <p className="mt-1 text-[11px] text-paper-dim">Incluye {pack.photos} fotos · {pack.videos} video{pack.videos === 1 ? '' : 's'} al mes</p>}
               </div>
@@ -2722,17 +2668,17 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
               {/* Fecha de vencimiento — solo si activa */}
               {paid && (
                 <div>
-                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-paper-dim">Vence el · próximo cobro</label>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-paper-dim">Vence el</label>
                   <input type="date" value={creator.subscription_ends_at || ''} disabled={saving}
                     onChange={(e) => patch({ subscription_ends_at: e.target.value || null }, 'Fecha de vencimiento actualizada')}
                     className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60 disabled:cursor-not-allowed disabled:opacity-60" />
-                  <p className="mt-1 text-[11px] text-paper-dim">Al entrar al admin, el banner te avisa las que están por vencer o vencidas. El cobro es manual: al vencer NO se inactiva sola — márcala inactiva a mano abajo cuando confirmes que no pagó.</p>
+                  <p className="mt-1 text-[11px] text-paper-dim">Al entrar al admin, el banner te avisa las que están por vencer o vencidas. Al vencer NO se inactiva sola — márcala inactiva a mano abajo cuando corresponda.</p>
                 </div>
               )}
 
               {/* Elegir plan — solo dueño */}
               <div>
-                <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-paper-dim">Plan que pagó</p>
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-paper-dim">Plan de la cuenta</p>
                 <div className="grid grid-cols-3 gap-2">
                   {PACKS.map((p) => {
                     const on = creator.plan === p.key;
@@ -2743,8 +2689,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                           <span className={`text-xs font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{p.name}</span>
                           {on && <Check size={13} className="text-brand" />}
                         </div>
-                        <div className="mt-1 font-display text-lg font-bold text-paper">${p.m}<span className="text-[10px] font-normal text-paper-dim">/mes</span></div>
-                        <div className="text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid</div>
+                        <div className="mt-1 text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid al mes</div>
                       </button>
                     );
                   })}
@@ -2760,17 +2705,17 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                 <button onClick={() => patch({ payment_status: 'unpaid', subscription_ends_at: null, onboarding_status: ['active', 'paid'].includes(creator.onboarding_status) ? 'id_approved' : creator.onboarding_status }, 'Suscripción marcada INACTIVA')}
                   disabled={saving}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 py-3 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-60">
-                  {saving ? <Loader2 size={15} className="animate-spin" /> : <X size={15} />} Marcar inactiva (dejó de pagar)
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : <X size={15} />} Marcar inactiva
                 </button>
               ) : (
                 <button onClick={() => patch({ payment_status: 'paid', plan: creator.plan || 'core', onboarding_status: 'active', subscription_ends_at: creator.subscription_ends_at || in30 }, 'Suscripción ACTIVADA')}
                   disabled={saving}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
-                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Activar suscripción (pagó a mano)
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Activar suscripción
                 </button>
               )}
 
-              <p className="text-[11px] text-paper-dim">Cobro manual por ahora. Al activarla queda «Activa» y se ve en la modelo, la agencia y los uploaders. Las ventas reales se llevan en <span className="font-mono">/sales</span>.</p>
+              <p className="text-[11px] text-paper-dim">Al activarla queda «Activa» y se ve en la modelo, la agencia y los uploaders.</p>
             </div>
             );
           })()}
@@ -2798,7 +2743,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
           <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-4">
             <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-rose-300"><Trash2 size={15} /> Eliminar creadora</h4>
             <p className="text-[11px] leading-relaxed text-paper-dim">
-              Borra esta cuenta para siempre con todo lo suyo (contenido, carpetas, identidad, pedidos, ventas). Libera su correo para volver a usarlo. No se puede deshacer.
+              Borra esta cuenta para siempre con todo lo suyo (contenido, carpetas, identidad, pedidos). Libera su correo para volver a usarlo. No se puede deshacer.
             </p>
             {!delOpen ? (
               <button onClick={() => { setDelOpen(true); setDelErr(''); }}
@@ -3011,7 +2956,7 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
             <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.04] p-4">
               <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-rose-300"><Trash2 size={15} /> Eliminar cuenta</h4>
               <p className="text-[11px] leading-relaxed text-paper-dim">
-                Borra esta cuenta para siempre, junto con todo lo que le pertenece (contenido, carpetas, identidad, pedidos, ventas y notificaciones). No se puede deshacer.
+                Borra esta cuenta para siempre, junto con todo lo que le pertenece (contenido, carpetas, identidad, pedidos y notificaciones). No se puede deshacer.
               </p>
               {!delOpen ? (
                 <button onClick={() => { setDelOpen(true); setDelErr(''); }}

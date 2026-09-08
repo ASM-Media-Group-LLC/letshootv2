@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, Loader2, Mail, CheckCircle2, Clock, DollarSign, X, Users, Send, RotateCcw } from 'lucide-react';
+import { UserPlus, Loader2, Mail, CheckCircle2, Clock, ShieldCheck, X, Users, Send, RotateCcw } from 'lucide-react';
 import { getUserProfile, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import PortalHeader from '@/components/PortalHeader';
@@ -16,7 +16,7 @@ import PortalHeader from '@/components/PortalHeader';
 const STATUS = {
   invited:   { label: 'Invitada',    Ic: Mail,          cls: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
   registered:{ label: 'Registrada',  Ic: CheckCircle2,  cls: 'border-brand/30 bg-brand/10 text-brand' },
-  paid:      { label: 'Pagó — Activa', Ic: DollarSign,  cls: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' },
+  paid:      { label: 'Activa',      Ic: ShieldCheck,   cls: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' },
   expired:   { label: 'Expirada',    Ic: Clock,         cls: 'border-rose-500/30 bg-rose-500/10 text-rose-300' },
 };
 
@@ -85,7 +85,7 @@ export default function AgentePage() {
           <Stat n={stats.total} label="Total referidas" Ic={Users} />
           <Stat n={stats.invited} label="Invitadas" Ic={Mail} tone="amber" />
           <Stat n={stats.registered} label="Registradas" Ic={CheckCircle2} tone="brand" />
-          <Stat n={stats.paid} label="Pagaron" Ic={DollarSign} tone="emerald" />
+          <Stat n={stats.paid} label="Activas" Ic={ShieldCheck} tone="emerald" />
         </div>
 
         {/* Lista */}
@@ -208,7 +208,7 @@ function ReferModal({ onClose, onDone }) {
           </label>
           <label className="block">
             <span className="mb-1 block text-[11px] font-medium text-paper-dim">Notas <span className="text-paper-dim/70">(opcional, solo tú las ves)</span></span>
-            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej. Amiga de IG, ya vende contenido, potencial Pro Pack…" className={`${input} resize-none`} />
+            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej. Amiga de IG, ya crea contenido…" className={`${input} resize-none`} />
           </label>
         </div>
         {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
