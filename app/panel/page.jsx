@@ -1,18 +1,18 @@
 'use client';
 
 // Creator panel — calm and clear for the model (OnlyFans creator).
-// Two sections: Galería (her delivered content, organized by delivery, with a
-// simple monthly accounting: fotos · videos · dinero) and Pedidos (request
-// content). Everything about numbers/notes is READ-ONLY — a mirror of what her
-// agency/manager keeps. Per photo she sees: when it was delivered, how much it
-// sold, who added it, the agency's day-by-day notes, and she can leave feedback.
+// Tabs: Contenido (her delivered content, organized by delivery/folder/gallery),
+// Actividad (the agency's day-by-day notes across her content) and Audios (voice
+// audios her team will upload — placeholder until the backend lands). Everything
+// is READ-ONLY — a mirror of what her agency/manager keeps. Per photo she sees:
+// when it was delivered, who added it, the agency's notes, and she can leave feedback.
 
-import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  Image as ImageIcon, Film, Download, Heart, MessageSquarePlus, MessageSquare, Bell,
-  X, Sparkles, Target, Building2, Inbox, Plus, Send, ChevronLeft, ChevronRight, ChevronDown,
-  ShoppingBag, DollarSign, Images, UserPlus, NotebookPen, Activity, Check, CalendarRange, BellOff, Eye, Clock, Loader2, TrendingUp, TrendingDown, Maximize2,
+  Download, Heart, MessageSquarePlus, MessageSquare, Bell,
+  X, Sparkles, Target, Building2, ChevronLeft, ChevronRight, ChevronDown,
+  Images, UserPlus, NotebookPen, Activity, AudioLines, Check, CalendarRange, BellOff, Eye, Clock, Loader2, Maximize2,
 } from 'lucide-react';
 import { getUserProfile, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -25,9 +25,7 @@ import WelcomeTour from '@/components/WelcomeTour';
 import LoraUploader from '@/components/LoraUploader';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
-const ASSET_COLS = 'id, folder_id, type, storage_path, deliver_date, title, purpose, sales_count, revenue, added_by';
-const nf = (n) => Number(n || 0).toLocaleString('en-US');
-const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+const ASSET_COLS = 'id, folder_id, type, storage_path, deliver_date, title, purpose, added_by';
 
 function notifText(t, n) {
   const m = n.meta || {};
@@ -82,20 +80,15 @@ function PanelPageInner() {
   const [justUnread, setJustUnread] = useState([]); // ids sin leer al abrir la campana
   const [detail, setDetail] = useState(null);
   const [agency, setAgency] = useState('');
-  const [weekly, setWeekly] = useState([]); // ventas por semana (momentum)
   const [leaveReq, setLeaveReq] = useState(null); // solicitud de salida activa (pending|rejected)
   const [leaveModal, setLeaveModal] = useState(false); // pop-up de confirmación
   const [leaveReason, setLeaveReason] = useState('');
   const [leaveBusy, setLeaveBusy] = useState(false);
-  const [requests, setRequests] = useState([]);
-  const [reqOpen, setReqOpen] = useState(false);
   const [notesFeed, setNotesFeed] = useState([]);
-  const [view, setView] = useState('contenido'); // contenido (default) | numeros | activity | requests
-  const [range, setRange] = useState('month'); // week (7 días) | month | all | custom — compartido Contenido/Números
+  const [view, setView] = useState('contenido'); // contenido (default) | activity | audios
+  const [range, setRange] = useState('month'); // week (7 días) | month | all | custom — rango de Contenido
   const [customFrom, setCustomFrom] = useState(''); // rango de fechas: desde
   const [customTo, setCustomTo] = useState('');     // rango de fechas: hasta
-  const [sortBy, setSortBy] = useState('revenue-desc'); // orden de las listas de detalle
-  const [numCard, setNumCard] = useState('revenue');  // photos | videos | revenue — qué detalle se ve
   const [month, setMonth] = useState(null);
   const [openDays, setOpenDays] = useState([]);   // gallery day-folders expanded
   const [openFolders, setOpenFolders] = useState([]); // gallery folder-boxes expanded
@@ -117,10 +110,9 @@ function PanelPageInner() {
 
   const load = useCallback(async (userId) => {
     const supabase = getSupabase();
-    const [{ data: folders }, { data: nots }, { data: reqs }] = await Promise.all([
+    const [{ data: folders }, { data: nots }] = await Promise.all([
       supabase.from('folders').select(`id, name, assets(${ASSET_COLS})`).eq('creator_id', userId).order('created_at'),
       supabase.from('notifications').select('id, kind, meta, read, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
-      supabase.from('requests').select('id, title, description, status, created_at, chatter_id').eq('creator_id', userId).order('created_at', { ascending: false }),
     ]);
     const folderMap = {}; (folders || []).forEach((f) => { folderMap[f.id] = f.name; });
     const assets = (folders || []).flatMap((f) => f.assets || []);
@@ -143,10 +135,7 @@ function PanelPageInner() {
         });
       }));
     }
-    // Request threads: team questions + replies (copy always reaches her).
-    const { data: reqMsgs } = await supabase.from('request_messages').select('*').order('created_at');
-    const msgsByReq = {}; (reqMsgs || []).forEach((m) => { (msgsByReq[m.request_id] = msgsByReq[m.request_id] || []).push(m); });
-    setNotifs(nots || []); setRequests((reqs || []).map((r) => ({ ...r, _msgs: msgsByReq[r.id] || [] })));
+    setNotifs(nots || []);
     // Activity feed — the agency's notes across all her content (with thumbs).
     const ids = assets.map((a) => a.id);
     if (ids.length) {
@@ -200,11 +189,6 @@ function PanelPageInner() {
       setMonth(latest ? ymOf(latest) : ymOf(new Date().toISOString()));
       setState({ loading: false, profile: up.profile, assets, folders });
       const { data: ag } = await getSupabase().rpc('my_agency'); if (ag) setAgency(ag);
-      // Ventas por semana (para la banda de momentum): últimas ~10 semanas.
-      const { data: wk } = await getSupabase().from('agency_weekly_sales')
-        .select('week_start, sales, revenue').eq('creator_id', up.profile.id)
-        .order('week_start', { ascending: true }).limit(12);
-      setWeekly(wk || []);
       // Solicitud de salida activa (pendiente o rechazada) para mostrar su estado.
       const { data: lr } = await getSupabase().from('agency_leave_requests')
         .select('id, status, created_at').eq('creator_id', up.profile.id)
@@ -212,12 +196,6 @@ function PanelPageInner() {
       setLeaveReq(lr || null);
     })();
   }, [router, load, asId]);
-
-  const refresh = useCallback(async () => {
-    if (!state.profile?.id) return;
-    const { assets, folders } = await load(state.profile.id);
-    setState((s) => ({ ...s, assets, folders }));
-  }, [state.profile?.id, load]);
 
   if (state.loading) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">{t.common.loading}</div>;
 
@@ -285,31 +263,6 @@ function PanelPageInner() {
     setMyFeedback((m) => ({ ...m, [asset.id]: kind }));
     flash(kind === 'love' ? (t.panel.fbLoved || 'Le dijiste que te encantó') : (t.panel.fbChange || 'Pediste un cambio — el equipo ya lo sabe'));
   }
-  async function createRequest({ title, description, refFiles }) {
-    if (readOnly) return false;
-    if (!title.trim()) return false;
-    const supabase = getSupabase();
-    // Client-generated id so reference photos upload under it BEFORE the insert —
-    // creators can't UPDATE a request afterward (RLS), so everything goes in one insert.
-    const reqId = crypto.randomUUID();
-    const paths = [];
-    for (const f of (refFiles || [])) {
-      if (!f.type?.startsWith('image/')) continue;
-      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
-      const path = `${state.profile.id}/${reqId}/${crypto.randomUUID()}.${ext}`;
-      const { error: up } = await supabase.storage.from('request-refs').upload(path, f, { contentType: f.type });
-      if (!up) paths.push(path);
-    }
-    const { error } = await supabase.from('requests').insert({
-      id: reqId, creator_id: state.profile.id, chatter_id: state.profile.id,
-      title: title.trim(), description: description.trim() || null,
-      status: 'pending', ref_images: paths.length ? paths : null,
-    });
-    if (error) { console.error(error); flash(t.common.error); return false; }
-    // Reach the team that attends requests: in-app pop-up + email.
-    supabase.functions.invoke('notify-request', { body: { request_id: reqId } }).catch(() => {});
-    setReqOpen(false); flash(t.panel.reqSent); await refresh(); return true;
-  }
   function downloadMany(items) { items.forEach((a, i) => { const src = dlFor(a); if (!src) return; setTimeout(() => { const el = document.createElement('a'); el.href = src; el.download = ''; el.rel = 'noopener'; document.body.appendChild(el); el.click(); el.remove(); }, i * 350); }); }
 
   const isEs = (locale || 'es').startsWith('es');
@@ -328,59 +281,11 @@ function PanelPageInner() {
     }
     return ymOf(a.deliver_date) === month; // month
   });
-  const acc = {
-    photos: rangeAssets.filter((a) => a.type !== 'video').length,
-    videos: rangeAssets.filter((a) => a.type === 'video').length,
-    revenue: rangeAssets.reduce((s, a) => s + Number(a.revenue || 0), 0),
-  };
   const groups = [];
   [...rangeAssets].sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || '')).forEach((a) => {
     let g = groups.find((x) => x.date === a.deliver_date); if (!g) { g = { date: a.deliver_date, items: [] }; groups.push(g); } g.items.push(a);
   });
   const fmtDay = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' }) : '');
-  const fmtShort = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : '…');
-  const rangeLabel = range === 'week' ? (isEs ? 'últimos 7 días' : 'last 7 days')
-    : range === 'all' ? (isEs ? 'todo el histórico' : 'all time')
-    : range === 'custom' ? ((customFrom || customTo) ? `${fmtShort(customFrom)} → ${fmtShort(customTo)}` : (isEs ? 'rango de fechas' : 'date range'))
-    : ymLabel(month, locale);
-  // Ordenamiento de las listas de detalle — de más a menos y más opciones.
-  const SORT_OPTS = [
-    ['revenue-desc', isEs ? 'Ingresos: mayor a menor' : 'Revenue: high to low'],
-    ['revenue-asc', isEs ? 'Ingresos: menor a mayor' : 'Revenue: low to high'],
-    ['sales-desc', isEs ? 'Ventas: mayor a menor' : 'Sales: high to low'],
-    ['sales-asc', isEs ? 'Ventas: menor a mayor' : 'Sales: low to high'],
-    ['date-desc', isEs ? 'Más reciente primero' : 'Newest first'],
-    ['date-asc', isEs ? 'Más antiguo primero' : 'Oldest first'],
-    ['title-asc', isEs ? 'Título: A → Z' : 'Title: A → Z'],
-  ];
-  const sortAssets = (list) => {
-    const arr = [...list];
-    const num = (x, k) => Number(x[k] || 0);
-    switch (sortBy) {
-      case 'revenue-asc': return arr.sort((a, b) => num(a, 'revenue') - num(b, 'revenue'));
-      case 'sales-desc': return arr.sort((a, b) => num(b, 'sales_count') - num(a, 'sales_count'));
-      case 'sales-asc': return arr.sort((a, b) => num(a, 'sales_count') - num(b, 'sales_count'));
-      case 'date-desc': return arr.sort((a, b) => (b.deliver_date || '').localeCompare(a.deliver_date || ''));
-      case 'date-asc': return arr.sort((a, b) => (a.deliver_date || '').localeCompare(b.deliver_date || ''));
-      case 'title-asc': return arr.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-      case 'revenue-desc':
-      default: return arr.sort((a, b) => num(b, 'revenue') - num(a, 'revenue'));
-    }
-  };
-  // Desglose de ingresos — qué piezas vendieron (ordenable, por defecto de más a menos).
-  const revenueBreakdown = sortAssets(rangeAssets.filter((a) => Number(a.revenue) > 0 || (a.sales_count || 0) > 0));
-  const rangePhotos = sortAssets(rangeAssets.filter((a) => a.type !== 'video'));
-  const rangeVideos = sortAssets(rangeAssets.filter((a) => a.type === 'video'));
-  // Dropdown de orden reutilizable en las listas de Números.
-  const sortSelect = () => (
-    <div className="relative shrink-0">
-      <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
-        className="appearance-none rounded-full border border-line bg-card py-1.5 pl-3 pr-8 text-[11px] font-semibold text-paper-mute outline-none transition-colors focus:border-brand/60">
-        {SORT_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-      <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-    </div>
-  );
   // Barra de rango reutilizable (chips + navegador de mes / rango de fechas).
   const rangeBar = () => (
     <div className="mb-4 space-y-2">
@@ -416,10 +321,9 @@ function PanelPageInner() {
     </div>
   );
   const NAV = [
-    { id: 'numeros', label: isEs ? 'Números' : 'Numbers', icon: DollarSign },
     { id: 'contenido', label: isEs ? 'Contenido' : 'Content', icon: Images },
     { id: 'activity', label: t.panel.navActivity, icon: Activity },
-    { id: 'requests', label: t.panel.navRequests, icon: Inbox },
+    { id: 'audios', label: isEs ? 'Audios' : 'Audio', icon: AudioLines },
   ];
 
   return (
@@ -544,84 +448,9 @@ function PanelPageInner() {
           {NAV.map((n) => (
             <button key={n.id} onClick={() => setView(n.id)} className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-3 text-sm font-semibold transition-colors ${view === n.id ? 'tab3d-active' : 'text-paper-mute hover:text-paper'}`}>
               <n.icon size={15} /> {n.label}
-              {n.id === 'requests' && requests.length > 0 && <span className="rounded-full bg-brand/15 px-1.5 text-[10px] font-bold text-brand">{requests.length}</span>}
             </button>
           ))}
         </div>
-
-        {/* ── Números: dashboard del mes + desglose de ingresos ── */}
-        {view === 'numeros' && (
-          <div className="mt-6">
-            <MomentumBand weekly={weekly} locale={locale} isEs={isEs} />
-            {rangeBar()}
-            {/* Cards = selector: cada una abre su detalle abajo */}
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { id: 'photos', icon: ImageIcon, label: t.panel.mPhotos, value: nf(acc.photos) },
-                { id: 'videos', icon: Film, label: t.panel.mVideos, value: nf(acc.videos) },
-                { id: 'revenue', icon: DollarSign, label: t.panel.mRevenue, value: money(acc.revenue) },
-              ].map((k) => {
-                const on = numCard === k.id;
-                return (
-                  <button key={k.id} onClick={() => setNumCard(k.id)}
-                    className={`card3d rounded-2xl border p-3.5 text-center sm:text-left ${on ? 'card3d-active border-brand/60 bg-brand/[0.08]' : 'border-line bg-card'}`}>
-                    <div className="flex items-center justify-center gap-1.5 text-paper-dim sm:justify-start"><k.icon size={13} className={on ? 'text-brand' : 'text-brand'} /><span className="text-[11px] font-medium">{k.label}</span></div>
-                    <div className="mt-1 font-display text-xl font-semibold sm:text-2xl">{k.value}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-[11px] text-paper-dim">{t.panel.statsNote} · {rangeLabel}</p>
-
-            {/* Detalle del card seleccionado */}
-            <div className="mt-6">
-              {numCard === 'revenue' && (
-                <>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{isEs ? 'Ingresos · qué se vendió' : 'Revenue · what sold'}</span>
-                    {revenueBreakdown.length > 1 && sortSelect()}
-                  </div>
-                  {revenueBreakdown.length === 0 ? (
-                    <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">{isEs ? 'Sin ventas en este rango.' : 'No sales in this range.'}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {revenueBreakdown.map((a) => (
-                        <button key={a.id} onClick={() => setDetail(a)} className="flex w-full items-center gap-3 rounded-xl border border-line bg-card p-2.5 text-left transition-colors hover:border-brand/40">
-                          <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line bg-ink-2">
-                            <MediaThumb asset={a} src={srcFor(a)} className="h-full w-full object-cover" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium text-paper">{a.title || (isEs ? 'Pieza' : 'Piece')}</span>
-                            <span className="block text-[11px] text-paper-dim">{a.deliver_date ? new Date(a.deliver_date + 'T00:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''} · {nf(a.sales_count || 0)} {isEs ? 'ventas' : 'sales'}</span>
-                          </span>
-                          <span className="shrink-0 font-display text-sm font-bold text-brand">{money(a.revenue)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-              {(numCard === 'photos' || numCard === 'videos') && (() => {
-                const list = numCard === 'photos' ? rangePhotos : rangeVideos;
-                return (
-                  <>
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{numCard === 'photos' ? (isEs ? 'Fotos' : 'Photos') : (isEs ? 'Videos' : 'Videos')} · {list.length}</span>
-                      {list.length > 1 && sortSelect()}
-                    </div>
-                    {list.length === 0 ? (
-                      <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">{isEs ? 'Nada en este rango.' : 'Nothing in this range.'}</p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                        {list.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        )}
 
         {/* ── Contenido: calendario de entregas por día ── */}
         {view === 'contenido' && (() => {
@@ -879,33 +708,18 @@ function PanelPageInner() {
           </div>
         )}
 
-        {view === 'requests' && (
+        {view === 'audios' && (
           <div className="mt-6">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-paper-mute">{t.panel.requests}</p>
-              {!readOnly && <button onClick={() => setReqOpen((v) => !v)} className="btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold"><Plus size={15} /> {t.panel.askContent}</button>}
-            </div>
-            {reqOpen && !readOnly && <RequestForm t={t} onSubmit={createRequest} />}
-            <div className="mt-4 space-y-2.5">
-              {requests.length === 0 && !reqOpen && <p className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{t.panel.reqEmpty}</p>}
-              {requests.map((r) => {
-                const st = r.status === 'delivered' ? { l: t.panel.reqDelivered, cls: 'border-brand/40 bg-brand/10 text-brand' }
-                  : r.status === 'in_progress' ? { l: t.panel.reqProgress, cls: 'border-sky/40 bg-sky/10 text-sky' }
-                  : { l: t.panel.reqPending, cls: 'border-amber-400/40 bg-amber-400/10 text-amber-300' };
-                return (
-                  <div key={r.id} className="rounded-2xl border border-line bg-card px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-paper">{r.title}</p>
-                        <p className="mt-0.5 text-[11px] font-medium text-paper-dim">{r.chatter_id === state.profile.id ? (isEs ? 'Lo pediste tú' : 'Requested by you') : (isEs ? 'Pedido por tu agencia' : 'Requested by your agency')}</p>
-                        {r.description && <p className="mt-0.5 text-xs text-paper-dim">{r.description}</p>}
-                      </div>
-                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${st.cls}`}>{st.l}</span>
-                    </div>
-                    <CreatorReqThread req={r} t={t} locale={locale} onSent={refresh} flash={flash} readOnly={readOnly} />
-                  </div>
-                );
-              })}
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-card/50 px-6 py-16 text-center">
+              <span className="grid h-14 w-14 place-items-center rounded-full border border-line bg-ink-2 text-brand">
+                <AudioLines size={24} />
+              </span>
+              <h2 className="mt-4 font-display text-lg font-semibold text-paper">{isEs ? 'Tus audios' : 'Your audios'}</h2>
+              <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-paper-dim">
+                {isEs
+                  ? 'El equipo subirá acá los audios hechos con tu voz. Aún no hay ninguno.'
+                  : 'Your team will upload the audios made with your voice here. None yet.'}
+              </p>
             </div>
           </div>
         )}
@@ -943,125 +757,11 @@ function PanelPageInner() {
   );
 }
 
-// Request thread: team questions land here (and at her agency); she replies.
-function CreatorReqThread({ req, t, locale, onSent, flash, readOnly }) {
-  const [open, setOpen] = useState(false);
-  const [body, setBody] = useState('');
-  const [sending, setSending] = useState(false);
-  const n = req._msgs?.length || 0;
-  if (!n && req.status === 'delivered') return null;
-
-  async function send(e) {
-    e.preventDefault();
-    if (readOnly) return;
-    if (!body.trim()) return;
-    setSending(true);
-    const { error } = await getSupabase().rpc('post_request_message', { rid: req.id, body_text: body.trim() });
-    setSending(false);
-    if (error) { flash(t.common.error); return; }
-    setBody('');
-    onSent?.();
-  }
-
-  return (
-    <div className="mt-2.5 border-t border-line pt-2.5">
-      <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-paper-mute transition-colors hover:text-paper">
-        <MessageSquare size={11} className={n ? 'text-brand' : ''} />
-        {t.panel.reqMsgTitle}{n ? ` · ${n}` : ''} {open ? '▴' : '▾'}
-      </button>
-      {open && (
-        <div className="mt-2 space-y-2">
-          {(req._msgs || []).map((m) => (
-            <div key={m.id} className={`rounded-lg border p-2 text-xs ${m.author_role === 'creator' ? 'border-brand/25 bg-brand/[0.05]' : 'border-line bg-ink-2'}`}>
-              <div className="mb-0.5 text-[10px] text-paper-dim">
-                <span className="font-semibold text-paper-mute">{(t.panel.reqMsgFrom || {})[m.author_role] || m.author_role}</span>
-                {m.author_name ? ` · ${m.author_name}` : ''} · {new Date(m.created_at).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
-              </div>
-              <p className="text-paper-mute">{m.body}</p>
-            </div>
-          ))}
-          {!readOnly && <form className="flex gap-2" onSubmit={send}>
-            <input value={body} onChange={(e) => setBody(e.target.value)} placeholder={t.panel.reqMsgPlaceholder}
-              className="min-w-0 flex-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-xs text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-            <button type="submit" disabled={sending || !body.trim()}
-              className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-on-accent disabled:opacity-50">
-              {sending ? '…' : t.panel.reqMsgSend}
-            </button>
-          </form>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Banda de MOMENTUM: lo que la modelo ve para sentir que sube. Esta semana vs
-// la pasada (ventas + ingresos + %), racha, y mini-gráfico de las últimas semanas.
-function MomentumBand({ weekly, locale, isEs }) {
-  if (!weekly || weekly.length === 0) return null;
-  const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
-  const nf = (n) => Number(n || 0).toLocaleString('en-US');
-  const rows = [...weekly].sort((a, b) => a.week_start.localeCompare(b.week_start));
-  const cur = rows[rows.length - 1];
-  const prev = rows.length > 1 ? rows[rows.length - 2] : null;
-  const delta = prev && prev.sales > 0 ? Math.round(((cur.sales - prev.sales) / prev.sales) * 100) : null;
-  const up = delta === null ? true : delta >= 0;
-  // Racha: cuántas semanas seguidas (hasta la actual) subió respecto a la anterior.
-  let streak = 0;
-  for (let i = rows.length - 1; i > 0; i--) { if (rows[i].sales >= rows[i - 1].sales) streak++; else break; }
-  const bars = rows.slice(-8);
-  const peak = Math.max(1, ...bars.map((b) => b.sales));
-  const wLabel = (d) => new Date(d + 'T00:00:00').toLocaleDateString(locale || 'es-US', { day: 'numeric', month: 'short' });
-
-  return (
-    <div className="card3d mb-4 overflow-hidden rounded-2xl border border-brand/30 bg-gradient-to-br from-brand/[0.10] to-transparent p-4 sm:p-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand">
-            <Activity size={12} /> {isEs ? 'Tu momentum · esta semana' : 'Your momentum · this week'}
-          </div>
-          <div className="mt-1.5 flex items-baseline gap-2">
-            <span className="font-display text-3xl font-bold text-paper">{nf(cur.sales)}</span>
-            <span className="text-sm text-paper-mute">{isEs ? 'ventas' : 'sales'} · {money(cur.revenue)}</span>
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-            {delta !== null && (
-              <span className={`inline-flex items-center gap-0.5 font-semibold ${up ? 'text-emerald-300' : 'text-rose-300'}`}>
-                {up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{up ? '+' : ''}{delta}% {isEs ? 'vs la semana pasada' : 'vs last week'}
-              </span>
-            )}
-            {streak >= 2 && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 font-semibold text-amber-300">
-                🔥 {streak} {isEs ? 'semanas subiendo' : 'weeks up'}
-              </span>
-            )}
-          </div>
-        </div>
-        {/* Mini-gráfico de barras — últimas 8 semanas */}
-        <div className="flex h-16 items-end gap-1.5">
-          {bars.map((b, i) => {
-            const h = Math.max(8, Math.round((b.sales / peak) * 100));
-            const isLast = i === bars.length - 1;
-            return (
-              <div key={b.week_start} className="group/bar relative flex flex-col items-center">
-                <div className={`w-3 rounded-t sm:w-4 ${isLast ? 'bg-brand' : 'bg-brand/30'}`} style={{ height: `${h}%`, minHeight: 8 }}
-                  title={`${wLabel(b.week_start)}: ${nf(b.sales)} ${isEs ? 'ventas' : 'sales'}`} />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <p className="mt-3 text-[11px] text-paper-dim">
-        {isEs ? 'Ventas que registró tu agencia, semana a semana. Mientras más enganche tu contenido, más sube.' : 'Sales your agency logged, week by week. The more your content hooks, the higher it climbs.'}
-      </p>
-    </div>
-  );
-}
-
 function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, onToggle, bare, locale }) {
   // Fecha en que se subió (created_at; fallback a deliver_date), corta y discreta.
   const upDate = a.created_at ? new Date(a.created_at) : (a.deliver_date ? new Date(a.deliver_date + 'T00:00:00') : null);
   const upLabel = upDate ? upDate.toLocaleDateString(locale || 'es-US', { day: 'numeric', month: 'short' }) : null;
-  // `bare` = modo «manejo de fotos» tipo Fotos de Mac: sin precios, sin título,
+  // `bare` = modo «manejo de fotos» tipo Fotos de Mac: sin título,
   // sin folder, sin bordes redondeados. Solo la miniatura pura.
   const handleClick = () => { selectMode ? onToggle?.(a.id) : onOpen(a); };
   return (
@@ -1077,25 +777,14 @@ function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, o
           <Check size={14} strokeWidth={3} />
         </span>
       )}
-      {/* Modo bare (Galería): abajo-izquierda la fecha de subida, abajo-derecha el
-          precio — ambos discretos, colores suaves, para no robar atención. */}
-      {bare && !selectMode && (
-        <>
-          {upLabel && (
-            <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-medium text-white/75 backdrop-blur-sm">{upLabel}</span>
-          )}
-          {Number(a.revenue) > 0 && (
-            <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold text-brand/90 backdrop-blur-sm">{money(a.revenue)}</span>
-          )}
-        </>
+      {/* Modo bare (Galería): abajo-izquierda la fecha de subida, discreta. */}
+      {bare && !selectMode && upLabel && (
+        <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-medium text-white/75 backdrop-blur-sm">{upLabel}</span>
       )}
-      {/* Metadatos (precios, título, folder) — SOLO en modo no-bare */}
+      {/* Metadatos (título, folder, feedback) — SOLO en modo no-bare */}
       {!bare && (
         <>
           <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
-            {Number(a.revenue) > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-ink/75 px-1.5 py-0.5 text-[10px] font-semibold text-paper backdrop-blur"><DollarSign size={10} className="text-brand" /> {money(a.revenue)}</span>
-            )}
             {feedback === 'love' && <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/80 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur"><Heart size={10} /> </span>}
             {feedback === 'change' && <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/80 px-1.5 py-0.5 text-[10px] font-semibold text-ink backdrop-blur"><MessageSquarePlus size={10} /> </span>}
           </div>
@@ -1108,43 +797,6 @@ function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, o
         </>
       )}
     </button>
-  );
-}
-
-function RequestForm({ t, onSubmit }) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [refFiles, setRefFiles] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const refInput = useRef(null);
-  const addFiles = (list) => setRefFiles((prev) => [...prev, ...Array.from(list).filter((f) => f.type.startsWith('image/'))].slice(0, 6));
-
-  return (
-    <form onSubmit={async (e) => { e.preventDefault(); setSaving(true); const ok = await onSubmit({ title, description, refFiles }); setSaving(false); if (ok) { setTitle(''); setDescription(''); setRefFiles([]); } }}
-      className="mt-3 rounded-2xl border border-line bg-card p-4">
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t.panel.reqWhat} className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/50" />
-      <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder={t.panel.reqDetails} className="mt-2 w-full resize-none rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/50" />
-
-      <div className="mt-3">
-        <label className="block text-[11px] font-medium uppercase tracking-wide text-paper-dim">{t.panel.reqRefs}</label>
-        <p className="text-[11px] text-paper-dim">{t.panel.reqRefsHint}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {refFiles.map((f, i) => (
-            <span key={i} className="relative h-14 w-14 overflow-hidden rounded-lg border border-line">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={URL.createObjectURL(f)} alt="" className="h-full w-full object-cover" />
-              <button type="button" onClick={() => setRefFiles((p) => p.filter((_, j) => j !== i))} className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-ink/80 text-paper"><X size={10} /></button>
-            </span>
-          ))}
-          {refFiles.length < 6 && (
-            <button type="button" onClick={() => refInput.current?.click()} className="grid h-14 w-14 place-items-center rounded-lg border border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-brand"><Plus size={18} /></button>
-          )}
-          <input ref={refInput} type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
-        </div>
-      </div>
-
-      <button type="submit" disabled={saving} className="btn3d mt-3 inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold"><Send size={14} /> {saving ? t.common.saving : t.panel.reqSend}</button>
-    </form>
   );
 }
 
@@ -1182,18 +834,6 @@ function AssetDetail({ asset, src, dl, t, locale, folderName, feedback, onClose,
                 {folderName && <span>· {folderName}</span>}
               </div>
               {asset.added_by && <p className="mt-1 flex items-center gap-1 text-xs text-paper-dim"><UserPlus size={12} className="text-brand" /> {t.panel.addedBy} <span className="text-paper-mute">{asset.added_by}</span></p>}
-            </div>
-
-            {/* Sold (read-only) */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="rounded-xl border border-line bg-ink-2 p-3">
-                <div className="flex items-center gap-1.5 text-paper-dim"><ShoppingBag size={12} className="text-brand" /><span className="text-[10px] font-medium uppercase tracking-wide">{t.panel.sold}</span></div>
-                <div className="mt-0.5 font-display text-lg font-semibold text-paper">{nf(asset.sales_count)}</div>
-              </div>
-              <div className="rounded-xl border border-line bg-ink-2 p-3">
-                <div className="flex items-center gap-1.5 text-paper-dim"><DollarSign size={12} className="text-brand" /><span className="text-[10px] font-medium uppercase tracking-wide">{t.panel.mRevenue}</span></div>
-                <div className="mt-0.5 font-display text-lg font-semibold text-paper">{money(asset.revenue)}</div>
-              </div>
             </div>
 
             {/* Purpose */}

@@ -2,9 +2,10 @@
 
 // ─────────────────────────────────────────────────────────────────────────
 // Editor de PROPUESTA (admin) — wizard de 4 pasos: Destinatario → Molde →
-// Fotos → Link. Al publicar escribe el draft en localStorage
-// ('ls_propuesta_draft') y la vista pública /p/demo renderiza
-// exactamente lo que el dueño armó, personalizado para el destinatario.
+// Fotos → Link. Al publicar genera un CODE nuevo (link único por publicación),
+// escribe la propuesta en 'ls_prop_<CODE>' + 'ls_prop_last', y la vista
+// pública /p/<CODE> renderiza exactamente lo que el dueño armó. El draft de
+// trabajo sigue en 'ls_propuesta_draft' (preview /p/demo en pasos 2-3).
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -12,55 +13,35 @@ import Link from 'next/link';
 import {
   ArrowLeft, ArrowRight, Check, ChevronUp, ChevronDown, Trash2, Plus,
   ImagePlus, Search, X, Copy, Eye, ExternalLink, Link as LinkIcon,
-  Smartphone, Mail, MessageCircle,
+  Smartphone, Mail,
 } from 'lucide-react';
 import { useProp, PROP_LANGS, PROP_LANG_LABELS, PROP_LANG_FLAG } from '@/lib/propuesta-i18n';
+import { getUserProfile } from '@/lib/supabase/session';
 
 const DRAFT_KEY = 'ls_propuesta_draft';
-const FEEDBACK_KEY = 'ls_propuesta_feedback';
+const LAST_KEY = 'ls_prop_last';
 const LAN_HOST = '10.0.0.67:3001';
 
-// Países para el teléfono del destinatario (Telegram/WhatsApp). Default CO.
-const COUNTRIES = [
-  { flag: '🇨🇴', code: 'CO', dial: '+57' },
-  { flag: '🇺🇸', code: 'US', dial: '+1' },
-  { flag: '🇲🇽', code: 'MX', dial: '+52' },
-  { flag: '🇦🇷', code: 'AR', dial: '+54' },
-  { flag: '🇪🇸', code: 'ES', dial: '+34' },
-  { flag: '🇩🇪', code: 'DE', dial: '+49' },
-  { flag: '🇮🇹', code: 'IT', dial: '+39' },
-  { flag: '🇫🇷', code: 'FR', dial: '+33' },
-  { flag: '🇬🇧', code: 'GB', dial: '+44' },
-  { flag: '🇧🇷', code: 'BR', dial: '+55' },
-  { flag: '🇵🇪', code: 'PE', dial: '+51' },
-  { flag: '🇨🇱', code: 'CL', dial: '+56' },
-  { flag: '🇻🇪', code: 'VE', dial: '+58' },
-  { flag: '🇪🇨', code: 'EC', dial: '+593' },
-  { flag: '🇺🇾', code: 'UY', dial: '+598' },
-  { flag: '🇵🇦', code: 'PA', dial: '+507' },
-  { flag: '🇨🇷', code: 'CR', dial: '+506' },
-  { flag: '🇩🇴', code: 'DO', dial: '+1' },
+// CODE de propuesta: uno NUEVO por cada publicación (el link cambia cada vez).
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const genCode = () =>
+  'JP-' + Array.from({ length: 6 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+
+const EMAIL_RE = /.+@.+\..+/;
+
+// Fotos reales de /public — mismo mapeo que la vista pública /p/[linkId].
+const DEMO_LOOKS = [
+  { id: 'lk1', caption: 'Miami · Ocean Drive · golden hour', inspiration: '/card-locacion.jpg',      real: '/ba-before-1.jpg',        result: '/model-latina.jpg' },
+  { id: 'lk2', caption: 'Resort · piscina · lifestyle',      inspiration: '/card-localizacion.jpg',  real: '/ba-before-2.jpg',        result: '/model-resort.jpg' },
+  { id: 'lk3', caption: 'Noche urbana · neón',               inspiration: '/card-hd.jpg',            real: '/hero-real.jpg',          result: '/model-noche.jpg' },
+  { id: 'lk4', caption: 'Editorial · moda',                  inspiration: '/card-moda.jpg',          real: '/ba-after-1.jpg',         result: '/model-europea.jpg' },
+  { id: 'lk5', caption: 'Estudio · estilista',               inspiration: '/card-estilista.jpg',     real: '/ba-after-2.jpg',         result: '/result-4.jpg' },
+  { id: 'lk6', caption: 'Cinemática · IA',                   inspiration: '/hero-poster.jpg',        real: '/hero-miami-poster.jpg',  result: '/hero-ia.jpg' },
 ];
-
-const SM = (seed) => `https://picsum.photos/seed/${seed}/600/750`;
-const LG = (seed) => `https://picsum.photos/seed/${seed}/900/1125`;
-
-const LOOK_SEEDS = [
-  { id: 'lk1', caption: 'Dubai · balcón · golden hour',   in: 'lsin-dubai',  re: 'lsre-01', ai: 'lsai-dubai' },
-  { id: 'lk2', caption: 'Playa · golden hour · lifestyle', in: 'lsin-beach',  re: 'lsre-02', ai: 'lsai-beach' },
-  { id: 'lk3', caption: 'Cafetería · luz matinal',         in: 'lsin-cafe',   re: 'lsre-03', ai: 'lsai-cafe' },
-  { id: 'lk4', caption: 'Estudio · editorial · clean',     in: 'lsin-studio', re: 'lsre-04', ai: 'lsai-studio' },
-  { id: 'lk5', caption: 'Piscina · mediodía · lifestyle',  in: 'lsin-pool',   re: 'lsre-05', ai: 'lsai-pool' },
-  { id: 'lk6', caption: 'Noche urbana · neón',             in: 'lsin-night',  re: 'lsre-06', ai: 'lsai-night' },
-];
-
-const DEMO_LOOKS = LOOK_SEEDS.map((s) => ({
-  id: s.id, caption: s.caption, inspiration: SM(s.in), real: SM(s.re), result: LG(s.ai),
-}));
 
 const DEMO_RECIPIENT = { name: 'Valentina Ríos', email: 'valentina@email.com', kind: 'prospect' };
-const DEMO_COVER = LG('lsai-dubai');
-const DEMO_CLOSING = LG('lsai-night');
+const DEMO_COVER = '/model-latina.jpg';
+const DEMO_CLOSING = '/model-noche.jpg';
 
 const TEMPLATES = {
   exclusive: (n) => ({
@@ -76,28 +57,23 @@ const TEMPLATES = {
 };
 
 const BAUL_EXTRAS = [
-  ['lsin-yacht',   'ref',    'Yate · atardecer'],
-  ['lsin-mall',    'ref',    'Shopping · editorial'],
-  ['lsin-gym',     'ref',    'Gimnasio · activewear'],
-  ['lsin-rooftop', 'ref',    'Rooftop · blue hour'],
-  ['lsre-07',      'selfie', 'Selfie · luz natural'],
-  ['lsre-08',      'selfie', 'Selfie · espejo'],
-  ['lsre-09',      'selfie', 'Selfie · exterior'],
-  ['lsre-10',      'selfie', 'Selfie · interior'],
-  ['lsai-yacht',   'ia',     'Yate · atardecer'],
-  ['lsai-mall',    'ia',     'Shopping · editorial'],
-  ['lsai-gym',     'ia',     'Gimnasio · activewear'],
-  ['lsai-rooftop', 'ia',     'Rooftop · blue hour'],
+  ['/hero-stage-1.jpg', 'ia', 'Cinemática · escena 1'],
+  ['/hero-stage-2.jpg', 'ia', 'Cinemática · escena 2'],
+  ['/hero-stage-3.jpg', 'ia', 'Cinemática · escena 3'],
+  ['/hero-stage-4.jpg', 'ia', 'Cinemática · escena 4'],
+  ['/hero-stage-5.jpg', 'ia', 'Cinemática · escena 5'],
+  ['/result-2.jpg',     'ia', 'Editorial · resultado IA'],
+  ['/result-5.jpg',     'ia', 'Lifestyle · resultado IA'],
 ];
 
 const BAUL = [
-  ...LOOK_SEEDS.flatMap((s) => [
-    { id: `b-${s.in}`, src: SM(s.in), kind: 'ref',    caption: s.caption },
-    { id: `b-${s.re}`, src: SM(s.re), kind: 'selfie', caption: s.caption },
-    { id: `b-${s.ai}`, src: LG(s.ai), kind: 'ia',     caption: s.caption },
+  ...DEMO_LOOKS.flatMap((l) => [
+    { id: `b-in-${l.id}`, src: l.inspiration, kind: 'ref',    caption: l.caption },
+    { id: `b-re-${l.id}`, src: l.real,        kind: 'selfie', caption: l.caption },
+    { id: `b-ai-${l.id}`, src: l.result,      kind: 'ia',     caption: l.caption },
   ]),
-  ...BAUL_EXTRAS.map(([seed, kind, caption]) => ({
-    id: `b-${seed}`, src: kind === 'ia' ? LG(seed) : SM(seed), kind, caption,
+  ...BAUL_EXTRAS.map(([src, kind, caption]) => ({
+    id: `b-x${src.replace(/[^\w]/g, '')}`, src, kind, caption,
   })),
 ];
 
@@ -114,10 +90,21 @@ const pad2 = (n) => String(n).padStart(2, '0');
 export default function PropuestaAdmin() {
   const t = useProp();
 
+  // Acceso: admin, o empleado con la capability 'proposals' (Crear propuestas).
+  const [access, setAccess] = useState('loading'); // 'loading' | 'ok' | 'denied'
+  useEffect(() => {
+    (async () => {
+      try {
+        const up = await getUserProfile();
+        const p = up?.profile;
+        const ok = !!p && (p.role === 'admin' || (Array.isArray(p.capabilities) && p.capabilities.includes('proposals')));
+        setAccess(ok ? 'ok' : 'denied');
+      } catch { setAccess('denied'); }
+    })();
+  }, []);
+
   const [step, setStep] = useState(1);
   const [recipient, setRecipient] = useState({ ...DEMO_RECIPIENT });
-  const [phoneCountry, setPhoneCountry] = useState('CO');
-  const [phoneLocal, setPhoneLocal] = useState('');
   const [feedback, setFeedback] = useState(null);
   const [template, setTemplate] = useState('exclusive');
   const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
@@ -128,7 +115,9 @@ export default function PropuestaAdmin() {
   const [intro, setIntro] = useState(TEMPLATES.exclusive('Valentina').intro);
   const [days, setDays] = useState(10);
   const [lang, setLang] = useState('es');
-  const [code] = useState('JP-VE26-A31F');
+  // CODE de la última publicación (vacío hasta publicar; se rehidrata de
+  // 'ls_prop_last' para que el header y las respuestas apunten al último link).
+  const [code, setCode] = useState('');
   const [looks, setLooks] = useState(DEMO_LOOKS.map((l) => ({ ...l })));
   const [selectedId, setSelectedId] = useState(DEMO_LOOKS[0]?.id ?? null);
 
@@ -152,6 +141,10 @@ export default function PropuestaAdmin() {
 
   useEffect(() => {
     try {
+      const last = localStorage.getItem(LAST_KEY);
+      if (typeof last === 'string' && /^JP-[A-Z0-9]{6}$/.test(last)) setCode(last);
+    } catch {}
+    try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
       const d = JSON.parse(raw);
@@ -171,19 +164,6 @@ export default function PropuestaAdmin() {
           email: typeof d.recipient.email === 'string' ? d.recipient.email : '',
           kind: ['prospect', 'client', 'model'].includes(d.recipient.kind) ? d.recipient.kind : 'prospect',
         });
-        if (typeof d.recipient.phone === 'string' && d.recipient.phone.trim()) {
-          const ph = d.recipient.phone.trim();
-          const match = [...COUNTRIES]
-            .sort((a, b) => b.dial.length - a.dial.length)
-            .find((c) => ph.startsWith(c.dial));
-          if (match) {
-            setPhoneCountry(match.code);
-            setPhoneLocal(ph.slice(match.dial.length).trim());
-          } else {
-            setPhoneCountry('CO');
-            setPhoneLocal(ph);
-          }
-        }
       }
       if (Array.isArray(d.looks) && d.looks.length > 0) {
         const seeded = d.looks.map((l) => ({
@@ -204,15 +184,14 @@ export default function PropuestaAdmin() {
   }, [picker]);
 
   const firstName = (recipient.name || '').trim().split(/\s+/)[0] || '';
-  const publicUrl = `${proto}//${host}/p/demo?lang=${lang}`;
-  const qrTarget = isLocal ? `${proto}//${LAN_HOST}/p/demo?lang=${lang}` : publicUrl;
+  // publicUrl apunta al CODE publicado; el preview de pasos 2-3 sigue en /p/demo
+  // (renderiza el draft de trabajo). El QR usa la IP LAN en local, mismo path.
+  const pubPath = `/p/${code}?lang=${lang}`;
+  const publicUrl = `${proto}//${host}${pubPath}`;
+  const previewUrl = `${proto}//${host}/p/demo?lang=${lang}`;
+  const qrTarget = isLocal ? `${proto}//${LAN_HOST}${pubPath}` : publicUrl;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(qrTarget)}`;
   const greet = firstName ? `Hola ${firstName}!` : 'Hola!';
-  const dial = COUNTRIES.find((c) => c.code === phoneCountry)?.dial ?? '+57';
-  const fullPhone = phoneLocal.trim() ? `${dial} ${phoneLocal.trim()}` : '';
-  const phoneDigits = fullPhone.replace(/\D/g, '');
-  const waText = encodeURIComponent(`${greet} Te preparé una propuesta: ${name}. Mirala acá: ${publicUrl}`);
-  const waHref = phoneDigits ? `https://wa.me/${phoneDigits}?text=${waText}` : `https://wa.me/?text=${waText}`;
   const mailHref = `mailto:${recipient.email.trim()}?subject=${encodeURIComponent(name)}&body=${encodeURIComponent(`${greet}\n\nTe preparé una propuesta: ${name}.\nMirala acá: ${publicUrl}`)}`;
 
   const setLook = (id, patch) => setLooks((s) => s.map((l) => (l.id === id ? { ...l, ...patch } : l)));
@@ -278,34 +257,49 @@ export default function PropuestaAdmin() {
   const selected = looks[selIdx >= 0 ? selIdx : 0];
   const lookNo = selected ? pad2((selIdx >= 0 ? selIdx : 0) + 1) : '00';
 
+  // La propuesta completa (shape v1) con el code que corresponda. El draft de
+  // trabajo conserva también los looks incompletos (para no perder un look a
+  // medio armar al recargar); lo publicado lleva solo los completos.
+  const buildProposal = (codeArg, { includeIncomplete = false } = {}) => ({
+    v: 1,
+    name, subtitle, intro, lang, days, code: codeArg,
+    expiresAt: new Date(Date.now() + days * 86400000).toISOString(),
+    model: { name: 'Julia Parker', agency: 'Kash Agency' },
+    recipient: { name: recipient.name.trim(), email: recipient.email.trim(), kind: recipient.kind },
+    template,
+    coverUrl: coverUrl || null,
+    closingUrl: closingUrl || null,
+    looks: (includeIncomplete ? looks : looks.filter(isComplete))
+      .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
+  });
+
   const saveDraft = () => {
     if (completeCount === 0) return;
-    const draft = {
-      v: 1,
-      name, subtitle, intro, lang, days, code,
-      expiresAt: new Date(Date.now() + days * 86400000).toISOString(),
-      model: { name: 'Julia Parker', agency: 'Kash Agency' },
-      recipient: { name: recipient.name.trim(), email: recipient.email.trim(), phone: fullPhone, kind: recipient.kind },
-      template,
-      coverUrl: coverUrl || null,
-      closingUrl: closingUrl || null,
-      looks: looks.filter(isComplete).map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
-    };
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch {}
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(buildProposal(code, { includeIncomplete: true }))); } catch {}
   };
 
-  useEffect(() => {
-    if (step === 4) saveDraft();
-  }, [step]);
+  // Publicar = CODE nuevo cada vez (link único por publicación): escribe la
+  // propuesta en 'ls_prop_<CODE>', marca 'ls_prop_last' y refresca el draft.
+  const publish = () => {
+    if (completeCount === 0) return;
+    const newCode = genCode();
+    try {
+      localStorage.setItem(`ls_prop_${newCode}`, JSON.stringify(buildProposal(newCode)));
+      localStorage.setItem(LAST_KEY, newCode);
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(buildProposal(newCode, { includeIncomplete: true })));
+    } catch {}
+    setCode(newCode);
+  };
 
-  // Respuestas de la persona: en el paso 4 leemos el feedback que la vista
-  // pública dejó en localStorage y refrescamos cada 5s (si responde en otra
-  // pestaña, el admin lo ve sin recargar).
+  // Respuestas de la persona: en el paso 4 leemos el feedback del CODE actual
+  // ('ls_prop_fb_<CODE>'; si aún no hay code en memoria, el de 'ls_prop_last')
+  // y refrescamos cada 5s (si responde en otra pestaña, se ve sin recargar).
   useEffect(() => {
     if (step !== 4) return;
     const load = () => {
       try {
-        const raw = localStorage.getItem(FEEDBACK_KEY);
+        const c = code || localStorage.getItem(LAST_KEY) || '';
+        const raw = c ? localStorage.getItem(`ls_prop_fb_${c}`) : null;
         if (!raw) { setFeedback(null); return; }
         const f = JSON.parse(raw);
         setFeedback(f?.v === 1 && Array.isArray(f.items) ? f : null);
@@ -314,7 +308,7 @@ export default function PropuestaAdmin() {
     load();
     const id = setInterval(load, 5000);
     return () => clearInterval(id);
-  }, [step]);
+  }, [step, code]);
 
   const fbItems = feedback?.items ?? [];
   const fbLiked = fbItems.filter((i) => i.status === 'liked').length;
@@ -322,14 +316,14 @@ export default function PropuestaAdmin() {
   const fbNotes = fbItems.filter((i) => (i.note || '').trim()).length;
 
   const canNext = step === 1
-    ? recipient.name.trim().length > 0
+    ? recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())
     : step === 3
       ? completeCount > 0
       : step < 4;
 
   const goNext = () => {
     if (step >= 4 || !canNext) return;
-    if (step === 3) saveDraft();
+    if (step === 3) publish();
     setStep(step + 1);
   };
 
@@ -341,6 +335,24 @@ export default function PropuestaAdmin() {
   };
 
   const steps = [t.stepWho, t.stepMold, t.stepPhotos, t.stepLink];
+
+  if (access === 'loading') return <div className="min-h-screen bg-ink" />;
+  if (access === 'denied') {
+    return (
+      <div className="grid min-h-screen place-items-center bg-ink px-6 text-paper">
+        <div className="card3d w-full max-w-md rounded-3xl border border-line bg-card p-8 text-center">
+          <span className="mx-auto mb-4 inline-flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Sin acceso
+          </span>
+          <h1 className="font-display text-xl font-bold text-paper">Necesitás el permiso «Crear propuestas»</h1>
+          <p className="mt-2 text-sm text-paper-mute">Pedile a un administrador que te lo active en Equipo → accesos.</p>
+          <Link href="/admin" className="btn3d-ghost mt-6 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold">
+            <ArrowLeft size={15} /> Volver
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-ink text-paper">
@@ -354,7 +366,9 @@ export default function PropuestaAdmin() {
             <div className="min-w-0">
               <div className="flex items-center gap-2.5">
                 <span className="hidden font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute sm:inline">Propuesta</span>
-                <span className="hidden whitespace-nowrap font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-brand sm:inline">{code}</span>
+                {code && (
+                  <span className="hidden whitespace-nowrap font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-brand sm:inline">{code}</span>
+                )}
                 <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">
                   <span className={`h-1.5 w-1.5 rounded-full ${step === 4 ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                   {step === 4 ? t.published : t.draft}
@@ -399,7 +413,7 @@ export default function PropuestaAdmin() {
             {(step === 2 || step === 3) && (
               <button
                 type="button"
-                onClick={() => { saveDraft(); window.open(publicUrl, '_blank', 'noopener'); }}
+                onClick={() => { saveDraft(); window.open(previewUrl, '_blank', 'noopener'); }}
                 disabled={completeCount === 0}
                 className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold disabled:pointer-events-none disabled:opacity-40 sm:px-4 sm:text-sm"
               >
@@ -426,40 +440,12 @@ export default function PropuestaAdmin() {
               </Field>
               <Field label={t.recipEmail}>
                 <input
+                  type="email"
                   value={recipient.email}
                   onChange={(e) => setRecipient((r) => ({ ...r, email: e.target.value }))}
                   placeholder={t.recipEmailPh}
                   className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
                 />
-              </Field>
-              <Field label={t.phone}>
-                <div className="flex items-center gap-2">
-                  <div className="relative w-[110px] shrink-0">
-                    <select
-                      value={phoneCountry}
-                      onChange={(e) => setPhoneCountry(e.target.value)}
-                      aria-label={t.country}
-                      className="w-full appearance-none rounded-xl border border-line bg-ink-2 py-2.5 pl-3 pr-7 text-sm text-paper outline-none focus:border-brand/60"
-                    >
-                      {COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code}>{c.flag} {c.dial}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-                  </div>
-                  <input
-                    type="tel"
-                    value={phoneLocal}
-                    onChange={(e) => {
-                      let v = e.target.value.replace(/[^\d\s+]/g, '');
-                      const dial = COUNTRIES.find((c) => c.code === phoneCountry)?.dial;
-                      if (dial && v.trim().startsWith(dial)) v = v.trim().slice(dial.length).trim();
-                      setPhoneLocal(v.replace(/\+/g, ''));
-                    }}
-                    placeholder="300 123 4567"
-                    className="min-w-0 flex-1 rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
-                  />
-                </div>
               </Field>
               <Field label={t.recipKind}>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -473,7 +459,7 @@ export default function PropuestaAdmin() {
 
           <section className="card3d flex items-center gap-3 rounded-2xl border border-line bg-card p-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="https://picsum.photos/seed/jp/96/96" alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
+            <img src="/model-latina.jpg" alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
             <div className="min-w-0">
               <div className="truncate font-display text-sm font-bold text-paper">Julia Parker</div>
               <div className="truncate text-[11px] text-paper-mute">Kash Agency</div>
@@ -777,22 +763,12 @@ export default function PropuestaAdmin() {
             >
               <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
             </a>
-            <div className="grid grid-cols-2 gap-2">
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noreferrer"
-                className="btn3d-ghost inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-semibold"
-              >
-                <MessageCircle size={14} /> {t.sendWhatsApp}
-              </a>
-              <a
-                href={mailHref}
-                className="btn3d-ghost inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-semibold"
-              >
-                <Mail size={14} /> {t.sendEmail}
-              </a>
-            </div>
+            <a
+              href={mailHref}
+              className="btn3d-ghost inline-flex w-full items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-semibold"
+            >
+              <Mail size={14} /> {t.sendEmail}
+            </a>
           </section>
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">

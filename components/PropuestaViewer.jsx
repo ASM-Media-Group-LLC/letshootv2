@@ -1,13 +1,16 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────
-// Propuesta pública — formato TRÍPTICO por look.
+// Propuesta pública — formato TRÍPTICO por look. Ruta dinámica /p/[linkId].
 //   · Cada slide 100svh: INSPIRACIÓN + MODELO REAL = RESULTADO (hero).
 //   · Feedback por look (❤ / ✕ / 💬), watermark + anti-descarga siempre.
-//   · Lee el draft del editor desde localStorage 'ls_propuesta_draft'.
-//   · Al enviar, escribe el feedback en localStorage 'ls_propuesta_feedback'
-//     ({ v, code, recipientName, at, items:[{id, caption, result, status, note}] })
-//     — el wizard lo lee en el paso 4.
+//   · Carga la propuesta publicada desde localStorage 'ls_prop_<linkId>';
+//     si no existe, cae al DEMO (fotos reales de /public).
+//   · GATE DE REGISTRO (mock): si no existe 'ls_prop_reg_<linkId>' se pide
+//     nombre + correo antes de mostrar la propuesta; al enviar se guarda
+//     { name, email, at } y se abre la propuesta.
+//   · Al enviar feedback, escribe 'ls_prop_fb_<linkId>'
+//     ({ v, code, recipientName, at, items:[{id, caption, result, status, note}] }).
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -16,11 +19,11 @@ import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send } from 'lucide-
 import Logo from '@/components/Logo';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
 
-const DRAFT_KEY = 'ls_propuesta_draft';
-const FEEDBACK_KEY = 'ls_propuesta_feedback';
-const pBig = (s) => `https://picsum.photos/seed/${s}/900/1125`;
-const pSm = (s) => `https://picsum.photos/seed/${s}/600/750`;
+const propKey = (id) => `ls_prop_${id}`;
+const fbKey = (id) => `ls_prop_fb_${id}`;
+const regKey = (id) => `ls_prop_reg_${id}`;
 const pad2 = (n) => String(n).padStart(2, '0');
+const EMAIL_RX = /^\S+@\S+\.\S+$/;
 
 const DEMO = {
   v: 1,
@@ -29,20 +32,20 @@ const DEMO = {
   intro: 'Sentí el estilo antes de confirmar la sesión.',
   lang: 'es',
   days: 10,
-  code: 'JP-VE26-A31F',
+  code: 'JP-VE26AF',
   expiresAt: '2026-09-15T23:59:59Z',
   model: { name: 'Julia Parker', agency: 'Kash Agency' },
   recipient: { name: 'Valentina Ríos', email: 'valentina@email.com', kind: 'prospect' },
   template: 'exclusive',
-  coverUrl: pBig('lsai-dubai'),
-  closingUrl: pBig('lsai-night'),
+  coverUrl: '/model-latina.jpg',
+  closingUrl: '/model-noche.jpg',
   looks: [
-    { id: 'lk1', caption: 'Dubai · balcón · golden hour',   inspiration: pSm('lsin-dubai'),  real: pSm('lsre-01'), result: pBig('lsai-dubai') },
-    { id: 'lk2', caption: 'Playa · golden hour · lifestyle', inspiration: pSm('lsin-beach'),  real: pSm('lsre-02'), result: pBig('lsai-beach') },
-    { id: 'lk3', caption: 'Cafetería · luz matinal',         inspiration: pSm('lsin-cafe'),   real: pSm('lsre-03'), result: pBig('lsai-cafe') },
-    { id: 'lk4', caption: 'Estudio · editorial · clean',     inspiration: pSm('lsin-studio'), real: pSm('lsre-04'), result: pBig('lsai-studio') },
-    { id: 'lk5', caption: 'Piscina · mediodía · lifestyle',  inspiration: pSm('lsin-pool'),   real: pSm('lsre-05'), result: pBig('lsai-pool') },
-    { id: 'lk6', caption: 'Noche urbana · neón',             inspiration: pSm('lsin-night'),  real: pSm('lsre-06'), result: pBig('lsai-night') },
+    { id: 'lk1', caption: 'Miami · Ocean Drive · golden hour', inspiration: '/card-locacion.jpg',     real: '/ba-before-1.jpg',       result: '/model-latina.jpg' },
+    { id: 'lk2', caption: 'Resort · piscina · lifestyle',      inspiration: '/card-localizacion.jpg', real: '/ba-before-2.jpg',       result: '/model-resort.jpg' },
+    { id: 'lk3', caption: 'Noche urbana · neón',               inspiration: '/card-hd.jpg',           real: '/hero-real.jpg',         result: '/model-noche.jpg' },
+    { id: 'lk4', caption: 'Editorial · moda',                  inspiration: '/card-moda.jpg',         real: '/ba-after-1.jpg',        result: '/model-europea.jpg' },
+    { id: 'lk5', caption: 'Estudio · estilista',               inspiration: '/card-estilista.jpg',    real: '/ba-after-2.jpg',        result: '/result-4.jpg' },
+    { id: 'lk6', caption: 'Cinemática · IA',                   inspiration: '/hero-poster.jpg',       real: '/hero-miami-poster.jpg', result: '/hero-ia.jpg' },
   ],
 };
 
@@ -64,15 +67,23 @@ function useCountdown(iso) {
   return { d, h, expired: ms === 0 };
 }
 
-export default function Propuesta() {
+// ══════════════════════════════════════════════════════════════════════════
+// Shell: carga la propuesta del link + decide gate de registro vs. viewer.
+// ══════════════════════════════════════════════════════════════════════════
+
+export default function PropuestaViewer({ linkId }) {
   const [cfg, setCfg] = useState(DEMO);
   const [lang, setLang] = useState('es');
+  const [phase, setPhase] = useState('loading'); // 'loading' | 'gate' | 'view'
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    let draftLang = null;
+    // /p/demo es el preview interno de los pasos 2-3 del wizard: renderiza el
+    // DRAFT de trabajo del editor y NO lleva gate de registro.
+    const isPreview = linkId === 'demo';
+    let propLang = null;
     try {
-      const raw = window.localStorage.getItem(DRAFT_KEY);
+      const raw = window.localStorage.getItem(isPreview ? 'ls_propuesta_draft' : propKey(linkId));
       if (raw) {
         const d = JSON.parse(raw);
         const complete = Array.isArray(d?.looks)
@@ -80,16 +91,107 @@ export default function Propuesta() {
           : [];
         if (d?.v === 1 && complete.length > 0) {
           setCfg({ ...DEMO, ...d, model: { ...DEMO.model, ...(d.model || {}) }, looks: complete });
-          draftLang = d.lang;
+          propLang = d.lang;
         }
       }
     } catch {}
     const q = new URLSearchParams(window.location.search).get('lang');
     if (q && PROP_LANGS.includes(q)) setLang(q);
-    else if (draftLang && PROP_LANGS.includes(draftLang)) setLang(draftLang);
-  }, []);
+    else if (propLang && PROP_LANGS.includes(propLang)) setLang(propLang);
+    if (isPreview) { setPhase('view'); return; }
+    let registered = false;
+    try { registered = !!window.localStorage.getItem(regKey(linkId)); } catch {}
+    setPhase(registered ? 'view' : 'gate');
+  }, [linkId]);
 
   const t = propDict(lang);
+
+  const register = (reg) => {
+    try { window.localStorage.setItem(regKey(linkId), JSON.stringify(reg)); } catch {}
+    setPhase('view');
+  };
+
+  if (phase === 'loading') return <div className="min-h-[100svh] bg-ink" />;
+  if (phase === 'gate') return <RegisterGate t={t} cfg={cfg} onDone={register} />;
+  return <ProposalBody t={t} cfg={cfg} linkId={linkId} />;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Gate de registro (mock) — pantalla previa a la propuesta.
+// ══════════════════════════════════════════════════════════════════════════
+
+function RegisterGate({ t, cfg, onDone }) {
+  const [name, setName] = useState(cfg.recipient?.name || '');
+  const [email, setEmail] = useState(cfg.recipient?.email || '');
+  useEffect(() => {
+    setName((v) => v || cfg.recipient?.name || '');
+    setEmail((v) => v || cfg.recipient?.email || '');
+  }, [cfg]);
+  const valid = name.trim().length > 0 && EMAIL_RX.test(email.trim());
+  const submit = (e) => {
+    e.preventDefault();
+    if (!valid) return;
+    onDone({ name: name.trim(), email: email.trim(), at: new Date().toISOString() });
+  };
+  const bgUrl = cfg.coverUrl || cfg.looks?.[0]?.result;
+
+  return (
+    <div className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-ink px-4 py-10 text-paper">
+      {bgUrl && (
+        <div className="absolute inset-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={bgUrl} alt="" className="h-full w-full scale-110 object-cover blur-2xl" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+          <div className="absolute inset-0 bg-ink/80" />
+        </div>
+      )}
+      <form onSubmit={submit} className="card3d relative z-10 w-full max-w-sm rounded-3xl border border-line bg-card p-7 sm:p-8">
+        <div className="flex justify-center">
+          <Logo forceDark />
+        </div>
+        <h1 className="mt-6 text-center font-display text-2xl font-bold tracking-[-0.02em] text-paper">{t.regTitle}</h1>
+        <p className="mt-1.5 text-center text-sm text-paper-mute">{t.regSub}</p>
+
+        <label className="mt-6 block">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">{t.recipName}</span>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t.recipNamePh}
+            className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+          />
+        </label>
+        <label className="mt-4 block">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">{t.recipEmail}</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={t.recipEmailPh}
+            className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+          />
+        </label>
+
+        <button
+          type="submit"
+          disabled={!valid}
+          className="mt-6 w-full rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:scale-100"
+        >
+          {t.regCta}
+        </button>
+        <div className="mt-3 flex items-center justify-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-paper-dim">
+          <Lock size={10} /> {t.regHint}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Viewer tríptico (el componente original de /p/demo, ya sin carga propia).
+// ══════════════════════════════════════════════════════════════════════════
+
+function ProposalBody({ t, cfg, linkId }) {
   const looks = cfg.looks;
   const total = looks.length;
 
@@ -162,9 +264,9 @@ export default function Propuesta() {
 
   const sendFeedback = () => {
     try {
-      window.localStorage.setItem(FEEDBACK_KEY, JSON.stringify({
+      window.localStorage.setItem(fbKey(linkId), JSON.stringify({
         v: 1,
-        code: cfg.code,
+        code: cfg.code || linkId,
         recipientName: cfg.recipient?.name || '',
         at: new Date().toISOString(),
         items: looks.map((l) => {
