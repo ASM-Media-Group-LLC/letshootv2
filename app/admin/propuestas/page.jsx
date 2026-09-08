@@ -92,13 +92,18 @@ export default function PropuestaAdmin() {
 
   // Acceso: admin, o empleado con la capability 'proposals' (Crear propuestas).
   const [access, setAccess] = useState('loading'); // 'loading' | 'ok' | 'denied'
+  // Nombre del empleado logueado — se sella en cada propuesta como createdBy
+  // (así el dueño ve en /admin › Propuestas quién armó cada una).
+  const [authorName, setAuthorName] = useState('');
   useEffect(() => {
     (async () => {
       try {
         const up = await getUserProfile();
         const p = up?.profile;
-        const ok = !!p && (p.role === 'admin' || (Array.isArray(p.capabilities) && p.capabilities.includes('proposals')));
+        // Crear propuestas es función base de todo el equipo: admin o empleado.
+        const ok = !!p && (p.role === 'admin' || p.role === 'supervisor');
         setAccess(ok ? 'ok' : 'denied');
+        if (p) setAuthorName(p.full_name || p.stage_name || p.email || '');
       } catch { setAccess('denied'); }
     })();
   }, []);
@@ -269,6 +274,7 @@ export default function PropuestaAdmin() {
     template,
     coverUrl: coverUrl || null,
     closingUrl: closingUrl || null,
+    createdBy: authorName || '',
     looks: (includeIncomplete ? looks : looks.filter(isComplete))
       .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
   });

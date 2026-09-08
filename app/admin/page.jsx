@@ -18,6 +18,7 @@ import { PACKS } from '@/lib/packs';
 // Format an integer amount of cents as USD, e.g. 12999 -> "$129.99".
 const moneyCents = (c) => `$${((Number(c) || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import ReactionsDashboard from '@/components/ReactionsDashboard';
+import AdminPropuestas from '@/components/AdminPropuestas';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -530,6 +531,7 @@ export default function AdminPage() {
             { id: 'equipo', label: 'Equipo interno', icon: Users },
             { id: 'agencias', label: 'Agencias', icon: Building2, badge: agencyLeads.length },
             { id: 'actividad', label: 'Actividad', icon: Activity },
+            { id: 'propuestas', label: 'Propuestas', icon: Send },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-2.5 text-sm font-medium transition-colors ${tab === tb.id ? 'tab3d-active' : 'text-paper-mute hover:text-paper'}`}>
@@ -1112,6 +1114,10 @@ export default function AdminPage() {
                 })}
               </div>
             )}
+          </div>
+        ) : tab === 'propuestas' ? (
+          <div className="mt-6">
+            <AdminPropuestas />
           </div>
         ) : null}
       </main>
@@ -2881,6 +2887,15 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
           <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${owner ? 'border-amber-400/40 bg-amber-400/10 text-amber-300' : isMgr ? 'border-brand/40 bg-brand/10 text-brand' : 'border-line bg-hair/5 text-paper-mute'}`}>
             {roleBadge}
           </span>
+          {/* «Ver como» — abre /trabajo con los accesos de ESTE empleado, solo lectura.
+              Solo para el equipo interno (empleado/admin), nunca para uno mismo. */}
+          {!isSelf && (staff.role === 'supervisor' || staff.role === 'admin') && (
+            <button onClick={() => window.open(`/trabajo?as=${staff.id}`, '_blank', 'noopener')}
+              title="Ver /trabajo como este empleado (solo lectura)"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-brand">
+              <Eye size={13} /> <span className="hidden sm:inline">Ver como {(staff.full_name || '').trim().split(/\s+/)[0] || 'empleado'}</span>
+            </button>
+          )}
           <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={16} /></button>
         </div>
 

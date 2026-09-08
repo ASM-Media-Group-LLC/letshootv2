@@ -98,7 +98,11 @@ export default function TrabajoPage() {
 function TrabajoPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const asId = searchParams?.get('as') || null; // ?as=<profileId> → el DUEÑO ve /trabajo como ese empleado (solo lectura)
   const [me, setMe] = useState(undefined);
+  const [viewAs, setViewAs] = useState(null); // perfil OBJETIVO cuando el dueño mira como un empleado; null = vista normal
+  const asMode = !!viewAs;   // ¿estamos en modo «ver como»?
+  const readOnly = asMode;   // en modo «ver como» NADA se escribe a la base
   const [tab, setTab] = useState(null);       // null = todo cerrado; se abre al tocar una tarjeta
   const [creators, setCreators] = useState([]);
   const [staff, setStaff] = useState([]);
@@ -123,8 +127,13 @@ function TrabajoPageInner() {
   // assigned to their puesto. Requests come from the agency/creator — the
   // internal team receives and fulfills them.
   const ALL_CAPS = ALL_CAP_VALUES;
-  const caps = !me ? [] : (me.role === 'admin' ? ALL_CAPS : (me.capabilities || []));
+  // En modo «ver como», las capabilities del render son las del OBJETIVO (no las
+  // del admin) — así las secciones se muestran/ocultan tal como las ve ese empleado.
+  const capsOwner = asMode ? viewAs : me;
+  const caps = !capsOwner ? [] : (capsOwner.role === 'admin' ? ALL_CAPS : (capsOwner.capabilities || []));
   const can = (c) => caps.includes(c);
+  const asName = viewAs ? ((viewAs.full_name || '').trim().split(/\s+/)[0] || viewAs.stage_name || viewAs.full_name || 'empleado') : '';
+  function exitAsView() { window.close(); if (!window.closed) router.push('/admin'); }
 
   // One load for everything the cards summarize, guarded by the puesto's caps.
   const load = useCallback(async () => {
@@ -182,9 +191,19 @@ function TrabajoPageInner() {
       if (!['admin', 'supervisor', 'producer', 'chatter'].includes(role)) { router.replace('/panel'); return; }
       meRef.current = up.profile;
       setMe(up.profile);
+      // ── Modo «ver como»: SOLO el dueño (admin) puede previsualizar /trabajo con
+      // los accesos de un empleado concreto. Si el id no existe o el viewer no es
+      // admin, se ignora ?as y /trabajo funciona normal.
+      if (asId && role === 'admin') {
+        const { data: tp } = await getSupabase()
+          .from('profiles')
+          .select('id, full_name, stage_name, role, capabilities, email')
+          .eq('id', asId).maybeSingle();
+        if (tp) setViewAs(tp);
+      }
       load();
     })();
-  }, [router, load]);
+  }, [router, load, asId]);
 
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2600); }
 
@@ -318,7 +337,7 @@ function TrabajoPageInner() {
     setColaSeen(true);
     // Tomar el pedido: si nadie lo tiene, quedo yo como responsable (evita que
     // dos uploaders dupliquen). Si ya lo tomó otro, no se lo quito.
-    if (it.reqId && !it.claimedBy && can('requests')) {
+    if (it.reqId && !it.claimedBy && can('requests') && !readOnly) {
       await getSupabase().from('requests').update({ producer_id: me.id, status: 'in_progress' }).eq('id', it.reqId).is('producer_id', null);
       load();
     }
@@ -376,12 +395,30 @@ function TrabajoPageInner() {
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
+      {asMode && (
+        /* Banner de «ver como» — estilo StatusDot (dot brand + texto), NO pill tinturado. */
+        <div className="sticky top-0 z-50 flex items-center justify-between gap-3 border-b border-line bg-ink/95 px-4 py-2 backdrop-blur">
+          <span className="inline-flex min-w-0 items-center gap-2 text-[13px] text-paper-mute">
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
+            </span>
+            <span className="truncate">Viendo como <b className="font-semibold text-paper">{viewAs?.full_name || viewAs?.stage_name || 'empleado'}</b> · solo lectura</span>
+          </span>
+          <button onClick={exitAsView}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-xs font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+            <X size={13} /> Salir de la vista
+          </button>
+        </div>
+      )}
+      {!asMode && (
       <WelcomeTour storageKey="ls_tour_team_v1" steps={[
         { eyebrow: 'Bienvenido', title: 'Tu espacio de trabajo', body: 'Todo lo del día en un vistazo. Te mostramos por dónde empezar en 20 segundos.' },
         { eyebrow: 'Cola del día', title: 'Lo de hoy', body: 'Pedidos, verificaciones y feedback pendientes se juntan en la Cola del día.' },
         { eyebrow: 'Áreas', title: 'Entra a trabajar', body: 'Creadoras, Pedidos, Verificaciones… ves solo las áreas a las que tienes acceso.' },
         { eyebrow: 'Entrega', title: 'Entrega en 3 pasos', body: 'Sube el contenido a la creadora correcta de forma simple y guiada.' },
       ]} />
+      )}
       <PortalHeader
         section="Trabajo"
         sectionIcon={Users}
@@ -549,17 +586,17 @@ function TrabajoPageInner() {
               );
             })()}
             {tab === 'cuentas' && can('metrics') && <CuentasPanel rows={salesRows} bill={bill} billRows={billRows} onOpenSales={() => router.push('/sales')} onOpenCobros={() => can('billing') && setTab('cobros')} canBilling={can('billing')} />}
-            {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} />}
-            {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} pendingByCreator={pendingByCreator} />}
+            {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} readOnly={readOnly} />}
+            {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} pendingByCreator={pendingByCreator} readOnly={readOnly} />}
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
-            {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} />}
-            {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} />}
-            {tab === 'feedback' && can('feedback') && <ReactionsDashboard canResolve onResolved={load} creators={creators.map((c) => ({ id: c.id, name: c.full_name, avatar_url: c.avatar_url }))} />}
+            {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} readOnly={readOnly} />}
+            {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} readOnly={readOnly} />}
+            {tab === 'feedback' && can('feedback') && <ReactionsDashboard canResolve={!readOnly} onResolved={load} creators={creators.map((c) => ({ id: c.id, name: c.full_name, avatar_url: c.avatar_url }))} />}
             {tab === 'produccion' && can('metrics') && <ProduccionTab books={books} />}
             {tab === 'agencias' && can('metrics') && <AgenciasTab books={books} />}
-            {tab === 'gestagencias' && can('agencies') && <GestAgenciasTab agencies={agencies} creators={creators} flash={flash} reload={load} />}
-            {tab === 'cobros' && can('billing') && <CobrosTab rows={billRows} flash={flash} reload={load} isAdmin={me.role === 'admin'} />}
-            {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} />}
+            {tab === 'gestagencias' && can('agencies') && <GestAgenciasTab agencies={agencies} creators={creators} flash={flash} reload={load} readOnly={readOnly} />}
+            {tab === 'cobros' && can('billing') && <CobrosTab rows={billRows} flash={flash} reload={load} isAdmin={me.role === 'admin'} readOnly={readOnly} />}
+            {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} readOnly={readOnly} />}
           </>
         )}
       </main>
@@ -607,7 +644,7 @@ function SubBadge({ creator, size = 'sm' }) {
 // MISMO formulario completo que el admin: acceso, perfil público, identidad,
 // suscripción, cortesía y nota. Los campos extra los aplica create-user con
 // service role (el empleado no puede escribir el perfil directo por RLS).
-function AltasTab({ creators, flash, reload }) {
+function AltasTab({ creators, flash, reload, readOnly }) {
   const [open, setOpen] = useState(false);
   const blank = { full_name: '', email: '', stage_name: '', handle: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: '', comp: false, comp_until: '', billing_note: '' };
   const [f, setF] = useState(blank);
@@ -618,6 +655,7 @@ function AltasTab({ creators, flash, reload }) {
 
   async function create(e) {
     e.preventDefault();
+    if (readOnly) return;
     setErr(''); setCreds(null);
     if (!f.full_name.trim()) { setErr('Pon al menos el nombre.'); return; }
     const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
@@ -654,8 +692,9 @@ function AltasTab({ creators, flash, reload }) {
           <p className="text-xs text-paper-dim">Da de alta una creadora nueva — el mismo formulario completo del administrador.</p>
         </div>
         {!open && (
-          <button onClick={() => { setOpen(true); setErr(''); setCreds(null); }}
-            className="btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold">
+          <button onClick={() => { if (readOnly) return; setOpen(true); setErr(''); setCreds(null); }} disabled={readOnly}
+            title={readOnly ? 'Solo lectura (vista del empleado)' : undefined}
+            className={`btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold ${readOnly ? 'pointer-events-none opacity-60' : ''}`}>
             <UserPlus size={15} /> Dar de alta creadora
           </button>
         )}
@@ -762,13 +801,13 @@ function AltasTab({ creators, flash, reload }) {
   );
 }
 
-function CreadorasTab({ creators, me, flash, initialCreatorId, pendingByCreator = {} }) {
+function CreadorasTab({ creators, me, flash, initialCreatorId, pendingByCreator = {}, readOnly }) {
   const [sel, setSel] = useState(() => (initialCreatorId ? creators.find((c) => c.id === initialCreatorId) || null : null));
   const [q, setQ] = useState('');
   const [fCat, setFCat] = useState('all');
 
   // Inside a creator you get her full-width library; back returns to the roster.
-  if (sel) return <CreatorDetail key={sel.id} creator={sel} me={me} flash={flash} onBack={() => setSel(null)} />;
+  if (sel) return <CreatorDetail key={sel.id} creator={sel} me={me} flash={flash} onBack={() => setSel(null)} readOnly={readOnly} />;
 
   const catOf = (c) => CREATOR_CAT[c.onboarding_status] || 'registered';
   const view = creators.filter((c) => {
@@ -842,7 +881,7 @@ function CreadorasTab({ creators, me, flash, initialCreatorId, pendingByCreator 
   );
 }
 
-function CreatorDetail({ creator, me, flash, onBack }) {
+function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
   const [folders, setFolders] = useState(null);
   const [folderSel, setFolderSel] = useState(null); // null = biblioteca (carpetas); id = dentro de la carpeta
   const [urls, setUrls] = useState({});             // storage_path -> signed url (miniaturas)
@@ -886,6 +925,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   // el objeto de storage se quita aparte. Con confirmación, no se puede deshacer.
   const [delId, setDelId] = useState('');
   async function delAsset(a) {
+    if (readOnly) return;
     if (!window.confirm('¿Borrar esta pieza? No se puede deshacer.')) return;
     setDelId(a.id);
     const supabase = getSupabase();
@@ -900,6 +940,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   // recargar) para no re-firmar todas las miniaturas: refleja el nuevo título
   // en la galería y en el preview abierto al instante.
   async function renameAsset(a, title) {
+    if (readOnly) return;
     const supabase = getSupabase();
     const { error } = await supabase.from('assets').update({ title: title || null }).eq('id', a.id);
     if (error) { flash('No se pudo renombrar: ' + error.message); return; }
@@ -926,6 +967,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   }
   function clearSel() { setSelected(new Set()); }
   async function delSelected(all) {
+    if (readOnly) return;
     const ids = Array.from(selected);
     if (!ids.length) return;
     if (!window.confirm(`¿Borrar ${ids.length} pieza${ids.length === 1 ? '' : 's'}? No se puede deshacer.`)) return;
@@ -947,6 +989,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
 
   async function createFolder(e) {
     e.preventDefault();
+    if (readOnly) return;
     if (!newName.trim()) return;
     setCreating(true);
     const { error } = await getSupabase().from('folders').insert({ creator_id: creator.id, name: newName.trim() });
@@ -963,6 +1006,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   const [subBusy, setSubBusy] = useState(false);
   async function createSubfolder(e) {
     e.preventDefault();
+    if (readOnly) return;
     const parent = (folders || []).find((f) => f.id === folderSel);
     if (!parent || !subName.trim()) return;
     // Base del nombre = solo la parte superior si esta ya es «X / Y», así las
@@ -981,6 +1025,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
   // Bulk-friendly: uploads in a small concurrency pool, survives per-file
   // failures (reports how many), and only closes the pedido if something landed.
   async function uploadFiles(list) {
+    if (readOnly) return;
     if (!folderSel) { flash('Elige primero una entrega.'); return; }
     // Fotos y videos JUNTOS: clasifica por MIME y, si el navegador lo deja en
     // blanco (típico en HEIC/MOV de iPhone), por la extensión del archivo.
@@ -1113,6 +1158,11 @@ function CreatorDetail({ creator, me, flash, onBack }) {
       <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-paper-mute transition-colors hover:text-paper">
         <ArrowLeft size={15} /> Todas las creadoras
       </button>
+      {readOnly && (
+        <p className="mt-3 inline-flex items-center gap-2 text-[12px] text-paper-dim">
+          <span className="inline-flex h-2 w-2 rounded-full bg-brand" /> Solo lectura — no puedes subir, borrar ni entregar en esta vista.
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -1124,10 +1174,14 @@ function CreatorDetail({ creator, me, flash, onBack }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* La propuesta es un editor que ESCRIBE al abrirse (crea un borrador),
+              así que en modo «ver como» (solo lectura) no se ofrece. */}
+          {!readOnly && (
           <button onClick={() => setShowProposal((v) => !v)}
             className="btn3d-ghost inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold">
             <Sparkles size={14} /> Propuesta
           </button>
+          )}
           <button onClick={toggleLora}
             className="btn3d-ghost inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold">
             <Sparkles size={14} /> Fotos LoRA {showLora ? '▴' : '▾'}
@@ -1137,7 +1191,7 @@ function CreatorDetail({ creator, me, flash, onBack }) {
 
       {/* Editor de propuesta — a pantalla completa dentro del detalle. Si está
           activo, oculta la galería / LoRA para dar todo el ancho al editor. */}
-      {showProposal && (
+      {showProposal && !readOnly && (
         <ProposalEditor creator={creator} onClose={() => setShowProposal(false)} flash={flash} />
       )}
 
@@ -1244,9 +1298,9 @@ function CreatorDetail({ creator, me, flash, onBack }) {
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nueva entrega…"
                 className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-center text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               <p className="text-center text-[10px] leading-tight text-paper-dim">Tip: usa «Situación / subcarpeta» (ej. <span className="text-paper-mute">Cafetería / mañana</span>) y se agrupa como subcarpeta.</p>
-              <button type="submit" disabled={creating || !newName.trim()}
-                title={!newName.trim() ? 'Escribe primero el nombre de la entrega arriba' : 'Crear entrega'}
-                className="btn3d rounded-xl px-3.5 py-1.5 text-xs font-bold">
+              <button type="submit" disabled={readOnly || creating || !newName.trim()}
+                title={readOnly ? 'Solo lectura (vista del empleado)' : (!newName.trim() ? 'Escribe primero el nombre de la entrega arriba' : 'Crear entrega')}
+                className={`btn3d rounded-xl px-3.5 py-1.5 text-xs font-bold ${readOnly ? 'pointer-events-none opacity-60' : ''}`}>
                 {creating ? 'Creando…' : !newName.trim() ? 'Escribe primero un nombre' : 'Crear entrega'}
               </button>
             </form>
@@ -1305,11 +1359,12 @@ function CreatorDetail({ creator, me, flash, onBack }) {
                   className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               </label>
             </div>
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading}
-              onDragOver={(e) => { e.preventDefault(); if (!uploading) setDragOver(true); }}
+            <button type="button" onClick={() => { if (readOnly) return; fileRef.current?.click(); }} disabled={readOnly || !!uploading}
+              title={readOnly ? 'Solo lectura (vista del empleado)' : undefined}
+              onDragOver={(e) => { e.preventDefault(); if (!uploading && !readOnly) setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!uploading && e.dataTransfer?.files?.length) uploadFiles(e.dataTransfer.files); }}
-              className={`mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-10 transition-colors disabled:opacity-60 ${
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); if (!readOnly && !uploading && e.dataTransfer?.files?.length) uploadFiles(e.dataTransfer.files); }}
+              className={`mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-10 transition-colors disabled:opacity-60 ${readOnly ? 'pointer-events-none opacity-60' : ''} ${
                 dragOver ? 'border-brand bg-brand/10' : 'border-brand/30 bg-ink-2 hover:border-brand/60'}`}>
               {uploading ? (
                 <>
@@ -1491,7 +1546,7 @@ function MiProduccionTab({ mine, creators }) {
 }
 
 /* ── Verificaciones: recibir y aprobar/rechazar IDs (capacidad 'kyc') ───── */
-function KycTab({ flash }) {
+function KycTab({ flash, readOnly }) {
   const [list, setList] = useState(null);
   const [busy, setBusy] = useState(null);
   const [q, setQ] = useState('');
@@ -1518,6 +1573,7 @@ function KycTab({ flash }) {
   useEffect(() => { load(); }, [load]);
 
   async function review(userId, approve) {
+    if (readOnly) return;
     let reason = null;
     if (!approve) { reason = window.prompt('Motivo del rechazo (lo verá la creadora):', ''); if (reason === null) return; }
     setBusy(userId);
@@ -1562,12 +1618,12 @@ function KycTab({ flash }) {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => review(u.id, false)} disabled={busy === u.id}
-                className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-3.5 py-2 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-60">
+              <button onClick={() => review(u.id, false)} disabled={readOnly || busy === u.id} title={readOnly ? 'Solo lectura (vista del empleado)' : undefined}
+                className={`inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-3.5 py-2 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-60 ${readOnly ? 'pointer-events-none' : ''}`}>
                 <X size={15} /> Rechazar
               </button>
-              <button onClick={() => review(u.id, true)} disabled={busy === u.id}
-                className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
+              <button onClick={() => review(u.id, true)} disabled={readOnly || busy === u.id} title={readOnly ? 'Solo lectura (vista del empleado)' : undefined}
+                className={`inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60 ${readOnly ? 'pointer-events-none' : ''}`}>
                 {busy === u.id ? <Loader2 size={15} className="animate-spin" /> : <><Check size={15} /> Aprobar</>}
               </button>
             </div>
@@ -1594,7 +1650,7 @@ function KycTab({ flash }) {
 }
 
 /* ── Pedidos: entrantes de agencias/creadoras · el equipo toma/entrega ──── */
-function PedidosTab({ creators, staff, me, flash, ping }) {
+function PedidosTab({ creators, staff, me, flash, ping, readOnly }) {
   const [requests, setRequests] = useState(null);
   const [q, setQ] = useState('');            // buscador
   const [fStatus, setFStatus] = useState('all');
@@ -1626,6 +1682,7 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
   useEffect(() => { load(); }, [load, ping]);
 
   async function setStatus(req, status) {
+    if (readOnly) return;
     const patch = { status };
     if (status === 'in_progress' && !req.producer_id) patch.producer_id = me.id;
     if (status === 'delivered') patch.delivered_at = new Date().toISOString();
@@ -1638,6 +1695,7 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
 
   // Pregunta/mensaje del equipo → copia a la modelo Y su agencia (RPC notifica).
   async function sendMsg(req, body, clear) {
+    if (readOnly) return;
     if (!body.trim()) return;
     const { error } = await getSupabase().rpc('post_request_message', { rid: req.id, body_text: body.trim() });
     if (error) { flash('Error: ' + error.message); return; }
@@ -1717,13 +1775,13 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
                 </div>
                 {/* Un solo botón por etapa — imposible confundirse:
                     Enviado → Tomar pedido · En proceso → Marcar completado · Completado → nada */}
-                {r.status === 'pending' && (
+                {r.status === 'pending' && !readOnly && (
                   <button onClick={() => setStatus(r, 'in_progress')}
                     className="shrink-0 rounded-full bg-sky-500/90 px-4 py-2.5 text-xs font-semibold text-ink shadow-glow-sm transition-transform hover:scale-[1.03]">
                     Tomar pedido →
                   </button>
                 )}
-                {r.status === 'in_progress' && (
+                {r.status === 'in_progress' && !readOnly && (
                   <button onClick={() => setStatus(r, 'delivered')}
                     className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand px-4 py-2.5 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03]">
                     <Check size={13} /> Marcar completado
@@ -1736,7 +1794,7 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
               )}
 
               {/* Mensajes del pedido — llegan a la modelo Y a su agencia, siempre */}
-              <ReqThread req={r} onSend={sendMsg} />
+              <ReqThread req={r} onSend={sendMsg} readOnly={readOnly} />
             </div>
           );
         })}
@@ -1747,7 +1805,7 @@ function PedidosTab({ creators, staff, me, flash, ping }) {
 
 // Hilo de mensajes de un pedido: preguntas del equipo y respuestas de la
 // modelo/agencia. Cada mensaje notifica a todas las partes (RPC).
-function ReqThread({ req, onSend }) {
+function ReqThread({ req, onSend, readOnly }) {
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState('');
   const n = req._msgs?.length || 0;
@@ -1769,12 +1827,14 @@ function ReqThread({ req, onSend }) {
               <p className="text-paper-mute">{m.body}</p>
             </div>
           ))}
+          {!readOnly && (
           <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); onSend(req, body, () => setBody('')); }}>
             <input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Pregunta o aclaración — le llega a la modelo y a su agencia…"
               className="min-w-0 flex-1 rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
             <button type="submit" disabled={!body.trim()}
               className="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-accent shadow-glow-sm disabled:opacity-50">Enviar</button>
           </form>
+          )}
         </div>
       )}
     </div>
@@ -2239,7 +2299,7 @@ function ProduccionTab({ books }) {
 /* ── Gestionar agencias (acceso 'agencies'): crear + vincular modelos ───── */
 // Una creadora = una sola agencia. Al tocar un chip se abre un pop-up de
 // seguridad que avisa si la modelo va a SALIR de su agencia actual.
-function GestAgenciasTab({ agencies, creators, flash, reload }) {
+function GestAgenciasTab({ agencies, creators, flash, reload, readOnly }) {
   const supabase = getSupabase();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ full_name: '', email: '' });
@@ -2258,6 +2318,7 @@ function GestAgenciasTab({ agencies, creators, flash, reload }) {
 
   async function createAgency(e) {
     e.preventDefault();
+    if (readOnly) return;
     setErr(''); setCreds(null);
     if (!f.full_name.trim()) { setErr('Pon el nombre de la agencia.'); return; }
     const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
@@ -2275,7 +2336,7 @@ function GestAgenciasTab({ agencies, creators, flash, reload }) {
   }
 
   async function doAssign() {
-    if (!confirm) return;
+    if (readOnly || !confirm) return;
     setSaving(true);
     const { error } = await supabase.rpc('staff_set_creator_agency', { p_creator: confirm.creatorId, p_agency: confirm.toAgencyId });
     setSaving(false);
@@ -2294,7 +2355,7 @@ function GestAgenciasTab({ agencies, creators, flash, reload }) {
           <h2 className="font-display text-lg font-semibold text-paper">Agencias</h2>
           <p className="text-xs text-paper-dim">Crea agencias y decide qué modelos maneja cada una. Cada creadora pertenece a una sola agencia.</p>
         </div>
-        {!open && (
+        {!open && !readOnly && (
           <button onClick={() => { setOpen(true); setErr(''); setCreds(null); }}
             className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
             <Building2 size={15} /> Crear agencia
@@ -2354,16 +2415,16 @@ function GestAgenciasTab({ agencies, creators, flash, reload }) {
                   const on = set.has(cr.id);
                   const other = !on ? agencyOfCreator[cr.id] : null; // pertenece a OTRA agencia
                   return (
-                    <button key={cr.id}
-                      onClick={() => setConfirm({
+                    <button key={cr.id} disabled={readOnly} title={readOnly ? 'Solo lectura (vista del empleado)' : undefined}
+                      onClick={() => { if (readOnly) return; setConfirm({
                         creatorId: cr.id,
                         creatorName: cr.full_name || 'Creadora',
                         toAgencyId: on ? null : ag.id,
                         toAgencyName: ag.full_name,
                         fromAgencyName: on ? ag.full_name : (other ? other.name : null),
                         action: on ? 'remove' : (other ? 'move' : 'assign'),
-                      })}
-                      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition-colors ${on ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
+                      }); }}
+                      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs transition-colors ${readOnly ? 'pointer-events-none opacity-60' : ''} ${on ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
                       {on ? <Check size={12} /> : <Plus size={12} />}
                       {cr.full_name}
                       {other && <span className="text-amber-400">· {other.name}</span>}
@@ -2410,7 +2471,7 @@ function GestAgenciasTab({ agencies, creators, flash, reload }) {
 }
 
 /* ── Suscripciones y cobros (acceso 'billing'): planes, cortesías, vencimiento ─ */
-function CobrosTab({ rows, flash, reload, isAdmin }) {
+function CobrosTab({ rows, flash, reload, isAdmin, readOnly }) {
   const supabase = getSupabase();
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState(null);
@@ -2419,6 +2480,7 @@ function CobrosTab({ rows, flash, reload, isAdmin }) {
   const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
 
   async function act(creator, action, extra = {}, msg) {
+    if (readOnly) return;
     setSavingId(creator);
     const { error } = await supabase.rpc('staff_set_subscription', { p_creator: creator, p_action: action, ...extra });
     setSavingId(null);
@@ -2429,6 +2491,7 @@ function CobrosTab({ rows, flash, reload, isAdmin }) {
 
   // Solo el dueño: marca/desmarca una modelo como de prueba (no cuenta en contabilidad).
   async function setTest(creator, isTest) {
+    if (readOnly) return;
     setSavingId(creator);
     const { error } = await supabase.rpc('admin_set_test_creator', { p_creator: creator, p_is_test: isTest });
     setSavingId(null);
@@ -2485,7 +2548,7 @@ function CobrosTab({ rows, flash, reload, isAdmin }) {
                     <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Plan</p>
                     <div className="flex flex-wrap gap-2">
                       {PACKS.map((p) => (
-                        <button key={p.key} disabled={savingId === c.id}
+                        <button key={p.key} disabled={readOnly || savingId === c.id}
                           onClick={() => act(c.id, 'plan', { p_plan: p.key, p_ends_at: c.subscription_ends_at || in30 }, `Plan: ${p.name}`)}
                           className={`rounded-full border px-3 py-1.5 text-xs ${c.plan === p.key ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:text-paper'}`}>
                           {p.name}
@@ -2497,13 +2560,13 @@ function CobrosTab({ rows, flash, reload, isAdmin }) {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Vence el</p>
-                      <input type="date" defaultValue={c.subscription_ends_at || ''} disabled={savingId === c.id}
+                      <input type="date" defaultValue={c.subscription_ends_at || ''} disabled={readOnly || savingId === c.id}
                         onChange={(e) => act(c.id, 'ends_at', { p_ends_at: e.target.value || null }, 'Fecha de vencimiento actualizada')}
                         className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
                     </div>
                     <div>
                       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Cortesía (gratis) hasta</p>
-                      <input type="date" defaultValue={c.comp_until || ''} disabled={savingId === c.id}
+                      <input type="date" defaultValue={c.comp_until || ''} disabled={readOnly || savingId === c.id}
                         onChange={(e) => act(c.id, 'comp', { p_comp_until: e.target.value || null }, 'Cortesía actualizada')}
                         className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
                     </div>
@@ -2511,19 +2574,19 @@ function CobrosTab({ rows, flash, reload, isAdmin }) {
                   {/* Nota */}
                   <div>
                     <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Nota de facturación</p>
-                    <input defaultValue={c.billing_note || ''} disabled={savingId === c.id} placeholder="ej. 1 mes gratis de cortesía"
+                    <input defaultValue={c.billing_note || ''} disabled={readOnly || savingId === c.id} placeholder="ej. 1 mes gratis de cortesía"
                       onBlur={(e) => { const v = e.target.value.trim(); if (v !== (c.billing_note || '')) act(c.id, 'note', { p_note: v }, 'Nota guardada'); }}
                       className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                   </div>
                   {/* Activar / desactivar */}
                   <div className="flex flex-wrap gap-2 pt-1">
                     {!paid ? (
-                      <button disabled={savingId === c.id} onClick={() => act(c.id, 'activate', { p_ends_at: c.subscription_ends_at || in30 }, 'Suscripción ACTIVADA')}
+                      <button disabled={readOnly || savingId === c.id} onClick={() => act(c.id, 'activate', { p_ends_at: c.subscription_ends_at || in30 }, 'Suscripción ACTIVADA')}
                         className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
                         <Check size={15} /> Activar suscripción
                       </button>
                     ) : (
-                      <button disabled={savingId === c.id} onClick={() => act(c.id, 'deactivate', {}, 'Suscripción marcada INACTIVA')}
+                      <button disabled={readOnly || savingId === c.id} onClick={() => act(c.id, 'deactivate', {}, 'Suscripción marcada INACTIVA')}
                         className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 disabled:opacity-60">
                         <X size={15} /> Marcar inactiva
                       </button>
@@ -2538,7 +2601,7 @@ function CobrosTab({ rows, flash, reload, isAdmin }) {
                           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">Modelo de prueba</p>
                           <p className="mt-0.5 text-[11px] text-paper-dim">Si está activo, esta cuenta no cuenta en el ingreso estimado ni en el desglose. Solo el dueño puede cambiarlo.</p>
                         </div>
-                        <button disabled={savingId === c.id} onClick={() => setTest(c.id, !c.is_test)}
+                        <button disabled={readOnly || savingId === c.id} onClick={() => setTest(c.id, !c.is_test)}
                           className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${c.is_test ? 'border-amber-400/50 bg-amber-400/15 text-amber-300' : 'border-line text-paper-mute hover:border-amber-400/40 hover:text-amber-300'}`}>
                           {c.is_test ? <><Check size={13} /> Es de prueba</> : 'Marcar como prueba'}
                         </button>
@@ -2584,7 +2647,7 @@ function AgenciasTab({ books }) {
 // source of truth shared with /admin).
 const TEAM_CAPS = CAPS;
 
-function EquipoTab({ staff, me, flash, reload }) {
+function EquipoTab({ staff, me, flash, reload, readOnly }) {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ full_name: '', job_title: '', email: '', password: '' });
   const [newCaps, setNewCaps] = useState([]); // accesos elegidos AL crear la cuenta
@@ -2594,6 +2657,7 @@ function EquipoTab({ staff, me, flash, reload }) {
 
   async function createPuesto(e) {
     e.preventDefault();
+    if (readOnly) return;
     setErr('');
     if (!form.email || !form.password) { setErr('Completa correo y contraseña.'); return; }
     if (form.password.length < 8) { setErr('La contraseña debe tener al menos 8 caracteres.'); return; }
@@ -2615,6 +2679,7 @@ function EquipoTab({ staff, me, flash, reload }) {
   }
 
   async function toggleFn(member, cap) {
+    if (readOnly) return;
     const cur = new Set(member.capabilities || []);
     if (cur.has(cap)) cur.delete(cap); else cur.add(cap);
     const { error } = await getSupabase().rpc('set_staff_functions', { target: member.id, caps: [...cur] });
@@ -2629,8 +2694,9 @@ function EquipoTab({ staff, me, flash, reload }) {
   return (
     <div className="mt-6 space-y-6">
       {!showCreate ? (
-        <button onClick={() => setShowCreate(true)}
-          className="btn3d-ghost flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 font-display font-semibold">
+        <button onClick={() => { if (readOnly) return; setShowCreate(true); }} disabled={readOnly}
+          title={readOnly ? 'Solo lectura (vista del empleado)' : undefined}
+          className={`btn3d-ghost flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-4 font-display font-semibold ${readOnly ? 'pointer-events-none opacity-60' : ''}`}>
           <UserPlus size={18} /> Crear cuenta de empleado
         </button>
       ) : (
@@ -2719,8 +2785,9 @@ function EquipoTab({ staff, me, flash, reload }) {
                   {TEAM_CAPS.map((c) => {
                     const on = caps.includes(c.v);
                     return (
-                      <button key={c.v} onClick={() => toggleFn(u, c.v)} disabled={u.id === me.id && c.v === 'team'}
-                        className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors disabled:opacity-50 ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
+                      <button key={c.v} onClick={() => toggleFn(u, c.v)} disabled={readOnly || (u.id === me.id && c.v === 'team')}
+                        title={readOnly ? 'Solo lectura (vista del empleado)' : undefined}
+                        className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors disabled:opacity-50 ${readOnly ? 'pointer-events-none' : ''} ${on ? 'border-brand/50 bg-brand/10' : 'border-line bg-ink-2 hover:border-hair'}`}>
                         <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line text-paper-dim'}`}>
                           {on ? <Check size={13} /> : <Plus size={13} />}
                         </span>
