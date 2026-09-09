@@ -15,7 +15,7 @@ import {
   ImagePlus, Search, X, Copy, Eye, ExternalLink, Link as LinkIcon,
   Smartphone, Mail,
 } from 'lucide-react';
-import { useProp, PROP_LANGS, PROP_LANG_LABELS, PROP_LANG_FLAG } from '@/lib/propuesta-i18n';
+import { useProp, propDict, PROP_LANGS, PROP_LANG_LABELS, PROP_LANG_FLAG } from '@/lib/propuesta-i18n';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -44,19 +44,13 @@ const DEMO_LOOKS = [
 const DEMO_COVER = '/model-latina.jpg';   // Miami · golden hour
 const DEMO_CLOSING = '/model-resort.jpg'; // resort · piscina · lifestyle
 
-// Molde de textos: default inteligente SIN nombre (el nombre del destinatario
-// vive aparte en la portada). No mete el nombre de la modelo en el subtítulo.
-const TEMPLATES = {
-  exclusive: () => ({
-    name: 'Contenido que engancha',
-    subtitle: 'Contenido exclusivo · 2026',
-    intro: 'Esto es contenido de enganche para tus fans: fotos pensadas para traer tráfico, sumar suscriptores y mantener tu página viva — sin sesión, sin viajes, sin logística. Elegí los looks que quieras para tu feed.',
-  }),
-  normal: () => ({
-    name: 'Selección editorial',
-    subtitle: 'Editorial · 2026',
-    intro: 'Esto es para tu marca personal: fotos editoriales para redes, prensa y colaboraciones. Sentí el estilo antes de confirmar la sesión y contanos qué te gusta.',
-  }),
+// Molde de textos: hoy hay UN solo tipo — "Contenido de redes". El copy sale
+// del diccionario en el IDIOMA DEL LINK (propDict(lang)), así los textos por
+// defecto cambian con el idioma. Sin nombre del destinatario ni de la modelo.
+// (El "contenido exclusivo" queda para más adelante.)
+const presetFor = (lang) => {
+  const d = propDict(lang);
+  return { name: d.redesName, subtitle: d.redesSubtitle, intro: d.redesIntro };
 };
 
 const BAUL_EXTRAS = [
@@ -119,17 +113,30 @@ export default function PropuestaAdmin() {
     })();
   }, []);
 
+  // Creadoras ACTIVAS del equipo (para elegir destinataria activa del dropdown).
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await getSupabase().rpc('team_creators');
+        if (Array.isArray(data)) setActiveCreators(data.filter((m) => m?.id && m?.full_name && m.onboarding_status === 'active'));
+      } catch {}
+    })();
+  }, []);
+
   const [step, setStep] = useState(1);
   // Destinatario VACÍO al crear una nueva (nada de datos demo pre-llenados).
-  const [recipient, setRecipient] = useState({ name: '', email: '', kind: 'prospect' });
+  // kind: 'new' (creadora nueva, se escribe a mano) | 'active' (ya activa, se elige).
+  const [recipient, setRecipient] = useState({ name: '', email: '', kind: 'new' });
+  const [creatorId, setCreatorId] = useState(''); // creadora activa elegida del dropdown
+  const [activeCreators, setActiveCreators] = useState([]);
   const [feedback, setFeedback] = useState(null);
-  const [template, setTemplate] = useState('exclusive');
+  const [template] = useState('redes'); // hoy: un solo tipo (contenido de redes)
   const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
   const [closingUrl, setClosingUrl] = useState(DEMO_CLOSING);
 
-  const [name, setName] = useState(TEMPLATES.exclusive('Valentina').name);
-  const [subtitle, setSubtitle] = useState(TEMPLATES.exclusive('Valentina').subtitle);
-  const [intro, setIntro] = useState(TEMPLATES.exclusive('Valentina').intro);
+  const [name, setName] = useState(presetFor('es').name);
+  const [subtitle, setSubtitle] = useState(presetFor('es').subtitle);
+  const [intro, setIntro] = useState(presetFor('es').intro);
   // Encabezado de dedicatoria editable ("Preparada para" por defecto). Vacío =
   // usar el default del idioma en la portada.
   const [dedication, setDedication] = useState('');
@@ -207,28 +214,18 @@ export default function PropuestaAdmin() {
     setSelectedId(id);
   };
 
-  // Mientras el dueño no toque los textos a mano, el preset del molde se
-  // regenera solo al cambiar de destinatario o de molde (nombre siempre actual).
-  // El primer run se saltea: en el mount este effect encolaría el preset demo
-  // DESPUÉS de los setState de la rehidratación y pisaría el draft guardado.
+  // Mientras el dueño no toque los textos a mano, los textos por defecto se
+  // regeneran al cambiar el IDIOMA DEL LINK (título/subtítulo/intro traducidos).
+  // El primer run se saltea para no pisar el estado inicial.
   const firstRegen = useRef(true);
   useEffect(() => {
     if (firstRegen.current) { firstRegen.current = false; return; }
     if (copyTouched) return;
-    const preset = TEMPLATES[template](firstName || 'Hola');
+    const preset = presetFor(lang);
     setName(preset.name);
     setSubtitle(preset.subtitle);
     setIntro(preset.intro);
-  }, [copyTouched, template, firstName]);
-
-  const pickTemplate = (tpl) => {
-    setTemplate(tpl);
-    setCopyTouched(false);
-    const preset = TEMPLATES[tpl](firstName || 'Hola');
-    setName(preset.name);
-    setSubtitle(preset.subtitle);
-    setIntro(preset.intro);
-  };
+  }, [copyTouched, lang]);
 
   const openPicker = (lookId, slot) => {
     setPicker({ target: 'look', lookId, slotKey: slot.key, slotLabel: t[slot.tKey] });
@@ -566,6 +563,33 @@ export default function PropuestaAdmin() {
             <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.whoTitle}</h2>
             <p className="mt-1.5 text-sm text-paper-mute">{t.whoSub}</p>
             <div className="mt-6 space-y-4">
+              <Field label={t.recipKind}>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Chip active={recipient.kind === 'new'} onClick={() => { setRecipient((r) => ({ ...r, kind: 'new' })); setCreatorId(''); }}>Creadora nueva</Chip>
+                  <Chip active={recipient.kind === 'active'} onClick={() => setRecipient((r) => ({ ...r, kind: 'active' }))}>Creadora activa</Chip>
+                </div>
+              </Field>
+
+              {recipient.kind === 'active' && (
+                <Field label="Elegí la creadora activa">
+                  <div className="relative">
+                    <select
+                      value={creatorId}
+                      onChange={(e) => {
+                        const c = activeCreators.find((x) => x.id === e.target.value);
+                        setCreatorId(e.target.value);
+                        if (c) setRecipient((r) => ({ ...r, name: c.full_name || '' }));
+                      }}
+                      className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60"
+                    >
+                      <option value="">{activeCreators.length ? '— Elegí una creadora activa —' : 'No hay creadoras activas todavía'}</option>
+                      {activeCreators.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                    </select>
+                    <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                  </div>
+                </Field>
+              )}
+
               <Field label={t.recipName}>
                 <input
                   value={recipient.name}
@@ -583,13 +607,6 @@ export default function PropuestaAdmin() {
                   className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
                 />
               </Field>
-              <Field label={t.recipKind}>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Chip active={recipient.kind === 'prospect'} onClick={() => setRecipient((r) => ({ ...r, kind: 'prospect' }))}>{t.kindProspect}</Chip>
-                  <Chip active={recipient.kind === 'client'} onClick={() => setRecipient((r) => ({ ...r, kind: 'client' }))}>{t.kindClient}</Chip>
-                  <Chip active={recipient.kind === 'model'} onClick={() => setRecipient((r) => ({ ...r, kind: 'model' }))}>{t.kindModel}</Chip>
-                </div>
-              </Field>
             </div>
           </section>
 
@@ -603,34 +620,19 @@ export default function PropuestaAdmin() {
             <p className="mt-1.5 text-sm text-paper-mute">{t.moldSub}</p>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {['exclusive', 'normal'].map((tpl) => {
-              const active = template === tpl;
-              return (
-                <button
-                  key={tpl}
-                  type="button"
-                  onClick={() => pickTemplate(tpl)}
-                  className={`card3d relative rounded-3xl border bg-card p-5 text-left transition-all ${
-                    active ? 'border-brand ring-1 ring-brand/50 shadow-glow-sm' : 'border-line hover:border-hair'
-                  }`}
-                >
-                  {active && (
-                    <span className="absolute right-4 top-4 grid h-6 w-6 place-items-center rounded-full bg-brand text-on-accent">
-                      <Check size={13} />
-                    </span>
-                  )}
-                  <div className="font-display text-base font-bold text-paper">{tpl === 'exclusive' ? t.tplExclusive : t.tplNormal}</div>
-                  <div className="mt-1 text-[12px] leading-relaxed text-paper-mute">{tpl === 'exclusive' ? t.tplExclusiveSub : t.tplNormalSub}</div>
-                </button>
-              );
-            })}
+          {/* Hoy hay UN solo tipo de contenido: redes. (El exclusivo, más adelante.) */}
+          <div className="card3d relative rounded-3xl border border-brand bg-card p-5 text-left ring-1 ring-brand/50 shadow-glow-sm">
+            <span className="absolute right-4 top-4 grid h-6 w-6 place-items-center rounded-full bg-brand text-on-accent">
+              <Check size={13} />
+            </span>
+            <div className="font-display text-base font-bold text-paper">{t.tplRedes}</div>
+            <div className="mt-1 text-[12px] leading-relaxed text-paper-mute">{t.tplRedesSub}</div>
           </div>
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
             <div className="space-y-3.5">
               <Field label={t.dedication}>
-                <input value={dedication} onChange={(e) => { setDedication(e.target.value); setCopyTouched(true); }} placeholder={t.preparedFor} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                <input value={dedication} onChange={(e) => { setDedication(e.target.value); setCopyTouched(true); }} placeholder={propDict(lang).preparedFor} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
               </Field>
               <Field label={t.pkgTitle}>
                 <input value={name} onChange={(e) => { setName(e.target.value); setCopyTouched(true); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
