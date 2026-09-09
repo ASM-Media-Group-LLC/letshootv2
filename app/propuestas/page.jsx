@@ -125,6 +125,9 @@ export default function PropuestaAdmin() {
   const [name, setName] = useState(TEMPLATES.exclusive('Valentina').name);
   const [subtitle, setSubtitle] = useState(TEMPLATES.exclusive('Valentina').subtitle);
   const [intro, setIntro] = useState(TEMPLATES.exclusive('Valentina').intro);
+  // Encabezado de dedicatoria editable ("Preparada para" por defecto). Vacío =
+  // usar el default del idioma en la portada.
+  const [dedication, setDedication] = useState('');
   const [days, setDays] = useState(10);
   const [lang, setLang] = useState('es');
   // CODE de la última publicación (vacío hasta publicar; se rehidrata de
@@ -170,6 +173,7 @@ export default function PropuestaAdmin() {
       if (typeof d.name === 'string') setName(d.name);
       if (typeof d.subtitle === 'string') setSubtitle(d.subtitle);
       if (typeof d.intro === 'string') setIntro(d.intro);
+      if (typeof d.dedication === 'string') setDedication(d.dedication);
       setCopyTouched(true);
       if ([3, 7, 10, 14, 30].includes(d.days)) setDays(d.days);
       if (PROP_LANGS.includes(d.lang)) setLang(d.lang);
@@ -355,7 +359,7 @@ export default function PropuestaAdmin() {
   // medio armar al recargar); lo publicado lleva solo los completos.
   const buildProposal = (codeArg, { includeIncomplete = false } = {}) => ({
     v: 1,
-    name, subtitle, intro, lang, days, code: codeArg,
+    name, subtitle, intro, dedication, lang, days, code: codeArg,
     expiresAt: new Date(Date.now() + days * 86400000).toISOString(),
     model: { name: 'Julia Parker', agency: 'Kash Agency' },
     recipient: { name: recipient.name.trim(), email: recipient.email.trim(), kind: recipient.kind },
@@ -391,6 +395,7 @@ export default function PropuestaAdmin() {
       name,
       subtitle,
       intro,
+      dedication: dedication.trim() || null,
       lang,
       template,
       cover_url: coverUrl || null,
@@ -651,6 +656,9 @@ export default function PropuestaAdmin() {
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
             <div className="space-y-3.5">
+              <Field label={t.dedication}>
+                <input value={dedication} onChange={(e) => { setDedication(e.target.value); setCopyTouched(true); }} placeholder={t.preparedFor} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              </Field>
               <Field label={t.pkgTitle}>
                 <input value={name} onChange={(e) => { setName(e.target.value); setCopyTouched(true); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
               </Field>
@@ -870,7 +878,7 @@ export default function PropuestaAdmin() {
             </div>
             <p className="mt-1.5 text-sm text-paper-mute">{t.linkSub}</p>
             <p className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
-              {t.preparedFor} <span className="text-brand">{recipient.name}</span>
+              {dedication.trim() || t.preparedFor} <span className="text-brand">{recipient.name}</span>
             </p>
           </div>
 

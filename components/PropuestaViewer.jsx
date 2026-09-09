@@ -71,6 +71,7 @@ function mapRow(row) {
     expiresAt: row?.expires_at || null,
     model: { name: row?.model_name || 'LetShoot', agency: row?.model_agency || '' },
     recipient: { name: row?.recipient_name || '', email: row?.recipient_email || '' },
+    dedication: row?.dedication || '',
     template: row?.template || 'exclusive',
     coverUrl: row?.cover_url || '',
     closingUrl: row?.closing_url || '',
@@ -573,7 +574,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           </div>
           {cfg.recipient?.name && (
             <div className="mb-2 text-base text-white/75 sm:text-lg">
-              {t.preparedFor} <span className="font-semibold text-white">{cfg.recipient.name}</span>
+              {cfg.dedication?.trim() || t.preparedFor} <span className="font-semibold text-white">{cfg.recipient.name}</span>
             </div>
           )}
           <div className="mb-4 text-[11px] uppercase tracking-[0.14em] text-white/45">
