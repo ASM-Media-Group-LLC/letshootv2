@@ -157,10 +157,11 @@ export default function PropuestaAdmin() {
   }, []);
 
   useEffect(() => {
-    try {
-      const last = localStorage.getItem(LAST_KEY);
-      if (typeof last === 'string' && /^JP-[A-Z0-9]{6}$/.test(last)) setCode(last);
-    } catch {}
+    // NO restauramos el CODE publicado desde localStorage: un código viejo (o de
+    // un build anterior que solo guardaba local) mostraría un link /p/<code> que
+    // no existe en la base → "propuesta no disponible". El link SOLO aparece tras
+    // un publish exitoso de esta sesión (publish() hace setCode). Restauramos solo
+    // el borrador (textos/looks) para no perder el trabajo en curso.
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
