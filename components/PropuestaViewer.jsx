@@ -136,7 +136,7 @@ function RegisterGate({ t, cfg, onDone }) {
   const bgUrl = cfg.coverUrl || cfg.looks?.[0]?.result;
 
   return (
-    <div className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-ink px-4 py-10 text-paper">
+    <div className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-ink px-4 py-10 text-paper" style={{ paddingTop: 'max(2.5rem, env(safe-area-inset-top))', paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}>
       {bgUrl && (
         <div className="absolute inset-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -158,7 +158,7 @@ function RegisterGate({ t, cfg, onDone }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t.recipNamePh}
-            className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+            className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-base text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:py-2.5 sm:text-sm"
           />
         </label>
         <label className="mt-4 block">
@@ -168,7 +168,7 @@ function RegisterGate({ t, cfg, onDone }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={t.recipEmailPh}
-            className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+            className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-base text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:py-2.5 sm:text-sm"
           />
         </label>
 
@@ -283,12 +283,12 @@ function ProposalBody({ t, cfg, linkId }) {
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
 
       {/* Logo flotante top-left */}
-      <div className="fixed left-3 top-3 z-40 flex items-center rounded-full border border-white/15 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:left-6 sm:top-6">
+      <div className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center rounded-full border border-white/15 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:left-6 sm:top-6">
         <Logo size="sm" forceDark />
       </div>
 
       {/* Nav flotante top-right */}
-      <div className="fixed right-3 top-3 z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:right-6 sm:top-6">
+      <div className="fixed right-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:right-6 sm:top-6">
         <span>{cfg.code}</span>
         <span className="h-1 w-1 rounded-full bg-white/25" />
         <span suppressHydrationWarning className={`inline-flex items-center gap-1 ${expired ? 'text-rose-300' : d < 2 ? 'text-amber-300' : 'text-brand'}`}>
@@ -312,7 +312,7 @@ function ProposalBody({ t, cfg, linkId }) {
       </div>
 
       {/* Contador flotante bottom-left */}
-      <div className="fixed bottom-3 left-3 z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:bottom-6 sm:left-6">
+      <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] left-3 z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:bottom-6 sm:left-6">
         <span>{pad2(Math.max(currentIdx + 1, 0))} / {pad2(total)}</span>
         <span className="h-1 w-1 rounded-full bg-white/25" />
         <span className="inline-flex items-center gap-1 text-emerald-300">
@@ -335,7 +335,7 @@ function ProposalBody({ t, cfg, linkId }) {
           <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/70 to-ink/40" />
           <Watermark code={cfg.code} uid="cover" />
         </div>
-        <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-16 sm:px-10 sm:pb-24">
+        <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-10 sm:pb-24">
           <div className="mb-5 inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.07] py-1.5 pl-4 pr-3.5 text-xs font-semibold tracking-normal backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
             <span className="text-white/75">{t.privateSel}</span>
@@ -376,7 +376,6 @@ function ProposalBody({ t, cfg, linkId }) {
         const st = fb(l.id);
         const active = currentIdx === i;
         const fade = `transition-opacity duration-700 ease-out delay-500 ${active ? 'opacity-100' : 'opacity-0'}`;
-        const badgeFade = (delay) => `transition-opacity duration-700 ease-out ${delay} ${active ? 'opacity-100' : 'opacity-0'}`;
         return (
           <section
             key={l.id}
@@ -419,30 +418,35 @@ function ProposalBody({ t, cfg, linkId }) {
               </div>
             </div>
 
-            {/* Mobile: fila fuentes + = + hero abajo */}
-            <div className="w-full pt-8 sm:hidden [perspective:1200px]">
-              <div className="relative grid grid-cols-2 gap-2">
-                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-min`} active={active} delay="delay-0" className="h-[22vh] w-full rounded-2xl ring-white/10" />
-                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-mre`} active={active} delay="delay-150" className="h-[22vh] w-full rounded-2xl ring-white/10" />
-                <div className={`absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${badgeFade('delay-150')}`}>
-                  <OpBadge className="h-7 w-7 text-sm">+</OpBadge>
-                </div>
-              </div>
-              <div className={`my-1.5 flex justify-center ${badgeFade('delay-300')}`}>
-                <OpBadge className="h-7 w-7 text-sm">=</OpBadge>
-              </div>
-              <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-mai`} active={active} delay="delay-300" className="h-[52svh] w-full rounded-3xl shadow-glow ring-brand/30" />
-              <div className={`mt-3 px-1 ${fade}`}>
-                <div className="text-sm text-white/80">{l.caption}</div>
-                <div className="mt-1 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
-                  {t.look} {pad2(i + 1)} · {pad2(total)}
-                </div>
-                {st.note?.trim() && (
-                  <div className="mt-1.5 flex items-start gap-1.5 text-[13px] italic text-white/70">
-                    <MessageSquare size={12} className="mt-0.5 shrink-0" />
-                    <span>{st.note.trim()}</span>
+            {/* Mobile: MISMO lenguaje "cuadro dividido" en vertical — el RESULTADO
+                protagonista arriba y las dos fuentes (inspiración + modelo real)
+                como fila pegada debajo, todo en un marco con líneas de 2px. Sin
+                «+»/«=»; caption superpuesto sobre el resultado. */}
+            <div className="w-full sm:hidden [perspective:1200px]">
+              <div className="flex h-[70svh] w-full flex-col gap-[2px] overflow-hidden rounded-3xl bg-white/10 shadow-glow ring-1 ring-brand/25">
+                {/* Resultado: celda grande, caption superpuesto abajo */}
+                <div className="relative min-h-0 flex-[2.35]">
+                  <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-mai`} active={active} delay="delay-300" className="h-full w-full ring-0" />
+                  <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-4 pb-4 pt-14 ${fade}`}>
+                    <div className="pr-20">
+                      <div className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-white/55">
+                        {t.look} {pad2(i + 1)} · {pad2(total)}
+                      </div>
+                      <div className="mt-1 text-[15px] leading-snug text-white/95">{l.caption}</div>
+                      {st.note?.trim() && (
+                        <div className="mt-1.5 flex items-start gap-1.5 text-[13px] italic text-white/80">
+                          <MessageSquare size={12} className="mt-0.5 shrink-0" />
+                          <span>{st.note.trim()}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
+                </div>
+                {/* Fuentes: dos celdas pegadas, mitad y mitad del ancho */}
+                <div className="flex min-h-0 flex-1 gap-[2px]">
+                  <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-min`} active={active} delay="delay-0" className="h-full flex-1 ring-0" />
+                  <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-mre`} active={active} delay="delay-150" className="h-full flex-1 ring-0" />
+                </div>
               </div>
             </div>
 
@@ -589,14 +593,6 @@ function Shot({ src, alt, label, dot, code, uid, big = false, active = true, del
   );
 }
 
-function OpBadge({ children, className = '' }) {
-  return (
-    <span className={`grid shrink-0 place-items-center rounded-full border border-white/15 bg-black/40 font-mono font-semibold text-white/80 backdrop-blur ${className}`}>
-      {children}
-    </span>
-  );
-}
-
 function BigActionBtn({ children, active, onClick, tone, label }) {
   const activeCls =
     tone === 'like' ? 'bg-emerald-500 text-white shadow-[0_10px_40px_-8px_rgba(16,185,129,0.7)]'
@@ -653,7 +649,7 @@ function MiniToggle({ active, onClick, tone, label, children }) {
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={`grid h-8 w-8 place-items-center rounded-full transition-all active:scale-95 ${
+      className={`grid h-9 w-9 place-items-center rounded-full transition-all active:scale-95 sm:h-8 sm:w-8 ${
         active ? activeCls : 'border border-line text-paper-mute hover:border-hair hover:text-paper'
       }`}
     >
@@ -720,13 +716,13 @@ function SummaryModal({ t, looks, fb, setLook, onComment, onClose, onSend }) {
             );
           })}
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-line px-6 py-4">
-          <button onClick={onClose} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:border-hair hover:text-paper">
+        <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:px-6 sm:pb-4">
+          <button onClick={onClose} className="rounded-full border border-line px-4 py-3 text-sm text-paper-mute hover:border-hair hover:text-paper sm:py-2">
             {t.keepLooking}
           </button>
           <button
             onClick={onSend}
-            className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02]"
+            className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] sm:py-2.5"
           >
             <Send size={14} /> {t.sendFeedback}
           </button>
@@ -742,7 +738,7 @@ function CommentSheet({ t, look, value, onChange, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={onClose}>
       <div
-        className="w-full max-w-lg overflow-hidden rounded-t-3xl border border-line bg-card p-6 shadow-2xl sm:m-4 sm:rounded-3xl"
+        className="w-full max-w-lg overflow-hidden rounded-t-3xl border border-line bg-card p-6 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] shadow-2xl sm:m-4 sm:rounded-3xl sm:pb-6"
         onClick={(e) => e.stopPropagation()}
         style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
       >
@@ -764,18 +760,18 @@ function CommentSheet({ t, look, value, onChange, onClose }) {
           onChange={(e) => setText(e.target.value)}
           rows={4}
           placeholder={t.commentPh}
-          className="mt-4 w-full resize-none rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+          className="mt-4 w-full resize-none rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-base text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:text-sm"
         />
         <div className="mt-2 flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-widest text-paper-dim">
           <Lock size={10} /> {t.anon}
         </div>
         <div className="mt-4 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="rounded-full border border-line px-4 py-2 text-sm text-paper-mute hover:border-hair hover:text-paper">
+          <button onClick={onClose} className="rounded-full border border-line px-4 py-3 text-sm text-paper-mute hover:border-hair hover:text-paper sm:py-2">
             {t.cancel}
           </button>
           <button
             onClick={() => { onChange(text); onClose(); }}
-            className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]"
+            className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02] sm:py-2"
           >
             <Send size={14} /> {t.save}
           </button>
