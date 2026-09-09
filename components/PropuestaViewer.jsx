@@ -41,7 +41,7 @@ const DEMO = {
   closingUrl: '/model-noche.jpg',
   looks: [
     { id: 'lk1', caption: 'Miami · Ocean Drive · golden hour', inspiration: '/card-locacion.jpg',     real: '/ba-before-1.jpg',       result: '/model-latina.jpg' },
-    { id: 'lk2', caption: 'Resort · piscina · lifestyle',      inspiration: '/card-localizacion.jpg', real: '/ba-before-2.jpg',       result: '/model-resort.jpg' },
+    { id: 'lk2', caption: 'Resort · piscina · lifestyle',      inspiration: '/card-localizacion.jpg', real: '/result-5.jpg',          result: '/model-resort.jpg' },
     { id: 'lk3', caption: 'Noche urbana · neón',               inspiration: '/card-hd.jpg',           real: '/hero-real.jpg',         result: '/model-noche.jpg' },
     { id: 'lk4', caption: 'Editorial · moda',                  inspiration: '/card-moda.jpg',         real: '/ba-after-1.jpg',        result: '/model-europea.jpg' },
     { id: 'lk5', caption: 'Estudio · estilista',               inspiration: '/card-estilista.jpg',    real: '/ba-after-2.jpg',        result: '/result-4.jpg' },
@@ -384,19 +384,21 @@ function ProposalBody({ t, cfg, linkId }) {
             data-idx={i}
             className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-4 py-6 sm:px-10"
           >
-            {/* Desktop: columna fuentes + operadores + hero */}
-            <div className="hidden w-full max-w-5xl items-center justify-center gap-4 sm:flex lg:gap-6 [perspective:1200px]">
-              <div className="flex w-[30%] max-w-[300px] shrink-0 flex-col">
-                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="aspect-[4/5] max-h-[36vh] w-full rounded-2xl ring-white/10" />
-                <div className={`relative z-10 -my-4 flex justify-center ${badgeFade('delay-150')}`}>
+            {/* Desktop: columna fuentes (con aire entre ellas, el «+» flota en el
+                gap) + «=» + hero de ancho intrínseco — el conjunto queda compacto
+                y centrado, sin huecos muertos. */}
+            <div className="hidden w-full items-center justify-center gap-5 sm:flex lg:gap-9 [perspective:1200px]">
+              <div className="relative flex w-[24%] min-w-[190px] max-w-[280px] shrink-0 flex-col gap-5">
+                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="aspect-[4/5] max-h-[33vh] w-full rounded-2xl ring-white/10" />
+                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="aspect-[4/5] max-h-[33vh] w-full rounded-2xl ring-white/10" />
+                <div className={`pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${badgeFade('delay-150')}`}>
                   <OpBadge className="h-9 w-9 text-base">+</OpBadge>
                 </div>
-                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="aspect-[4/5] max-h-[36vh] w-full rounded-2xl ring-white/10" />
               </div>
-              <OpBadge className={`h-9 w-9 text-base ${badgeFade('delay-300')}`}>=</OpBadge>
-              <div className="min-w-0 flex-1">
-                <div className="mx-auto w-full max-w-[64vh]">
-                  <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} active={active} delay="delay-300" className="aspect-[4/5] max-h-[80vh] w-full rounded-3xl shadow-glow ring-brand/30" />
+              <OpBadge className={`h-9 w-9 shrink-0 text-base ${badgeFade('delay-300')}`}>=</OpBadge>
+              <div className="w-[min(60vh,42vw)] max-w-[520px] shrink-0">
+                <div className="w-full">
+                  <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} active={active} delay="delay-300" className="aspect-[4/5] w-full rounded-3xl shadow-glow ring-brand/30" />
                   <div className={`mt-4 flex items-baseline justify-between gap-3 ${fade}`}>
                     <div className="text-sm text-white/80">{l.caption}</div>
                     <div className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">

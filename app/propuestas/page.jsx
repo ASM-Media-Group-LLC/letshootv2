@@ -32,7 +32,7 @@ const EMAIL_RE = /.+@.+\..+/;
 // Fotos reales de /public — mismo mapeo que la vista pública /p/[linkId].
 const DEMO_LOOKS = [
   { id: 'lk1', caption: 'Miami · Ocean Drive · golden hour', inspiration: '/card-locacion.jpg',      real: '/ba-before-1.jpg',        result: '/model-latina.jpg' },
-  { id: 'lk2', caption: 'Resort · piscina · lifestyle',      inspiration: '/card-localizacion.jpg',  real: '/ba-before-2.jpg',        result: '/model-resort.jpg' },
+  { id: 'lk2', caption: 'Resort · piscina · lifestyle',      inspiration: '/card-localizacion.jpg',  real: '/result-5.jpg',           result: '/model-resort.jpg' },
   { id: 'lk3', caption: 'Noche urbana · neón',               inspiration: '/card-hd.jpg',            real: '/hero-real.jpg',          result: '/model-noche.jpg' },
   { id: 'lk4', caption: 'Editorial · moda',                  inspiration: '/card-moda.jpg',          real: '/ba-after-1.jpg',         result: '/model-europea.jpg' },
   { id: 'lk5', caption: 'Estudio · estilista',               inspiration: '/card-estilista.jpg',     real: '/ba-after-2.jpg',         result: '/result-4.jpg' },
@@ -63,7 +63,7 @@ const BAUL_EXTRAS = [
   ['/hero-stage-4.jpg', 'ia', 'Cinemática · escena 4'],
   ['/hero-stage-5.jpg', 'ia', 'Cinemática · escena 5'],
   ['/result-2.jpg',     'ia', 'Editorial · resultado IA'],
-  ['/result-5.jpg',     'ia', 'Lifestyle · resultado IA'],
+  ['/ba-before-2.jpg',  'selfie', 'Selfie · estudio'],
 ];
 
 const BAUL = [
