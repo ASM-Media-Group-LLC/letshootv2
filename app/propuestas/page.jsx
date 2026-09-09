@@ -385,6 +385,9 @@ export default function PropuestaAdmin() {
       recipient_name: recipient.name.trim(),
       recipient_email: recipient.email.trim(),
       recipient_kind: recipient.kind,
+      // Creadora activa → sellamos su id para que la propuesta le aparezca en su
+      // cuenta ("Mis propuestas") apenas se publica, sin que abra el link.
+      recipient_user_id: recipient.kind === 'active' ? (creatorId || null) : null,
       status: 'published',
       expires_at: new Date(Date.now() + days * 86400000).toISOString(),
     };
