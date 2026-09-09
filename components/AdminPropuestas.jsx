@@ -352,6 +352,7 @@ export default function AdminPropuestas() {
 
       {selProp && (
         <PropDetail
+          key={selProp.id}
           p={selProp}
           archived={isArch(selProp)}
           link={linkFor(selProp)}
@@ -372,6 +373,18 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
   const d = daysLeft(p);
   const items = Array.isArray(p._feedback?.items) ? p._feedback.items : [];
   const fs = feedbackSummary(p._feedback);
+
+  // Filtro de respuestas + orden: SIEMPRE primero lo rechazado, luego lo que
+  // gustó, luego lo sin decidir. Los contadores de arriba son los filtros.
+  const [fResp, setFResp] = useState('all'); // all | rejected | liked | commented
+  const rank = (i) => (i.status === 'rejected' ? 0 : i.status === 'liked' ? 1 : 2);
+  const sortedItems = [...items].sort((a, b) => rank(a) - rank(b));
+  const matchResp = (i) =>
+    fResp === 'all' ? true
+    : fResp === 'rejected' ? i.status === 'rejected'
+    : fResp === 'liked' ? i.status === 'liked'
+    : (i.note || '').trim() !== '';
+  const visibleItems = sortedItems.filter(matchResp);
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink/70 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
@@ -434,15 +447,20 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
             </button>
           </div>
 
-          {/* Respuestas foto por foto */}
+          {/* Respuestas foto por foto — rechazadas primero, luego gustadas.
+              Los contadores son filtros clicables (tap para aislar cada tipo). */}
           <div className="mt-6">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h4 className="font-display text-sm font-semibold text-paper">Respuestas</h4>
               {fs.total > 0 && (
-                <div className="flex flex-wrap items-center gap-x-3 text-[11px]">
-                  <span className="inline-flex items-center gap-1 text-paper-mute"><Heart size={12} className="text-emerald-400" /> {fs.liked} le gustaron</span>
-                  <span className="inline-flex items-center gap-1 text-paper-mute"><ThumbsDown size={12} className="text-rose-400" /> {fs.rejected} rechazó</span>
-                  <span className="inline-flex items-center gap-1 text-paper-mute"><MessageSquare size={12} className="text-paper-dim" /> {fs.comments} comentó</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <RespChip active={fResp === 'all'} onClick={() => setFResp('all')}>Todas · {fs.total}</RespChip>
+                  <RespChip active={fResp === 'rejected'} tone="bad" icon={ThumbsDown}
+                    onClick={() => setFResp((f) => (f === 'rejected' ? 'all' : 'rejected'))}>{fs.rejected} rechazó</RespChip>
+                  <RespChip active={fResp === 'liked'} tone="ok" icon={Heart}
+                    onClick={() => setFResp((f) => (f === 'liked' ? 'all' : 'liked'))}>{fs.liked} le gustaron</RespChip>
+                  <RespChip active={fResp === 'commented'} icon={MessageSquare}
+                    onClick={() => setFResp((f) => (f === 'commented' ? 'all' : 'commented'))}>{fs.comments} comentó</RespChip>
                 </div>
               )}
             </div>
@@ -451,13 +469,17 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
               <p className="mt-3 rounded-xl border border-dashed border-line bg-card/40 p-6 text-center text-sm text-paper-dim">
                 {stateOf(p) === 'borrador' ? 'Borrador — todavía no se publica ni recibe respuestas.' : 'El receptor aún no ha respondido.'}
               </p>
+            ) : visibleItems.length === 0 ? (
+              <p className="mt-3 rounded-xl border border-dashed border-line bg-card/40 p-6 text-center text-sm text-paper-dim">
+                No hay respuestas de ese tipo. <button onClick={() => setFResp('all')} className="font-semibold text-brand hover:underline">Ver todas</button>
+              </p>
             ) : (
               <div className="mt-3 space-y-2.5">
-                {items.map((it) => {
+                {visibleItems.map((it) => {
                   const tone = it.status === 'liked' ? 'ok' : it.status === 'rejected' ? 'bad' : 'zinc';
                   const lbl = it.status === 'liked' ? 'Le gustó' : it.status === 'rejected' ? 'Rechazó' : 'Sin decidir';
                   return (
-                    <div key={it.id} className="flex gap-3 rounded-xl border border-line bg-ink-2/30 p-2.5">
+                    <div key={it.id} className={`flex gap-3 rounded-xl border bg-ink-2/30 p-2.5 ${it.status === 'rejected' ? 'border-rose-500/40' : 'border-line'}`}>
                       <div className="h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-hair/10">
                         {it.result ? <img src={it.result} alt="" className="h-full w-full object-cover" /> : null}
                       </div>
@@ -491,6 +513,22 @@ function Row({ label, value }) {
       <span className="shrink-0 text-xs uppercase tracking-wider text-paper-dim">{label}</span>
       <span className="min-w-0 text-right text-paper">{value}</span>
     </div>
+  );
+}
+
+// Chip-filtro de respuestas (le gustaron / rechazó / comentó). Activo = resaltado.
+function RespChip({ active, tone, icon: Icon, onClick, children }) {
+  const iconColor = tone === 'bad' ? 'text-rose-400' : tone === 'ok' ? 'text-emerald-400' : 'text-paper-dim';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+        active ? 'border-brand/60 bg-brand/15 text-paper' : 'border-line text-paper-mute hover:border-brand/40 hover:text-paper'
+      }`}
+    >
+      {Icon && <Icon size={12} className={iconColor} />} {children}
+    </button>
   );
 }
 
