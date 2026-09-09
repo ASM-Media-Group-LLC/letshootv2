@@ -78,21 +78,6 @@ function mapRow(row) {
   };
 }
 
-function useCountdown(iso) {
-  const target = useMemo(() => {
-    const n = new Date(iso).getTime();
-    return Number.isFinite(n) ? n : 0;
-  }, [iso]);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(t);
-  }, []);
-  const ms = Math.max(0, target - now);
-  const d = Math.floor(ms / 86_400_000);
-  const h = Math.floor((ms % 86_400_000) / 3_600_000);
-  return { d, h, expired: ms === 0 };
-}
 
 // ══════════════════════════════════════════════════════════════════════════
 // Shell: carga la propuesta del link + decide gate de registro vs. viewer.
@@ -389,7 +374,6 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
   const looks = cfg.looks;
   const total = looks.length;
 
-  const { d, h, expired } = useCountdown(cfg.expiresAt);
   const [state, setState] = useState({});
   const [openComment, setOpenComment] = useState(null);
   const [currentIdx, setCurrentIdx] = useState(-1);
@@ -479,13 +463,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
         <Logo size="sm" forceDark />
       </div>
 
-      {/* Nav flotante top-right — solo el vencimiento (el código interno no se
-          le muestra al receptor). */}
-      <div className="fixed right-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:right-6 sm:top-6">
-        <span suppressHydrationWarning className={`inline-flex items-center gap-1 ${expired ? 'text-rose-300' : d < 2 ? 'text-amber-300' : 'text-brand'}`}>
-          <Clock size={10} /> {expired ? t.expired : d > 0 ? `${d}d ${h}h` : `${h}h`}
-        </span>
-      </div>
+      {/* (Sin badge de código ni contador arriba-derecha: portada limpia.) */}
 
       {/* Progreso lateral (dots verticales) */}
       <div className="fixed left-3 top-1/2 z-40 hidden -translate-y-1/2 flex-col gap-2 sm:flex">
@@ -527,12 +505,8 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           <Watermark code={cfg.code} uid="cover" />
         </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-10 sm:pb-24">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] py-1.5 pl-4 pr-4 text-xs font-semibold tracking-normal backdrop-blur-md">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
-            <span className="text-white/80">{t.privateSel}</span>
-          </div>
           {cfg.recipient?.name && (
-            <div className="mb-4 text-base text-white/75 sm:text-lg">
+            <div className="mb-4 mt-2 text-base text-white/75 sm:text-lg">
               {t.preparedFor} <span className="font-semibold text-white">{cfg.recipient.name}</span>
             </div>
           )}

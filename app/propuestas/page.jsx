@@ -461,10 +461,23 @@ export default function PropuestaAdmin() {
   };
 
   const copyLink = async () => {
+    // navigator.clipboard se bloquea en navegadores embebidos / sin foco → usamos
+    // un fallback con execCommand para que el botón Copiar SIEMPRE funcione.
+    let ok = false;
     try {
-      await navigator.clipboard.writeText(publicUrl);
-      setCopied(true); setTimeout(() => setCopied(false), 2000);
+      if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(publicUrl); ok = true; }
     } catch {}
+    if (!ok) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = publicUrl;
+        ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch {}
+    }
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
   const steps = [t.stepWho, t.stepMold, t.stepPhotos, t.stepLink];
