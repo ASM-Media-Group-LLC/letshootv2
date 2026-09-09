@@ -150,6 +150,9 @@ export default function PropuestaAdmin() {
   const [proposalId, setProposalId] = useState(null);
   const [pubError, setPubError] = useState('');
   const [publishing, setPublishing] = useState(false);
+  // Envío de invitación por email (creadora NUEVA): '' | 'sending' | 'sent' | 'error'
+  const [inviteState, setInviteState] = useState('');
+  const [inviteMsg, setInviteMsg] = useState('');
   // Arranca con looks VACÍOS (nada de fotos placeholder). El equipo llena la
   // primera y va agregando con "Agregar look".
   const INITIAL_LOOKS = [
@@ -195,7 +198,6 @@ export default function PropuestaAdmin() {
     return () => window.removeEventListener('keydown', onKey);
   }, [picker]);
 
-  const firstName = (recipient.name || '').trim().split(/\s+/)[0] || '';
   // publicUrl apunta al CODE publicado; el preview de pasos 2-3 sigue en /p/demo
   // (renderiza el draft de trabajo). El QR usa la IP LAN en local, mismo path.
   const pubPath = `/p/${code}?lang=${lang}`;
@@ -203,8 +205,6 @@ export default function PropuestaAdmin() {
   const previewUrl = `${proto}//${host}/p/demo?lang=${lang}`;
   const qrTarget = isLocal ? `${proto}//${LAN_HOST}${pubPath}` : publicUrl;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(qrTarget)}`;
-  const greet = firstName ? `Hola ${firstName}!` : 'Hola!';
-  const mailHref = `mailto:${recipient.email.trim()}?subject=${encodeURIComponent(name)}&body=${encodeURIComponent(`${greet}\n\nTe preparé una propuesta: ${name}.\nMirala acá: ${publicUrl}`)}`;
 
   const setLook = (id, patch) => setLooks((s) => s.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const removeLook = (id) => setLooks((s) => s.filter((l) => l.id !== id));
@@ -447,7 +447,9 @@ export default function PropuestaAdmin() {
   const fbNotes = fbItems.filter((i) => (i.note || '').trim()).length;
 
   const canNext = step === 1
-    ? recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())
+    ? (recipient.kind === 'active'
+        ? !!creatorId && recipient.name.trim().length > 0            // activa: elegí creadora (sin correo)
+        : recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())) // nueva: nombre + correo
     : step === 3
       ? completeCount > 0
       : step < 4;
@@ -479,6 +481,24 @@ export default function PropuestaAdmin() {
       } catch {}
     }
     setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Creadora NUEVA: se manda por INVITACIÓN por correo (edge function
+  // proposal-invite → crea su cuenta / le pide contraseña → cae en la propuesta,
+  // que queda ligada a su cuenta). El link crudo/WhatsApp es solo para activas.
+  const sendInvite = async () => {
+    if (inviteState === 'sending' || !code) return;
+    setInviteState('sending'); setInviteMsg('');
+    try {
+      const { data, error } = await getSupabase().functions.invoke('proposal-invite', {
+        body: { link_id: code, email: recipient.email.trim(), full_name: recipient.name.trim(), lang },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'No se pudo enviar la invitación.');
+      setInviteState('sent');
+    } catch (e) {
+      setInviteState('error'); setInviteMsg(e?.message || 'No se pudo enviar la invitación.');
+    }
   };
 
   const steps = [t.stepWho, t.stepMold, t.stepPhotos, t.stepLink];
@@ -617,15 +637,18 @@ export default function PropuestaAdmin() {
                   className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
                 />
               </Field>
-              <Field label={t.recipEmail}>
-                <input
-                  type="email"
-                  value={recipient.email}
-                  onChange={(e) => setRecipient((r) => ({ ...r, email: e.target.value }))}
-                  placeholder={t.recipEmailPh}
-                  className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
-                />
-              </Field>
+              {/* El correo SOLO para creadora nueva (la activa ya tiene cuenta → va por link). */}
+              {recipient.kind === 'new' && (
+                <Field label={t.recipEmail}>
+                  <input
+                    type="email"
+                    value={recipient.email}
+                    onChange={(e) => setRecipient((r) => ({ ...r, email: e.target.value }))}
+                    placeholder={t.recipEmailPh}
+                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                  />
+                </Field>
+              )}
             </div>
           </section>
 
@@ -874,50 +897,54 @@ export default function PropuestaAdmin() {
           </div>
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
-            <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
-              <LinkIcon size={13} className="shrink-0 text-paper-dim" />
-              <input
-                readOnly
-                value={publicUrl}
-                onFocus={(e) => e.currentTarget.select()}
-                className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-paper outline-none"
-              />
-              <button
-                type="button"
-                onClick={copyLink}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
-                  copied ? 'bg-emerald-500 text-white' : 'bg-brand text-on-accent hover:scale-105'
-                }`}
-              >
-                {copied ? <><Check size={13} /> {t.copied}</> : <><Copy size={13} /> {t.copy}</>}
-              </button>
-            </div>
-
-            <div className="mb-4 rounded-2xl border border-line bg-ink p-4">
-              <div className="mb-3 inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">
-                <Smartphone size={11} /> {t.scanPhone}
-              </div>
-              <div className="grid place-items-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrUrl} alt="QR" className="h-40 w-40 rounded-lg" />
-              </div>
-            </div>
-
-            <a
-              href={publicUrl}
-              target="_blank"
-              rel="noreferrer"
-              onClick={saveDraft}
-              className="btn3d mb-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold"
-            >
-              <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
-            </a>
-            <a
-              href={mailHref}
-              className="btn3d-ghost inline-flex w-full items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-semibold"
-            >
-              <Mail size={14} /> {t.sendEmail}
-            </a>
+            {recipient.kind === 'active' ? (
+              <>
+                {/* Creadora ACTIVA → compartir link / QR (WhatsApp). Ella inicia sesión y la ve en su cuenta. */}
+                <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
+                  <LinkIcon size={13} className="shrink-0 text-paper-dim" />
+                  <input readOnly value={publicUrl} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-paper outline-none" />
+                  <button type="button" onClick={copyLink}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-brand text-on-accent hover:scale-105'}`}>
+                    {copied ? <><Check size={13} /> {t.copied}</> : <><Copy size={13} /> {t.copy}</>}
+                  </button>
+                </div>
+                <div className="mb-4 rounded-2xl border border-line bg-ink p-4">
+                  <div className="mb-3 inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">
+                    <Smartphone size={11} /> {t.scanPhone}
+                  </div>
+                  <div className="grid place-items-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={qrUrl} alt="QR" className="h-40 w-40 rounded-lg" />
+                  </div>
+                </div>
+                <a href={publicUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
+                  className="btn3d mb-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold">
+                  <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
+                </a>
+                <p className="mt-1 text-center text-[11px] text-paper-dim">Mandáselo por WhatsApp o link. Ella inicia sesión y la propuesta le aparece en su cuenta.</p>
+              </>
+            ) : (
+              <>
+                {/* Creadora NUEVA → entra por INVITACIÓN por correo (crea contraseña). */}
+                <a href={publicUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
+                  className="btn3d-ghost mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold">
+                  <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
+                </a>
+                <button type="button" onClick={sendInvite} disabled={inviteState === 'sending' || inviteState === 'sent'}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition-all disabled:opacity-70 ${inviteState === 'sent' ? 'bg-emerald-500 text-white' : 'btn3d'}`}>
+                  {inviteState === 'sent'
+                    ? <><Check size={15} /> Invitación enviada</>
+                    : inviteState === 'sending'
+                      ? <>Enviando…</>
+                      : <><Mail size={15} /> Enviar invitación por email</>}
+                </button>
+                <p className="mt-2 text-center text-[11px] text-paper-dim">
+                  {inviteState === 'error'
+                    ? <span className="text-rose-300">{inviteMsg}</span>
+                    : <>Se env&iacute;a a <span className="text-paper-mute">{recipient.email || 'su correo'}</span>. Crea su contrase&ntilde;a y la propuesta queda en su cuenta.</>}
+                </p>
+              </>
+            )}
           </section>
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
