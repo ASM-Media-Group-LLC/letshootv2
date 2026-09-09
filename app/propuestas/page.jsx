@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, ArrowRight, Check, ChevronUp, ChevronDown, Trash2, Plus,
   ImagePlus, Search, X, Copy, Eye, ExternalLink, Link as LinkIcon,
@@ -85,6 +86,7 @@ const isComplete = (l) => Boolean(l.inspiration && l.real && l.result);
 const pad2 = (n) => String(n).padStart(2, '0');
 
 export default function PropuestaAdmin() {
+  const router = useRouter();
   // El wizard es herramienta interna del equipo → SIEMPRE en español (el idioma
   // del LINK que ve la creadora se elige aparte, en el paso Molde).
   const t = useProp('es');
@@ -137,9 +139,6 @@ export default function PropuestaAdmin() {
   const [name, setName] = useState(presetFor('es').name);
   const [subtitle, setSubtitle] = useState(presetFor('es').subtitle);
   const [intro, setIntro] = useState(presetFor('es').intro);
-  // Encabezado de dedicatoria editable ("Preparada para" por defecto). Vacío =
-  // usar el default del idioma en la portada.
-  const [dedication, setDedication] = useState('');
   const [days, setDays] = useState(30);
   const [lang, setLang] = useState('es');
   // CODE de la última publicación (vacío hasta publicar; se rehidrata de
@@ -164,7 +163,9 @@ export default function PropuestaAdmin() {
   const [pickerQ, setPickerQ] = useState('');
   const [pickerKind, setPickerKind] = useState('all');
   const [copied, setCopied] = useState(false);
-  const [copyTouched, setCopyTouched] = useState(false);
+  // Qué textos tocó el dueño a mano (por campo). Los NO tocados se re-traducen
+  // solos al cambiar el idioma del link; los tocados se respetan.
+  const [touched, setTouched] = useState({ name: false, subtitle: false, intro: false });
 
   // El link/preview usa SIEMPRE el origen actual (el draft vive en localStorage
   // de este origen); la IP LAN queda solo para el QR del teléfono en local.
@@ -220,12 +221,12 @@ export default function PropuestaAdmin() {
   const firstRegen = useRef(true);
   useEffect(() => {
     if (firstRegen.current) { firstRegen.current = false; return; }
-    if (copyTouched) return;
     const preset = presetFor(lang);
-    setName(preset.name);
-    setSubtitle(preset.subtitle);
-    setIntro(preset.intro);
-  }, [copyTouched, lang]);
+    if (!touched.name) setName(preset.name);
+    if (!touched.subtitle) setSubtitle(preset.subtitle);
+    if (!touched.intro) setIntro(preset.intro);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
 
   const openPicker = (lookId, slot) => {
     setPicker({ target: 'look', lookId, slotKey: slot.key, slotLabel: t[slot.tKey] });
@@ -337,7 +338,7 @@ export default function PropuestaAdmin() {
   // medio armar al recargar); lo publicado lleva solo los completos.
   const buildProposal = (codeArg, { includeIncomplete = false } = {}) => ({
     v: 1,
-    name, subtitle, intro, dedication, lang, days, code: codeArg,
+    name, subtitle, intro, lang, days, code: codeArg,
     expiresAt: new Date(Date.now() + days * 86400000).toISOString(),
     model: { name: '', agency: '' },
     recipient: { name: recipient.name.trim(), email: recipient.email.trim(), kind: recipient.kind },
@@ -373,7 +374,6 @@ export default function PropuestaAdmin() {
       name,
       subtitle,
       intro,
-      dedication: dedication.trim() || null,
       lang,
       template,
       cover_url: coverUrl || null,
@@ -493,9 +493,14 @@ export default function PropuestaAdmin() {
       <header className="sticky top-0 z-30 border-b border-line bg-ink/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-4 lg:px-8">
           <div className="flex min-w-0 items-center gap-4">
-            <Link href="/admin" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper" title="Volver al admin">
+            <button
+              type="button"
+              onClick={() => { if (step > 1) setStep((s) => Math.max(1, s - 1)); else router.push('/admin'); }}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"
+              title={step > 1 ? 'Paso anterior' : 'Volver al admin'}
+            >
               <ArrowLeft size={17} />
-            </Link>
+            </button>
             <div className="min-w-0">
               <div className="flex items-center gap-2.5">
                 <span className="hidden font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute sm:inline">Propuesta</span>
@@ -631,17 +636,14 @@ export default function PropuestaAdmin() {
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
             <div className="space-y-3.5">
-              <Field label={t.dedication}>
-                <input value={dedication} onChange={(e) => { setDedication(e.target.value); setCopyTouched(true); }} placeholder={propDict(lang).preparedFor} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-              </Field>
               <Field label={t.pkgTitle}>
-                <input value={name} onChange={(e) => { setName(e.target.value); setCopyTouched(true); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+                <input value={name} onChange={(e) => { setName(e.target.value); setTouched((t2) => ({ ...t2, name: true })); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
               </Field>
               <Field label={t.subtitle}>
-                <input value={subtitle} onChange={(e) => { setSubtitle(e.target.value); setCopyTouched(true); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+                <input value={subtitle} onChange={(e) => { setSubtitle(e.target.value); setTouched((t2) => ({ ...t2, subtitle: true })); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
               </Field>
               <Field label={t.introduction}>
-                <textarea value={intro} onChange={(e) => { setIntro(e.target.value); setCopyTouched(true); }} rows={3} className="w-full resize-none rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+                <textarea value={intro} onChange={(e) => { setIntro(e.target.value); setTouched((t2) => ({ ...t2, intro: true })); }} rows={3} className="w-full resize-none rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
               </Field>
             </div>
           </section>
@@ -853,7 +855,7 @@ export default function PropuestaAdmin() {
             </div>
             <p className="mt-1.5 text-sm text-paper-mute">{t.linkSub}</p>
             <p className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
-              {dedication.trim() || t.preparedFor} <span className="text-brand">{recipient.name}</span>
+              {t.preparedFor} <span className="text-brand">{recipient.name}</span>
             </p>
           </div>
 

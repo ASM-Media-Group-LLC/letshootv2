@@ -479,10 +479,9 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
         <Logo size="sm" forceDark />
       </div>
 
-      {/* Nav flotante top-right */}
+      {/* Nav flotante top-right — solo el vencimiento (el código interno no se
+          le muestra al receptor). */}
       <div className="fixed right-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:right-6 sm:top-6">
-        <span>{cfg.code}</span>
-        <span className="h-1 w-1 rounded-full bg-white/25" />
         <span suppressHydrationWarning className={`inline-flex items-center gap-1 ${expired ? 'text-rose-300' : d < 2 ? 'text-amber-300' : 'text-brand'}`}>
           <Clock size={10} /> {expired ? t.expired : d > 0 ? `${d}d ${h}h` : `${h}h`}
         </span>
@@ -528,20 +527,15 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           <Watermark code={cfg.code} uid="cover" />
         </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-10 sm:pb-24">
-          <div className="mb-5 inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/[0.07] py-1.5 pl-4 pr-3.5 text-xs font-semibold tracking-normal backdrop-blur-md">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] py-1.5 pl-4 pr-4 text-xs font-semibold tracking-normal backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
-            <span className="text-white/75">{t.privateSel}</span>
-            <span className="text-white/40">·</span>
-            <span className="text-white">{cfg.model.name}</span>
+            <span className="text-white/80">{t.privateSel}</span>
           </div>
           {cfg.recipient?.name && (
-            <div className="mb-2 text-base text-white/75 sm:text-lg">
-              {cfg.dedication?.trim() || t.preparedFor} <span className="font-semibold text-white">{cfg.recipient.name}</span>
+            <div className="mb-4 text-base text-white/75 sm:text-lg">
+              {t.preparedFor} <span className="font-semibold text-white">{cfg.recipient.name}</span>
             </div>
           )}
-          <div className="mb-4 text-[11px] uppercase tracking-[0.14em] text-white/45">
-            {t.formula}
-          </div>
           <h1 className="font-display text-[clamp(2.4rem,7vw,5.5rem)] font-bold leading-[0.98] tracking-[-0.03em] text-white drop-shadow-[0_2px_34px_rgba(0,0,0,0.75)]">
             {cfg.name}
             <span className="mt-1 block text-[clamp(1.1rem,2.4vw,1.75rem)] font-medium italic text-white/70">
@@ -730,7 +724,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           </div>
 
           <div className="mt-16 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-dim">
-            <Link href="/" className="hover:text-paper">LetShoot · {cfg.model.agency}</Link>
+            <Link href="/" className="hover:text-paper">LetShoot{cfg.model?.agency ? ` · ${cfg.model.agency}` : ''}</Link>
             <span className="mx-2">·</span>
             <span>{t.privateLink}</span>
           </div>
