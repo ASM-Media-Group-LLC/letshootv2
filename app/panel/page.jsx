@@ -15,6 +15,7 @@ import {
   Heart, MessageSquarePlus, MessageSquare, Bell,
   X, Sparkles, Target, Building2, ChevronLeft, ChevronRight, ChevronDown,
   Images, UserPlus, NotebookPen, Activity, AudioLines, Check, CalendarRange, BellOff, Eye, Clock, Loader2, Maximize2,
+  Send, ExternalLink,
 } from 'lucide-react';
 import { getUserProfile, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -88,7 +89,13 @@ function PanelPageInner() {
   const [leaveReason, setLeaveReason] = useState('');
   const [leaveBusy, setLeaveBusy] = useState(false);
   const [notesFeed, setNotesFeed] = useState([]);
-  const [view, setView] = useState('contenido'); // contenido (default) | activity | audios
+  const [view, setView] = useState('contenido'); // contenido (default) | activity | audios | propuestas
+  const [myProps, setMyProps] = useState([]); // propuestas que le mandaron (my_proposals)
+  useEffect(() => {
+    (async () => {
+      try { const { data } = await getSupabase().rpc('my_proposals'); if (Array.isArray(data)) setMyProps(data); } catch {}
+    })();
+  }, []);
   const [range, setRange] = useState('month'); // week (7 días) | month | all | custom — rango de Contenido
   const [customFrom, setCustomFrom] = useState(''); // rango de fechas: desde
   const [customTo, setCustomTo] = useState('');     // rango de fechas: hasta
@@ -318,6 +325,7 @@ function PanelPageInner() {
     { id: 'contenido', label: isEs ? 'Contenido' : 'Content', icon: Images },
     { id: 'activity', label: t.panel.navActivity, icon: Activity },
     { id: 'audios', label: isEs ? 'Audios' : 'Audio', icon: AudioLines },
+    { id: 'propuestas', label: isEs ? 'Propuestas' : 'Proposals', icon: Send },
   ];
 
   return (
@@ -679,6 +687,53 @@ function PanelPageInner() {
                       onRename={null}
                       onDelete={null}
                     />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {view === 'propuestas' && (
+          <div className="mt-6">
+            {myProps.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-card/50 px-6 py-16 text-center">
+                <span className="grid h-14 w-14 place-items-center rounded-full border border-line bg-ink-2 text-brand">
+                  <Send size={22} />
+                </span>
+                <h2 className="mt-4 font-display text-lg font-semibold text-paper">{isEs ? 'Tus propuestas' : 'Your proposals'}</h2>
+                <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-paper-dim">
+                  {isEs
+                    ? 'Acá te aparecen las propuestas de fotos que te mandaron. Todavía no hay ninguna.'
+                    : 'The photo proposals sent to you appear here. None yet.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="mb-3 text-[11px] text-paper-dim">
+                  {isEs ? 'Las propuestas que te mandaron. Tocá para abrirlas.' : 'The proposals sent to you. Tap to open.'}
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {myProps.map((p) => (
+                    <a
+                      key={p.link_id}
+                      href={`/p/${p.link_id}?lang=${p.lang || 'es'}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="card3d group flex gap-3 overflow-hidden rounded-2xl border border-line bg-card p-3 transition-colors hover:border-brand/40"
+                    >
+                      <div className="h-20 w-16 shrink-0 overflow-hidden rounded-xl bg-hair/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {p.cover_url ? <img src={p.cover_url} alt="" className="h-full w-full object-cover" /> : null}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-display text-sm font-bold text-paper">{p.name || (isEs ? 'Propuesta' : 'Proposal')}</div>
+                        {p.subtitle ? <div className="truncate text-[12px] text-paper-mute">{p.subtitle}</div> : null}
+                        <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-brand">
+                          {isEs ? 'Ver' : 'View'} <ExternalLink size={11} />
+                        </div>
+                      </div>
+                    </a>
                   ))}
                 </div>
               </>
