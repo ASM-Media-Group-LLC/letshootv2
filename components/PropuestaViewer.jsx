@@ -4,24 +4,26 @@
 // Propuesta pública — formato TRÍPTICO por look. Ruta dinámica /p/[linkId].
 //   · Cada slide 100svh: INSPIRACIÓN + MODELO REAL = RESULTADO (hero).
 //   · Feedback por look (❤ / ✕ / 💬), watermark + anti-descarga siempre.
-//   · BACKEND real (migración 0062, sin sesión): el receptor SOLO usa 3 RPCs.
-//     - get_proposal_by_link → carga la propuesta publicada y no vencida.
-//     - register_for_proposal → gate obligatorio; devuelve el uuid del registro.
-//     - save_proposal_feedback → guarda/actualiza el feedback del receptor.
-//   · GATE DE REGISTRO obligatorio: si linkId !== 'demo' SIEMPRE se pide
-//     nombre + correo (+ teléfono opcional) antes de ver la propuesta. El uuid
-//     del registro se guarda en estado y en localStorage 'ls_prop_reg_<linkId>'
-//     ({ id, name, email }) para no re-pedirlo en el mismo dispositivo.
+//   · BACKEND real (migración 0062): get_proposal_by_link carga la propuesta
+//     publicada y no vencida; save_proposal_feedback guarda el feedback.
+//   · GATE DE REGISTRO obligatorio (si linkId !== 'demo'): el receptor crea una
+//     CUENTA REAL de creadora (nombre + correo + contraseña, teléfono opcional
+//     con banderita) vía edge function `proposal-register` — queda confirmada,
+//     entra directo con signInWithPassword, sin mail de confirmación. Si el
+//     correo ya existe → modo login inline (contraseña) + register_for_proposal.
+//     El uuid del registro se guarda en estado y en localStorage
+//     'ls_prop_reg_<linkId>' ({ id, name, email }) para no re-pedirlo acá.
 //   · EXCEPCIÓN linkId === 'demo': preview interno del wizard (draft local en
 //     'ls_propuesta_draft'), SIN backend y SIN gate.
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, Phone, ArrowRight, Sparkles } from 'lucide-react';
+import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, Phone, ArrowRight, Sparkles, KeyRound, Eye, EyeOff } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { getSupabase } from '@/lib/supabase/client';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
+import { COUNTRIES } from '@/lib/countries';
 
 const regKey = (id) => `ls_prop_reg_${id}`;
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -199,12 +201,18 @@ function Unavailable({ t }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Gate de registro (mock) — pantalla previa a la propuesta.
+// Gate de registro — crea la CUENTA REAL de creadora (email + contraseña) vía
+// edge function `proposal-register` y entra directo (signInWithPassword). Si el
+// correo ya existe → modo login inline. Teléfono opcional con banderita (E.164).
 // ══════════════════════════════════════════════════════════════════════════
 
 function RegisterGate({ t, cfg, linkId, onDone }) {
+  const [mode, setMode] = useState('register'); // 'register' | 'login'
   const [name, setName] = useState(cfg.recipient?.name || '');
   const [email, setEmail] = useState(cfg.recipient?.email || '');
+  const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [dial, setDial] = useState('+57');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -212,25 +220,49 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
     setName((v) => v || cfg.recipient?.name || '');
     setEmail((v) => v || cfg.recipient?.email || '');
   }, [cfg]);
-  const valid = name.trim().length > 0 && EMAIL_RX.test(email.trim());
+
+  const emailOk = EMAIL_RX.test(email.trim());
+  const valid = mode === 'login'
+    ? emailOk && password.length >= 1
+    : name.trim().length > 0 && emailOk && password.length >= 8;
+  // Teléfono completo en formato E.164 (prefijo + número sin separadores sobrantes).
+  const fullPhone = phone.trim() ? `${dial} ${phone.trim()}` : '';
 
   const submit = async (e) => {
     e.preventDefault();
     if (!valid || busy) return;
     setBusy(true);
     setErr('');
+    const sb = getSupabase();
     try {
-      const { data, error } = await getSupabase().rpc('register_for_proposal', {
-        p_link: linkId,
-        p_name: name.trim(),
-        p_email: email.trim(),
-        p_phone: phone.trim() || null,
-      });
-      if (error) throw error;
-      // La RPC devuelve el uuid del registro (escalar). Aceptamos variantes.
-      const id = typeof data === 'string' ? data : (Array.isArray(data) ? data[0] : data);
-      if (!id) throw new Error(t.regError);
-      onDone({ id, name: name.trim(), email: email.trim() });
+      if (mode === 'register') {
+        // 1) Crea la cuenta real + registro ligado a la propuesta (server-side).
+        const { data, error } = await sb.functions.invoke('proposal-register', {
+          body: { link_id: linkId, email: email.trim(), password, full_name: name.trim(), phone: fullPhone },
+        });
+        if (error) throw error;
+        if (!data?.ok) {
+          // El correo ya tiene cuenta → pasar a login inline (conserva la contraseña escrita).
+          if (data?.exists) { setMode('login'); setErr(t.regLoginSub); setBusy(false); return; }
+          throw new Error(data?.error || t.regError);
+        }
+        // 2) Inicia sesión para entrar con sesión real (cuenta ya confirmada).
+        await sb.auth.signInWithPassword({ email: email.trim(), password });
+        onDone({ id: data.registration_id || null, name: name.trim(), email: email.trim() });
+      } else {
+        // Modo login: autentica y registra el lead de ESTA propuesta (la cuenta ya existía).
+        const { error: sErr } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+        if (sErr) { setBusy(false); setErr(t.regWrongPass); return; }
+        let rid = null;
+        try {
+          const { data } = await sb.rpc('register_for_proposal', {
+            p_link: linkId, p_name: (name.trim() || cfg.recipient?.name || email.trim()),
+            p_email: email.trim(), p_phone: fullPhone || null,
+          });
+          rid = typeof data === 'string' ? data : (Array.isArray(data) ? data[0] : data) || null;
+        } catch {}
+        onDone({ id: rid, name: name.trim() || cfg.recipient?.name || '', email: email.trim() });
+      }
     } catch (e2) {
       setBusy(false);
       setErr(e2?.message || t.regError);
@@ -239,6 +271,7 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
 
   const bgUrl = cfg.coverUrl || cfg.looks?.[0]?.result;
   const inputCls = 'w-full rounded-xl border border-line bg-ink-2 py-3 pl-11 pr-3.5 text-base text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:py-2.5 sm:text-sm';
+  const isLogin = mode === 'login';
 
   return (
     <div className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-ink px-4 py-10 text-paper" style={{ paddingTop: 'max(2.5rem, env(safe-area-inset-top))', paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}>
@@ -255,31 +288,75 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
           <span className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand">
             <Sparkles size={13} /> {cfg.model?.name || t.privateSel}
           </span>
-          <h1 className="mt-3 font-display text-2xl font-semibold tracking-[-0.02em] text-paper">{t.regTitle}</h1>
-          <p className="mt-1.5 text-sm text-paper-mute">{t.regSub}</p>
+          <h1 className="mt-3 font-display text-2xl font-semibold tracking-[-0.02em] text-paper">{isLogin ? t.regLoginTitle : t.regTitle}</h1>
+          <p className="mt-1.5 text-sm text-paper-mute">{isLogin ? t.regLoginSub : t.regSub}</p>
         </div>
 
-        <label className="mt-6 block">
-          <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.recipName}</span>
-          <div className="relative">
-            <User size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t.recipNamePh} className={inputCls} />
-          </div>
-        </label>
-        <label className="mt-4 block">
+        {!isLogin && (
+          <label className="mt-6 block">
+            <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.recipName}</span>
+            <div className="relative">
+              <User size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t.recipNamePh} className={inputCls} />
+            </div>
+          </label>
+        )}
+
+        <label className={`${isLogin ? 'mt-6' : 'mt-4'} block`}>
           <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.recipEmail}</span>
           <div className="relative">
             <Mail size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
             <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.recipEmailPh} className={inputCls} />
           </div>
         </label>
+
         <label className="mt-4 block">
-          <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.regPhoneOpt}</span>
+          <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.regPassword}</span>
           <div className="relative">
-            <Phone size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-            <input type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555 000 0000" className={inputCls} />
+            <KeyRound size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+            <input
+              type={showPass ? 'text' : 'password'}
+              autoComplete={isLogin ? 'current-password' : 'new-password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={isLogin ? '••••••••' : t.regPasswordPh}
+              className={`${inputCls} pr-11`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPass((v) => !v)}
+              aria-label={showPass ? t.regHide : t.regShow}
+              className="absolute right-2.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-paper-dim hover:text-paper"
+            >
+              {showPass ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
           </div>
         </label>
+
+        {!isLogin && (
+          <label className="mt-4 block">
+            <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.regPhoneOpt}</span>
+            <div className="flex gap-2">
+              <div className="relative shrink-0">
+                <select
+                  value={dial}
+                  onChange={(e) => setDial(e.target.value)}
+                  aria-label={t.country}
+                  className="h-full appearance-none rounded-xl border border-line bg-ink-2 py-3 pl-3 pr-7 text-base text-paper outline-none focus:border-brand/60 sm:py-2.5 sm:text-sm"
+                >
+                  {COUNTRIES.map((c) => (
+                    <option key={`${c.code}${c.dial}`} value={c.dial}>{c.flag} {c.dial}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-paper-dim" />
+              </div>
+              <div className="relative flex-1">
+                <Phone size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                <input type="tel" inputMode="tel" autoComplete="tel-national" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="300 000 0000" className={inputCls} />
+              </div>
+            </div>
+          </label>
+        )}
 
         {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
 
@@ -288,12 +365,23 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
           disabled={!valid || busy}
           className="group mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:scale-100"
         >
-          {busy ? t.regSending : t.regCta}
+          {busy ? (isLogin ? t.regLoginSending : t.regSending) : (isLogin ? t.regLoginCta : t.regCta)}
           {!busy && <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />}
         </button>
-        <div className="mt-3 flex items-center justify-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-paper-dim">
-          <Lock size={10} /> {t.regHint}
-        </div>
+
+        {isLogin ? (
+          <button
+            type="button"
+            onClick={() => { setMode('register'); setErr(''); setPassword(''); }}
+            className="mt-3 block w-full text-center text-xs font-semibold text-paper-mute hover:text-paper"
+          >
+            {t.regOtherEmail}
+          </button>
+        ) : (
+          <div className="mt-3 flex items-center justify-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-paper-dim">
+            <Lock size={10} /> {t.regHint}
+          </div>
+        )}
       </form>
     </div>
   );
