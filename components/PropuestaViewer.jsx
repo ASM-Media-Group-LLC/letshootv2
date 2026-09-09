@@ -384,29 +384,33 @@ function ProposalBody({ t, cfg, linkId }) {
             data-idx={i}
             className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-4 py-6 sm:px-10"
           >
-            {/* Desktop: columna fuentes (con aire entre ellas, el «+» flota en el
-                gap) + «=» + hero de ancho intrínseco — el conjunto queda compacto
-                y centrado, sin huecos muertos. */}
-            <div className="hidden w-full items-center justify-center gap-5 sm:flex lg:gap-9 [perspective:1200px]">
-              <div className="relative flex w-[24%] min-w-[190px] max-w-[280px] shrink-0 flex-col gap-5">
-                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="aspect-[4/5] max-h-[33vh] w-full rounded-2xl ring-white/10" />
-                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="aspect-[4/5] max-h-[33vh] w-full rounded-2xl ring-white/10" />
+            {/* Desktop: UN SOLO BLOQUE — la columna de fuentes y el resultado
+                miden EXACTAMENTE lo mismo de alto (rectángulo parejo, alineado
+                arriba y abajo). El «+» flota centrado entre las dos fuentes, el
+                «=» va centrado, y el texto vive SOBRE la foto del resultado para
+                no agregar huecos. */}
+            <div className="hidden h-[74svh] items-stretch justify-center gap-4 sm:flex lg:gap-6 [perspective:1200px]">
+              {/* Columna de fuentes — misma altura total que el resultado */}
+              <div className="relative flex h-full flex-col gap-4">
+                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="h-[calc((74svh-1rem)/2)] aspect-[4/5] rounded-2xl ring-white/10" />
+                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="h-[calc((74svh-1rem)/2)] aspect-[4/5] rounded-2xl ring-white/10" />
                 <div className={`pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${badgeFade('delay-150')}`}>
                   <OpBadge className="h-9 w-9 text-base">+</OpBadge>
                 </div>
               </div>
-              <OpBadge className={`h-9 w-9 shrink-0 text-base ${badgeFade('delay-300')}`}>=</OpBadge>
-              <div className="w-[min(60vh,42vw)] max-w-[520px] shrink-0">
-                <div className="w-full">
-                  <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} active={active} delay="delay-300" className="aspect-[4/5] w-full rounded-3xl shadow-glow ring-brand/30" />
-                  <div className={`mt-4 flex items-baseline justify-between gap-3 ${fade}`}>
-                    <div className="text-sm text-white/80">{l.caption}</div>
-                    <div className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+              <OpBadge className={`h-9 w-9 shrink-0 self-center text-base ${badgeFade('delay-300')}`}>=</OpBadge>
+              {/* Resultado — hero de la misma altura; caption superpuesto abajo */}
+              <div className="relative h-full">
+                <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} active={active} delay="delay-300" className="h-full aspect-[4/5] rounded-3xl shadow-glow ring-brand/30" />
+                <div className={`pointer-events-none absolute inset-x-0 bottom-0 rounded-b-3xl bg-gradient-to-t from-black/80 via-black/30 to-transparent px-5 pb-4 pt-12 ${fade}`}>
+                  <div className="flex items-end justify-between gap-3">
+                    <div className="text-sm text-white/90">{l.caption}</div>
+                    <div className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
                       {t.look} {pad2(i + 1)} · {pad2(total)}
                     </div>
                   </div>
                   {st.note?.trim() && (
-                    <div className={`mt-2 flex items-start gap-1.5 text-[13px] italic text-white/70 ${fade}`}>
+                    <div className="mt-2 flex items-start gap-1.5 text-[13px] italic text-white/80">
                       <MessageSquare size={12} className="mt-0.5 shrink-0" />
                       <span>{st.note.trim()}</span>
                     </div>
