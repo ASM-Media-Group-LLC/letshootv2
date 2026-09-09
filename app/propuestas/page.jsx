@@ -91,7 +91,9 @@ const isComplete = (l) => Boolean(l.inspiration && l.real && l.result);
 const pad2 = (n) => String(n).padStart(2, '0');
 
 export default function PropuestaAdmin() {
-  const t = useProp();
+  // El wizard es herramienta interna del equipo → SIEMPRE en español (el idioma
+  // del LINK que ve la creadora se elige aparte, en el paso Molde).
+  const t = useProp('es');
 
   // Acceso: admin, o empleado con la capability 'proposals' (Crear propuestas).
   const [access, setAccess] = useState('loading'); // 'loading' | 'ok' | 'denied'
@@ -117,16 +119,6 @@ export default function PropuestaAdmin() {
     })();
   }, []);
 
-  // Modelos reales del equipo (para elegir de quién es la propuesta).
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await getSupabase().rpc('team_creators');
-        if (Array.isArray(data)) setModels(data.filter((m) => m?.id && m?.full_name));
-      } catch {}
-    })();
-  }, []);
-
   const [step, setStep] = useState(1);
   // Destinatario VACÍO al crear una nueva (nada de datos demo pre-llenados).
   const [recipient, setRecipient] = useState({ name: '', email: '', kind: 'prospect' });
@@ -134,10 +126,6 @@ export default function PropuestaAdmin() {
   const [template, setTemplate] = useState('exclusive');
   const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
   const [closingUrl, setClosingUrl] = useState(DEMO_CLOSING);
-  // Modelo de la propuesta — se elige de las modelos reales (team_creators).
-  // Su foto (avatar) se usa como portada; si no tiene, queda el lifestyle Miami.
-  const [model, setModel] = useState({ id: null, name: '', agency: '', avatar: '' });
-  const [models, setModels] = useState([]);
 
   const [name, setName] = useState(TEMPLATES.exclusive('Valentina').name);
   const [subtitle, setSubtitle] = useState(TEMPLATES.exclusive('Valentina').subtitle);
@@ -184,42 +172,11 @@ export default function PropuestaAdmin() {
   }, []);
 
   useEffect(() => {
-    // NO restauramos el CODE publicado desde localStorage: un código viejo (o de
-    // un build anterior que solo guardaba local) mostraría un link /p/<code> que
-    // no existe en la base → "propuesta no disponible". El link SOLO aparece tras
-    // un publish exitoso de esta sesión (publish() hace setCode). Restauramos solo
-    // el borrador (textos/looks) para no perder el trabajo en curso.
-    try {
-      const raw = localStorage.getItem(DRAFT_KEY);
-      if (!raw) return;
-      const d = JSON.parse(raw);
-      if (d?.v !== 1) return;
-      if (typeof d.name === 'string') setName(d.name);
-      if (typeof d.subtitle === 'string') setSubtitle(d.subtitle);
-      if (typeof d.intro === 'string') setIntro(d.intro);
-      if (typeof d.dedication === 'string') setDedication(d.dedication);
-      setCopyTouched(true);
-      if ([3, 7, 10, 14, 30].includes(d.days)) setDays(d.days);
-      if (PROP_LANGS.includes(d.lang)) setLang(d.lang);
-      if (d.template === 'exclusive' || d.template === 'normal') setTemplate(d.template);
-      if (typeof d.coverUrl === 'string' || d.coverUrl === null) setCoverUrl(d.coverUrl);
-      if (typeof d.closingUrl === 'string' || d.closingUrl === null) setClosingUrl(d.closingUrl);
-      if (d.recipient && typeof d.recipient.name === 'string') {
-        setRecipient({
-          name: d.recipient.name,
-          email: typeof d.recipient.email === 'string' ? d.recipient.email : '',
-          kind: ['prospect', 'client', 'model'].includes(d.recipient.kind) ? d.recipient.kind : 'prospect',
-        });
-      }
-      if (Array.isArray(d.looks) && d.looks.length > 0) {
-        const seeded = d.looks.map((l) => ({
-          id: l.id, caption: l.caption || '',
-          inspiration: l.inspiration || null, real: l.real || null, result: l.result || null,
-        }));
-        setLooks(seeded);
-        setSelectedId(seeded[0]?.id ?? null);
-      }
-    } catch {}
+    // Una propuesta NUEVA arranca en LIMPIO. Ya no restauramos el borrador viejo
+    // (arrastraba datos demo: destinatario, textos y fotos de una sesión pasada).
+    // Limpiamos el draft local para que el preview /p/demo tampoco muestre algo
+    // anterior; se reescribe al guardar / "ver como cliente" o al publicar.
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
   }, []);
 
   useEffect(() => {
@@ -385,7 +342,7 @@ export default function PropuestaAdmin() {
     v: 1,
     name, subtitle, intro, dedication, lang, days, code: codeArg,
     expiresAt: new Date(Date.now() + days * 86400000).toISOString(),
-    model: { name: model.name, agency: model.agency },
+    model: { name: '', agency: '' },
     recipient: { name: recipient.name.trim(), email: recipient.email.trim(), kind: recipient.kind },
     template,
     coverUrl: coverUrl || null,
@@ -414,8 +371,8 @@ export default function PropuestaAdmin() {
       link_id: newCode,
       created_by: authorId || null,
       created_by_name: authorName || '',
-      model_name: model.name.trim() || null,
-      model_agency: model.agency.trim() || null,
+      model_name: null,
+      model_agency: null,
       name,
       subtitle,
       intro,
@@ -636,40 +593,6 @@ export default function PropuestaAdmin() {
             </div>
           </section>
 
-          <section className="card3d rounded-2xl border border-line bg-card p-3">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Modelo</div>
-            <div className="flex items-center gap-3">
-              {model.avatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={model.avatar} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
-              ) : (
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-hair/10 font-display text-sm font-bold text-paper-dim">
-                  {(model.name || '?').trim().charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="relative min-w-0 flex-1">
-                <select
-                  value={model.id || ''}
-                  onChange={(e) => {
-                    const m = models.find((x) => x.id === e.target.value);
-                    if (m) {
-                      setModel({ id: m.id, name: m.full_name || '', agency: '', avatar: m.avatar_url || '' });
-                      if (m.avatar_url) setCoverUrl(m.avatar_url); // su foto = portada
-                    } else {
-                      setModel({ id: null, name: '', agency: '', avatar: '' });
-                    }
-                  }}
-                  className="w-full appearance-none rounded-xl border border-line bg-ink-2 py-2.5 pl-3 pr-8 text-sm text-paper outline-none focus:border-brand/60"
-                >
-                  <option value="">— Elegí la modelo —</option>
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>{m.full_name}</option>
-                  ))}
-                </select>
-                <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-              </div>
-            </div>
-          </section>
         </div>
       )}
 
@@ -867,7 +790,7 @@ export default function PropuestaAdmin() {
               <div className="card3d overflow-hidden rounded-3xl border border-line bg-black p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <span className="font-mono text-[8px] font-semibold uppercase tracking-[0.24em] text-white/40">{t.privateSel}</span>
-                  <span className="font-mono text-[8px] text-white/30">{model.name || t.privateSel}</span>
+                  <span className="font-mono text-[8px] text-white/30">{t.privateSel}</span>
                 </div>
 
                 <div className="flex items-center gap-1.5">
@@ -1104,7 +1027,7 @@ export default function PropuestaAdmin() {
                 <div className="truncate font-display text-base font-bold text-paper">
                   {t.pickFromVault} — {picker.slotLabel}
                 </div>
-                <div className="text-[11px] text-paper-mute">{model.name ? `${model.name} · ` : ''}{BAUL.length} {t.files}</div>
+                <div className="text-[11px] text-paper-mute">{BAUL.length} {t.files}</div>
               </div>
               <button type="button" onClick={() => setPicker(null)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
                 <X size={15} />
