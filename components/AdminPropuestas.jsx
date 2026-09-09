@@ -263,10 +263,16 @@ export default function AdminPropuestas() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-paper-mute">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-xl text-sm text-paper-mute">
           Todas las propuestas que arma el equipo. Ves a quién van, quién las creó y qué respondió cada receptor.
         </p>
+        <a
+          href="/propuestas"
+          className="btn3d inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold"
+        >
+          <Send size={15} /> Crear propuesta
+        </a>
       </div>
 
       {/* Aviso: solo cuando no hay propuestas reales y se muestran ejemplos. */}
