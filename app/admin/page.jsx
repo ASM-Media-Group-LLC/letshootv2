@@ -76,6 +76,14 @@ export default function AdminPage() {
   const router = useRouter();
   const [me, setMe] = useState(undefined);
   const [tab, setTab] = useState('registros');
+  // Permite abrir /admin directo en una pestaña por URL (?tab=propuestas, etc.).
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search).get('tab');
+      const valid = ['registros', 'metricas', 'reacciones', 'verificaciones', 'equipo', 'agencias', 'actividad', 'propuestas'];
+      if (q && valid.includes(q)) setTab(q);
+    } catch {}
+  }, []);
   const [profiles, setProfiles] = useState([]);
   const [kyc, setKyc] = useState([]); // pending verifications w/ signed doc urls
   const [loading, setLoading] = useState(true);
