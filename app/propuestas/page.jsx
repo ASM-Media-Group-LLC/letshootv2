@@ -40,20 +40,22 @@ const DEMO_LOOKS = [
   { id: 'lk6', caption: 'Cinemática · IA',                   inspiration: '/hero-poster.jpg',        real: '/hero-miami-poster.jpg',  result: '/hero-ia.jpg' },
 ];
 
-const DEMO_RECIPIENT = { name: 'Valentina Ríos', email: 'valentina@email.com', kind: 'prospect' };
-const DEMO_COVER = '/model-latina.jpg';
-const DEMO_CLOSING = '/model-noche.jpg';
+// Portada por defecto = lifestyle Miami (fallback si la modelo no tiene foto).
+const DEMO_COVER = '/model-latina.jpg';   // Miami · golden hour
+const DEMO_CLOSING = '/model-resort.jpg'; // resort · piscina · lifestyle
 
+// Molde de textos: default inteligente SIN nombre (el nombre del destinatario
+// vive aparte en la portada). No mete el nombre de la modelo en el subtítulo.
 const TEMPLATES = {
-  exclusive: (n) => ({
+  exclusive: () => ({
     name: 'Contenido que engancha',
-    subtitle: 'Julia Parker × LetShoot',
-    intro: `${n}, esto es contenido de enganche para tus fans: fotos pensadas para traer tráfico, sumar suscriptores y mantener tu página viva — sin sesión, sin viajes, sin logística. Elegí los looks que quieras para tu feed.`,
+    subtitle: 'Contenido exclusivo · 2026',
+    intro: 'Esto es contenido de enganche para tus fans: fotos pensadas para traer tráfico, sumar suscriptores y mantener tu página viva — sin sesión, sin viajes, sin logística. Elegí los looks que quieras para tu feed.',
   }),
-  normal: (n) => ({
+  normal: () => ({
     name: 'Selección editorial',
-    subtitle: 'Verano · 2026',
-    intro: `${n}, esto es para tu marca personal: fotos editoriales para redes, prensa y colaboraciones. Sentí el estilo antes de confirmar la sesión y contanos qué te gusta.`,
+    subtitle: 'Editorial · 2026',
+    intro: 'Esto es para tu marca personal: fotos editoriales para redes, prensa y colaboraciones. Sentí el estilo antes de confirmar la sesión y contanos qué te gusta.',
   }),
 };
 
@@ -115,12 +117,27 @@ export default function PropuestaAdmin() {
     })();
   }, []);
 
+  // Modelos reales del equipo (para elegir de quién es la propuesta).
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await getSupabase().rpc('team_creators');
+        if (Array.isArray(data)) setModels(data.filter((m) => m?.id && m?.full_name));
+      } catch {}
+    })();
+  }, []);
+
   const [step, setStep] = useState(1);
-  const [recipient, setRecipient] = useState({ ...DEMO_RECIPIENT });
+  // Destinatario VACÍO al crear una nueva (nada de datos demo pre-llenados).
+  const [recipient, setRecipient] = useState({ name: '', email: '', kind: 'prospect' });
   const [feedback, setFeedback] = useState(null);
   const [template, setTemplate] = useState('exclusive');
   const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
   const [closingUrl, setClosingUrl] = useState(DEMO_CLOSING);
+  // Modelo de la propuesta — se elige de las modelos reales (team_creators).
+  // Su foto (avatar) se usa como portada; si no tiene, queda el lifestyle Miami.
+  const [model, setModel] = useState({ id: null, name: '', agency: '', avatar: '' });
+  const [models, setModels] = useState([]);
 
   const [name, setName] = useState(TEMPLATES.exclusive('Valentina').name);
   const [subtitle, setSubtitle] = useState(TEMPLATES.exclusive('Valentina').subtitle);
@@ -128,7 +145,7 @@ export default function PropuestaAdmin() {
   // Encabezado de dedicatoria editable ("Preparada para" por defecto). Vacío =
   // usar el default del idioma en la portada.
   const [dedication, setDedication] = useState('');
-  const [days, setDays] = useState(10);
+  const [days, setDays] = useState(30);
   const [lang, setLang] = useState('es');
   // CODE de la última publicación (vacío hasta publicar; se rehidrata de
   // 'ls_prop_last' para que el header y las respuestas apunten al último link).
@@ -138,8 +155,15 @@ export default function PropuestaAdmin() {
   const [proposalId, setProposalId] = useState(null);
   const [pubError, setPubError] = useState('');
   const [publishing, setPublishing] = useState(false);
-  const [looks, setLooks] = useState(DEMO_LOOKS.map((l) => ({ ...l })));
-  const [selectedId, setSelectedId] = useState(DEMO_LOOKS[0]?.id ?? null);
+  // Arranca con looks VACÍOS (nada de fotos placeholder). El equipo llena la
+  // primera y va agregando con "Agregar look".
+  const INITIAL_LOOKS = [
+    { id: 'lk1', caption: '', inspiration: null, real: null, result: null },
+    { id: 'lk2', caption: '', inspiration: null, real: null, result: null },
+    { id: 'lk3', caption: '', inspiration: null, real: null, result: null },
+  ];
+  const [looks, setLooks] = useState(INITIAL_LOOKS.map((l) => ({ ...l })));
+  const [selectedId, setSelectedId] = useState(INITIAL_LOOKS[0].id);
 
   const [picker, setPicker] = useState(null);
   const [pickerQ, setPickerQ] = useState('');
@@ -361,7 +385,7 @@ export default function PropuestaAdmin() {
     v: 1,
     name, subtitle, intro, dedication, lang, days, code: codeArg,
     expiresAt: new Date(Date.now() + days * 86400000).toISOString(),
-    model: { name: 'Julia Parker', agency: 'Kash Agency' },
+    model: { name: model.name, agency: model.agency },
     recipient: { name: recipient.name.trim(), email: recipient.email.trim(), kind: recipient.kind },
     template,
     coverUrl: coverUrl || null,
@@ -390,8 +414,8 @@ export default function PropuestaAdmin() {
       link_id: newCode,
       created_by: authorId || null,
       created_by_name: authorName || '',
-      model_name: 'Julia Parker',
-      model_agency: 'Kash Agency',
+      model_name: model.name.trim() || null,
+      model_agency: model.agency.trim() || null,
       name,
       subtitle,
       intro,
@@ -612,12 +636,38 @@ export default function PropuestaAdmin() {
             </div>
           </section>
 
-          <section className="card3d flex items-center gap-3 rounded-2xl border border-line bg-card p-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/model-latina.jpg" alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
-            <div className="min-w-0">
-              <div className="truncate font-display text-sm font-bold text-paper">Julia Parker</div>
-              <div className="truncate text-[11px] text-paper-mute">Kash Agency</div>
+          <section className="card3d rounded-2xl border border-line bg-card p-3">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Modelo</div>
+            <div className="flex items-center gap-3">
+              {model.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={model.avatar} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
+              ) : (
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-hair/10 font-display text-sm font-bold text-paper-dim">
+                  {(model.name || '?').trim().charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="relative min-w-0 flex-1">
+                <select
+                  value={model.id || ''}
+                  onChange={(e) => {
+                    const m = models.find((x) => x.id === e.target.value);
+                    if (m) {
+                      setModel({ id: m.id, name: m.full_name || '', agency: '', avatar: m.avatar_url || '' });
+                      if (m.avatar_url) setCoverUrl(m.avatar_url); // su foto = portada
+                    } else {
+                      setModel({ id: null, name: '', agency: '', avatar: '' });
+                    }
+                  }}
+                  className="w-full appearance-none rounded-xl border border-line bg-ink-2 py-2.5 pl-3 pr-8 text-sm text-paper outline-none focus:border-brand/60"
+                >
+                  <option value="">— Elegí la modelo —</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>{m.full_name}</option>
+                  ))}
+                </select>
+                <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+              </div>
             </div>
           </section>
         </div>
@@ -817,7 +867,7 @@ export default function PropuestaAdmin() {
               <div className="card3d overflow-hidden rounded-3xl border border-line bg-black p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <span className="font-mono text-[8px] font-semibold uppercase tracking-[0.24em] text-white/40">{t.privateSel}</span>
-                  <span className="font-mono text-[8px] text-white/30">Julia Parker</span>
+                  <span className="font-mono text-[8px] text-white/30">{model.name || t.privateSel}</span>
                 </div>
 
                 <div className="flex items-center gap-1.5">
@@ -1054,7 +1104,7 @@ export default function PropuestaAdmin() {
                 <div className="truncate font-display text-base font-bold text-paper">
                   {t.pickFromVault} — {picker.slotLabel}
                 </div>
-                <div className="text-[11px] text-paper-mute">Julia Parker · {BAUL.length} {t.files}</div>
+                <div className="text-[11px] text-paper-mute">{model.name ? `${model.name} · ` : ''}{BAUL.length} {t.files}</div>
               </div>
               <button type="button" onClick={() => setPicker(null)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
                 <X size={15} />

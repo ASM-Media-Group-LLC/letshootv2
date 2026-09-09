@@ -19,11 +19,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, Phone, ArrowRight, Sparkles, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, ArrowRight, Sparkles, KeyRound, Eye, EyeOff } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { getSupabase } from '@/lib/supabase/client';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
-import { COUNTRIES } from '@/lib/countries';
 
 const regKey = (id) => `ls_prop_reg_${id}`;
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -230,8 +229,6 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
   const [email, setEmail] = useState(cfg.recipient?.email || '');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [dial, setDial] = useState('+57');
-  const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   useEffect(() => {
@@ -243,8 +240,6 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
   const valid = mode === 'login'
     ? emailOk && password.length >= 1
     : name.trim().length > 0 && emailOk && password.length >= 8;
-  // Teléfono completo en formato E.164 (prefijo + número sin separadores sobrantes).
-  const fullPhone = phone.trim() ? `${dial} ${phone.trim()}` : '';
 
   const submit = async (e) => {
     e.preventDefault();
@@ -256,7 +251,7 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
       if (mode === 'register') {
         // 1) Crea la cuenta real + registro ligado a la propuesta (server-side).
         const { data, error } = await sb.functions.invoke('proposal-register', {
-          body: { link_id: linkId, email: email.trim(), password, full_name: name.trim(), phone: fullPhone },
+          body: { link_id: linkId, email: email.trim(), password, full_name: name.trim() },
         });
         if (error) throw error;
         if (!data?.ok) {
@@ -275,7 +270,7 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
         try {
           const { data } = await sb.rpc('register_for_proposal', {
             p_link: linkId, p_name: (name.trim() || cfg.recipient?.name || email.trim()),
-            p_email: email.trim(), p_phone: fullPhone || null,
+            p_email: email.trim(), p_phone: null,
           });
           rid = typeof data === 'string' ? data : (Array.isArray(data) ? data[0] : data) || null;
         } catch {}
@@ -308,6 +303,12 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
           </span>
           <h1 className="mt-3 font-display text-2xl font-semibold tracking-[-0.02em] text-paper">{isLogin ? t.regLoginTitle : t.regTitle}</h1>
           <p className="mt-1.5 text-sm text-paper-mute">{isLogin ? t.regLoginSub : t.regSub}</p>
+          {/* Contexto: qué propuesta es (para no perder de qué se trata). */}
+          {cfg.name && (
+            <span className="mt-3 inline-block max-w-full truncate rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-medium text-white/75">
+              {cfg.name}{cfg.recipient?.name ? ` · ${cfg.recipient.name}` : ''}
+            </span>
+          )}
         </div>
 
         {!isLogin && (
@@ -350,31 +351,6 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
             </button>
           </div>
         </label>
-
-        {!isLogin && (
-          <label className="mt-4 block">
-            <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.regPhoneOpt}</span>
-            <div className="flex gap-2">
-              <div className="relative shrink-0">
-                <select
-                  value={dial}
-                  onChange={(e) => setDial(e.target.value)}
-                  aria-label={t.country}
-                  className="h-full appearance-none rounded-xl border border-line bg-ink-2 py-3 pl-3 pr-7 text-base text-paper outline-none focus:border-brand/60 sm:py-2.5 sm:text-sm"
-                >
-                  {COUNTRIES.map((c) => (
-                    <option key={`${c.code}${c.dial}`} value={c.dial}>{c.flag} {c.dial}</option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-paper-dim" />
-              </div>
-              <div className="relative flex-1">
-                <Phone size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-                <input type="tel" inputMode="tel" autoComplete="tel-national" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="300 000 0000" className={inputCls} />
-              </div>
-            </div>
-          </label>
-        )}
 
         {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
 
@@ -424,7 +400,6 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
   const slidesRef = useRef([]);
   const coverRef = useRef(null);
   const closingRef = useRef(null);
-  const summaryShownRef = useRef(false);
 
   const fb = (id) => state[id] || EMPTY_FB;
   const setLook = (id, patch) => setState((s) => ({ ...s, [id]: { ...(s[id] || EMPTY_FB), ...patch } }));
@@ -466,21 +441,8 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
     return () => io.disconnect();
   }, [looks]);
 
-  // Al llegar por primera vez a la pantalla de cierre → abre el resumen (una sola vez).
-  useEffect(() => {
-    const el = closingRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach((e) => {
-        if (e.isIntersecting && !summaryShownRef.current) {
-          summaryShownRef.current = true;
-          setSummaryOpen(true);
-        }
-      });
-    }, { threshold: 0.4 });
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
+  // El resumen NO se abre solo: aparece únicamente cuando la persona toca
+  // "Enviar feedback" al final (evita el pop-up intrusivo a mitad de camino).
 
   const sendFeedback = async () => {
     if (sending) return;
