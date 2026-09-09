@@ -41,9 +41,10 @@ const DEMO_LOOKS = [
   { id: 'lk6', caption: 'Cinemática · IA',                   inspiration: '/hero-poster.jpg',        real: '/hero-miami-poster.jpg',  result: '/hero-ia.jpg' },
 ];
 
-// Portada por defecto = lifestyle Miami (fallback si la modelo no tiene foto).
-const DEMO_COVER = '/model-latina.jpg';   // Miami · golden hour
-const DEMO_CLOSING = '/model-resort.jpg'; // resort · piscina · lifestyle
+// Portada/cierre por defecto = lifestyle Miami (generadas en Higgsfield:
+// Ocean Drive golden hour + playa). Fotos verticales 9:16.
+const DEMO_COVER = '/prop-miami-1.jpg';   // Miami · Ocean Drive · golden hour
+const DEMO_CLOSING = '/prop-miami-2.jpg'; // Miami · playa · lifestyle
 
 // Molde de textos: hoy hay UN solo tipo — "Contenido de redes". El copy sale
 // del diccionario en el IDIOMA DEL LINK (propDict(lang)), así los textos por
