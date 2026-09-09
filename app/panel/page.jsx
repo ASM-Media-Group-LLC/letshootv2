@@ -3,14 +3,16 @@
 // Creator panel — calm and clear for the model (OnlyFans creator).
 // Tabs: Contenido (her delivered content, organized by delivery/folder/gallery),
 // Actividad (the agency's day-by-day notes across her content) and Audios (voice
-// audios her team will upload — placeholder until the backend lands). Everything
-// is READ-ONLY — a mirror of what her agency/manager keeps. Per photo she sees:
-// when it was delivered, who added it, the agency's notes, and she can leave feedback.
+// audios her team uploads — assets type='audio', listen-only). Everything is
+// READ-ONLY — a mirror of what her agency/manager keeps, and WITHOUT downloads:
+// the creator can look and listen but never download (owner's decision). Per
+// photo she sees: when it was delivered, who added it, the agency's notes, and
+// she can leave feedback.
 
 import { useCallback, useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  Download, Heart, MessageSquarePlus, MessageSquare, Bell,
+  Heart, MessageSquarePlus, MessageSquare, Bell,
   X, Sparkles, Target, Building2, ChevronLeft, ChevronRight, ChevronDown,
   Images, UserPlus, NotebookPen, Activity, AudioLines, Check, CalendarRange, BellOff, Eye, Clock, Loader2, Maximize2,
 } from 'lucide-react';
@@ -23,6 +25,7 @@ import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import Avatar from '@/components/Avatar';
 import WelcomeTour from '@/components/WelcomeTour';
 import LoraUploader from '@/components/LoraUploader';
+import AudioCard from '@/components/AudioCard';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
 const ASSET_COLS = 'id, folder_id, type, storage_path, deliver_date, title, purpose, added_by';
@@ -93,35 +96,34 @@ function PanelPageInner() {
   const [openDays, setOpenDays] = useState([]);   // gallery day-folders expanded
   const [openFolders, setOpenFolders] = useState([]); // gallery folder-boxes expanded
   const [myFeedback, setMyFeedback] = useState({}); // asset_id -> 'love' | 'change'
-  // Modo selección estilo iPhone/AirDrop: toca fotos para marcarlas y bajarlas
-  // todas de un tirón. Se activa con el botón «Seleccionar» y se sale con «X».
-  const [selectMode, setSelectMode] = useState(false);
-  const [selected, setSelected] = useState(() => new Set());
+  // Audios de la creadora (assets type='audio', fuera de las carpetas de fotos).
+  const [audios, setAudios] = useState([]);
   // Default view: la CC ve galería plana (más natural para descubrir). En modo
   // impersonate (staff QA-ing) arrancar en «Carpetas» para ver el orden real.
   const [contentLayout, setContentLayout] = useState(() => (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('as')) ? 'folders' : 'grid'); // grid | days | folders
-  const [bulkDownloading, setBulkDownloading] = useState(false);
-  function toggleSel(id) { setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
-  function clearSel() { setSelected(new Set()); }
-  function exitSelect() { setSelectMode(false); clearSel(); }
-  // Al cambiar de vista o de mes/rango, sale del modo selección (evita quedarse
-  // con selecciones fantasma cuando ya no ves esas fotos).
-  useEffect(() => { exitSelect(); }, [view, range, month]);
 
   const load = useCallback(async (userId) => {
     const supabase = getSupabase();
-    const [{ data: folders }, { data: nots }] = await Promise.all([
+    const [{ data: folders }, { data: nots }, { data: audioRows }] = await Promise.all([
       supabase.from('folders').select(`id, name, assets(${ASSET_COLS})`).eq('creator_id', userId).order('created_at'),
       supabase.from('notifications').select('id, kind, meta, read, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
+      // Audios: viven FUERA de las carpetas de fotos (folder_id null) — son la
+      // sección «Audios» propia de la creadora. Más nuevos arriba.
+      supabase.from('assets').select('id, storage_path, title, deliver_date, created_at')
+        .eq('creator_id', userId).eq('type', 'audio').is('folder_id', null)
+        .order('created_at', { ascending: false }),
     ]);
     const folderMap = {}; (folders || []).forEach((f) => { folderMap[f.id] = f.name; });
-    const assets = (folders || []).flatMap((f) => f.assets || []);
+    // Defensivo: un audio jamás debe colarse en la galería de fotos.
+    const assets = (folders || []).flatMap((f) => (f.assets || []).filter((a) => a.type !== 'audio'));
     // Signed URLs — el bucket es privado. Firmar en CHUNKS de 100 evita
     // requests gigantes que hacen que la primera pantalla tarde. Los chunks
     // corren en paralelo (Promise.all) — el UI se actualiza incrementalmente
     // vía setUrls, así las primeras fotos aparecen mientras las últimas
     // todavía se firman.
-    const toSign = assets.filter((a) => !isDirect(a.storage_path));
+    const audioList = audioRows || [];
+    setAudios(audioList);
+    const toSign = [...assets, ...audioList].filter((a) => !isDirect(a.storage_path));
     if (toSign.length) {
       const CHUNK = 100;
       const chunks = [];
@@ -200,13 +202,7 @@ function PanelPageInner() {
   if (state.loading) return <div className="grid min-h-[100svh] place-items-center bg-ink text-paper-dim">{t.common.loading}</div>;
 
   const srcFor = (a) => (isDirect(a.storage_path) ? a.storage_path : (urls[a.id] || ''));
-  // URL de DESCARGA: fuerza attachment (si no, la URL firmada cross-origin se abre en vez de bajar).
-  const dlFor = (a) => {
-    const u = srcFor(a); if (!u) return u;
-    const name = `${(a.title || 'letshoot').replace(/[^\w.-]+/g, '_')}.${(a.storage_path?.split('.').pop() || (a.type === 'video' ? 'mp4' : 'jpg'))}`;
-    if (isDirect(a.storage_path)) return u; // demo /public paths: same-origin, el attr download basta
-    return u + (u.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(name);
-  };
+  // Sin descargas: la creadora solo VE su contenido (decisión del dueño).
   const unread = notifs.filter((n) => !n.read).length;
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2600); }
 
@@ -263,8 +259,6 @@ function PanelPageInner() {
     setMyFeedback((m) => ({ ...m, [asset.id]: kind }));
     flash(kind === 'love' ? (t.panel.fbLoved || 'Le dijiste que te encantó') : (t.panel.fbChange || 'Pediste un cambio — el equipo ya lo sabe'));
   }
-  function downloadMany(items) { items.forEach((a, i) => { const src = dlFor(a); if (!src) return; setTimeout(() => { const el = document.createElement('a'); el.href = src; el.download = ''; el.rel = 'noopener'; document.body.appendChild(el); el.click(); el.remove(); }, i * 350); }); }
-
   const isEs = (locale || 'es').startsWith('es');
   // Rango compartido (Contenido + Números): 7 días · mes · todo.
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -487,33 +481,22 @@ function PanelPageInner() {
             });
             return secs;
           })();
-          const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id));
-          const selectAll = () => setSelected(new Set(allIds));
-          async function downloadSelected() {
-            const chosen = allVisible.filter((a) => selected.has(a.id));
-            if (!chosen.length) return;
-            setBulkDownloading(true);
-            downloadMany(chosen);
-            // Deja que arranquen todas las descargas antes de bajar el spinner.
-            setTimeout(() => setBulkDownloading(false), Math.max(400, chosen.length * 350));
-            exitSelect();
-          }
           return (
           <div className="mt-6">
             {rangeBar()}
 
-            {/* Barra de acción: toggle Galería/Entregas + Select (Select SOLO en Galería) */}
+            {/* Barra de acción: toggle Galería/Carpetas/Entregas */}
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] text-paper-dim">
                 {contentLayout === 'grid'
-                  ? (isEs ? 'Toca «Seleccionar» para marcar varias y bajarlas juntas.' : 'Tap “Select” to mark several and download them together.')
+                  ? (isEs ? 'Toca una foto para verla en grande.' : 'Tap a photo to see it big.')
                   : contentLayout === 'folders'
-                  ? (isEs ? 'Cada carpeta tiene su «Descargar todo».' : 'Each folder has its own “Download all”.')
-                  : (isEs ? 'Cada entrega tiene su «Descargar todo».' : 'Each delivery has its own “Download all”.')}
+                  ? (isEs ? 'Toca una carpeta para ver sus fotos.' : 'Tap a folder to see its photos.')
+                  : (isEs ? 'Toca una entrega para ver sus fotos.' : 'Tap a delivery to see its photos.')}
               </p>
               <div className="flex items-center gap-2">
                 {/* Toggle Galería | Entregas */}
-                {!selectMode && allIds.length > 0 && (
+                {allIds.length > 0 && (
                   <div className="inline-flex items-center rounded-full border border-line bg-ink-2 p-0.5 text-[11px] font-semibold">
                     {[
                       { k: 'grid', l: isEs ? 'Galería' : 'Gallery' },
@@ -530,38 +513,8 @@ function PanelPageInner() {
                     })}
                   </div>
                 )}
-                {/* Select — SOLO en Galería (en Entregas cada día tiene Download all) */}
-                {contentLayout === 'grid' && (!selectMode ? (
-                  <button onClick={() => setSelectMode(true)} disabled={allIds.length === 0}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-brand disabled:opacity-40">
-                    <Check size={13} /> {isEs ? 'Seleccionar' : 'Select'}
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <button onClick={allSelected ? clearSel : selectAll}
-                      className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper">
-                      {allSelected ? (isEs ? 'Quitar todas' : 'Deselect all') : (isEs ? `Seleccionar todas (${allIds.length})` : `Select all (${allIds.length})`)}
-                    </button>
-                    <button onClick={exitSelect} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper">
-                      {isEs ? 'Cancelar' : 'Cancel'}
-                    </button>
-                  </div>
-                ))}
               </div>
             </div>
-
-            {/* Barra sticky: cuenta y botón Descargar cuando hay selección */}
-            {selectMode && selected.size > 0 && (
-              <div className="sticky top-2 z-30 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand/50 bg-brand/10 px-3 py-2 backdrop-blur">
-                <span className="text-sm font-semibold text-brand">
-                  {selected.size} {selected.size === 1 ? (isEs ? 'seleccionada' : 'selected') : (isEs ? 'seleccionadas' : 'selected')}
-                </span>
-                <button onClick={downloadSelected} disabled={bulkDownloading}
-                  className="btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-xs font-bold">
-                  <Download size={13} /> {isEs ? `Descargar ${selected.size}` : `Download ${selected.size}`}
-                </button>
-              </div>
-            )}
 
             {allVisible.length === 0 ? (
               <p className="mt-6 rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center text-sm text-paper-dim">{t.panel.emptyMonth}</p>
@@ -569,7 +522,7 @@ function PanelPageInner() {
               /* Vista GRID pura como Fotos de Mac: TODAS las piezas en un solo
                  grid, sin separadores por día. Orden: lo último subido primero. */
               <div className="mt-6 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-                {allVisible.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} bare locale={locale} />)}
+                {allVisible.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} bare locale={locale} />)}
               </div>
             ) : contentLayout === 'folders' ? (
               /* Vista CARPETAS: una cajita por carpeta (situación), colapsable.
@@ -605,19 +558,13 @@ function PanelPageInner() {
                                   <span className="mt-0.5 block text-xs text-paper-dim">{label} · {open ? (t.panel.tapClose || (isEs ? 'toca para cerrar' : 'tap to close')) : (t.panel.tapOpen || (isEs ? 'toca para ver' : 'tap to view'))}</span>
                                 </span>
                               </button>
-                              {!selectMode && (
-                                <button onClick={() => downloadMany(g.items)} className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:inline-flex"><Download size={13} /> {t.panel.downloadAll}</button>
-                              )}
                               <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
                             </div>
                             {open && (
                               <div className="border-t border-line p-3">
                                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                                  {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={g.name} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
+                                  {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={g.name} onOpen={setDetail} feedback={myFeedback[a.id]} />)}
                                 </div>
-                                {!selectMode && (
-                                  <button onClick={() => downloadMany(g.items)} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:hidden"><Download size={13} /> {t.panel.downloadAll}</button>
-                                )}
                               </div>
                             )}
                           </div>
@@ -628,8 +575,8 @@ function PanelPageInner() {
                 ))}
               </div>
             ) : (
-              /* Vista DÍAS: cajitas colapsables — portada + fecha + Download
-                 all + chevron. Layout anterior para quien lo prefiera. */
+              /* Vista DÍAS: cajitas colapsables — portada + fecha + chevron.
+                 Layout anterior para quien lo prefiera. */
               <div className="mt-6 space-y-3">
                 {groups.map((g) => {
                   const open = openDays.includes(g.date);
@@ -652,19 +599,13 @@ function PanelPageInner() {
                             <span className="mt-0.5 block text-xs text-paper-dim">{label} · {open ? (t.panel.tapClose || (isEs ? 'toca para cerrar' : 'tap to close')) : (t.panel.tapOpen || (isEs ? 'toca para ver' : 'tap to view'))}</span>
                           </span>
                         </button>
-                        {!selectMode && (
-                          <button onClick={() => downloadMany(g.items)} className="hidden shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:inline-flex"><Download size={13} /> {t.panel.downloadAll}</button>
-                        )}
                         <ChevronDown size={18} className={`shrink-0 text-paper-dim transition-transform ${open ? 'rotate-180' : ''}`} />
                       </div>
                       {open && (
                         <div className="border-t border-line p-3">
                           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                            {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} selectMode={selectMode} isSelected={selected.has(a.id)} onToggle={toggleSel} />)}
+                            {g.items.map((a) => <PhotoCard key={a.id} a={a} src={srcFor(a)} folder={state.folders[a.folder_id]} onOpen={setDetail} feedback={myFeedback[a.id]} />)}
                           </div>
-                          {!selectMode && (
-                            <button onClick={() => downloadMany(g.items)} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand sm:hidden"><Download size={13} /> {t.panel.downloadAll}</button>
-                          )}
                         </div>
                       )}
                     </div>
@@ -710,22 +651,43 @@ function PanelPageInner() {
 
         {view === 'audios' && (
           <div className="mt-6">
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-card/50 px-6 py-16 text-center">
-              <span className="grid h-14 w-14 place-items-center rounded-full border border-line bg-ink-2 text-brand">
-                <AudioLines size={24} />
-              </span>
-              <h2 className="mt-4 font-display text-lg font-semibold text-paper">{isEs ? 'Tus audios' : 'Your audios'}</h2>
-              <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-paper-dim">
-                {isEs
-                  ? 'El equipo subirá acá los audios hechos con tu voz. Aún no hay ninguno.'
-                  : 'Your team will upload the audios made with your voice here. None yet.'}
-              </p>
-            </div>
+            {audios.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-card/50 px-6 py-16 text-center">
+                <span className="grid h-14 w-14 place-items-center rounded-full border border-line bg-ink-2 text-brand">
+                  <AudioLines size={24} />
+                </span>
+                <h2 className="mt-4 font-display text-lg font-semibold text-paper">{isEs ? 'Tus audios' : 'Your audios'}</h2>
+                <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-paper-dim">
+                  {isEs
+                    ? 'El equipo subirá acá los audios hechos con tu voz. Aún no hay ninguno.'
+                    : 'Your team will upload the audios made with your voice here. None yet.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="mb-3 text-[11px] text-paper-dim">
+                  {isEs ? 'Los audios hechos con tu voz. Toca play para escucharlos.' : 'The audios made with your voice. Tap play to listen.'}
+                </p>
+                <div className="space-y-3">
+                  {audios.map((a) => (
+                    <AudioCard
+                      key={a.id}
+                      src={srcFor(a)}
+                      title={a.title || (isEs ? 'Sin título' : 'Untitled')}
+                      date={a.created_at || a.deliver_date || null}
+                      canDownload={false}
+                      onRename={null}
+                      onDelete={null}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </main>
 
-      {detail && <AssetDetail asset={detail} src={srcFor(detail)} dl={dlFor(detail)} t={t} locale={locale} folderName={state.folders[detail.folder_id]} feedback={myFeedback[detail.id]} onClose={() => setDetail(null)} onFeedback={sendFeedback} />}
+      {detail && <AssetDetail asset={detail} src={srcFor(detail)} t={t} locale={locale} folderName={state.folders[detail.folder_id]} feedback={myFeedback[detail.id]} onClose={() => setDetail(null)} onFeedback={sendFeedback} />}
 
       {/* Pop-up: pedir salir de la agencia (crea una solicitud, no sale al toque) */}
       {leaveModal && (
@@ -757,28 +719,21 @@ function PanelPageInner() {
   );
 }
 
-function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, onToggle, bare, locale }) {
+function PhotoCard({ a, src, folder, onOpen, feedback, bare, locale }) {
   // Fecha en que se subió (created_at; fallback a deliver_date), corta y discreta.
   const upDate = a.created_at ? new Date(a.created_at) : (a.deliver_date ? new Date(a.deliver_date + 'T00:00:00') : null);
   const upLabel = upDate ? upDate.toLocaleDateString(locale || 'es-US', { day: 'numeric', month: 'short' }) : null;
   // `bare` = modo «manejo de fotos» tipo Fotos de Mac: sin título,
   // sin folder, sin bordes redondeados. Solo la miniatura pura.
-  const handleClick = () => { selectMode ? onToggle?.(a.id) : onOpen(a); };
   return (
-    <button onClick={handleClick}
-      className={`group relative overflow-hidden text-left transition-all ${bare ? 'rounded-none border-0 bg-black' : 'rounded-xl border bg-card'} ${isSelected ? (bare ? 'ring-2 ring-brand' : 'border-brand ring-2 ring-brand/60') : (bare ? '' : 'border-line')}`}>
-      <div className={`aspect-[3/4] w-full overflow-hidden ${isSelected ? 'scale-[0.97]' : ''}`}>
+    <button onClick={() => onOpen(a)}
+      className={`group relative overflow-hidden text-left transition-all ${bare ? 'rounded-none border-0 bg-black' : 'rounded-xl border border-line bg-card'}`}>
+      <div className="aspect-[3/4] w-full overflow-hidden">
         <MediaThumb asset={a} src={src} className="h-full w-full object-cover"
           imgClassName="transition-transform duration-300 group-hover:scale-105" />
       </div>
-      {/* Checkbox estilo iPhone — visible cuando el modo selección está activo */}
-      {selectMode && (
-        <span className={`absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full border-2 backdrop-blur transition-all ${isSelected ? 'border-brand bg-brand text-on-accent' : 'border-white/70 bg-black/40 text-transparent'}`}>
-          <Check size={14} strokeWidth={3} />
-        </span>
-      )}
       {/* Modo bare (Galería): abajo-izquierda la fecha de subida, discreta. */}
-      {bare && !selectMode && upLabel && (
+      {bare && upLabel && (
         <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-medium text-white/75 backdrop-blur-sm">{upLabel}</span>
       )}
       {/* Metadatos (título, folder, feedback) — SOLO en modo no-bare */}
@@ -800,9 +755,9 @@ function PhotoCard({ a, src, folder, onOpen, feedback, selectMode, isSelected, o
   );
 }
 
-// Read-only photo detail: when delivered, how much it sold, who added it,
-// the agency's notes journal (read-only), and the creator's own feedback.
-function AssetDetail({ asset, src, dl, t, locale, folderName, feedback, onClose, onFeedback }) {
+// Read-only photo detail: when delivered, who added it, the agency's notes
+// journal (read-only), and the creator's own feedback. SIN descarga.
+function AssetDetail({ asset, src, t, locale, folderName, feedback, onClose, onFeedback }) {
   const [notes, setNotes] = useState([]);
   const [zoom, setZoom] = useState(false);
   const isEs = (locale || 'es').startsWith('es');
@@ -817,7 +772,7 @@ function AssetDetail({ asset, src, dl, t, locale, folderName, feedback, onClose,
         <div className="grid md:grid-cols-[1.1fr_1fr]">
           <div className="group relative bg-ink">
             {asset.type === 'video'
-              ? <video src={src} className="h-full max-h-[46vh] w-full object-contain md:max-h-[85vh]" controls autoPlay loop playsInline />
+              ? <video src={src} className="h-full max-h-[46vh] w-full object-contain md:max-h-[85vh]" controls controlsList="nodownload" onContextMenu={(e) => e.preventDefault()} autoPlay loop playsInline />
               // eslint-disable-next-line @next/next/no-img-element
               : <img src={src} alt={asset.title || ''} onClick={() => setZoom(true)} className="h-full max-h-[46vh] w-full cursor-zoom-in object-contain md:max-h-[85vh]" />}
             {/* Ampliar a pantalla completa — para foto y video */}
@@ -877,7 +832,6 @@ function AssetDetail({ asset, src, dl, t, locale, folderName, feedback, onClose,
                   className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium transition-colors ${feedback === 'change' ? 'border-amber-400/50 bg-amber-500/15 text-amber-300' : 'border-line text-paper-mute hover:border-brand/40 hover:text-brand'}`}>
                   <MessageSquarePlus size={14} /> {feedback === 'change' ? (t.panel.fbChangeShort || 'Cambio pedido') : t.panel.change}
                 </button>
-                <a href={dl || src} download rel="noopener" className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-brand"><Download size={14} /> {t.panel.download}</a>
               </div>
               {feedback && <p className="mt-2 text-[11px] text-paper-dim">{feedback === 'love' ? (t.panel.fbLoved || 'Le dijiste al equipo que te encantó.') : (t.panel.fbChange || 'Pediste un cambio — el equipo ya lo sabe.')}</p>}
             </div>

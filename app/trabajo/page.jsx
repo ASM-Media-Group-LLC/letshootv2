@@ -12,7 +12,7 @@ import {
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
   ImageIcon, Building2, Film, TrendingUp, TrendingDown,
-  CreditCard, ListChecks, ChevronDown, Trash2,
+  CreditCard, ListChecks, ChevronDown, Trash2, Music,
 } from 'lucide-react';
 import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
@@ -26,6 +26,7 @@ import PortalHeader from '@/components/PortalHeader';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ProposalEditor from '@/components/ProposalEditor';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
+import AudioCard from '@/components/AudioCard';
 import WelcomeTour from '@/components/WelcomeTour';
 
 const ROLE_LABEL = { admin: 'Dueño', supervisor: 'Equipo', producer: 'Equipo', chatter: 'Equipo' };
@@ -859,14 +860,26 @@ function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
   const [downloading, setDownloading] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
+  // ── Audios: sección SEPARADA de las carpetas de fotos (assets type='audio',
+  // folder_id NULL, path '<creatorId>/audios/<uuid>.<ext>' en 'deliveries') ──
+  const [audios, setAudios] = useState([]);           // filas de assets type='audio'
+  const [audioUrls, setAudioUrls] = useState({});     // storage_path -> signed url
+  const [pendingAudios, setPendingAudios] = useState(null); // [{file,title}] — revisar títulos antes de subir
+  const [audioUp, setAudioUp] = useState('');         // progreso de subida 'n/total'
+  const audioFileRef = useRef(null);
 
   const load = useCallback(async () => {
     const supabase = getSupabase();
-    const [{ data }, { data: reqs }] = await Promise.all([
+    const [{ data }, { data: reqs }, { data: auds }] = await Promise.all([
       supabase.from('folders')
         .select('id, name, kind, assets(id, storage_path, type, title, deliver_date, created_at, purpose)')
         .eq('creator_id', creator.id).order('created_at'),
       supabase.from('requests').select('id, title, status').eq('creator_id', creator.id).neq('status', 'delivered').order('created_at', { ascending: false }),
+      // Audios de la creadora — viven FUERA de las carpetas (folder_id null).
+      supabase.from('assets')
+        .select('id, storage_path, title, deliver_date, created_at, added_by')
+        .eq('creator_id', creator.id).eq('type', 'audio').is('folder_id', null)
+        .order('created_at', { ascending: false }),
     ]);
     const fols = data || [];
     // Sign private storage paths so thumbnails render (demo mixes /public paths).
@@ -877,6 +890,16 @@ function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
       (signed || []).forEach((s, i) => { if (s?.signedUrl) map[toSign[i]] = s.signedUrl; });
       setUrls(map);
     }
+    // Firma de los audios — mismo bucket privado 'deliveries', misma expiración.
+    const audioRows = auds || [];
+    const aPaths = audioRows.filter((a) => !isDirect(a.storage_path)).map((a) => a.storage_path);
+    if (aPaths.length) {
+      const { data: aSigned } = await supabase.storage.from('deliveries').createSignedUrls(aPaths, 3600);
+      const am = {};
+      (aSigned || []).forEach((s, i) => { if (s?.signedUrl) am[aPaths[i]] = s.signedUrl; });
+      setAudioUrls(am);
+    } else setAudioUrls({});
+    setAudios(audioRows);
     setFolders(fols);
     setOpenReqs(reqs || []);
   }, [creator.id]);
@@ -1060,6 +1083,73 @@ function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
       ? `${ok} de ${total} subidas · ${failed} fallaron${reqNow ? ' · el pedido sigue abierto, reintenta' : ', reinténtalas'}`
       : reqNow ? `Subido: ${mix} · pedido entregado`
       : `Subido: ${mix} — separados solos`);
+  }
+
+  // ── Audios: subir / renombrar / eliminar (solo equipo; readOnly no escribe) ──
+  // Título sugerido desde el nombre del archivo: sin extensión, guiones y
+  // guiones bajos → espacios, Capitalizado. Editable antes y después de subir.
+  function suggestAudioTitle(name) {
+    const base = (name || '').replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return (base.replace(/(^|\s)\p{L}/gu, (c) => c.toUpperCase()) || 'Audio');
+  }
+  function pickAudios(list) {
+    if (readOnly) return;
+    const AUD_EXT = /\.(mp3|m4a|aac|wav|ogg|oga|opus|webm|flac|amr|wma|aiff?)$/i;
+    const files = Array.from(list).filter((f) => f.type.startsWith('audio/') || AUD_EXT.test(f.name));
+    if (!files.length) { flash('Elige archivos de audio.'); return; }
+    setPendingAudios(files.map((f) => ({ file: f, title: suggestAudioTitle(f.name) })));
+  }
+  async function uploadAudios() {
+    if (readOnly || !pendingAudios?.length || audioUp) return;
+    const supabase = getSupabase();
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const total = pendingAudios.length;
+    let done = 0, failed = 0;
+    setAudioUp(`0/${total}`);
+    // Mismo patrón de subida que las fotos: bucket privado 'deliveries',
+    // uuid + extensión real, insert en assets con added_by = nombre del usuario.
+    for (const p of pendingAudios) {
+      try {
+        const rawExt = p.file.name.includes('.') ? p.file.name.split('.').pop().toLowerCase() : '';
+        const ext = /^[a-z0-9]{1,5}$/.test(rawExt) ? rawExt : 'mp3';
+        const path = `${creator.id}/audios/${crypto.randomUUID()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('deliveries').upload(path, p.file, { contentType: p.file.type || 'audio/mpeg' });
+        if (upErr) throw upErr;
+        const { error: dbErr } = await supabase.from('assets').insert({
+          creator_id: creator.id, type: 'audio', storage_path: path,
+          title: p.title.trim() || 'Audio', uploaded_by: me.id,
+          added_by: me.full_name || null, deliver_date: todayISO,
+        });
+        if (dbErr) throw dbErr;
+      } catch { failed++; }
+      finally { done++; setAudioUp(`${done}/${total}`); }
+    }
+    setAudioUp('');
+    setPendingAudios(null);
+    if (audioFileRef.current) audioFileRef.current.value = '';
+    await load();
+    const ok = total - failed;
+    flash(failed
+      ? `${ok} de ${total} audios subidos · ${failed} fallaron, reinténtalos`
+      : `${total} audio${total === 1 ? '' : 's'} subido${total === 1 ? '' : 's'}`);
+  }
+  async function renameAudio(a, t) {
+    if (readOnly) return;
+    const title = (t || '').trim();
+    if (!title) return;
+    const { error } = await getSupabase().from('assets').update({ title }).eq('id', a.id);
+    if (error) { flash('No se pudo renombrar: ' + error.message); return; }
+    setAudios((xs) => xs.map((x) => (x.id === a.id ? { ...x, title } : x)));
+    flash('Título actualizado');
+  }
+  async function delAudio(a) {
+    if (readOnly) return; // el confirm lo hace AudioCard
+    const supabase = getSupabase();
+    if (!isDirect(a.storage_path)) { await supabase.storage.from('deliveries').remove([a.storage_path]); }
+    const { error } = await supabase.from('assets').delete().eq('id', a.id);
+    if (error) { flash('No se pudo eliminar: ' + error.message); return; }
+    setAudios((xs) => xs.filter((x) => x.id !== a.id));
+    flash('Audio eliminado');
   }
 
   async function toggleLora() {
@@ -1449,6 +1539,74 @@ function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
           )}
         </div>
       ))}
+
+      {/* ── AUDIOS DE LA CREADORA — sección separada, DEBAJO de la biblioteca.
+          El equipo sube/renombra/elimina/descarga; en «ver como» no se
+          sube/renombra/borra (la descarga queda: quien impersona es equipo). ── */}
+      {!showProposal && !folderSel && (
+        <div className="mt-8">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+              <Music size={12} className="text-brand" /> Audios de {creator.full_name} · {audios.length}
+            </div>
+            {!readOnly && !pendingAudios && (
+              <button type="button" onClick={() => audioFileRef.current?.click()} disabled={!!audioUp}
+                className="btn3d inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold disabled:opacity-60">
+                {audioUp ? <><Loader2 size={13} className="animate-spin" /> Subiendo {audioUp}…</> : <><Music size={13} /> Subir audios</>}
+              </button>
+            )}
+          </div>
+          <input ref={audioFileRef} type="file" accept="audio/*" multiple hidden
+            onChange={(e) => { if (e.target.files?.length) pickAudios(e.target.files); }} />
+
+          {/* Mini-form: revisa/edita el título de cada audio ANTES de subir */}
+          {pendingAudios && !readOnly && (
+            <div className="mb-3 space-y-2 rounded-2xl border border-brand/30 bg-brand/[0.05] p-3.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">
+                Revisa los títulos antes de subir · {pendingAudios.length}
+              </p>
+              {pendingAudios.map((p, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Music size={14} className="shrink-0 text-brand" />
+                  <input value={p.title}
+                    onChange={(e) => setPendingAudios((xs) => xs.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))}
+                    className="min-w-0 flex-1 rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+                  <span className="hidden max-w-[140px] truncate text-[10px] text-paper-dim sm:block" title={p.file.name}>{p.file.name}</span>
+                </div>
+              ))}
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" disabled={!!audioUp}
+                  onClick={() => { setPendingAudios(null); if (audioFileRef.current) audioFileRef.current.value = ''; }}
+                  className="rounded-full border border-line px-3.5 py-1.5 text-xs text-paper-mute hover:text-paper disabled:opacity-50">
+                  Cancelar
+                </button>
+                <button type="button" onClick={uploadAudios} disabled={!!audioUp}
+                  className="btn3d inline-flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-xs font-bold disabled:opacity-60">
+                  {audioUp ? <><Loader2 size={13} className="animate-spin" /> {audioUp}</> : <><Upload size={13} /> Subir {pendingAudios.length} audio{pendingAudios.length === 1 ? '' : 's'}</>}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {audios.length === 0 && !pendingAudios ? (
+            <p className="rounded-2xl border border-dashed border-line bg-card/50 p-6 text-center text-sm text-paper-dim">
+              Todavía no hay audios de {creator.full_name}.{!readOnly && ' Súbele el primero con «Subir audios».'}
+            </p>
+          ) : (
+            <div className="grid gap-2.5 lg:grid-cols-2">
+              {audios.map((a) => (
+                <AudioCard key={a.id}
+                  src={isDirect(a.storage_path) ? a.storage_path : (audioUrls[a.storage_path] || '')}
+                  title={a.title || 'Audio'}
+                  date={a.created_at || a.deliver_date || null}
+                  canDownload={true}
+                  onRename={readOnly ? null : (t) => renameAudio(a, t)}
+                  onDelete={readOnly ? null : () => delAudio(a)} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Lightbox: ver la pieza en grande con controles reales */}
       <MediaLightbox asset={preview} src={preview ? srcOf(preview) : null} onClose={() => setPreview(null)} onRename={renameAsset} />

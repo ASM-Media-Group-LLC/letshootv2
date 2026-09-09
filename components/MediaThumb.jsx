@@ -77,7 +77,7 @@ export function MediaLightbox({ asset, src, onClose, onRename }) {
       </button>
       <div className="relative max-h-[92vh] max-w-[92vw]" onClick={(e) => e.stopPropagation()}>
         {asset.type === 'video'
-          ? <video src={src} className="max-h-[92vh] max-w-[92vw] rounded-xl bg-black object-contain shadow-2xl" controls autoPlay loop playsInline />
+          ? <video src={src} className="max-h-[92vh] max-w-[92vw] rounded-xl bg-black object-contain shadow-2xl" controls controlsList="nodownload" onContextMenu={(e) => e.preventDefault()} autoPlay loop playsInline />
           // eslint-disable-next-line @next/next/no-img-element
           : <img src={src} alt={asset.title || ''} className="max-h-[92vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />}
         {(asset.title || asset.deliver_date || canEdit) && (

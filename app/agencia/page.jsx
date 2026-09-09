@@ -12,7 +12,7 @@ import {
   LogOut, Users, ImageIcon, ShoppingBag, Building2, Target, Film,
   Sparkles, X, TrendingUp, TrendingDown, Plus, Clock, Loader2, ChevronRight,
   ChevronLeft, ChevronDown, Send, CheckCircle2, NotebookPen, Heart, KeyRound,
-  UserPlus, Trash2, Check, Mail, AlertTriangle, Search, Pencil, RotateCcw, ImageOff, ArrowLeft,
+  UserPlus, Trash2, Check, Mail, AlertTriangle, Search, Pencil, RotateCcw, ImageOff, ArrowLeft, Mic,
 } from 'lucide-react';
 import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -23,6 +23,7 @@ import Avatar from '@/components/Avatar';
 import PortalHeader from '@/components/PortalHeader';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
+import AudioCard from '@/components/AudioCard';
 import WelcomeTour from '@/components/WelcomeTour';
 
 function isDirect(path) { return !path || path.startsWith('http') || path.startsWith('/'); }
@@ -101,6 +102,7 @@ export default function AgenciaPage() {
   const [ctx, setCtx] = useState({ agencyId: null, agencyName: '', isOwner: true, caps: ['content', 'sales', 'requests', 'metrics'] });
   const can = (c) => ctx.caps.includes(c);
   const [models, setModels] = useState([]);       // [{id, name, status, assets:[...]}]
+  const [audios, setAudios] = useState([]);       // assets type='audio' de sus modelos (sección aparte)
   const [folders, setFolders] = useState({});     // folderId -> name
   const [requests, setRequests] = useState([]);
   const [urls, setUrls] = useState({});
@@ -158,12 +160,12 @@ export default function AgenciaPage() {
       const { data: mine } = await supabase.from('agency_member_creators').select('creator_id');
       ids = (mine || []).map((l) => l.creator_id);
     }
-    if (!ids.length) { setModels([]); setRequests([]); return; }
+    if (!ids.length) { setModels([]); setRequests([]); setAudios([]); return; }
 
     const [{ data: profs }, { data: assets }, { data: fols }, { data: reqs }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, stage_name, onboarding_status, payment_status, handle, avatar_url').in('id', ids),
       supabase.from('assets')
-        .select('id, creator_id, folder_id, type, storage_path, deliver_date, title, purpose, sales_count, revenue, reach, interactions')
+        .select('id, creator_id, folder_id, type, storage_path, deliver_date, created_at, title, purpose, sales_count, revenue, reach, interactions')
         .in('creator_id', ids),
       supabase.from('folders').select('id, name').in('creator_id', ids),
       // TODOS los pedidos de tus modelos — los tuyos y los que ellas hacen.
@@ -178,13 +180,18 @@ export default function AgenciaPage() {
     const folderMap = {};
     (fols || []).forEach((f) => { folderMap[f.id] = f.name; });
 
+    // Los audios son una sección aparte (no viven en las carpetas de fotos):
+    // se separan del resto para no contaminar fotos/videos ni sus conteos.
+    const audioRows = (assets || []).filter((a) => a.type === 'audio')
+      .sort((x, y) => (y.created_at || '').localeCompare(x.created_at || ''));
+
     const list = (profs || []).map((p) => ({
       id: p.id,
       name: p.stage_name || p.full_name || 'Modelo',
       handle: p.handle,
       avatar_url: p.avatar_url,
       status: p.onboarding_status,
-      assets: (assets || []).filter((a) => a.creator_id === p.id),
+      assets: (assets || []).filter((a) => a.creator_id === p.id && a.type !== 'audio'),
     }));
 
     // Sign any private-bucket paths (demo uses /public, so usually none).
@@ -208,6 +215,7 @@ export default function AgenciaPage() {
 
     setFolders(folderMap);
     setModels(list);
+    setAudios(audioRows);
     setRequests((reqs || []).map((r) => ({ ...r, _msgs: msgsByReq[r.id] || [] })));
     setInvites(invs || []);
     const { count: fbCount } = await supabase.from('feedback').select('id', { count: 'exact', head: true });
@@ -349,6 +357,7 @@ export default function AgenciaPage() {
   // Se muestran según las funciones del empleado (el dueño las tiene todas).
   const BOOK_KPIS = [
     ...(can('content') ? [{ icon: ImageIcon, label: 'Contenido entregado', value: nf(books.delivered), sub: 'piezas del equipo', view: 'contenido' }] : []),
+    ...(can('content') ? [{ icon: Mic, label: 'Audios', value: nf(audios.length), sub: 'notas de voz de tus modelos', view: 'audios' }] : []),
     ...(can('metrics') ? [{ icon: ShoppingBag, label: 'Piezas vendidas', value: nf(books.sales), sub: 'unidades', view: 'ingresos' }] : []),
     ...(can('content') ? [{ icon: Heart, label: 'Reacciones', value: nf(likeCount), sub: 'likes y comentarios', view: 'reacciones' }] : []),
     ...(ctx.isOwner ? [{ icon: UserPlus, label: 'Equipo', value: '+', sub: 'empleados y accesos', view: 'equipo' }] : []),
@@ -841,6 +850,44 @@ export default function AgenciaPage() {
                 </>
               );
             })()
+          )}
+        </div>
+        )}
+
+        {/* ── Audios: notas de voz de sus modelos, agrupadas por modelo ──────
+            La agencia solo ESCUCHA — sin descargar, sin renombrar, sin borrar. */}
+        {atab === 'audios' && (
+        <div className="mt-6">
+          {audios.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-line bg-card/50 p-8 text-center">
+              <Mic size={26} className="mx-auto mb-2 text-paper-dim" />
+              <p className="text-sm text-paper-mute">Aún no hay audios de tus modelos.</p>
+              <p className="mt-1 text-xs text-paper-dim">Cuando el equipo suba notas de voz, las podrás escuchar aquí.</p>
+            </div>
+          ) : (
+            <div className="space-y-7">
+              {models.map((m) => {
+                const rows = audios.filter((a) => a.creator_id === m.id);
+                if (!rows.length) return null;
+                return (
+                  <div key={m.id}>
+                    <div className="mb-2.5 flex items-center gap-2">
+                      <Avatar src={m.avatar_url} name={m.name} size="sm" />
+                      <span className="truncate text-sm font-semibold text-paper">{m.name}</span>
+                      <span className="shrink-0 text-xs text-paper-dim">· {rows.length} audio{rows.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="space-y-2.5 sm:max-w-xl">
+                      {rows.map((a) => (
+                        <AudioCard key={a.id} src={srcFor(a)} title={a.title || 'Audio'}
+                          date={a.created_at || a.deliver_date || null}
+                          canDownload={false} onRename={null} onDelete={null} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <p className="text-[11px] text-paper-dim">Solo escucha — los audios no se descargan desde tu panel.</p>
+            </div>
           )}
         </div>
         )}
