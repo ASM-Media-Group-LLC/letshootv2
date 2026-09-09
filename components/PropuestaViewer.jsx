@@ -4,23 +4,25 @@
 // Propuesta pública — formato TRÍPTICO por look. Ruta dinámica /p/[linkId].
 //   · Cada slide 100svh: INSPIRACIÓN + MODELO REAL = RESULTADO (hero).
 //   · Feedback por look (❤ / ✕ / 💬), watermark + anti-descarga siempre.
-//   · Carga la propuesta publicada desde localStorage 'ls_prop_<linkId>';
-//     si no existe, cae al DEMO (fotos reales de /public).
-//   · GATE DE REGISTRO (mock): si no existe 'ls_prop_reg_<linkId>' se pide
-//     nombre + correo antes de mostrar la propuesta; al enviar se guarda
-//     { name, email, at } y se abre la propuesta.
-//   · Al enviar feedback, escribe 'ls_prop_fb_<linkId>'
-//     ({ v, code, recipientName, at, items:[{id, caption, result, status, note}] }).
+//   · BACKEND real (migración 0062, sin sesión): el receptor SOLO usa 3 RPCs.
+//     - get_proposal_by_link → carga la propuesta publicada y no vencida.
+//     - register_for_proposal → gate obligatorio; devuelve el uuid del registro.
+//     - save_proposal_feedback → guarda/actualiza el feedback del receptor.
+//   · GATE DE REGISTRO obligatorio: si linkId !== 'demo' SIEMPRE se pide
+//     nombre + correo (+ teléfono opcional) antes de ver la propuesta. El uuid
+//     del registro se guarda en estado y en localStorage 'ls_prop_reg_<linkId>'
+//     ({ id, name, email }) para no re-pedirlo en el mismo dispositivo.
+//   · EXCEPCIÓN linkId === 'demo': preview interno del wizard (draft local en
+//     'ls_propuesta_draft'), SIN backend y SIN gate.
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send } from 'lucide-react';
+import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, Phone, ArrowRight, Sparkles } from 'lucide-react';
 import Logo from '@/components/Logo';
+import { getSupabase } from '@/lib/supabase/client';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
 
-const propKey = (id) => `ls_prop_${id}`;
-const fbKey = (id) => `ls_prop_fb_${id}`;
 const regKey = (id) => `ls_prop_reg_${id}`;
 const pad2 = (n) => String(n).padStart(2, '0');
 const EMAIL_RX = /^\S+@\S+\.\S+$/;
@@ -51,6 +53,29 @@ const DEMO = {
 
 const EMPTY_FB = { status: null, note: '' };
 
+// Mapea la fila cruda de get_proposal_by_link → cfg que consume el viewer.
+// (el link_id hace de "code" del watermark/nav; looks ya viene como jsonb).
+function mapRow(row) {
+  const looks = Array.isArray(row?.looks)
+    ? row.looks.filter((l) => l?.id && l?.inspiration && l?.real && l?.result)
+    : [];
+  return {
+    v: 1,
+    name: row?.name || '',
+    subtitle: row?.subtitle || '',
+    intro: row?.intro || '',
+    lang: row?.lang || 'es',
+    code: row?.link_id || '',
+    expiresAt: row?.expires_at || null,
+    model: { name: row?.model_name || 'LetShoot', agency: row?.model_agency || '' },
+    recipient: { name: row?.recipient_name || '', email: row?.recipient_email || '' },
+    template: row?.template || 'exclusive',
+    coverUrl: row?.cover_url || '',
+    closingUrl: row?.closing_url || '',
+    looks,
+  };
+}
+
 function useCountdown(iso) {
   const target = useMemo(() => {
     const n = new Date(iso).getTime();
@@ -72,68 +97,148 @@ function useCountdown(iso) {
 // ══════════════════════════════════════════════════════════════════════════
 
 export default function PropuestaViewer({ linkId }) {
+  const isDemo = linkId === 'demo';
   const [cfg, setCfg] = useState(DEMO);
   const [lang, setLang] = useState('es');
-  const [phase, setPhase] = useState('loading'); // 'loading' | 'gate' | 'view'
+  const [reg, setReg] = useState(null); // { id, name, email } del registro
+  const [phase, setPhase] = useState('loading'); // 'loading' | 'gate' | 'view' | 'unavailable'
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // /p/demo es el preview interno de los pasos 2-3 del wizard: renderiza el
-    // DRAFT de trabajo del editor y NO lleva gate de registro.
-    const isPreview = linkId === 'demo';
-    let propLang = null;
-    try {
-      const raw = window.localStorage.getItem(isPreview ? 'ls_propuesta_draft' : propKey(linkId));
-      if (raw) {
-        const d = JSON.parse(raw);
-        const complete = Array.isArray(d?.looks)
-          ? d.looks.filter((l) => l?.id && l?.inspiration && l?.real && l?.result)
-          : [];
-        if (d?.v === 1 && complete.length > 0) {
-          setCfg({ ...DEMO, ...d, model: { ...DEMO.model, ...(d.model || {}) }, looks: complete });
-          propLang = d.lang;
-        }
-      }
-    } catch {}
     const q = new URLSearchParams(window.location.search).get('lang');
-    if (q && PROP_LANGS.includes(q)) setLang(q);
-    else if (propLang && PROP_LANGS.includes(propLang)) setLang(propLang);
-    if (isPreview) { setPhase('view'); return; }
-    let registered = false;
-    try { registered = !!window.localStorage.getItem(regKey(linkId)); } catch {}
-    setPhase(registered ? 'view' : 'gate');
-  }, [linkId]);
+    const qLang = q && PROP_LANGS.includes(q) ? q : null;
+
+    // ── /p/demo: preview interno de los pasos 2-3 del wizard. Renderiza el
+    //    DRAFT de trabajo del editor desde localStorage, SIN backend ni gate. ──
+    if (isDemo) {
+      let propLang = null;
+      try {
+        const raw = window.localStorage.getItem('ls_propuesta_draft');
+        if (raw) {
+          const d = JSON.parse(raw);
+          const complete = Array.isArray(d?.looks)
+            ? d.looks.filter((l) => l?.id && l?.inspiration && l?.real && l?.result)
+            : [];
+          if (d?.v === 1 && complete.length > 0) {
+            setCfg({ ...DEMO, ...d, model: { ...DEMO.model, ...(d.model || {}) }, looks: complete });
+            propLang = d.lang;
+          }
+        }
+      } catch {}
+      if (qLang) setLang(qLang);
+      else if (propLang && PROP_LANGS.includes(propLang)) setLang(propLang);
+      setPhase('view');
+      return;
+    }
+
+    // ── Propuesta real: carga desde el backend vía RPC (sin sesión). ──
+    let cancelled = false;
+    (async () => {
+      let row = null;
+      try {
+        const { data, error } = await getSupabase().rpc('get_proposal_by_link', { p_link: linkId });
+        if (!error && Array.isArray(data) && data.length > 0) row = data[0];
+      } catch {}
+      if (cancelled) return;
+      if (!row) { setPhase('unavailable'); return; }
+
+      const mapped = mapRow(row);
+      setCfg(mapped);
+      if (qLang) setLang(qLang);
+      else if (mapped.lang && PROP_LANGS.includes(mapped.lang)) setLang(mapped.lang);
+
+      // ¿Ya registrado en este dispositivo? → directo a la propuesta, sin re-pedir.
+      let saved = null;
+      try {
+        const raw = window.localStorage.getItem(regKey(linkId));
+        if (raw) saved = JSON.parse(raw);
+      } catch {}
+      if (saved?.id) { setReg(saved); setPhase('view'); }
+      else setPhase('gate');
+    })();
+    return () => { cancelled = true; };
+  }, [linkId, isDemo]);
 
   const t = propDict(lang);
 
-  const register = (reg) => {
-    try { window.localStorage.setItem(regKey(linkId), JSON.stringify(reg)); } catch {}
+  // Tras registrarse: guardar el uuid del registro y pasar DIRECTO a la propuesta.
+  const onRegistered = (r) => {
+    try { window.localStorage.setItem(regKey(linkId), JSON.stringify(r)); } catch {}
+    setReg(r);
     setPhase('view');
   };
 
   if (phase === 'loading') return <div className="min-h-[100svh] bg-ink" />;
-  if (phase === 'gate') return <RegisterGate t={t} cfg={cfg} onDone={register} />;
-  return <ProposalBody t={t} cfg={cfg} linkId={linkId} />;
+  if (phase === 'unavailable') return <Unavailable t={t} />;
+  if (phase === 'gate') return <RegisterGate t={t} cfg={cfg} linkId={linkId} onDone={onRegistered} />;
+  return <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} />;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Pantalla amable cuando el link no existe / está archivado / vencido.
+// ══════════════════════════════════════════════════════════════════════════
+
+function Unavailable({ t }) {
+  return (
+    <div
+      className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-ink px-5 py-16 text-paper"
+      style={{ paddingTop: 'max(4rem, env(safe-area-inset-top))', paddingBottom: 'max(4rem, env(safe-area-inset-bottom))' }}
+    >
+      <div className="blob left-1/2 top-1/3 h-[420px] w-[520px] -translate-x-1/2 bg-brand/10" aria-hidden />
+      <div className="relative w-full max-w-sm text-center">
+        <div className="flex justify-center"><Logo size="lg" forceDark /></div>
+        <div className="mx-auto mt-8 grid h-12 w-12 place-items-center rounded-full border border-line bg-card">
+          <Clock size={20} className="text-paper-mute" />
+        </div>
+        <h1 className="mt-5 font-display text-2xl font-semibold tracking-[-0.02em] text-paper">{t.unavailableTitle}</h1>
+        <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-paper-mute">{t.unavailableSub}</p>
+        <Link href="/" className="mt-7 inline-block text-sm font-semibold text-brand hover:underline">LetShoot</Link>
+      </div>
+    </div>
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════
 // Gate de registro (mock) — pantalla previa a la propuesta.
 // ══════════════════════════════════════════════════════════════════════════
 
-function RegisterGate({ t, cfg, onDone }) {
+function RegisterGate({ t, cfg, linkId, onDone }) {
   const [name, setName] = useState(cfg.recipient?.name || '');
   const [email, setEmail] = useState(cfg.recipient?.email || '');
+  const [phone, setPhone] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
   useEffect(() => {
     setName((v) => v || cfg.recipient?.name || '');
     setEmail((v) => v || cfg.recipient?.email || '');
   }, [cfg]);
   const valid = name.trim().length > 0 && EMAIL_RX.test(email.trim());
-  const submit = (e) => {
+
+  const submit = async (e) => {
     e.preventDefault();
-    if (!valid) return;
-    onDone({ name: name.trim(), email: email.trim(), at: new Date().toISOString() });
+    if (!valid || busy) return;
+    setBusy(true);
+    setErr('');
+    try {
+      const { data, error } = await getSupabase().rpc('register_for_proposal', {
+        p_link: linkId,
+        p_name: name.trim(),
+        p_email: email.trim(),
+        p_phone: phone.trim() || null,
+      });
+      if (error) throw error;
+      // La RPC devuelve el uuid del registro (escalar). Aceptamos variantes.
+      const id = typeof data === 'string' ? data : (Array.isArray(data) ? data[0] : data);
+      if (!id) throw new Error(t.regError);
+      onDone({ id, name: name.trim(), email: email.trim() });
+    } catch (e2) {
+      setBusy(false);
+      setErr(e2?.message || t.regError);
+    }
   };
+
   const bgUrl = cfg.coverUrl || cfg.looks?.[0]?.result;
+  const inputCls = 'w-full rounded-xl border border-line bg-ink-2 py-3 pl-11 pr-3.5 text-base text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:py-2.5 sm:text-sm';
 
   return (
     <div className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-ink px-4 py-10 text-paper" style={{ paddingTop: 'max(2.5rem, env(safe-area-inset-top))', paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}>
@@ -144,40 +249,47 @@ function RegisterGate({ t, cfg, onDone }) {
           <div className="absolute inset-0 bg-ink/80" />
         </div>
       )}
-      <form onSubmit={submit} className="card3d relative z-10 w-full max-w-sm rounded-3xl border border-line bg-card p-7 sm:p-8">
-        <div className="flex justify-center">
-          <Logo forceDark />
+      <form onSubmit={submit} className="card3d relative z-10 w-full max-w-sm rounded-3xl border border-line bg-card p-7 shadow-glow-sm sm:p-8">
+        <div className="flex flex-col items-center text-center">
+          <Logo size="lg" forceDark />
+          <span className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand">
+            <Sparkles size={13} /> {cfg.model?.name || t.privateSel}
+          </span>
+          <h1 className="mt-3 font-display text-2xl font-semibold tracking-[-0.02em] text-paper">{t.regTitle}</h1>
+          <p className="mt-1.5 text-sm text-paper-mute">{t.regSub}</p>
         </div>
-        <h1 className="mt-6 text-center font-display text-2xl font-bold tracking-[-0.02em] text-paper">{t.regTitle}</h1>
-        <p className="mt-1.5 text-center text-sm text-paper-mute">{t.regSub}</p>
 
         <label className="mt-6 block">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">{t.recipName}</span>
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t.recipNamePh}
-            className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-base text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:py-2.5 sm:text-sm"
-          />
+          <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.recipName}</span>
+          <div className="relative">
+            <User size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t.recipNamePh} className={inputCls} />
+          </div>
         </label>
         <label className="mt-4 block">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">{t.recipEmail}</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={t.recipEmailPh}
-            className="mt-1.5 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-3 text-base text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:py-2.5 sm:text-sm"
-          />
+          <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.recipEmail}</span>
+          <div className="relative">
+            <Mail size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+            <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t.recipEmailPh} className={inputCls} />
+          </div>
         </label>
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-sm font-medium text-paper-mute">{t.regPhoneOpt}</span>
+          <div className="relative">
+            <Phone size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+            <input type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555 000 0000" className={inputCls} />
+          </div>
+        </label>
+
+        {err && <p className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{err}</p>}
 
         <button
           type="submit"
-          disabled={!valid}
-          className="mt-6 w-full rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:scale-100"
+          disabled={!valid || busy}
+          className="group mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:scale-100"
         >
-          {t.regCta}
+          {busy ? t.regSending : t.regCta}
+          {!busy && <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />}
         </button>
         <div className="mt-3 flex items-center justify-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-paper-dim">
           <Lock size={10} /> {t.regHint}
@@ -191,7 +303,7 @@ function RegisterGate({ t, cfg, onDone }) {
 // Viewer tríptico (el componente original de /p/demo, ya sin carga propia).
 // ══════════════════════════════════════════════════════════════════════════
 
-function ProposalBody({ t, cfg, linkId }) {
+function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
   const looks = cfg.looks;
   const total = looks.length;
 
@@ -201,6 +313,8 @@ function ProposalBody({ t, cfg, linkId }) {
   const [currentIdx, setCurrentIdx] = useState(-1);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState('');
   const slidesRef = useRef([]);
   const coverRef = useRef(null);
   const closingRef = useRef(null);
@@ -262,21 +376,31 @@ function ProposalBody({ t, cfg, linkId }) {
     return () => io.disconnect();
   }, []);
 
-  const sendFeedback = () => {
+  const sendFeedback = async () => {
+    if (sending) return;
+    const items = looks.map((l) => {
+      const st = fb(l.id);
+      return { id: l.id, caption: l.caption, result: l.result, status: st.status ?? null, note: st.note || '' };
+    });
+    // /p/demo es preview del wizard: no hay backend ni registro → confirmación local.
+    if (isDemo) { setSent(true); setSummaryOpen(false); return; }
+    setSending(true);
+    setSendErr('');
     try {
-      window.localStorage.setItem(fbKey(linkId), JSON.stringify({
-        v: 1,
-        code: cfg.code || linkId,
-        recipientName: cfg.recipient?.name || '',
-        at: new Date().toISOString(),
-        items: looks.map((l) => {
-          const st = fb(l.id);
-          return { id: l.id, caption: l.caption, result: l.result, status: st.status ?? null, note: st.note || '' };
-        }),
-      }));
+      const { error } = await getSupabase().rpc('save_proposal_feedback', {
+        p_link: linkId,
+        p_reg: reg?.id || null,
+        p_items: items,
+        p_name: reg?.name || cfg.recipient?.name || '',
+      });
+      if (error) throw error;
       setSent(true);
-    } catch {}
-    setSummaryOpen(false);
+      setSummaryOpen(false);
+    } catch (e) {
+      setSendErr(e?.message || t.regError);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -555,6 +679,8 @@ function ProposalBody({ t, cfg, linkId }) {
           onComment={(id) => setOpenComment(id)}
           onClose={() => setSummaryOpen(false)}
           onSend={sendFeedback}
+          sending={sending}
+          error={sendErr}
         />
       )}
 
@@ -658,7 +784,7 @@ function MiniToggle({ active, onClick, tone, label, children }) {
   );
 }
 
-function SummaryModal({ t, looks, fb, setLook, onComment, onClose, onSend }) {
+function SummaryModal({ t, looks, fb, setLook, onComment, onClose, onSend, sending = false, error = '' }) {
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={onClose}>
       <div
@@ -716,16 +842,20 @@ function SummaryModal({ t, looks, fb, setLook, onComment, onClose, onSend }) {
             );
           })}
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:px-6 sm:pb-4">
-          <button onClick={onClose} className="rounded-full border border-line px-4 py-3 text-sm text-paper-mute hover:border-hair hover:text-paper sm:py-2">
-            {t.keepLooking}
-          </button>
-          <button
-            onClick={onSend}
-            className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] sm:py-2.5"
-          >
-            <Send size={14} /> {t.sendFeedback}
-          </button>
+        <div className="border-t border-line px-5 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] sm:px-6 sm:pb-4">
+          {error && <p className="mb-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={onClose} disabled={sending} className="rounded-full border border-line px-4 py-3 text-sm text-paper-mute hover:border-hair hover:text-paper disabled:opacity-50 sm:py-2">
+              {t.keepLooking}
+            </button>
+            <button
+              onClick={onSend}
+              disabled={sending}
+              className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:opacity-60 sm:py-2.5"
+            >
+              <Send size={14} /> {sending ? t.regSending : t.sendFeedback}
+            </button>
+          </div>
         </div>
       </div>
     </div>

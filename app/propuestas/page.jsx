@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useProp, PROP_LANGS, PROP_LANG_LABELS, PROP_LANG_FLAG } from '@/lib/propuesta-i18n';
 import { getUserProfile } from '@/lib/supabase/session';
+import { getSupabase } from '@/lib/supabase/client';
 
 const DRAFT_KEY = 'ls_propuesta_draft';
 const LAST_KEY = 'ls_prop_last';
@@ -95,6 +96,9 @@ export default function PropuestaAdmin() {
   // Nombre del empleado logueado — se sella en cada propuesta como createdBy
   // (así el dueño ve en /admin › Propuestas quién armó cada una).
   const [authorName, setAuthorName] = useState('');
+  // id del perfil logueado — se sella como created_by en la propuesta (uuid
+  // de profiles) para que RLS is_staff lo acepte y el dueño sepa quién la armó.
+  const [authorId, setAuthorId] = useState('');
   useEffect(() => {
     (async () => {
       try {
@@ -103,7 +107,10 @@ export default function PropuestaAdmin() {
         // Crear propuestas es función base de todo el equipo: admin o empleado.
         const ok = !!p && (p.role === 'admin' || p.role === 'supervisor');
         setAccess(ok ? 'ok' : 'denied');
-        if (p) setAuthorName(p.full_name || p.stage_name || p.email || '');
+        if (p) {
+          setAuthorName(p.full_name || p.stage_name || p.email || '');
+          setAuthorId(p.id || '');
+        }
       } catch { setAccess('denied'); }
     })();
   }, []);
@@ -123,6 +130,11 @@ export default function PropuestaAdmin() {
   // CODE de la última publicación (vacío hasta publicar; se rehidrata de
   // 'ls_prop_last' para que el header y las respuestas apunten al último link).
   const [code, setCode] = useState('');
+  // id (uuid) de la propuesta recién insertada en Supabase — lo usa el paso 4
+  // para leer su feedback. pubError: mensaje visible si el insert falla.
+  const [proposalId, setProposalId] = useState(null);
+  const [pubError, setPubError] = useState('');
+  const [publishing, setPublishing] = useState(false);
   const [looks, setLooks] = useState(DEMO_LOOKS.map((l) => ({ ...l })));
   const [selectedId, setSelectedId] = useState(DEMO_LOOKS[0]?.id ?? null);
 
@@ -343,37 +355,90 @@ export default function PropuestaAdmin() {
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(buildProposal(code, { includeIncomplete: true }))); } catch {}
   };
 
-  // Publicar = CODE nuevo cada vez (link único por publicación): escribe la
-  // propuesta en 'ls_prop_<CODE>', marca 'ls_prop_last' y refresca el draft.
-  const publish = () => {
-    if (completeCount === 0) return;
+  // Publicar = CODE nuevo cada vez (link único por publicación). Inserta la
+  // propuesta en Supabase (public.photo_proposals) con el cliente autenticado;
+  // RLS is_staff() permite la escritura. Guarda el id devuelto (para leer su
+  // feedback en el paso 4) y marca 'ls_prop_last' + draft (header/preview).
+  // Devuelve true si el insert funcionó; false si falló (con pubError visible).
+  const publish = async () => {
+    if (completeCount === 0) return false;
+    setPubError('');
+    setPublishing(true);
     const newCode = genCode();
+    const payload = {
+      link_id: newCode,
+      created_by: authorId || null,
+      created_by_name: authorName || '',
+      model_name: 'Julia Parker',
+      model_agency: 'Kash Agency',
+      name,
+      subtitle,
+      intro,
+      lang,
+      template,
+      cover_url: coverUrl || null,
+      closing_url: closingUrl || null,
+      looks: looks
+        .filter(isComplete)
+        .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
+      recipient_name: recipient.name.trim(),
+      recipient_email: recipient.email.trim(),
+      recipient_kind: recipient.kind,
+      status: 'published',
+      expires_at: new Date(Date.now() + days * 86400000).toISOString(),
+    };
     try {
-      localStorage.setItem(`ls_prop_${newCode}`, JSON.stringify(buildProposal(newCode)));
-      localStorage.setItem(LAST_KEY, newCode);
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(buildProposal(newCode, { includeIncomplete: true })));
-    } catch {}
-    setCode(newCode);
+      const { data, error } = await getSupabase()
+        .from('photo_proposals')
+        .insert(payload)
+        .select('id')
+        .single();
+      if (error) throw error;
+      setProposalId(data?.id ?? null);
+      setCode(newCode);
+      // Draft/last en localStorage solo para el header y el preview /p/demo;
+      // la vista pública /p/<CODE> ahora se sirve por RPC desde Supabase.
+      try {
+        localStorage.setItem(LAST_KEY, newCode);
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(buildProposal(newCode, { includeIncomplete: true })));
+      } catch {}
+      setPublishing(false);
+      return true;
+    } catch (e) {
+      setPubError(e?.message || 'No se pudo publicar la propuesta. Revisá la conexión e intentá de nuevo.');
+      setPublishing(false);
+      return false;
+    }
   };
 
-  // Respuestas de la persona: en el paso 4 leemos el feedback del CODE actual
-  // ('ls_prop_fb_<CODE>'; si aún no hay code en memoria, el de 'ls_prop_last')
-  // y refrescamos cada 5s (si responde en otra pestaña, se ve sin recargar).
+  // Respuestas de la persona: en el paso 4 leemos el feedback desde Supabase
+  // (public.photo_proposal_feedback) por el id de la propuesta recién insertada
+  // y refrescamos cada 5s (si responde desde su teléfono, se ve sin recargar).
   useEffect(() => {
-    if (step !== 4) return;
-    const load = () => {
+    if (step !== 4 || !proposalId) { setFeedback(null); return; }
+    let alive = true;
+    const load = async () => {
       try {
-        const c = code || localStorage.getItem(LAST_KEY) || '';
-        const raw = c ? localStorage.getItem(`ls_prop_fb_${c}`) : null;
-        if (!raw) { setFeedback(null); return; }
-        const f = JSON.parse(raw);
-        setFeedback(f?.v === 1 && Array.isArray(f.items) ? f : null);
-      } catch { setFeedback(null); }
+        const { data, error } = await getSupabase()
+          .from('photo_proposal_feedback')
+          .select('items, recipient_name, updated_at')
+          .eq('proposal_id', proposalId)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        if (error) throw error;
+        if (!alive) return;
+        const row = Array.isArray(data) ? data[0] : data;
+        if (row && Array.isArray(row.items)) {
+          setFeedback({ items: row.items, recipientName: row.recipient_name, at: row.updated_at });
+        } else {
+          setFeedback(null);
+        }
+      } catch { if (alive) setFeedback(null); }
     };
     load();
     const id = setInterval(load, 5000);
-    return () => clearInterval(id);
-  }, [step, code]);
+    return () => { alive = false; clearInterval(id); };
+  }, [step, proposalId]);
 
   const fbItems = feedback?.items ?? [];
   const fbLiked = fbItems.filter((i) => i.status === 'liked').length;
@@ -386,9 +451,12 @@ export default function PropuestaAdmin() {
       ? completeCount > 0
       : step < 4;
 
-  const goNext = () => {
-    if (step >= 4 || !canNext) return;
-    if (step === 3) publish();
+  const goNext = async () => {
+    if (step >= 4 || !canNext || publishing) return;
+    if (step === 3) {
+      const ok = await publish();
+      if (!ok) return; // el insert falló → quedate en el paso 3 con el error visible
+    }
     setStep(step + 1);
   };
 
@@ -918,10 +986,10 @@ export default function PropuestaAdmin() {
             <button
               type="button"
               onClick={goNext}
-              disabled={!canNext}
+              disabled={!canNext || publishing}
               className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold disabled:pointer-events-none disabled:opacity-40"
             >
-              {step === 3 ? t.publishNow : t.next} <ArrowRight size={15} />
+              {step === 3 ? (publishing ? t.publishing || 'Publicando…' : t.publishNow) : t.next} <ArrowRight size={15} />
             </button>
           ) : (
             <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">
@@ -930,6 +998,22 @@ export default function PropuestaAdmin() {
           )}
         </div>
       </div>
+
+      {pubError && step === 3 && (
+        <div className="fixed inset-x-0 bottom-20 z-40 flex justify-center px-4">
+          <div className="flex max-w-md items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-950/90 px-4 py-2.5 text-sm text-rose-100 shadow-lg backdrop-blur">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400" />
+            <span className="min-w-0">{pubError}</span>
+            <button
+              type="button"
+              onClick={() => setPubError('')}
+              className="ml-1 grid h-6 w-6 shrink-0 place-items-center rounded-full text-rose-200/70 transition-colors hover:bg-white/10 hover:text-rose-100"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {picker && (
         <div

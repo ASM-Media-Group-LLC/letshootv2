@@ -3,34 +3,32 @@
 // ─────────────────────────────────────────────────────────────────────────
 // AdminPropuestas — vista de SUPERVISIÓN del dueño (/admin › Propuestas).
 //
-// El dueño ve TODAS las propuestas de fotos que arma el equipo: a quién van,
-// quién las armó, en qué estado están, cuándo vencen y qué respondió el
-// receptor (le gustó / rechazó / comentó / abrió).
+// El dueño ve TODAS las propuestas de fotos que arma el equipo (de TODOS los
+// empleados, ya no solo las de este navegador): a quién van, quién las armó,
+// en qué estado están, cuándo vencen y qué respondió el receptor (le gustó /
+// rechazó / comentó / abrió/registró).
 //
-// HONESTO: hoy el backend real no existe. Las propuestas viven en el
-// localStorage del navegador (las publica el wizard en /propuestas).
-// Por eso, además de las reales que encuentre, SEMBRAMOS unas de ejemplo
-// (solo en memoria — NO se escriben a localStorage) para que el dueño vea la
-// vista completa aunque todavía no haya publicado nada. Cuando llegue el
-// backend, se cambia el origen de datos por una query y listo.
+// FUENTE DE DATOS: Supabase (backend real, migración 0062). El staff tiene
+// sesión y su RLS (is_staff()) le da acceso completo con consultas normales
+// a las tablas — NO hay service role:
+//   · photo_proposals               → la propuesta (link_id, created_by_name,
+//                                       model_name/agency, recipient_*, status,
+//                                       expires_at, looks, …)
+//   · photo_proposal_feedback       → feedback del receptor foto por foto
+//   · photo_proposal_registrations  → quién se registró (nombre/email/teléfono)
 //
-// Claves en localStorage:
-//   'ls_prop_<CODE>'      → la propuesta (shape v1)
-//   'ls_prop_fb_<CODE>'   → feedback del receptor {items:[{id,caption,result,status,note}]}
-//   'ls_prop_reg_<CODE>'  → registro del receptor {name,email,at} (abrió/creó cuenta)
-//   'ls_prop_last'        → último code publicado (NO es una propuesta)
-//   'ls_prop_arch'        → array de codes archivados (persistente para reales)
+// Si todavía no hay NINGUNA propuesta real, sembramos 1-2 ejemplos EN MEMORIA
+// para que la vista no se vea vacía en la demo. En cuanto hay reales, se
+// muestran SOLO las reales.
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox } from 'lucide-react';
+import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
-
-const ARCH_KEY = 'ls_prop_arch';
-const LAST_KEY = 'ls_prop_last';
-const DRAFT_KEY = 'ls_propuesta_draft';
+import { getSupabase } from '@/lib/supabase/client';
 
 // Estado derivado de una propuesta: borrador (solo demo), vencida (expiró) o publicada.
+// El archivado NO es un estado acá — es un flag aparte (status === 'archived').
 function stateOf(p) {
   if (p._draft) return 'borrador';
   if (p.expiresAt && new Date(p.expiresAt).getTime() < Date.now()) return 'vencida';
@@ -59,16 +57,16 @@ function feedbackSummary(fb) {
   };
 }
 
-// ── Demo seed (SOLO en memoria — nunca se escribe a localStorage) ──────────
+// ── Demo seed (SOLO en memoria — solo si no hay ninguna propuesta real) ─────
 // Propuestas variadas: distintos empleados, modelos, estados y respuestas.
 function demoSeed() {
   const iso = (days) => new Date(Date.now() + days * 86400000).toISOString();
   const img = (id) => `https://images.unsplash.com/${id}?w=400&q=70&auto=format&fit=crop`;
   return [
     {
-      _demo: true, v: 1, code: 'JP-7K2M9A', lang: 'es',
+      _demo: true, id: 'JP-7K2M9A', code: 'JP-7K2M9A', lang: 'es', _status: 'published',
       name: 'Sesión exclusiva — Valentina', subtitle: 'Un look que no se repite',
-      createdBy: 'Isabel Tuiran', days: 10, expiresAt: iso(6),
+      createdBy: 'Isabel Tuiran', expiresAt: iso(6),
       model: { name: 'Julia Parker', agency: 'Kash Agency' },
       recipient: { name: 'Valentina Cruz', email: 'valentina@example.com', kind: 'prospect' },
       _feedback: { items: [
@@ -76,12 +74,12 @@ function demoSeed() {
         { id: 'a2', caption: 'Retrato natural', result: img('photo-1494790108377-be9c29b29330'), status: 'liked', note: '' },
         { id: 'a3', caption: 'Full body noche', result: img('photo-1517841905240-472988babdf9'), status: 'rejected', note: 'Esta pose no me convence.' },
       ] },
-      _reg: { name: 'Valentina Cruz', email: 'valentina@example.com', at: iso(-1) },
+      _reg: { name: 'Valentina Cruz', email: 'valentina@example.com', phone: '+57 300 123 4567', at: iso(-1) },
     },
     {
-      _demo: true, v: 1, code: 'JP-3X8Q1B', lang: 'en',
+      _demo: true, id: 'JP-3X8Q1B', code: 'JP-3X8Q1B', lang: 'en', _status: 'published',
       name: 'Your first drop — Monica', subtitle: 'Fire your photographer',
-      createdBy: 'David Aunta', days: 7, expiresAt: iso(2),
+      createdBy: 'David Aunta', expiresAt: iso(2),
       model: { name: 'Monica Rivas', agency: 'Kash Agency' },
       recipient: { name: 'Chris Bennett', email: 'chris@example.com', kind: 'client' },
       _feedback: { items: [
@@ -91,9 +89,9 @@ function demoSeed() {
       _reg: null,
     },
     {
-      _demo: true, v: 1, code: 'JP-9F4L2C', lang: 'es',
+      _demo: true, id: 'JP-9F4L2C', code: 'JP-9F4L2C', lang: 'es', _status: 'published',
       name: 'Propuesta — Monica Rivas', subtitle: 'Contenido premium listo',
-      createdBy: 'Lizeth Jerez', days: 14, expiresAt: iso(-3), // vencida
+      createdBy: 'Lizeth Jerez', expiresAt: iso(-3), // vencida
       model: { name: 'Monica Rivas', agency: 'Kash Agency' },
       recipient: { name: 'Laura Méndez', email: 'laura.mendez@example.com', kind: 'prospect' },
       _feedback: { items: [
@@ -101,20 +99,20 @@ function demoSeed() {
         { id: 'c2', caption: 'Vestido rojo', result: img('photo-1515886657613-9f3515b0c78f'), status: 'rejected', note: 'Cambiar color.' },
         { id: 'c3', caption: 'Primer plano', result: img('photo-1544005313-94ddf0286df2'), status: 'liked', note: 'Sí!' },
       ] },
-      _reg: { name: 'Laura Méndez', email: 'laura.mendez@example.com', at: iso(-4) },
+      _reg: { name: 'Laura Méndez', email: 'laura.mendez@example.com', phone: '', at: iso(-4) },
     },
     {
-      _demo: true, _draft: true, v: 1, code: 'JP-5B6N3D', lang: 'es',
+      _demo: true, _draft: true, id: 'JP-5B6N3D', code: 'JP-5B6N3D', lang: 'es', _status: 'published',
       name: 'Borrador — Julia Parker', subtitle: 'Sin publicar todavía',
-      createdBy: 'Isabel Tuiran', days: 10, expiresAt: null,
+      createdBy: 'Isabel Tuiran', expiresAt: null,
       model: { name: 'Julia Parker', agency: 'Kash Agency' },
       recipient: { name: 'Sofía Ramírez', email: '', kind: 'prospect' },
       _feedback: null, _reg: null,
     },
     {
-      _demo: true, v: 1, code: 'JP-1P0R7E', lang: 'pt',
+      _demo: true, id: 'JP-1P0R7E', code: 'JP-1P0R7E', lang: 'pt', _status: 'published',
       name: 'Proposta exclusiva — Julia', subtitle: 'Um ensaio só seu',
-      createdBy: 'David Aunta', days: 10, expiresAt: iso(9),
+      createdBy: 'David Aunta', expiresAt: iso(9),
       model: { name: 'Julia Parker', agency: 'Kash Agency' },
       recipient: { name: 'Rafael Souza', email: 'rafael@example.com', kind: 'model' },
       _feedback: null, _reg: null,
@@ -122,13 +120,35 @@ function demoSeed() {
   ];
 }
 
+// Normaliza una fila de photo_proposals (+ feedback/registro resueltos por
+// proposal_id) al shape que usa la vista.
+function mapProposal(row, fb, reg) {
+  return {
+    _demo: false,
+    id: row.id,
+    code: row.link_id,
+    lang: row.lang || 'es',
+    template: row.template || null,
+    name: row.name || '',
+    subtitle: row.subtitle || '',
+    intro: row.intro || '',
+    createdBy: row.created_by_name || '',
+    expiresAt: row.expires_at || null,
+    _status: row.status || 'published',
+    model: { name: row.model_name || '', agency: row.model_agency || '' },
+    recipient: { name: row.recipient_name || '', email: row.recipient_email || '', kind: row.recipient_kind || '' },
+    looks: Array.isArray(row.looks) ? row.looks : [],
+    _feedback: fb ? { items: Array.isArray(fb.items) ? fb.items : [], recipientName: fb.recipient_name || '', updatedAt: fb.updated_at || null } : null,
+    _reg: reg ? { name: reg.name || '', email: reg.email || '', phone: reg.phone || '', at: reg.created_at || null } : null,
+  };
+}
+
 export default function AdminPropuestas() {
-  const [real, setReal] = useState([]);        // propuestas reales de localStorage
-  const [fbMap, setFbMap] = useState({});       // code → feedback (reales)
-  const [regMap, setRegMap] = useState({});     // code → registro (reales)
-  const [arch, setArch] = useState([]);         // codes archivados (persistente + demo en memoria)
+  const [rows, setRows] = useState([]);         // lista normalizada (reales o, si no hay, demos)
+  const [loading, setLoading] = useState(true);
+  const [usingDemo, setUsingDemo] = useState(false);
   const [origin, setOrigin] = useState('');
-  const [sel, setSel] = useState(null);         // code de la propuesta abierta en el drawer
+  const [sel, setSel] = useState(null);         // id de la propuesta abierta en el drawer
   const [copied, setCopied] = useState('');
 
   // Filtros
@@ -137,56 +157,51 @@ export default function AdminPropuestas() {
   const [fEstado, setFEstado] = useState('all');
   const [fModelo, setFModelo] = useState('all');
 
-  // Lectura de localStorage — solo en el cliente, con try/catch.
+  // Carga desde Supabase — el staff tiene sesión y su RLS (is_staff()) permite
+  // leer TODAS las propuestas del equipo con consultas normales a las tablas.
   useEffect(() => {
     try { setOrigin(window.location.origin); } catch {}
-    const props = [];
-    const fb = {};
-    const reg = {};
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key || !key.startsWith('ls_prop_')) continue;
-        if (key === LAST_KEY || key === DRAFT_KEY) continue;
-        if (key.startsWith('ls_prop_fb_')) {
-          const code = key.slice('ls_prop_fb_'.length);
-          try { fb[code] = JSON.parse(localStorage.getItem(key)); } catch {}
-          continue;
+    let cancelled = false;
+    (async () => {
+      const sb = getSupabase();
+      try {
+        const [propsRes, fbRes, regRes] = await Promise.all([
+          sb.from('photo_proposals').select('*').order('created_at', { ascending: false }),
+          sb.from('photo_proposal_feedback').select('proposal_id, items, recipient_name, updated_at').order('updated_at', { ascending: false }),
+          sb.from('photo_proposal_registrations').select('proposal_id, name, email, phone, created_at').order('created_at', { ascending: false }),
+        ]);
+        if (cancelled) return;
+        const props = Array.isArray(propsRes.data) ? propsRes.data : [];
+
+        // feedback por proposal_id (el upsert garantiza 1 por propuesta).
+        const fbMap = {};
+        (Array.isArray(fbRes.data) ? fbRes.data : []).forEach((f) => { if (f?.proposal_id && !fbMap[f.proposal_id]) fbMap[f.proposal_id] = f; });
+
+        // registro por proposal_id — nos quedamos con el más reciente (ya viene
+        // ordenado desc, así que el primero gana).
+        const regMap = {};
+        (Array.isArray(regRes.data) ? regRes.data : []).forEach((r) => {
+          if (r?.proposal_id && !regMap[r.proposal_id]) regMap[r.proposal_id] = r;
+        });
+
+        if (props.length > 0) {
+          setRows(props.map((p) => mapProposal(p, fbMap[p.id], regMap[p.id])));
+          setUsingDemo(false);
+        } else {
+          // Sin reales: sembramos ejemplos en memoria para no verse vacío.
+          setRows(demoSeed());
+          setUsingDemo(true);
         }
-        if (key.startsWith('ls_prop_reg_')) {
-          const code = key.slice('ls_prop_reg_'.length);
-          try { reg[code] = JSON.parse(localStorage.getItem(key)); } catch {}
-          continue;
-        }
-        // Es una propuesta.
-        try {
-          const p = JSON.parse(localStorage.getItem(key));
-          if (p && typeof p === 'object' && p.code) props.push(p);
-        } catch {}
+      } catch {
+        if (!cancelled) { setRows(demoSeed()); setUsingDemo(true); }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch {}
-    setReal(props);
-    setFbMap(fb);
-    setRegMap(reg);
-    try {
-      const a = JSON.parse(localStorage.getItem(ARCH_KEY));
-      if (Array.isArray(a)) setArch(a.filter((x) => typeof x === 'string'));
-    } catch {}
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  // Lista combinada: reales (con su feedback/reg de localStorage) + demo seed
-  // (con su feedback/reg embebido). Cada entrada trae feedback/reg resueltos.
-  const all = useMemo(() => {
-    const realResolved = real.map((p) => ({
-      ...p,
-      _feedback: fbMap[p.code] || null,
-      _reg: regMap[p.code] || null,
-    }));
-    // No dupliques un demo si por casualidad ya existe una real con ese code.
-    const realCodes = new Set(realResolved.map((p) => p.code));
-    const demos = demoSeed().filter((d) => !realCodes.has(d.code));
-    return [...realResolved, ...demos];
-  }, [real, fbMap, regMap]);
+  const all = rows;
 
   const empleados = useMemo(() => {
     const s = new Set();
@@ -199,12 +214,12 @@ export default function AdminPropuestas() {
     return [...s].sort();
   }, [all]);
 
-  const isArch = (code) => arch.includes(code);
+  const isArch = (p) => p?._status === 'archived';
 
   const shown = useMemo(() => {
     const query = q.trim().toLowerCase();
     return all.filter((p) => {
-      const archived = isArch(p.code);
+      const archived = isArch(p);
       // "Archivadas" es un estado más: solo se ven cuando el filtro lo pide.
       if (fEstado === 'archivadas') { if (!archived) return false; }
       else if (archived) return false;
@@ -217,7 +232,7 @@ export default function AdminPropuestas() {
       }
       return true;
     }).sort((a, b) => new Date(b.expiresAt || 0) - new Date(a.expiresAt || 0));
-  }, [all, q, fEmpleado, fEstado, fModelo, arch]);
+  }, [all, q, fEmpleado, fEstado, fModelo]);
 
   const linkFor = (p) => `${origin}/p/${p.code}?lang=${p.lang || 'es'}`;
 
@@ -230,22 +245,21 @@ export default function AdminPropuestas() {
     const body = `${greet ? `Hola ${greet}!` : 'Hola!'}\n\nTe comparto la propuesta: ${p.name}.\nMírala acá: ${url}`;
     return `mailto:${(p.recipient?.email || '').trim()}?subject=${encodeURIComponent(p.name || 'Propuesta')}&body=${encodeURIComponent(body)}`;
   };
-  const toggleArchive = (p) => {
-    setArch((prev) => {
-      const next = prev.includes(p.code) ? prev.filter((c) => c !== p.code) : [...prev, p.code];
-      // Persistimos SOLO para reales (las demo viven en memoria; su code no
-      // ensucia el store — pero guardar el array completo es inofensivo y
-      // mantiene el archivado de reales entre sesiones).
-      try { localStorage.setItem(ARCH_KEY, JSON.stringify(next)); } catch {}
-      return next;
-    });
+  // Archivar/desarchivar: para reales escribe status en Supabase (RLS staff);
+  // las demo solo cambian en memoria. En ambos casos refrescamos la fila local.
+  const toggleArchive = async (p) => {
+    const next = isArch(p) ? 'published' : 'archived';
+    if (!p._demo) {
+      try { await getSupabase().from('photo_proposals').update({ status: next }).eq('id', p.id); } catch {}
+    }
+    setRows((prev) => prev.map((r) => (r.id === p.id ? { ...r, _status: next } : r)));
   };
 
-  const selProp = shown.find((p) => p.code === sel) || all.find((p) => p.code === sel) || null;
+  const selProp = shown.find((p) => p.id === sel) || all.find((p) => p.id === sel) || null;
 
   const activeCount = fEstado === 'archivadas'
-    ? all.filter((p) => isArch(p.code)).length
-    : all.filter((p) => !isArch(p.code)).length;
+    ? all.filter((p) => isArch(p)).length
+    : all.filter((p) => !isArch(p)).length;
 
   return (
     <div>
@@ -255,11 +269,13 @@ export default function AdminPropuestas() {
         </p>
       </div>
 
-      {/* Aviso honesto: hoy es local al navegador. */}
-      <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-line bg-card/50 px-4 py-3 text-xs text-paper-dim">
-        <Inbox size={14} className="mt-0.5 shrink-0 text-paper-mute" />
-        <span>Por ahora las propuestas viven en este navegador (las publica el equipo desde <span className="text-paper-mute">Propuestas › crear</span>). Se muestran ejemplos para ilustrar la vista; el registro central llega con el backend.</span>
-      </div>
+      {/* Aviso: solo cuando no hay propuestas reales y se muestran ejemplos. */}
+      {usingDemo && (
+        <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-line bg-card/50 px-4 py-3 text-xs text-paper-dim">
+          <Inbox size={14} className="mt-0.5 shrink-0 text-paper-mute" />
+          <span>Todavía no hay propuestas publicadas. Se muestran ejemplos para ilustrar la vista; cuando el equipo publique desde <span className="text-paper-mute">Propuestas › crear</span>, aparecerán acá automáticamente.</span>
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -290,7 +306,7 @@ export default function AdminPropuestas() {
           <span>Destinatario</span><span>Creó</span><span>Estado</span><span>Modelo</span><span>Respuestas</span>
         </div>
         {shown.length === 0 && (
-          <p className="px-5 py-8 text-center text-sm text-paper-dim">No hay propuestas que coincidan con el filtro.</p>
+          <p className="px-5 py-8 text-center text-sm text-paper-dim">{loading ? 'Cargando propuestas…' : 'No hay propuestas que coincidan con el filtro.'}</p>
         )}
         {shown.map((p) => {
           const st = STATE_META[stateOf(p)];
@@ -298,8 +314,8 @@ export default function AdminPropuestas() {
           const fs = feedbackSummary(p._feedback);
           const opened = !!p._reg;
           return (
-            <div key={p.code} role="button" tabIndex={0} onClick={() => setSel(p.code)}
-              onKeyDown={(e) => { if (e.key === 'Enter') setSel(p.code); }}
+            <div key={p.id} role="button" tabIndex={0} onClick={() => setSel(p.id)}
+              onKeyDown={(e) => { if (e.key === 'Enter') setSel(p.id); }}
               className="grid min-w-[820px] cursor-pointer grid-cols-[1.5fr_1fr_1fr_0.9fr_1.1fr] items-center gap-3 border-b border-line px-5 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
               <span className="min-w-0">
                 <span className="block truncate font-medium text-paper">{p.recipient?.name || 'Sin destinatario'}</span>
@@ -337,7 +353,7 @@ export default function AdminPropuestas() {
       {selProp && (
         <PropDetail
           p={selProp}
-          archived={isArch(selProp.code)}
+          archived={isArch(selProp)}
           link={linkFor(selProp)}
           copied={copied === selProp.code}
           onCopy={() => copyLink(selProp)}
@@ -387,6 +403,15 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
             <Row label="Abrió / registró" value={p._reg
               ? <StatusDot tone="ok">{p._reg.name || p._reg.email || 'sí'}{p._reg.at ? ` · ${new Date(p._reg.at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}` : ''}</StatusDot>
               : <span className="text-paper-dim">todavía no</span>} />
+            {p._reg && (
+              <Row label="Registro" value={
+                <span className="text-paper-mute">
+                  {p._reg.name || '—'}
+                  {p._reg.email ? <span className="text-paper-dim"> · {p._reg.email}</span> : null}
+                  {p._reg.phone ? <span className="inline-flex items-center gap-1 text-paper-dim"> · <Phone size={11} className="inline" />{p._reg.phone}</span> : null}
+                </span>
+              } />
+            )}
           </div>
 
           {/* Acciones */}
