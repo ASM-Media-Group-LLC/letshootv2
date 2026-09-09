@@ -384,29 +384,25 @@ function ProposalBody({ t, cfg, linkId }) {
             data-idx={i}
             className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-4 py-6 sm:px-10"
           >
-            {/* Desktop: UN SOLO BLOQUE — la columna de fuentes y el resultado
-                miden EXACTAMENTE lo mismo de alto (rectángulo parejo, alineado
-                arriba y abajo). El «+» flota centrado entre las dos fuentes, el
-                «=» va centrado, y el texto vive SOBRE la foto del resultado para
-                no agregar huecos. */}
-            <div className="mx-auto hidden h-[74svh] w-fit items-stretch justify-center gap-3 sm:flex [perspective:1200px]">
-              {/* Columna de fuentes — misma altura total que el resultado */}
-              <div className="relative flex h-full flex-col gap-3">
-                <div className="relative h-[calc((74svh-0.75rem)/2)] aspect-[4/5] shrink-0">
-                  <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="h-full w-full rounded-2xl ring-white/10" />
+            {/* Desktop: UN SOLO CUADRO dividido — las tres fotos pegadas (sin
+                «+»/«=»), esquinas redondeadas solo por fuera (overflow-hidden en
+                el marco), y líneas finas de 2px separando las celdas (vienen del
+                gap sobre un fondo claro). Izquierda 2 apiladas, derecha el
+                resultado grande. El texto va sobre la foto del resultado. */}
+            <div className="mx-auto hidden h-[74svh] aspect-[13/10] overflow-hidden rounded-3xl bg-white/10 shadow-glow ring-1 ring-brand/25 sm:flex gap-[2px] [perspective:1200px]">
+              {/* Fuentes: dos celdas apiladas, mitad y mitad de la altura */}
+              <div className="flex h-full basis-[38%] flex-col gap-[2px]">
+                <div className="relative min-h-0 flex-1">
+                  <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="h-full w-full ring-0" />
                 </div>
-                <div className="relative h-[calc((74svh-0.75rem)/2)] aspect-[4/5] shrink-0">
-                  <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="h-full w-full rounded-2xl ring-white/10" />
-                </div>
-                <div className={`pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${badgeFade('delay-150')}`}>
-                  <OpBadge className="h-9 w-9 text-base">+</OpBadge>
+                <div className="relative min-h-0 flex-1">
+                  <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="h-full w-full ring-0" />
                 </div>
               </div>
-              <OpBadge className={`h-9 w-9 shrink-0 self-center text-base ${badgeFade('delay-300')}`}>=</OpBadge>
-              {/* Resultado — hero de la misma altura; caption superpuesto abajo */}
-              <div className="relative h-full aspect-[4/5] shrink-0">
-                <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} active={active} delay="delay-300" className="h-full w-full rounded-3xl shadow-glow ring-brand/30" />
-                <div className={`pointer-events-none absolute inset-x-0 bottom-0 rounded-b-3xl bg-gradient-to-t from-black/80 via-black/30 to-transparent px-5 pb-4 pt-12 ${fade}`}>
+              {/* Resultado: celda grande, caption superpuesto abajo */}
+              <div className="relative h-full basis-[62%]">
+                <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} active={active} delay="delay-300" className="h-full w-full ring-0" />
+                <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent px-5 pb-4 pt-12 ${fade}`}>
                   <div className="flex items-end justify-between gap-3">
                     <div className="text-sm text-white/90">{l.caption}</div>
                     <div className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
