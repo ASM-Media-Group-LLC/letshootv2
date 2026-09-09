@@ -145,6 +145,8 @@ export default function PropuestaAdmin() {
   // CODE de la última publicación (vacío hasta publicar; se rehidrata de
   // 'ls_prop_last' para que el header y las respuestas apunten al último link).
   const [code, setCode] = useState('');
+  // Si viene ?edit=<link_id>, editamos esa propuesta (update, mismo link).
+  const [editCode, setEditCode] = useState('');
   // id (uuid) de la propuesta recién insertada en Supabase — lo usa el paso 4
   // para leer su feedback. pubError: mensaje visible si el insert falla.
   const [proposalId, setProposalId] = useState(null);
@@ -189,6 +191,48 @@ export default function PropuestaAdmin() {
     // Limpiamos el draft local para que el preview /p/demo tampoco muestre algo
     // anterior; se reescribe al guardar / "ver como cliente" o al publicar.
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  }, []);
+
+  // Modo EDICIÓN: ?edit=<link_id> → carga la propuesta publicada en el formulario.
+  useEffect(() => {
+    let editParam = '';
+    try { editParam = new URLSearchParams(window.location.search).get('edit') || ''; } catch {}
+    if (!editParam) return;
+    (async () => {
+      try {
+        const { data } = await getSupabase().from('photo_proposals').select('*').eq('link_id', editParam).maybeSingle();
+        if (!data) return;
+        setEditCode(data.link_id);
+        setCode(data.link_id);
+        if (typeof data.name === 'string') setName(data.name);
+        if (typeof data.subtitle === 'string') setSubtitle(data.subtitle);
+        if (typeof data.intro === 'string') setIntro(data.intro);
+        // No re-traducir al cambiar idioma: respetamos lo cargado.
+        setTouched({ name: true, subtitle: true, intro: true });
+        if (PROP_LANGS.includes(data.lang)) setLang(data.lang);
+        if (typeof data.cover_url === 'string' || data.cover_url === null) setCoverUrl(data.cover_url);
+        if (typeof data.closing_url === 'string' || data.closing_url === null) setClosingUrl(data.closing_url);
+        if (data.expires_at) {
+          const rem = Math.ceil((new Date(data.expires_at).getTime() - Date.now()) / 86400000);
+          const snap = [3, 7, 10, 14, 30].reduce((a, b) => (Math.abs(b - rem) < Math.abs(a - rem) ? b : a), 30);
+          setDays(snap);
+        }
+        setRecipient({
+          name: data.recipient_name || '',
+          email: data.recipient_email || '',
+          kind: data.recipient_kind === 'active' ? 'active' : 'new',
+        });
+        if (data.recipient_user_id) setCreatorId(data.recipient_user_id);
+        if (Array.isArray(data.looks) && data.looks.length > 0) {
+          const seeded = data.looks.map((l) => ({
+            id: l.id, caption: l.caption || '',
+            inspiration: l.inspiration || null, real: l.real || null, result: l.result || null,
+          }));
+          setLooks(seeded);
+          setSelectedId(seeded[0]?.id ?? null);
+        }
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {
@@ -365,11 +409,10 @@ export default function PropuestaAdmin() {
     if (completeCount === 0) return false;
     setPubError('');
     setPublishing(true);
-    const newCode = genCode();
-    const payload = {
-      link_id: newCode,
-      created_by: authorId || null,
-      created_by_name: authorName || '',
+    const editing = !!editCode;
+    const newCode = editing ? editCode : genCode();
+    // Campos de CONTENIDO (se escriben tanto al crear como al editar).
+    const content = {
       model_name: null,
       model_agency: null,
       name,
@@ -392,16 +435,24 @@ export default function PropuestaAdmin() {
       expires_at: new Date(Date.now() + days * 86400000).toISOString(),
     };
     try {
-      const { data, error } = await getSupabase()
-        .from('photo_proposals')
-        .insert(payload)
-        .select('id')
-        .single();
-      if (error) throw error;
-      setProposalId(data?.id ?? null);
+      const sb = getSupabase();
+      if (editing) {
+        // EDITAR: actualiza la MISMA propuesta (mismo link, mismo autor).
+        const { error } = await sb.from('photo_proposals').update(content).eq('link_id', editCode);
+        if (error) throw error;
+        const { data: idRow } = await sb.from('photo_proposals').select('id').eq('link_id', editCode).maybeSingle();
+        setProposalId(idRow?.id ?? null);
+      } else {
+        // CREAR: link_id nuevo + autor.
+        const { data, error } = await sb
+          .from('photo_proposals')
+          .insert({ link_id: newCode, created_by: authorId || null, created_by_name: authorName || '', ...content })
+          .select('id')
+          .single();
+        if (error) throw error;
+        setProposalId(data?.id ?? null);
+      }
       setCode(newCode);
-      // Draft/last en localStorage solo para el header y el preview /p/demo;
-      // la vista pública /p/<CODE> ahora se sirve por RPC desde Supabase.
       try {
         localStorage.setItem(LAST_KEY, newCode);
         localStorage.setItem(DRAFT_KEY, JSON.stringify(buildProposal(newCode, { includeIncomplete: true })));

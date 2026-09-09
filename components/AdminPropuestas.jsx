@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone } from 'lucide-react';
+import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -439,6 +439,12 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
               className="btn3d inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
               <ExternalLink size={14} /> Ver como cliente
             </a>
+            {!p._demo && (
+              <a href={`/propuestas?edit=${encodeURIComponent(p.code)}`}
+                className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">
+                <Pencil size={14} /> Editar
+              </a>
+            )}
             <button onClick={onCopy}
               className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">
               {copied ? <><Check size={14} className="text-emerald-400" /> Copiado</> : <><Copy size={14} /> Copiar link</>}

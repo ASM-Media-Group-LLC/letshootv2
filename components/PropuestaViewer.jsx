@@ -267,7 +267,7 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
     }
   };
 
-  const bgUrl = cfg.coverUrl || cfg.looks?.[0]?.result;
+  const bgUrl = cfg.coverUrl || '';
   const inputCls = 'w-full rounded-xl border border-line bg-ink-2 py-3 pl-11 pr-3.5 text-base text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:py-2.5 sm:text-sm';
   const isLogin = mode === 'login';
 
@@ -499,8 +499,11 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
         className="relative flex h-[100svh] w-full items-end overflow-hidden bg-ink"
       >
         <div className="absolute inset-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={cfg.coverUrl || looks[0]?.result} alt="" className="h-full w-full object-cover object-[center_30%]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+          {/* Si NO hay foto de portada, queda en negro (no se usa la del look). */}
+          {cfg.coverUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={cfg.coverUrl} alt="" className="h-full w-full object-cover object-[center_30%]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/70 to-ink/40" />
           <Watermark code={cfg.code} uid="cover" />
         </div>
