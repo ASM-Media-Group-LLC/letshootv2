@@ -265,33 +265,39 @@ export default function PropuestaAdmin() {
   };
 
   // ── Subida desde la computadora del operador ──
-  // Las fotos se comprimen a JPEG (máx 1000px) para que quepan en el draft de
-  // localStorage. Persisten en 'ls_prop_uploads' (best-effort: si se llena la
-  // cuota, quedan solo en memoria de esta pestaña).
+  // Las fotos se comprimen a JPEG y se SUBEN al bucket público 'proposal-photos'
+  // (Supabase Storage); en la propuesta se guarda solo la URL pública. Antes se
+  // incrustaban como base64 en la fila → propuestas de 6+ MB, lentísimas en el
+  // teléfono. 'ls_prop_uploads' ahora solo guarda URLs (liviano).
   const [uploads, setUploads] = useState([]);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
   const fileInputRef = useRef(null);
   useEffect(() => {
     try {
       const raw = localStorage.getItem('ls_prop_uploads');
       if (raw) {
         const u = JSON.parse(raw);
-        if (Array.isArray(u)) setUploads(u.filter((x) => x?.id && typeof x.src === 'string'));
+        // Solo URLs (http/https). Descarta base64 viejo para no re-incrustarlo.
+        if (Array.isArray(u)) setUploads(u.filter((x) => x?.id && typeof x.src === 'string' && !x.src.startsWith('data:')));
       }
     } catch {}
   }, []);
 
+  // Comprime a un Blob JPEG (máx 1400px, calidad 0.82). Ya no vive en
+  // localStorage, así que puede ir un poco más grande sin problema.
   const compressImage = (file) => new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const max = 1000;
+      const max = 1400;
       const scale = Math.min(1, max / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL('image/jpeg', 0.72));
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.82);
     };
     img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
     img.src = url;
@@ -302,10 +308,19 @@ export default function PropuestaAdmin() {
     e.target.value = '';
     if (!files.length) return;
     const kind = picker?.target === 'look' ? (SLOTS.find((s) => s.key === picker.slotKey)?.kind || 'ia') : 'ia';
+    setUploadBusy(true);
+    setUploadErr('');
+    const sb = getSupabase();
     const nuevos = [];
     for (const f of files) {
-      const src = await compressImage(f);
-      if (!src) continue;
+      const blob = await compressImage(f);
+      if (!blob) continue;
+      // Sube al bucket público y guarda la URL (NO base64) en la propuesta.
+      const path = `${authorId || 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const { error: upErr } = await sb.storage.from('proposal-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+      if (upErr) { setUploadErr(upErr.message || 'No se pudo subir la foto. Reintentá.'); continue; }
+      const src = sb.storage.from('proposal-photos').getPublicUrl(path)?.data?.publicUrl;
+      if (!src) { setUploadErr('No se pudo obtener la URL de la foto.'); continue; }
       nuevos.push({
         id: `up-${Math.random().toString(36).slice(2, 9)}`,
         src, kind,
@@ -313,6 +328,7 @@ export default function PropuestaAdmin() {
         uploaded: true,
       });
     }
+    setUploadBusy(false);
     if (!nuevos.length) return;
     setUploads((prev) => {
       const next = [...nuevos, ...prev];
@@ -1056,14 +1072,16 @@ export default function PropuestaAdmin() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="btn3d inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold"
+                disabled={uploadBusy}
+                className="btn3d inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
               >
-                <ImagePlus size={13} /> Subir de tu computadora
+                <ImagePlus size={13} /> {uploadBusy ? 'Subiendo…' : 'Subir de tu computadora'}
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFilesPicked} />
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {uploadErr && <p className="mb-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{uploadErr}</p>}
               {pickerItems.length === 0 ? (
                 <div className="grid place-items-center py-16 text-sm text-paper-mute">—</div>
               ) : (
