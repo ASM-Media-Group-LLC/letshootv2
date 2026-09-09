@@ -149,14 +149,31 @@ export default function PropuestaViewer({ linkId }) {
       if (qLang) setLang(qLang);
       else if (mapped.lang && PROP_LANGS.includes(mapped.lang)) setLang(mapped.lang);
 
-      // ¿Ya registrado en este dispositivo? → directo a la propuesta, sin re-pedir.
+      // Entrada por INVITACIÓN: el id del registro viaja en el link (?reg=…) →
+      // saltamos el gate (el equipo ya la invitó). También salta si ya hay sesión
+      // (usuaria con cuenta, entra directo) o si ya se registró en este dispositivo.
+      const regParam = new URLSearchParams(window.location.search).get('reg');
       let saved = null;
       try {
         const raw = window.localStorage.getItem(regKey(linkId));
         if (raw) saved = JSON.parse(raw);
       } catch {}
-      if (saved?.id) { setReg(saved); setPhase('view'); }
-      else setPhase('gate');
+      let session = null;
+      try { session = (await getSupabase().auth.getSession())?.data?.session || null; } catch {}
+      if (cancelled) return;
+
+      if (regParam) {
+        const r = { id: regParam, name: mapped.recipient?.name || '', email: mapped.recipient?.email || (session?.user?.email || '') };
+        try { window.localStorage.setItem(regKey(linkId), JSON.stringify(r)); } catch {}
+        setReg(r); setPhase('view');
+      } else if (saved?.id) {
+        setReg(saved); setPhase('view');
+      } else if (session) {
+        setReg({ id: null, name: mapped.recipient?.name || '', email: session.user?.email || '' });
+        setPhase('view');
+      } else {
+        setPhase('gate');
+      }
     })();
     return () => { cancelled = true; };
   }, [linkId, isDemo]);

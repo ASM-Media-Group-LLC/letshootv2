@@ -20,11 +20,16 @@ export default function ResetPage() {
   const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // Destino opcional tras poner la contraseña (p. ej. una propuesta invitada).
+  // Solo rutas internas seguras (empiezan con "/" y no con "//").
+  const [next, setNext] = useState('');
 
   useEffect(() => {
     (async () => {
       const supabase = getSupabase();
       const params = new URLSearchParams(window.location.search);
+      const nx = params.get('next');
+      if (nx && nx.startsWith('/') && !nx.startsWith('//')) setNext(nx);
       // Custom-email pattern (most robust): the invite/reset email links straight to us with
       // ?token_hash=…&type=recovery. We verify it here — no Supabase redirect to allow-list,
       // and it survives inbox link-scanners better than the hosted verify redirect.
@@ -71,6 +76,8 @@ export default function ResetPage() {
   }
 
   async function goHome() {
+    // Invitación a una propuesta: volver a ella en vez del portal por rol.
+    if (next) { router.push(next); return; }
     const up = await getUserProfile();
     router.push(homeForProfile(up?.profile));
   }
@@ -131,7 +138,7 @@ export default function ResetPage() {
             <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-brand/15 text-brand"><Check size={24} /></span>
             <p className="text-paper">{t.reset.done}</p>
             <button onClick={goHome} className="mt-5 w-full rounded-xl bg-brand py-3 font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.02]">
-              {t.reset.goPortal}
+              {next ? (t.reset.goProposal || 'Ver mi propuesta') : t.reset.goPortal}
             </button>
           </div>
         )}
