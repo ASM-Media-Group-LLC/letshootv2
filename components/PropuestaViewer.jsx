@@ -737,9 +737,12 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
 // ── Sub-components ────────────────────────────────────────────────────────
 
 function Shot({ src, alt, label, dot, code, uid, big = false, active = true, delay = '', className = '' }) {
+  // Las fotos están SIEMPRE visibles (nada de opacity-0 que deja un hueco gris
+  // al hacer scroll). Entrada sutil: la activa a escala 1, la inactiva un pelín
+  // más chica — sin desaparecer.
   const flip = active
-    ? 'opacity-100 [transform:rotateY(0deg)_translateY(0)_scale(1)]'
-    : 'opacity-0 [transform:rotateY(-50deg)_translateY(28px)_scale(0.92)]';
+    ? 'opacity-100 [transform:translateY(0)_scale(1)]'
+    : 'opacity-100 [transform:translateY(0)_scale(0.985)]';
   return (
     <div className={`relative overflow-hidden ring-1 transition-all duration-700 ease-out ${delay} ${flip} ${className}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
