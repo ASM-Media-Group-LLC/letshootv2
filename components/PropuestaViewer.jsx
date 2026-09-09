@@ -389,19 +389,23 @@ function ProposalBody({ t, cfg, linkId }) {
                 arriba y abajo). El «+» flota centrado entre las dos fuentes, el
                 «=» va centrado, y el texto vive SOBRE la foto del resultado para
                 no agregar huecos. */}
-            <div className="hidden h-[74svh] items-stretch justify-center gap-4 sm:flex lg:gap-6 [perspective:1200px]">
+            <div className="mx-auto hidden h-[74svh] w-fit items-stretch justify-center gap-3 sm:flex [perspective:1200px]">
               {/* Columna de fuentes — misma altura total que el resultado */}
-              <div className="relative flex h-full flex-col gap-4">
-                <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="h-[calc((74svh-1rem)/2)] aspect-[4/5] rounded-2xl ring-white/10" />
-                <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="h-[calc((74svh-1rem)/2)] aspect-[4/5] rounded-2xl ring-white/10" />
+              <div className="relative flex h-full flex-col gap-3">
+                <div className="relative h-[calc((74svh-0.75rem)/2)] aspect-[4/5] shrink-0">
+                  <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="h-full w-full rounded-2xl ring-white/10" />
+                </div>
+                <div className="relative h-[calc((74svh-0.75rem)/2)] aspect-[4/5] shrink-0">
+                  <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="h-full w-full rounded-2xl ring-white/10" />
+                </div>
                 <div className={`pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${badgeFade('delay-150')}`}>
                   <OpBadge className="h-9 w-9 text-base">+</OpBadge>
                 </div>
               </div>
               <OpBadge className={`h-9 w-9 shrink-0 self-center text-base ${badgeFade('delay-300')}`}>=</OpBadge>
               {/* Resultado — hero de la misma altura; caption superpuesto abajo */}
-              <div className="relative h-full">
-                <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} active={active} delay="delay-300" className="h-full aspect-[4/5] rounded-3xl shadow-glow ring-brand/30" />
+              <div className="relative h-full aspect-[4/5] shrink-0">
+                <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-ai`} active={active} delay="delay-300" className="h-full w-full rounded-3xl shadow-glow ring-brand/30" />
                 <div className={`pointer-events-none absolute inset-x-0 bottom-0 rounded-b-3xl bg-gradient-to-t from-black/80 via-black/30 to-transparent px-5 pb-4 pt-12 ${fade}`}>
                   <div className="flex items-end justify-between gap-3">
                     <div className="text-sm text-white/90">{l.caption}</div>
