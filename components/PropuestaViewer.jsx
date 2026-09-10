@@ -85,22 +85,26 @@ function mapRow(row) {
 // AL FINAL de la propuesta (pantalla de cierre). Chips glassy, mismo estilo que
 // la home. OnlyFans es pastilla horizontal (su PNG es un wordmark); el resto,
 // chips circulares con el SVG de su marca.
-function ProposalLogos({ logos }) {
+function ProposalLogos({ logos, className = 'mt-14', justify = 'center', compact = false }) {
   const sel = PROPOSAL_LOGOS.filter((l) => (logos || []).includes(l.key));
   if (!sel.length) return null;
+  const pill = compact ? 'h-8 px-3' : 'h-10 px-4';
+  const circ = compact ? 'h-8 w-8' : 'h-10 w-10';
+  const imgH = compact ? 'h-3' : 'h-4';
+  const svgH = compact ? 'h-[15px] w-[15px]' : 'h-[18px] w-[18px]';
   return (
-    <div className="mt-14 flex flex-wrap items-center justify-center gap-2.5">
+    <div className={`flex flex-wrap items-center gap-2 ${justify === 'start' ? 'justify-start' : 'justify-center gap-2.5'} ${className}`}>
       {sel.map((l) =>
         l.png ? (
           <span key={l.key} aria-label={l.label} title={l.label}
-            className="inline-flex h-10 items-center rounded-full border border-white/12 bg-white/[0.06] px-4 backdrop-blur-md">
+            className={`inline-flex items-center rounded-full border border-white/12 bg-white/[0.06] backdrop-blur-md ${pill}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={l.png} alt={l.label} className="h-4 w-auto" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+            <img src={l.png} alt={l.label} className={`${imgH} w-auto`} draggable={false} style={{ WebkitUserDrag: 'none' }} />
           </span>
         ) : (
           <span key={l.key} aria-label={l.label} title={l.label}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/[0.06] backdrop-blur-md">
-            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill={l.color} aria-hidden><path d={l.path} /></svg>
+            className={`inline-flex items-center justify-center rounded-full border border-white/12 bg-white/[0.06] backdrop-blur-md ${circ}`}>
+            <svg viewBox="0 0 24 24" className={svgH} fill={l.color} aria-hidden><path d={l.path} /></svg>
           </span>
         )
       )}
@@ -498,16 +502,17 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
 
       {/* Logo flotante top-left — LetShoot (plataforma). */}
-      <div className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center rounded-full border border-white/15 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:left-6 sm:top-6">
+      <div className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex h-10 items-center rounded-full border border-white/12 bg-black/55 px-4 shadow-[0_4px_24px_rgba(0,0,0,0.45)] backdrop-blur-md sm:left-6 sm:top-6">
         <Logo size="sm" forceDark />
       </div>
 
       {/* Logo de la AGENCIA en la OTRA esquina (top-right) — su marca, con
-          protagonismo propio, para que la creadora sienta que se la da su agencia. */}
+          protagonismo propio, para que la creadora sienta que se la da su agencia.
+          Misma altura/estilo que la pastilla de LetShoot para que se lea parejo. */}
       {cfg.agencyLogoUrl && (
-        <div className="fixed right-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center rounded-full border border-white/15 bg-black/60 px-3.5 py-2 backdrop-blur-md sm:right-6 sm:top-6">
+        <div className="fixed right-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex h-10 items-center rounded-full border border-white/12 bg-black/55 px-4 shadow-[0_4px_24px_rgba(0,0,0,0.45)] backdrop-blur-md sm:right-6 sm:top-6">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={cfg.agencyLogoUrl} alt="" className="max-h-6 max-w-[120px] object-contain sm:max-h-7 sm:max-w-[150px]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+          <img src={cfg.agencyLogoUrl} alt="" className="h-5 w-auto max-w-[130px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
         </div>
       )}
 
@@ -590,6 +595,8 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           <div className="mt-3 text-xs tracking-wide text-white/55">
             {total} {t.looks} · {t.tapHint}
           </div>
+          {/* Logos de plataformas también en la portada (igual que al final). */}
+          <ProposalLogos logos={cfg.logos} justify="start" compact className="mt-7" />
         </div>
       </section>
 
