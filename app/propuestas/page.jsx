@@ -138,9 +138,10 @@ export default function PropuestaAdmin() {
   const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
   const [closingUrl, setClosingUrl] = useState(DEMO_CLOSING);
   // Logo de la AGENCIA (KASH, etc.): se muestra junto a LetShoot en la propuesta
-  // para que la creadora sienta que se la da su agencia. Se recuerda el último
-  // subido ('ls_prop_agency_logo') para no re-subirlo en cada propuesta.
-  const [agencyLogoUrl, setAgencyLogoUrl] = useState('');
+  // para que la creadora sienta que se la da su agencia. Por defecto trae el de
+  // KASH (bundle en /public); si se sube otro se recuerda ('ls_prop_agency_logo')
+  // y pisa el default. Se puede quitar con el botón.
+  const [agencyLogoUrl, setAgencyLogoUrl] = useState('/prop-agency-kash.svg');
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInputRef = useRef(null);
   // Logos de PLATAFORMAS que salen al final de la propuesta (OnlyFans + redes).

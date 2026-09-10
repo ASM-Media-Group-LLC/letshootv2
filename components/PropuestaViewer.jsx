@@ -562,16 +562,19 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           )}
           <h1 className="font-display text-[clamp(2.4rem,7vw,5.5rem)] font-bold leading-[0.98] tracking-[-0.03em] text-white drop-shadow-[0_2px_34px_rgba(0,0,0,0.75)]">
             {cfg.name}
-            <span className="mt-1 block text-[clamp(1.1rem,2.4vw,1.75rem)] font-medium italic text-white/70">
-              {cfg.subtitle}
-            </span>
+            {/* El subtítulo solo sale si NO repite el título — por defecto va vacío. */}
+            {cfg.subtitle && (
+              <span className="mt-1 block text-[clamp(1.1rem,2.4vw,1.75rem)] font-medium italic text-white/70">
+                {cfg.subtitle}
+              </span>
+            )}
           </h1>
-          <p className="mt-6 max-w-md text-balance text-[15px] leading-relaxed text-white/85 sm:text-base">
+          <p className="mt-5 max-w-sm text-[12.5px] leading-relaxed text-white/70 sm:text-[13.5px]">
             {cfg.intro}
           </p>
           <button
             onClick={() => scrollTo(0)}
-            className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3.5 text-sm font-semibold text-ink transition-transform hover:scale-[1.04]"
+            className="mt-8 inline-flex items-center gap-2 rounded-full bg-brand px-6 py-3.5 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.04]"
           >
             {t.start} <ChevronDown size={16} />
           </button>
