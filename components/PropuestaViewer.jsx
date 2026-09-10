@@ -501,21 +501,8 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
   return (
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
 
-      {/* Co-branding centrado arriba: AGENCIA (KASH) + LetShoot — juntos en el
-          medio, SIN cajas, con sombra para legibilidad sobre la foto y buen
-          tamaño para que tengan presencia. Agencia primero, luego "+", luego LetShoot. */}
-      {/* Tamaños MEDIDOS sobre los PNG (glifos ~0.81 de la altura en ambos):
-          KASH 46px vs LetShoot 38px quedan ópticamente parejos, con KASH firme. */}
-      <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1.25rem)] z-40 flex -translate-x-1/2 items-center gap-4 sm:top-12 sm:gap-5">
-        {cfg.agencyLogoUrl && (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={cfg.agencyLogoUrl} alt="" className="h-10 w-auto max-w-[180px] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:h-[46px]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
-            <span className="text-3xl font-light leading-none text-white/75 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">+</span>
-          </>
-        )}
-        <Logo size="lg" forceDark className="drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]" />
-      </div>
+      {/* (El co-branding KASH + LetShoot vive DENTRO de la portada — abajo — para
+          poder bajarlo bien sin chocar con los looks al scrollear.) */}
 
       {/* (Sin badge de código ni contador arriba-derecha: portada limpia.) */}
 
@@ -560,6 +547,19 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/70 to-ink/40" />
           <Watermark code={cfg.code} uid="cover" />
+        </div>
+
+        {/* Co-branding KASH + LetShoot — centrado, bien abajo del borde, sin cajas.
+            KASH un punto más grande que LetShoot (glifos medidos) para presencia. */}
+        <div className="absolute left-1/2 top-12 z-20 flex -translate-x-1/2 items-center gap-4 sm:top-20 sm:gap-5">
+          {cfg.agencyLogoUrl && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={cfg.agencyLogoUrl} alt="" className="h-11 w-auto max-w-[200px] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:h-[52px]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+              <span className="text-3xl font-light leading-none text-white/75 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:text-4xl">+</span>
+            </>
+          )}
+          <Logo size="lg" forceDark className="drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]" />
         </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-10 sm:pb-24">
           {/* Rótulo chico = título del paquete ("Contenido para tus redes"). */}
@@ -713,7 +713,17 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           </div>
         )}
         <div className="relative z-10 mx-auto w-full max-w-2xl text-center">
-          {/* (El co-branding KASH + LetShoot va fijo arriba en todas las pantallas.) */}
+          {/* Firma de cierre: KASH + LetShoot (mismo lockup que la portada). */}
+          <div className="mb-8 flex items-center justify-center gap-4">
+            {cfg.agencyLogoUrl && (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={cfg.agencyLogoUrl} alt="" className="h-11 w-auto max-w-[180px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+                <span className="text-3xl font-light leading-none text-white/45">+</span>
+              </>
+            )}
+            <Logo size="lg" forceDark />
+          </div>
           <div className="mb-6 inline-flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute">
             <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
             {t.endTag}
