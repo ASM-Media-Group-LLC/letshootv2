@@ -135,6 +135,9 @@ function mapProposal(row, fb, reg) {
     createdBy: row.created_by_name || '',
     expiresAt: row.expires_at || null,
     _status: row.status || 'published',
+    approval: row.approval_required
+      ? { required: true, status: row.approval_status || 'pending', approver: row.approver_email || '', reason: row.approval_reason || '' }
+      : null,
     model: { name: row.model_name || '', agency: row.model_agency || '' },
     recipient: { name: row.recipient_name || '', email: row.recipient_email || '', kind: row.recipient_kind || '' },
     looks: Array.isArray(row.looks) ? row.looks : [],
@@ -428,6 +431,20 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                   {p._reg.name || '—'}
                   {p._reg.email ? <span className="text-paper-dim"> · {p._reg.email}</span> : null}
                   {p._reg.phone ? <span className="inline-flex items-center gap-1 text-paper-dim"> · <Phone size={11} className="inline" />{p._reg.phone}</span> : null}
+                </span>
+              } />
+            )}
+            {p.approval && (
+              <Row label="Aprobación" value={
+                <span>
+                  {p.approval.status === 'approved'
+                    ? <StatusDot tone="ok">Aprobada</StatusDot>
+                    : p.approval.status === 'rejected'
+                      ? <StatusDot tone="bad">Rechazada</StatusDot>
+                      : <StatusDot tone="warn">Pendiente</StatusDot>}
+                  {p.approval.approver ? <span className="text-paper-dim"> · {p.approval.approver}</span> : null}
+                  {p.approval.status === 'rejected' && p.approval.reason
+                    ? <span className="mt-1 block text-[12px] italic text-rose-200/80">&ldquo;{p.approval.reason}&rdquo;</span> : null}
                 </span>
               } />
             )}

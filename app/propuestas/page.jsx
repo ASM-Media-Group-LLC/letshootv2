@@ -133,6 +133,12 @@ export default function PropuestaAdmin() {
   const [recipient, setRecipient] = useState({ name: '', email: '', kind: 'new' });
   const [creatorId, setCreatorId] = useState(''); // creadora activa elegida del dropdown
   const [activeCreators, setActiveCreators] = useState([]);
+  // Aprobación: si el empleado marca el chulito, la propuesta va primero al que
+  // aprueba (approverEmail); recién si él aprueba, se le manda a la creadora.
+  const [needsApproval, setNeedsApproval] = useState(false);
+  const [approverEmail, setApproverEmail] = useState('');
+  const [approvalState, setApprovalState] = useState(''); // '' | 'sending' | 'sent' | 'error'
+  const [approvalMsg, setApprovalMsg] = useState('');
   const [feedback, setFeedback] = useState(null);
   const [template] = useState('redes'); // hoy: un solo tipo (contenido de redes)
   const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
@@ -239,6 +245,8 @@ export default function PropuestaAdmin() {
           kind: data.recipient_kind === 'active' ? 'active' : 'new',
         });
         if (data.recipient_user_id) setCreatorId(data.recipient_user_id);
+        setNeedsApproval(!!data.approval_required);
+        if (typeof data.approver_email === 'string') setApproverEmail(data.approver_email || '');
         if (Array.isArray(data.looks) && data.looks.length > 0) {
           const seeded = data.looks.map((l) => ({
             id: l.id, caption: l.caption || '',
@@ -503,6 +511,10 @@ export default function PropuestaAdmin() {
       // Creadora activa → sellamos su id para que la propuesta le aparezca en su
       // cuenta ("Mis propuestas") apenas se publica, sin que abra el link.
       recipient_user_id: recipient.kind === 'active' ? (creatorId || null) : null,
+      // Aprobación: si va con chulito, arranca 'pending' y se manda al aprobador.
+      approval_required: needsApproval,
+      approver_email: needsApproval ? approverEmail.trim() : null,
+      approval_status: needsApproval ? 'pending' : null,
       status: 'published',
       expires_at: new Date(Date.now() + days * 86400000).toISOString(),
     };
@@ -573,9 +585,10 @@ export default function PropuestaAdmin() {
   const fbNotes = fbItems.filter((i) => (i.note || '').trim()).length;
 
   const canNext = step === 1
-    ? (recipient.kind === 'active'
+    ? ((recipient.kind === 'active'
         ? !!creatorId && recipient.name.trim().length > 0            // activa: elegí creadora (sin correo)
         : recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())) // nueva: nombre + correo
+        && (!needsApproval || EMAIL_RE.test(approverEmail.trim())))  // si va a aprobación, el correo del aprobador
     : step === 3
       ? completeCount > 0
       : step < 4;
@@ -624,6 +637,23 @@ export default function PropuestaAdmin() {
       setInviteState('sent');
     } catch (e) {
       setInviteState('error'); setInviteMsg(e?.message || 'No se pudo enviar la invitación.');
+    }
+  };
+
+  // Enviar a APROBACIÓN: la propuesta va al que decide (approverEmail) con un link
+  // de revisión; cuando aprueba, la edge function invita sola a la creadora.
+  const sendApproval = async () => {
+    if (approvalState === 'sending' || !code) return;
+    setApprovalState('sending'); setApprovalMsg('');
+    try {
+      const { data, error } = await getSupabase().functions.invoke('proposal-approval', {
+        body: { action: 'send', link_id: code },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'No se pudo enviar a aprobación.');
+      setApprovalState('sent');
+    } catch (e) {
+      setApprovalState('error'); setApprovalMsg(e?.message || 'No se pudo enviar a aprobación.');
     }
   };
 
@@ -775,6 +805,33 @@ export default function PropuestaAdmin() {
                   />
                 </Field>
               )}
+
+              {/* Chulito: la propuesta va primero a quien decide (aprobador). Si lo
+                  aprueba, se le manda automáticamente a la creadora. */}
+              <div className="rounded-xl border border-line bg-ink-2/40 p-3.5">
+                <button type="button" onClick={() => setNeedsApproval((v) => !v)} className="flex w-full items-start gap-3 text-left">
+                  <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${needsApproval ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
+                    {needsApproval && <Check size={13} />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-paper">Necesita aprobación</span>
+                    <span className="mt-0.5 block text-[11px] leading-relaxed text-paper-mute">Alguien la revisa y aprueba antes de que le llegue a la creadora.</span>
+                  </span>
+                </button>
+                {needsApproval && (
+                  <div className="mt-3.5">
+                    <Field label="Correo de quien aprueba">
+                      <input
+                        type="email"
+                        value={approverEmail}
+                        onChange={(e) => setApproverEmail(e.target.value)}
+                        placeholder="quien-aprueba@correo.com"
+                        className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                      />
+                    </Field>
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
@@ -1104,7 +1161,32 @@ export default function PropuestaAdmin() {
           </div>
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
-            {recipient.kind === 'active' ? (
+            {needsApproval ? (
+              <>
+                {/* Va PRIMERO a aprobación: al que decide; si aprueba, se manda sola a la creadora. */}
+                <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5 text-[12px] text-amber-200/90">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                  Esta propuesta necesita aprobación antes de llegar a la creadora.
+                </div>
+                <a href={publicUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
+                  className="btn3d-ghost mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold">
+                  <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
+                </a>
+                <button type="button" onClick={sendApproval} disabled={approvalState === 'sending' || approvalState === 'sent'}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition-all disabled:opacity-70 ${approvalState === 'sent' ? 'bg-emerald-500 text-white' : 'btn3d'}`}>
+                  {approvalState === 'sent'
+                    ? <><Check size={15} /> Enviado a aprobación</>
+                    : approvalState === 'sending'
+                      ? <>Enviando…</>
+                      : <><Mail size={15} /> Enviar a aprobación</>}
+                </button>
+                <p className="mt-2 text-center text-[11px] text-paper-dim">
+                  {approvalState === 'error'
+                    ? <span className="text-rose-300">{approvalMsg}</span>
+                    : <>Se env&iacute;a a <span className="text-paper-mute">{approverEmail || 'quien aprueba'}</span>. Cuando lo apruebe, la propuesta le llega autom&aacute;ticamente a la creadora.</>}
+                </p>
+              </>
+            ) : recipient.kind === 'active' ? (
               <>
                 {/* Creadora ACTIVA → compartir link / QR (WhatsApp). Ella inicia sesión y la ve en su cuenta. */}
                 <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">

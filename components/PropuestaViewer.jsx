@@ -123,6 +123,9 @@ export default function PropuestaViewer({ linkId }) {
   const [lang, setLang] = useState('es');
   const [reg, setReg] = useState(null); // { id, name, email } del registro
   const [phase, setPhase] = useState('loading'); // 'loading' | 'gate' | 'view' | 'unavailable'
+  // Modo APROBACIÓN: si el link trae ?approve=<token>, el que decide ve la
+  // propuesta completa (sin gate) con barra Aprobar/Rechazar.
+  const [approveToken, setApproveToken] = useState(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -168,6 +171,16 @@ export default function PropuestaViewer({ linkId }) {
       if (qLang) setLang(qLang);
       else if (mapped.lang && PROP_LANGS.includes(mapped.lang)) setLang(mapped.lang);
 
+      // Modo APROBACIÓN: ?approve=<token> → el que decide ve la propuesta completa
+      // (sin gate) con barra Aprobar/Rechazar. Tiene prioridad sobre todo lo demás.
+      const approveParam = new URLSearchParams(window.location.search).get('approve');
+      if (approveParam) {
+        setApproveToken(approveParam);
+        setReg({ id: null, name: mapped.recipient?.name || '', email: '' });
+        setPhase('view');
+        return;
+      }
+
       // Entrada por INVITACIÓN: el id del registro viaja en el link (?reg=…) →
       // saltamos el gate (el equipo ya la invitó). También salta si ya hay sesión
       // (usuaria con cuenta, entra directo) o si ya se registró en este dispositivo.
@@ -209,7 +222,97 @@ export default function PropuestaViewer({ linkId }) {
   if (phase === 'loading') return <div className="min-h-[100svh] bg-ink" />;
   if (phase === 'unavailable') return <Unavailable t={t} />;
   if (phase === 'gate') return <RegisterGate t={t} cfg={cfg} linkId={linkId} onDone={onRegistered} />;
-  return <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} />;
+  return (
+    <>
+      <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} />
+      {approveToken && <ApproveBar lang={lang} linkId={linkId} token={approveToken} />}
+    </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Barra de APROBACIÓN — la ve quien decide (link con ?approve=<token>). Aprueba
+// o rechaza (con motivo). Aprobar → la edge function invita sola a la creadora.
+// ══════════════════════════════════════════════════════════════════════════
+
+function ApproveBar({ lang, linkId, token }) {
+  const es = lang !== 'en';
+  const [state, setState] = useState('idle'); // idle | rejecting | sending | approved | rejected | error
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState('');
+
+  const decide = async (decision) => {
+    setState('sending'); setErr('');
+    try {
+      const { data, error } = await getSupabase().functions.invoke('proposal-approval', {
+        body: { action: 'decide', link_id: linkId, token, decision, reason: decision === 'rejected' ? reason.trim() : '' },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || (es ? 'No se pudo procesar.' : 'Could not process.'));
+      setState(decision === 'approved' ? 'approved' : 'rejected');
+    } catch (e) {
+      setState('error'); setErr(e?.message || (es ? 'No se pudo procesar.' : 'Could not process.'));
+    }
+  };
+
+  const wrap = 'fixed inset-x-0 bottom-0 z-[60] border-t border-line bg-ink/95 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+0.9rem)] pt-3.5 backdrop-blur-md';
+  if (state === 'approved') {
+    return (
+      <div className={wrap}>
+        <div className="mx-auto flex max-w-lg items-center justify-center gap-2 text-sm font-semibold text-emerald-300">
+          <Check size={16} /> {es ? 'Aprobada — se le envió a la creadora.' : 'Approved — sent to the creator.'}
+        </div>
+      </div>
+    );
+  }
+  if (state === 'rejected') {
+    return (
+      <div className={wrap}>
+        <div className="mx-auto flex max-w-lg items-center justify-center gap-2 text-sm font-semibold text-rose-300">
+          <X size={16} /> {es ? 'Rechazada — el equipo queda avisado.' : 'Rejected — the team has been notified.'}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className={wrap}>
+      <div className="mx-auto w-full max-w-lg">
+        {state === 'rejecting' ? (
+          <div className="space-y-2.5">
+            <textarea
+              autoFocus value={reason} onChange={(e) => setReason(e.target.value)} rows={2}
+              placeholder={es ? 'Motivo del rechazo (qué cambiar)…' : 'Reason for rejection (what to change)…'}
+              className="w-full resize-none rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+            />
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setState('idle')} className="flex-1 rounded-full border border-line px-4 py-2.5 text-sm font-semibold text-paper-mute hover:text-paper">
+                {es ? 'Volver' : 'Back'}
+              </button>
+              <button type="button" onClick={() => decide('rejected')} disabled={state === 'sending'}
+                className="flex-1 rounded-full bg-rose-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60">
+                {es ? 'Confirmar rechazo' : 'Confirm rejection'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <span className="hidden min-w-0 flex-1 truncate text-sm text-paper-mute sm:block">
+              {es ? '¿Aprobás esta propuesta para la creadora?' : 'Approve this proposal for the creator?'}
+            </span>
+            <button type="button" onClick={() => setState('rejecting')} disabled={state === 'sending'}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-line px-5 py-3 text-sm font-semibold text-paper hover:border-rose-400/50 hover:text-rose-200 disabled:opacity-60 sm:flex-none sm:py-2.5">
+              <X size={15} /> {es ? 'Rechazar' : 'Reject'}
+            </button>
+            <button type="button" onClick={() => decide('approved')} disabled={state === 'sending'}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-3 text-sm font-bold text-white transition-transform hover:scale-[1.02] disabled:opacity-60 sm:flex-none sm:py-2.5">
+              <Check size={15} /> {state === 'sending' ? (es ? 'Enviando…' : 'Sending…') : (es ? 'Aprobar y enviar' : 'Approve & send')}
+            </button>
+          </div>
+        )}
+        {err && <p className="mt-2 text-center text-[12px] text-rose-300">{err}</p>}
+      </div>
+    </div>
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════
