@@ -93,7 +93,7 @@ function ProposalLogos({ logos, className = 'mt-14', justify = 'center', compact
   const imgH = compact ? 'h-3' : 'h-4';
   const svgH = compact ? 'h-[15px] w-[15px]' : 'h-[18px] w-[18px]';
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${justify === 'start' ? 'justify-start' : 'justify-center gap-2.5'} ${className}`}>
+    <div className={`flex flex-wrap items-center gap-2.5 ${justify === 'start' ? 'justify-start' : 'justify-center'} ${className}`}>
       {sel.map((l) =>
         l.png ? (
           <span key={l.key} aria-label={l.label} title={l.label}
@@ -567,13 +567,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
               {cfg.name}
             </div>
           )}
-          {/* "Preparada para" — lead-in chico, para no robarle protagonismo al nombre. */}
-          {cfg.recipient?.name && (
-            <div className="mb-1 text-[clamp(1rem,2.4vw,1.5rem)] font-medium text-white/70">
-              {t.preparedFor}
-            </div>
-          )}
-          {/* Hero gigante = el NOMBRE de la creadora (la protagonista). */}
+          {/* Hero gigante = el NOMBRE de la creadora (la protagonista, sin "Preparada para"). */}
           <h1 className="font-display text-[clamp(2.8rem,8.5vw,6rem)] font-bold leading-[0.95] tracking-[-0.03em] text-white drop-shadow-[0_2px_34px_rgba(0,0,0,0.75)]">
             {cfg.recipient?.name || cfg.name}
             {/* El subtítulo solo sale si hay uno (por defecto va vacío). */}
@@ -592,11 +586,8 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           >
             {t.start} <ChevronDown size={16} />
           </button>
-          <div className="mt-3 text-xs tracking-wide text-white/55">
-            {total} {t.looks} · {t.tapHint}
-          </div>
           {/* Logos de plataformas también en la portada (igual que al final). */}
-          <ProposalLogos logos={cfg.logos} justify="start" compact className="mt-7" />
+          <ProposalLogos logos={cfg.logos} justify="start" className="mt-8" />
         </div>
       </section>
 
