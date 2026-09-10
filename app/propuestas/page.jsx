@@ -136,7 +136,17 @@ export default function PropuestaAdmin() {
   // Aprobación: si el empleado marca el chulito, la propuesta va primero al que
   // aprueba (approverEmail); recién si él aprueba, se le manda a la creadora.
   const [needsApproval, setNeedsApproval] = useState(false);
-  const [approverEmail, setApproverEmail] = useState('');
+  // Pueden aprobar VARIOS correos (cualquiera con el link aprueba). Chips + buffer.
+  const [approverEmails, setApproverEmails] = useState([]);
+  const [approverInput, setApproverInput] = useState('');
+  const addApprover = (raw) => {
+    const parts = String(raw || '').split(/[,;\s]+/).map((s) => s.trim().toLowerCase())
+      .filter((e) => EMAIL_RE.test(e));
+    if (!parts.length) return;
+    setApproverEmails((s) => Array.from(new Set([...s, ...parts])));
+    setApproverInput('');
+  };
+  const removeApprover = (e) => setApproverEmails((s) => s.filter((x) => x !== e));
   const [approvalState, setApprovalState] = useState(''); // '' | 'sending' | 'sent' | 'error'
   const [approvalMsg, setApprovalMsg] = useState('');
   const [feedback, setFeedback] = useState(null);
@@ -169,6 +179,9 @@ export default function PropuestaAdmin() {
   // id (uuid) de la propuesta recién insertada en Supabase — lo usa el paso 4
   // para leer su feedback. pubError: mensaje visible si el insert falla.
   const [proposalId, setProposalId] = useState(null);
+  // Token de aprobación (viene de la fila) para armar el LINK que se comparte con
+  // el/los que aprueban — así no depende de que llegue un correo.
+  const [approvalToken, setApprovalToken] = useState('');
   const [pubError, setPubError] = useState('');
   const [publishing, setPublishing] = useState(false);
   // Envío de invitación por email (creadora NUEVA): '' | 'sending' | 'sent' | 'error'
@@ -246,7 +259,7 @@ export default function PropuestaAdmin() {
         });
         if (data.recipient_user_id) setCreatorId(data.recipient_user_id);
         setNeedsApproval(!!data.approval_required);
-        if (typeof data.approver_email === 'string') setApproverEmail(data.approver_email || '');
+        if (typeof data.approver_email === 'string') setApproverEmails(data.approver_email.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean));
         if (Array.isArray(data.looks) && data.looks.length > 0) {
           const seeded = data.looks.map((l) => ({
             id: l.id, caption: l.caption || '',
@@ -273,6 +286,10 @@ export default function PropuestaAdmin() {
   const previewUrl = `${proto}//${host}/p/demo?lang=${lang}`;
   const qrTarget = isLocal ? `${proto}//${LAN_HOST}${pubPath}` : publicUrl;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(qrTarget)}`;
+  // Link de APROBACIÓN (con token) para compartir con el/los que aprueban — no
+  // hace falta correo: se manda por WhatsApp/link. Cualquiera con él puede aprobar.
+  const approvalUrl = approvalToken ? `${proto}//${host}/p/${code}?approve=${approvalToken}&lang=${lang}` : '';
+  const approvalQr = approvalUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(approvalUrl)}` : '';
 
   const setLook = (id, patch) => setLooks((s) => s.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const removeLook = (id) => setLooks((s) => s.filter((l) => l.id !== id));
@@ -513,7 +530,7 @@ export default function PropuestaAdmin() {
       recipient_user_id: recipient.kind === 'active' ? (creatorId || null) : null,
       // Aprobación: si va con chulito, arranca 'pending' y se manda al aprobador.
       approval_required: needsApproval,
-      approver_email: needsApproval ? approverEmail.trim() : null,
+      approver_email: needsApproval ? approverEmails.join(', ') : null,
       approval_status: needsApproval ? 'pending' : null,
       status: 'published',
       expires_at: new Date(Date.now() + days * 86400000).toISOString(),
@@ -524,17 +541,19 @@ export default function PropuestaAdmin() {
         // EDITAR: actualiza la MISMA propuesta (mismo link, mismo autor).
         const { error } = await sb.from('photo_proposals').update(content).eq('link_id', editCode);
         if (error) throw error;
-        const { data: idRow } = await sb.from('photo_proposals').select('id').eq('link_id', editCode).maybeSingle();
+        const { data: idRow } = await sb.from('photo_proposals').select('id, approval_token').eq('link_id', editCode).maybeSingle();
         setProposalId(idRow?.id ?? null);
+        setApprovalToken(idRow?.approval_token || '');
       } else {
         // CREAR: link_id nuevo + autor.
         const { data, error } = await sb
           .from('photo_proposals')
           .insert({ link_id: newCode, created_by: authorId || null, created_by_name: authorName || '', ...content })
-          .select('id')
+          .select('id, approval_token')
           .single();
         if (error) throw error;
         setProposalId(data?.id ?? null);
+        setApprovalToken(data?.approval_token || '');
       }
       setCode(newCode);
       try {
@@ -588,7 +607,7 @@ export default function PropuestaAdmin() {
     ? ((recipient.kind === 'active'
         ? !!creatorId && recipient.name.trim().length > 0            // activa: elegí creadora (sin correo)
         : recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())) // nueva: nombre + correo
-        && (!needsApproval || EMAIL_RE.test(approverEmail.trim())))  // si va a aprobación, el correo del aprobador
+        && (!needsApproval || approverEmails.length > 0))  // si va a aprobación, al menos un aprobador
     : step === 3
       ? completeCount > 0
       : step < 4;
@@ -602,17 +621,17 @@ export default function PropuestaAdmin() {
     setStep(step + 1);
   };
 
-  const copyLink = async () => {
+  const doCopy = async (text) => {
     // navigator.clipboard se bloquea en navegadores embebidos / sin foco → usamos
     // un fallback con execCommand para que el botón Copiar SIEMPRE funcione.
     let ok = false;
     try {
-      if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(publicUrl); ok = true; }
+      if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); ok = true; }
     } catch {}
     if (!ok) {
       try {
         const ta = document.createElement('textarea');
-        ta.value = publicUrl;
+        ta.value = text;
         ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.opacity = '0';
         document.body.appendChild(ta); ta.focus(); ta.select();
         document.execCommand('copy');
@@ -621,6 +640,7 @@ export default function PropuestaAdmin() {
     }
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
+  const copyLink = () => doCopy(publicUrl);
 
   // Creadora NUEVA: se manda por INVITACIÓN por correo (edge function
   // proposal-invite → crea su cuenta / le pide contraseña → cae en la propuesta,
@@ -820,15 +840,26 @@ export default function PropuestaAdmin() {
                 </button>
                 {needsApproval && (
                   <div className="mt-3.5">
-                    <Field label="Correo de quien aprueba">
-                      <input
-                        type="email"
-                        value={approverEmail}
-                        onChange={(e) => setApproverEmail(e.target.value)}
-                        placeholder="quien-aprueba@correo.com"
-                        className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
-                      />
+                    <Field label="Correos que pueden aprobar">
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-ink-2 px-2.5 py-2 focus-within:border-brand/60">
+                        {approverEmails.map((e) => (
+                          <span key={e} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-paper">
+                            {e}
+                            <button type="button" onClick={() => removeApprover(e)} className="text-paper-mute transition-colors hover:text-rose-300"><X size={12} /></button>
+                          </span>
+                        ))}
+                        <input
+                          type="email"
+                          value={approverInput}
+                          onChange={(e) => setApproverInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addApprover(approverInput); } }}
+                          onBlur={() => addApprover(approverInput)}
+                          placeholder={approverEmails.length ? 'Agregar otro…' : 'quien-aprueba@correo.com'}
+                          className="min-w-[150px] flex-1 bg-transparent px-1 py-1 text-sm text-paper placeholder:text-paper-dim outline-none"
+                        />
+                      </div>
                     </Field>
+                    <p className="mt-1.5 text-[11px] text-paper-dim">Enter o coma para agregar. Cualquiera de ellos puede aprobar.</p>
                   </div>
                 )}
               </div>
@@ -1163,28 +1194,57 @@ export default function PropuestaAdmin() {
           <section className="card3d rounded-3xl border border-line bg-card p-5">
             {needsApproval ? (
               <>
-                {/* Va PRIMERO a aprobación: al que decide; si aprueba, se manda sola a la creadora. */}
-                <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5 text-[12px] text-amber-200/90">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                  Esta propuesta necesita aprobación antes de llegar a la creadora.
+                {/* Va PRIMERO a aprobación. Se comparte un LINK (con token) con quien
+                    decide — no depende de correo. Cualquiera con el link aprueba;
+                    al aprobar, se le manda sola a la creadora. */}
+                <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5 text-[12px] text-amber-200/90">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                  Necesita aprobación. Compartí este link con quien decide; cuando apruebe, se le manda sola a la creadora.
                 </div>
-                <a href={publicUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
-                  className="btn3d-ghost mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold">
-                  <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
-                </a>
-                <button type="button" onClick={sendApproval} disabled={approvalState === 'sending' || approvalState === 'sent'}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition-all disabled:opacity-70 ${approvalState === 'sent' ? 'bg-emerald-500 text-white' : 'btn3d'}`}>
-                  {approvalState === 'sent'
-                    ? <><Check size={15} /> Enviado a aprobación</>
-                    : approvalState === 'sending'
-                      ? <>Enviando…</>
-                      : <><Mail size={15} /> Enviar a aprobación</>}
-                </button>
-                <p className="mt-2 text-center text-[11px] text-paper-dim">
-                  {approvalState === 'error'
-                    ? <span className="text-rose-300">{approvalMsg}</span>
-                    : <>Se env&iacute;a a <span className="text-paper-mute">{approverEmail || 'quien aprueba'}</span>. Cuando lo apruebe, la propuesta le llega autom&aacute;ticamente a la creadora.</>}
-                </p>
+                {approvalUrl ? (
+                  <>
+                    <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
+                      <LinkIcon size={13} className="shrink-0 text-paper-dim" />
+                      <input readOnly value={approvalUrl} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-paper outline-none" />
+                      <button type="button" onClick={() => doCopy(approvalUrl)}
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-brand text-on-accent hover:scale-105'}`}>
+                        {copied ? <><Check size={13} /> {t.copied}</> : <><Copy size={13} /> {t.copy}</>}
+                      </button>
+                    </div>
+                    <div className="mb-4 rounded-2xl border border-line bg-ink p-4">
+                      <div className="mb-3 inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">
+                        <Smartphone size={11} /> {t.scanPhone}
+                      </div>
+                      <div className="grid place-items-center">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={approvalQr} alt="QR" className="h-40 w-40 rounded-lg" />
+                      </div>
+                    </div>
+                    <a href={approvalUrl} target="_blank" rel="noreferrer"
+                      className="btn3d mb-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold">
+                      <Eye size={15} /> Abrir para revisar <ExternalLink size={12} className="opacity-60" />
+                    </a>
+                  </>
+                ) : (
+                  <p className="mb-3 text-center text-[12px] text-paper-mute">Publicá para generar el link de aprobación.</p>
+                )}
+                {approverEmails.length > 0 && (
+                  <>
+                    <button type="button" onClick={sendApproval} disabled={approvalState === 'sending' || approvalState === 'sent'}
+                      className={`mt-1 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all disabled:opacity-70 ${approvalState === 'sent' ? 'bg-emerald-500 text-white' : 'btn3d-ghost'}`}>
+                      {approvalState === 'sent'
+                        ? <><Check size={15} /> Enviado por email</>
+                        : approvalState === 'sending'
+                          ? <>Enviando…</>
+                          : <><Mail size={15} /> También enviar por email</>}
+                    </button>
+                    <p className="mt-2 text-center text-[11px] text-paper-dim">
+                      {approvalState === 'error'
+                        ? <span className="text-rose-300">{approvalMsg}</span>
+                        : <>Correo (opcional) a: <span className="text-paper-mute">{approverEmails.join(', ')}</span></>}
+                    </p>
+                  </>
+                )}
               </>
             ) : recipient.kind === 'active' ? (
               <>

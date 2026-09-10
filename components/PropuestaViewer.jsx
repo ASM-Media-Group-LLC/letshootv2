@@ -604,6 +604,18 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
   return (
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
 
+      {/* Preview del editor (/p/demo): botón para VOLVER al editor. Cierra esta
+          pestaña (se abrió con window.open); si no puede, va atrás en el historial. */}
+      {isDemo && (
+        <button
+          type="button"
+          onClick={() => { try { window.close(); } catch {} setTimeout(() => { try { if (!window.closed) window.history.back(); } catch {} }, 120); }}
+          className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.9rem)] z-[70] inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/70 px-3.5 py-2 text-xs font-semibold text-white backdrop-blur-md hover:bg-black/85 sm:left-6 sm:top-6"
+        >
+          <ArrowRight size={14} className="rotate-180" /> Volver al editor
+        </button>
+      )}
+
       {/* (El co-branding KASH + LetShoot vive DENTRO de la portada — abajo — para
           poder bajarlo bien sin chocar con los looks al scrollear.) */}
 

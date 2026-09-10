@@ -85,9 +85,13 @@ Deno.serve(async (req) => {
     if (!prop) return reply({ ok: false, error: 'Esta propuesta no existe.' });
     const lang = prop.lang === 'en' ? 'en' : 'es';
 
-    // ── action: SEND (avisar al aprobador) ──
+    // ── action: SEND (avisar a los aprobadores — pueden ser varios) ──
     if (action === 'send') {
-      if (!prop.approval_required || !prop.approver_email) {
+      // approver_email guarda uno o VARIOS correos (separados por coma/espacio/;).
+      const approvers = String(prop.approver_email || '')
+        .split(/[,;\s]+/).map((s) => s.trim().toLowerCase())
+        .filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+      if (!prop.approval_required || approvers.length === 0) {
         return reply({ ok: false, error: 'Esta propuesta no tiene aprobador configurado.' });
       }
       if (prop.status !== 'published' || (prop.expires_at && new Date(prop.expires_at) < new Date())) {
@@ -107,10 +111,17 @@ Deno.serve(async (req) => {
         url: reviewUrl,
         pre: es ? 'Una propuesta espera tu aprobación.' : 'A proposal is waiting for your approval.',
       });
-      const sent = await sendResend(prop.approver_email, es ? `Aprobación: propuesta para ${forName}` : `Approval: proposal for ${forName}`, html);
-      if (!sent.ok) return reply({ ok: false, error: sent.error || 'Resend error' });
-      await svc.from('email_log').insert({ template: 'proposal_approval_request', recipient: prop.approver_email, subject: `Aprobación: ${forName}`, resend_id: sent.id || null, lang }).then(() => {}, () => {});
-      return reply({ ok: true, sent_to: prop.approver_email, email_id: sent.id || null, skipped: sent.skipped || null });
+      const subject = es ? `Aprobación: propuesta para ${forName}` : `Approval: proposal for ${forName}`;
+      // Se manda a CADA aprobador con el MISMO link (cualquiera puede aprobar).
+      let sentCount = 0; let lastErr: string | null = null; let skipped: string | null = null;
+      for (const a of approvers) {
+        const r = await sendResend(a, subject, html);
+        if (r.ok) { sentCount++; if (r.skipped) skipped = r.skipped; }
+        else lastErr = r.error || 'Resend error';
+        await svc.from('email_log').insert({ template: 'proposal_approval_request', recipient: a, subject, resend_id: r.id || null, lang }).then(() => {}, () => {});
+      }
+      if (sentCount === 0) return reply({ ok: false, error: lastErr || 'Resend error' });
+      return reply({ ok: true, sent_to: approvers, count: sentCount, skipped });
     }
 
     // ── action: DECIDE (aprobar / rechazar) ──
