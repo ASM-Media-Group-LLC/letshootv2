@@ -802,9 +802,6 @@ export default function PropuestaAdmin() {
               <Field label={t.pkgTitle}>
                 <input value={name} onChange={(e) => { setName(e.target.value); setTouched((t2) => ({ ...t2, name: true })); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
               </Field>
-              <Field label={t.subtitle}>
-                <input value={subtitle} onChange={(e) => { setSubtitle(e.target.value); setTouched((t2) => ({ ...t2, subtitle: true })); }} className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
-              </Field>
               <Field label={t.introduction}>
                 <textarea value={intro} onChange={(e) => { setIntro(e.target.value); setTouched((t2) => ({ ...t2, intro: true })); }} rows={3} className="w-full resize-none rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
               </Field>
