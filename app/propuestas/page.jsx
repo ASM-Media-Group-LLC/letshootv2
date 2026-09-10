@@ -136,6 +136,12 @@ export default function PropuestaAdmin() {
   const [template] = useState('redes'); // hoy: un solo tipo (contenido de redes)
   const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
   const [closingUrl, setClosingUrl] = useState(DEMO_CLOSING);
+  // Logo de la AGENCIA (KASH, etc.): se muestra junto a LetShoot en la propuesta
+  // para que la creadora sienta que se la da su agencia. Se recuerda el último
+  // subido ('ls_prop_agency_logo') para no re-subirlo en cada propuesta.
+  const [agencyLogoUrl, setAgencyLogoUrl] = useState('');
+  const [logoBusy, setLogoBusy] = useState(false);
+  const logoInputRef = useRef(null);
 
   const [name, setName] = useState(presetFor('es').name);
   const [subtitle, setSubtitle] = useState(presetFor('es').subtitle);
@@ -212,6 +218,8 @@ export default function PropuestaAdmin() {
         if (PROP_LANGS.includes(data.lang)) setLang(data.lang);
         if (typeof data.cover_url === 'string' || data.cover_url === null) setCoverUrl(data.cover_url);
         if (typeof data.closing_url === 'string' || data.closing_url === null) setClosingUrl(data.closing_url);
+        // Solo pisa el logo recordado si esta propuesta ya trae uno (si no, deja el prefill).
+        if (typeof data.agency_logo_url === 'string' && data.agency_logo_url) setAgencyLogoUrl(data.agency_logo_url);
         if (data.expires_at) {
           const rem = Math.ceil((new Date(data.expires_at).getTime() - Date.now()) / 86400000);
           const snap = [3, 7, 10, 14, 30].reduce((a, b) => (Math.abs(b - rem) < Math.abs(a - rem) ? b : a), 30);
@@ -301,6 +309,15 @@ export default function PropuestaAdmin() {
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
   const fileInputRef = useRef(null);
+  // Logo de la agencia recordado (última vez que se subió). Prefill para no
+  // re-subirlo en cada propuesta; el modo edición lo pisa si esa propuesta trae uno.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ls_prop_agency_logo');
+      if (saved && /^https?:\/\//.test(saved)) setAgencyLogoUrl(saved);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem('ls_prop_uploads');
@@ -367,6 +384,49 @@ export default function PropuestaAdmin() {
     if (nuevos.length === 1 && picker) assign(nuevos[0].src);
   };
 
+  // ── Subir el LOGO de la agencia ──
+  // Se guarda como PNG (conserva transparencia, a diferencia de las fotos que van
+  // a JPEG) en el bucket público 'proposal-photos/logos'. Se recuerda el último
+  // en localStorage para reusarlo en la próxima propuesta.
+  const compressLogo = (file) => new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 512;
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => resolve(blob), 'image/png');
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+
+  const onLogoPicked = async (e) => {
+    const file = Array.from(e.target.files || []).find((f) => f.type.startsWith('image/'));
+    e.target.value = '';
+    if (!file) return;
+    setLogoBusy(true);
+    setUploadErr('');
+    try {
+      const blob = await compressLogo(file);
+      if (!blob) { setUploadErr('No se pudo leer el logo. Probá con un PNG.'); return; }
+      const sb = getSupabase();
+      const path = `logos/${authorId || 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+      const { error: upErr } = await sb.storage.from('proposal-photos').upload(path, blob, { contentType: 'image/png', upsert: false });
+      if (upErr) { setUploadErr(upErr.message || 'No se pudo subir el logo. Reintentá.'); return; }
+      const src = sb.storage.from('proposal-photos').getPublicUrl(path)?.data?.publicUrl;
+      if (!src) { setUploadErr('No se pudo obtener la URL del logo.'); return; }
+      setAgencyLogoUrl(src);
+      try { localStorage.setItem('ls_prop_agency_logo', src); } catch {}
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
   const pickerItems = useMemo(() => [...uploads, ...BAUL].filter((p) => {
     if (pickerKind !== 'all' && p.kind !== pickerKind) return false;
     if (pickerQ && !p.caption.toLowerCase().includes(pickerQ.toLowerCase())) return false;
@@ -390,6 +450,7 @@ export default function PropuestaAdmin() {
     template,
     coverUrl: coverUrl || null,
     closingUrl: closingUrl || null,
+    agencyLogoUrl: agencyLogoUrl || null,
     createdBy: authorName || '',
     looks: (includeIncomplete ? looks : looks.filter(isComplete))
       .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
@@ -422,6 +483,7 @@ export default function PropuestaAdmin() {
       template,
       cover_url: coverUrl || null,
       closing_url: closingUrl || null,
+      agency_logo_url: agencyLogoUrl || null,
       looks: looks
         .filter(isComplete)
         .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
@@ -736,6 +798,55 @@ export default function PropuestaAdmin() {
               <Field label={t.introduction}>
                 <textarea value={intro} onChange={(e) => { setIntro(e.target.value); setTouched((t2) => ({ ...t2, intro: true })); }} rows={3} className="w-full resize-none rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60" />
               </Field>
+            </div>
+          </section>
+
+          {/* Logo de la AGENCIA — sale junto a LetShoot en la propuesta (la creadora
+              siente que se la da su agencia). Se recuerda el último subido. */}
+          <section className="card3d rounded-3xl border border-line bg-card p-5">
+            <div className="mb-3">
+              <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">{t.agencyLogo}</div>
+              <p className="mt-1 text-[12px] leading-relaxed text-paper-mute">{t.agencyLogoHint}</p>
+            </div>
+            <div className="flex items-center gap-4">
+              {agencyLogoUrl ? (
+                <>
+                  <div className="grid h-16 w-40 shrink-0 place-items-center overflow-hidden rounded-2xl border border-line bg-black px-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={agencyLogoUrl} alt="" className="max-h-12 max-w-full object-contain" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={logoBusy}
+                      className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold disabled:opacity-50"
+                    >
+                      <ImagePlus size={13} /> {logoBusy ? 'Subiendo…' : t.agencyLogoChange}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAgencyLogoUrl(''); try { localStorage.removeItem('ls_prop_agency_logo'); } catch {} }}
+                      className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:text-rose-300"
+                    >
+                      <Trash2 size={13} /> {t.agencyLogoRemove}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={logoBusy}
+                  className="grid h-16 w-40 place-items-center rounded-2xl border-2 border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-paper-mute disabled:opacity-50"
+                >
+                  <span className="flex flex-col items-center gap-1 text-center">
+                    <ImagePlus size={16} />
+                    <span className="text-[10px] font-semibold">{logoBusy ? 'Subiendo…' : t.agencyLogoAdd}</span>
+                  </span>
+                </button>
+              )}
+              <input ref={logoInputRef} type="file" accept="image/*" hidden onChange={onLogoPicked} />
             </div>
           </section>
 

@@ -74,6 +74,7 @@ function mapRow(row) {
     template: row?.template || 'exclusive',
     coverUrl: row?.cover_url || '',
     closingUrl: row?.closing_url || '',
+    agencyLogoUrl: row?.agency_logo_url || '',
     looks,
   };
 }
@@ -282,7 +283,16 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
       )}
       <form onSubmit={submit} className="card3d relative z-10 w-full max-w-sm rounded-3xl border border-line bg-card p-7 shadow-glow-sm sm:p-8">
         <div className="flex flex-col items-center text-center">
-          <Logo size="lg" forceDark />
+          <div className="flex items-center gap-3">
+            <Logo size="lg" forceDark />
+            {cfg.agencyLogoUrl && (
+              <>
+                <span className="h-6 w-px bg-white/20" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={cfg.agencyLogoUrl} alt="" className="max-h-7 max-w-[120px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+              </>
+            )}
+          </div>
           <span className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand">
             <Sparkles size={13} /> {cfg.model?.name || t.privateSel}
           </span>
@@ -458,9 +468,17 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
   return (
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
 
-      {/* Logo flotante top-left */}
-      <div className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center rounded-full border border-white/15 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:left-6 sm:top-6">
+      {/* Logo flotante top-left — LetShoot y, luego, el logo de la agencia
+          (para que la creadora sienta que se la da su agencia). */}
+      <div className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center gap-2.5 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:left-6 sm:top-6">
         <Logo size="sm" forceDark />
+        {cfg.agencyLogoUrl && (
+          <>
+            <span className="h-4 w-px bg-white/25" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={cfg.agencyLogoUrl} alt="" className="max-h-5 max-w-[92px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+          </>
+        )}
       </div>
 
       {/* (Sin badge de código ni contador arriba-derecha: portada limpia.) */}
@@ -655,8 +673,15 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           </div>
         )}
         <div className="relative z-10 mx-auto w-full max-w-2xl text-center">
-          <div className="mb-8 flex justify-center">
+          <div className="mb-8 flex items-center justify-center gap-3">
             <Logo size="lg" forceDark />
+            {cfg.agencyLogoUrl && (
+              <>
+                <span className="h-6 w-px bg-white/20" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={cfg.agencyLogoUrl} alt="" className="max-h-7 max-w-[120px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+              </>
+            )}
           </div>
           <div className="mb-6 inline-flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute">
             <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
