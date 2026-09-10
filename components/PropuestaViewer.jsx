@@ -23,6 +23,7 @@ import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, Ar
 import Logo from '@/components/Logo';
 import { getSupabase } from '@/lib/supabase/client';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
+import { PROPOSAL_LOGOS } from '@/lib/proposal-logos';
 
 const regKey = (id) => `ls_prop_reg_${id}`;
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -75,8 +76,36 @@ function mapRow(row) {
     coverUrl: row?.cover_url || '',
     closingUrl: row?.closing_url || '',
     agencyLogoUrl: row?.agency_logo_url || '',
+    logos: Array.isArray(row?.logos) ? row.logos : [],
     looks,
   };
+}
+
+// Fila de logos de plataformas (OnlyFans + redes) que el operador eligió — sale
+// AL FINAL de la propuesta (pantalla de cierre). Chips glassy, mismo estilo que
+// la home. OnlyFans es pastilla horizontal (su PNG es un wordmark); el resto,
+// chips circulares con el SVG de su marca.
+function ProposalLogos({ logos }) {
+  const sel = PROPOSAL_LOGOS.filter((l) => (logos || []).includes(l.key));
+  if (!sel.length) return null;
+  return (
+    <div className="mt-14 flex flex-wrap items-center justify-center gap-2.5">
+      {sel.map((l) =>
+        l.png ? (
+          <span key={l.key} aria-label={l.label} title={l.label}
+            className="inline-flex h-10 items-center rounded-full border border-white/12 bg-white/[0.06] px-4 backdrop-blur-md">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={l.png} alt={l.label} className="h-4 w-auto" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+          </span>
+        ) : (
+          <span key={l.key} aria-label={l.label} title={l.label}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/[0.06] backdrop-blur-md">
+            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill={l.color} aria-hidden><path d={l.path} /></svg>
+          </span>
+        )
+      )}
+    </div>
+  );
 }
 
 
@@ -724,6 +753,9 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
               {t.reviewAgain}
             </button>
           </div>
+
+          {/* Logos de plataformas elegidos — al final. */}
+          <ProposalLogos logos={cfg.logos} />
 
           <div className="mt-16 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-dim">
             <Link href="/" className="hover:text-paper">LetShoot{cfg.model?.agency ? ` · ${cfg.model.agency}` : ''}</Link>

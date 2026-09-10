@@ -17,6 +17,7 @@ import {
   Smartphone, Mail,
 } from 'lucide-react';
 import { useProp, propDict, PROP_LANGS, PROP_LANG_LABELS, PROP_LANG_FLAG } from '@/lib/propuesta-i18n';
+import { PROPOSAL_LOGOS, DEFAULT_PROPOSAL_LOGOS } from '@/lib/proposal-logos';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -142,6 +143,11 @@ export default function PropuestaAdmin() {
   const [agencyLogoUrl, setAgencyLogoUrl] = useState('');
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInputRef = useRef(null);
+  // Logos de PLATAFORMAS que salen al final de la propuesta (OnlyFans + redes).
+  // Por defecto todos (igual que la home); el operador destilda los que no van.
+  const [logos, setLogos] = useState(DEFAULT_PROPOSAL_LOGOS);
+  const toggleLogo = (key) =>
+    setLogos((s) => (s.includes(key) ? s.filter((k) => k !== key) : [...s, key]));
 
   const [name, setName] = useState(presetFor('es').name);
   const [subtitle, setSubtitle] = useState(presetFor('es').subtitle);
@@ -220,6 +226,7 @@ export default function PropuestaAdmin() {
         if (typeof data.closing_url === 'string' || data.closing_url === null) setClosingUrl(data.closing_url);
         // Solo pisa el logo recordado si esta propuesta ya trae uno (si no, deja el prefill).
         if (typeof data.agency_logo_url === 'string' && data.agency_logo_url) setAgencyLogoUrl(data.agency_logo_url);
+        if (Array.isArray(data.logos)) setLogos(data.logos);
         if (data.expires_at) {
           const rem = Math.ceil((new Date(data.expires_at).getTime() - Date.now()) / 86400000);
           const snap = [3, 7, 10, 14, 30].reduce((a, b) => (Math.abs(b - rem) < Math.abs(a - rem) ? b : a), 30);
@@ -451,6 +458,7 @@ export default function PropuestaAdmin() {
     coverUrl: coverUrl || null,
     closingUrl: closingUrl || null,
     agencyLogoUrl: agencyLogoUrl || null,
+    logos,
     createdBy: authorName || '',
     looks: (includeIncomplete ? looks : looks.filter(isComplete))
       .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
@@ -484,6 +492,7 @@ export default function PropuestaAdmin() {
       cover_url: coverUrl || null,
       closing_url: closingUrl || null,
       agency_logo_url: agencyLogoUrl || null,
+      logos,
       looks: looks
         .filter(isComplete)
         .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
@@ -847,6 +856,41 @@ export default function PropuestaAdmin() {
                 </button>
               )}
               <input ref={logoInputRef} type="file" accept="image/*" hidden onChange={onLogoPicked} />
+            </div>
+          </section>
+
+          {/* Logos de plataformas (los mismos de la home) — salen al final de la
+              propuesta. Casillas para elegir cuáles: OnlyFans + redes. */}
+          <section className="card3d rounded-3xl border border-line bg-card p-5">
+            <div className="mb-3">
+              <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">{t.proposalLogos}</div>
+              <p className="mt-1 text-[12px] leading-relaxed text-paper-mute">{t.proposalLogosHint}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {PROPOSAL_LOGOS.map((l) => {
+                const on = logos.includes(l.key);
+                return (
+                  <button
+                    key={l.key}
+                    type="button"
+                    onClick={() => toggleLogo(l.key)}
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+                      on ? 'border-brand/60 bg-brand/10 text-paper shadow-glow-sm' : 'border-line text-paper-dim hover:border-hair'
+                    }`}
+                  >
+                    <span className={`inline-flex items-center transition-opacity ${on ? 'opacity-100' : 'opacity-40 grayscale'}`}>
+                      {l.png ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={l.png} alt="" className="h-3.5 w-auto" />
+                      ) : (
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill={l.color} aria-hidden><path d={l.path} /></svg>
+                      )}
+                    </span>
+                    {l.label}
+                    {on && <Check size={12} className="text-brand" />}
+                  </button>
+                );
+              })}
             </div>
           </section>
 
