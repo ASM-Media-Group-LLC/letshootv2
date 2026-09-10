@@ -555,14 +555,24 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           <Watermark code={cfg.code} uid="cover" />
         </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-10 sm:pb-24">
-          {cfg.recipient?.name && (
-            <div className="mb-4 mt-2 text-base text-white/75 sm:text-lg">
-              {t.preparedFor} <span className="font-semibold text-white">{cfg.recipient.name}</span>
+          {/* Kicker chico = título del paquete ("Contenido para tus redes").
+              Solo si hay nombre (si no, el paquete va de título grande abajo). */}
+          {cfg.recipient?.name && cfg.name && (
+            <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.24em] text-white/60 sm:text-xs">
+              {cfg.name}
             </div>
           )}
+          {/* Hero grande = el nombre de la creadora ("Preparada para X"), personal. */}
           <h1 className="font-display text-[clamp(2.4rem,7vw,5.5rem)] font-bold leading-[0.98] tracking-[-0.03em] text-white drop-shadow-[0_2px_34px_rgba(0,0,0,0.75)]">
-            {cfg.name}
-            {/* El subtítulo solo sale si NO repite el título — por defecto va vacío. */}
+            {cfg.recipient?.name ? (
+              <>
+                <span className="font-medium text-white/85">{t.preparedFor}</span>{' '}
+                <span className="text-white">{cfg.recipient.name}</span>
+              </>
+            ) : (
+              cfg.name
+            )}
+            {/* El subtítulo solo sale si hay uno (por defecto va vacío). */}
             {cfg.subtitle && (
               <span className="mt-1 block text-[clamp(1.1rem,2.4vw,1.75rem)] font-medium italic text-white/70">
                 {cfg.subtitle}
