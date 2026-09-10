@@ -320,8 +320,8 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
             {cfg.agencyLogoUrl && (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={cfg.agencyLogoUrl} alt="" className="max-h-8 max-w-[130px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
-                <span className="text-2xl font-light leading-none text-white/45">+</span>
+                <img src={cfg.agencyLogoUrl} alt="" className="h-11 w-auto max-w-[150px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+                <span className="text-3xl font-light leading-none text-white/45">+</span>
               </>
             )}
             <Logo size="lg" forceDark />
@@ -504,12 +504,14 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
       {/* Co-branding centrado arriba: AGENCIA (KASH) + LetShoot — juntos en el
           medio, SIN cajas, con sombra para legibilidad sobre la foto y buen
           tamaño para que tengan presencia. Agencia primero, luego "+", luego LetShoot. */}
-      <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+0.9rem)] z-40 flex -translate-x-1/2 items-center gap-3 sm:top-7 sm:gap-4">
+      {/* Tamaños MEDIDOS sobre los PNG (glifos ~0.81 de la altura en ambos):
+          KASH 46px vs LetShoot 38px quedan ópticamente parejos, con KASH firme. */}
+      <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+1.25rem)] z-40 flex -translate-x-1/2 items-center gap-4 sm:top-12 sm:gap-5">
         {cfg.agencyLogoUrl && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={cfg.agencyLogoUrl} alt="" className="h-8 w-auto max-w-[130px] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:h-9" draggable={false} style={{ WebkitUserDrag: 'none' }} />
-            <span className="text-2xl font-light leading-none text-white/70 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">+</span>
+            <img src={cfg.agencyLogoUrl} alt="" className="h-10 w-auto max-w-[180px] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:h-[46px]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+            <span className="text-3xl font-light leading-none text-white/75 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">+</span>
           </>
         )}
         <Logo size="lg" forceDark className="drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]" />
