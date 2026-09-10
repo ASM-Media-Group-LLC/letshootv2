@@ -317,14 +317,14 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
       <form onSubmit={submit} className="card3d relative z-10 w-full max-w-sm rounded-3xl border border-line bg-card p-7 shadow-glow-sm sm:p-8">
         <div className="flex flex-col items-center text-center">
           <div className="flex items-center gap-3">
-            <Logo size="lg" forceDark />
             {cfg.agencyLogoUrl && (
               <>
-                <span className="h-6 w-px bg-white/20" />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={cfg.agencyLogoUrl} alt="" className="max-h-7 max-w-[120px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+                <img src={cfg.agencyLogoUrl} alt="" className="max-h-8 max-w-[130px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+                <span className="text-2xl font-light leading-none text-white/45">+</span>
               </>
             )}
+            <Logo size="lg" forceDark />
           </div>
           <span className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand">
             <Sparkles size={13} /> {cfg.model?.name || t.privateSel}
@@ -501,20 +501,19 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
   return (
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
 
-      {/* Logo flotante top-left — LetShoot (plataforma). */}
-      <div className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex h-10 items-center rounded-full border border-white/12 bg-black/55 px-4 shadow-[0_4px_24px_rgba(0,0,0,0.45)] backdrop-blur-md sm:left-6 sm:top-6">
-        <Logo size="sm" forceDark />
+      {/* Co-branding centrado arriba: AGENCIA (KASH) + LetShoot — juntos en el
+          medio, SIN cajas, con sombra para legibilidad sobre la foto y buen
+          tamaño para que tengan presencia. Agencia primero, luego "+", luego LetShoot. */}
+      <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+0.9rem)] z-40 flex -translate-x-1/2 items-center gap-3 sm:top-7 sm:gap-4">
+        {cfg.agencyLogoUrl && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={cfg.agencyLogoUrl} alt="" className="h-8 w-auto max-w-[130px] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:h-9" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+            <span className="text-2xl font-light leading-none text-white/70 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]">+</span>
+          </>
+        )}
+        <Logo size="lg" forceDark className="drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]" />
       </div>
-
-      {/* Logo de la AGENCIA en la OTRA esquina (top-right) — su marca, con
-          protagonismo propio, para que la creadora sienta que se la da su agencia.
-          Misma altura/estilo que la pastilla de LetShoot para que se lea parejo. */}
-      {cfg.agencyLogoUrl && (
-        <div className="fixed right-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex h-10 items-center rounded-full border border-white/12 bg-black/55 px-4 shadow-[0_4px_24px_rgba(0,0,0,0.45)] backdrop-blur-md sm:right-6 sm:top-6">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={cfg.agencyLogoUrl} alt="" className="h-5 w-auto max-w-[130px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
-        </div>
-      )}
 
       {/* (Sin badge de código ni contador arriba-derecha: portada limpia.) */}
 
@@ -712,16 +711,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           </div>
         )}
         <div className="relative z-10 mx-auto w-full max-w-2xl text-center">
-          <div className="mb-8 flex items-center justify-center gap-3">
-            <Logo size="lg" forceDark />
-            {cfg.agencyLogoUrl && (
-              <>
-                <span className="h-6 w-px bg-white/20" />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={cfg.agencyLogoUrl} alt="" className="max-h-7 max-w-[120px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
-              </>
-            )}
-          </div>
+          {/* (El co-branding KASH + LetShoot va fijo arriba en todas las pantallas.) */}
           <div className="mb-6 inline-flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute">
             <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
             {t.endTag}
