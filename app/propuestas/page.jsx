@@ -141,7 +141,7 @@ export default function PropuestaAdmin() {
   // para que la creadora sienta que se la da su agencia. Por defecto trae el de
   // KASH (bundle en /public); si se sube otro se recuerda ('ls_prop_agency_logo')
   // y pisa el default. Se puede quitar con el botón.
-  const [agencyLogoUrl, setAgencyLogoUrl] = useState('/prop-agency-kash.svg');
+  const [agencyLogoUrl, setAgencyLogoUrl] = useState('/prop-agency-kash.png');
   const [logoBusy, setLogoBusy] = useState(false);
   const logoInputRef = useRef(null);
   // Logos de PLATAFORMAS que salen al final de la propuesta (OnlyFans + redes).

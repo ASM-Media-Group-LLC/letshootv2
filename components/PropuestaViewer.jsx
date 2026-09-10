@@ -497,18 +497,19 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
   return (
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
 
-      {/* Logo flotante top-left — LetShoot y, luego, el logo de la agencia
-          (para que la creadora sienta que se la da su agencia). */}
-      <div className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center gap-2.5 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:left-6 sm:top-6">
+      {/* Logo flotante top-left — LetShoot (plataforma). */}
+      <div className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center rounded-full border border-white/15 bg-black/60 px-3 py-1.5 backdrop-blur-md sm:left-6 sm:top-6">
         <Logo size="sm" forceDark />
-        {cfg.agencyLogoUrl && (
-          <>
-            <span className="h-4 w-px bg-white/25" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={cfg.agencyLogoUrl} alt="" className="max-h-5 max-w-[92px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
-          </>
-        )}
       </div>
+
+      {/* Logo de la AGENCIA en la OTRA esquina (top-right) — su marca, con
+          protagonismo propio, para que la creadora sienta que se la da su agencia. */}
+      {cfg.agencyLogoUrl && (
+        <div className="fixed right-3 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-40 flex items-center rounded-full border border-white/15 bg-black/60 px-3.5 py-2 backdrop-blur-md sm:right-6 sm:top-6">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={cfg.agencyLogoUrl} alt="" className="max-h-6 max-w-[120px] object-contain sm:max-h-7 sm:max-w-[150px]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+        </div>
+      )}
 
       {/* (Sin badge de código ni contador arriba-derecha: portada limpia.) */}
 
@@ -555,23 +556,21 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
           <Watermark code={cfg.code} uid="cover" />
         </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-10 sm:pb-24">
-          {/* Kicker chico = título del paquete ("Contenido para tus redes").
-              Solo si hay nombre (si no, el paquete va de título grande abajo). */}
+          {/* Rótulo chico = título del paquete ("Contenido para tus redes"). */}
           {cfg.recipient?.name && cfg.name && (
-            <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.24em] text-white/60 sm:text-xs">
+            <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.24em] text-white/55 sm:text-xs">
               {cfg.name}
             </div>
           )}
-          {/* Hero grande = el nombre de la creadora ("Preparada para X"), personal. */}
-          <h1 className="font-display text-[clamp(2.4rem,7vw,5.5rem)] font-bold leading-[0.98] tracking-[-0.03em] text-white drop-shadow-[0_2px_34px_rgba(0,0,0,0.75)]">
-            {cfg.recipient?.name ? (
-              <>
-                <span className="font-medium text-white/85">{t.preparedFor}</span>{' '}
-                <span className="text-white">{cfg.recipient.name}</span>
-              </>
-            ) : (
-              cfg.name
-            )}
+          {/* "Preparada para" — lead-in chico, para no robarle protagonismo al nombre. */}
+          {cfg.recipient?.name && (
+            <div className="mb-1 text-[clamp(1rem,2.4vw,1.5rem)] font-medium text-white/70">
+              {t.preparedFor}
+            </div>
+          )}
+          {/* Hero gigante = el NOMBRE de la creadora (la protagonista). */}
+          <h1 className="font-display text-[clamp(2.8rem,8.5vw,6rem)] font-bold leading-[0.95] tracking-[-0.03em] text-white drop-shadow-[0_2px_34px_rgba(0,0,0,0.75)]">
+            {cfg.recipient?.name || cfg.name}
             {/* El subtítulo solo sale si hay uno (por defecto va vacío). */}
             {cfg.subtitle && (
               <span className="mt-1 block text-[clamp(1.1rem,2.4vw,1.75rem)] font-medium italic text-white/70">
