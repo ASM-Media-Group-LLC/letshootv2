@@ -337,6 +337,13 @@ export default function AdminPropuestas() {
                   d < 0 ? <span className="text-[11px] text-paper-dim">venció hace {Math.abs(d)}d</span>
                     : <span className="text-[11px] text-paper-dim">{d === 0 ? 'vence hoy' : `${d}d restantes`}</span>
                 )}
+                {p.approval && (
+                  p.approval.status === 'approved'
+                    ? <span className="text-[11px] font-medium text-emerald-300/90">✓ aprobada</span>
+                    : p.approval.status === 'rejected'
+                      ? <span className="text-[11px] font-medium text-rose-300/90">rechazada</span>
+                      : <span className="text-[11px] font-medium text-amber-300/90">pend. aprobación</span>
+                )}
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-paper">{p.model?.name || '—'}</span>
@@ -443,7 +450,7 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                       ? <StatusDot tone="bad">Rechazada</StatusDot>
                       : <StatusDot tone="warn">Pendiente</StatusDot>}
                   {p.approval.approver ? <span className="text-paper-dim"> · {p.approval.approver}</span> : null}
-                  {p.approval.status === 'rejected' && p.approval.reason
+                  {p.approval.reason
                     ? <span className="mt-1 block text-[12px] italic text-rose-200/80">&ldquo;{p.approval.reason}&rdquo;</span> : null}
                 </span>
               } />

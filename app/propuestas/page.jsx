@@ -1384,9 +1384,18 @@ export default function PropuestaAdmin() {
               {step === 3 ? (publishing ? t.publishing || 'Publicando…' : t.publishNow) : t.next} <ArrowRight size={15} />
             </button>
           ) : (
-            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> {t.savedOk}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="hidden items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute sm:inline-flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> {t.savedOk}
+              </span>
+              <button
+                type="button"
+                onClick={() => router.push('/admin')}
+                className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold"
+              >
+                <Check size={15} /> Terminar
+              </button>
+            </div>
           )}
         </div>
       </div>
