@@ -24,6 +24,10 @@ import { getSupabase } from '@/lib/supabase/client';
 const DRAFT_KEY = 'ls_propuesta_draft';
 const LAST_KEY = 'ls_prop_last';
 const LAN_HOST = '10.0.0.67:3001';
+// Los links QUE SE COMPARTEN (propuesta / aprobación) SIEMPRE apuntan a producción
+// —aunque el equipo esté armando en localhost—, así funcionan para quien los recibe.
+// (Las propuestas viven en el mismo Supabase que producción.)
+const SHARE_ORIGIN = 'https://letshoot.ai';
 
 // CODE de propuesta: uno NUEVO por cada publicación (el link cambia cada vez).
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -323,13 +327,14 @@ export default function PropuestaAdmin() {
   // publicUrl apunta al CODE publicado; el preview de pasos 2-3 sigue en /p/demo
   // (renderiza el draft de trabajo). El QR usa la IP LAN en local, mismo path.
   const pubPath = `/p/${code}?lang=${lang}`;
-  const publicUrl = `${proto}//${host}${pubPath}`;
+  // Link a COMPARTIR → siempre producción (para quien lo recibe). El preview
+  // "/p/demo" del molde sí usa el origen actual (es el borrador local).
+  const publicUrl = `${SHARE_ORIGIN}${pubPath}`;
   const previewUrl = `${proto}//${host}/p/demo?lang=${lang}`;
-  const qrTarget = isLocal ? `${proto}//${LAN_HOST}${pubPath}` : publicUrl;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(qrTarget)}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(publicUrl)}`;
   // Link de APROBACIÓN (con token) para compartir con el/los que aprueban — no
   // hace falta correo: se manda por WhatsApp/link. Cualquiera con él puede aprobar.
-  const approvalUrl = approvalToken ? `${proto}//${host}/p/${code}?approve=${approvalToken}&lang=${lang}` : '';
+  const approvalUrl = approvalToken ? `${SHARE_ORIGIN}/p/${code}?approve=${approvalToken}&lang=${lang}` : '';
   const approvalQr = approvalUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(approvalUrl)}` : '';
 
   const setLook = (id, patch) => setLooks((s) => s.map((l) => (l.id === id ? { ...l, ...patch } : l)));
