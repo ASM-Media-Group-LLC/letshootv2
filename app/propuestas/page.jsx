@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, ArrowRight, Check, ChevronUp, ChevronDown, Trash2, Plus,
   ImagePlus, Search, X, Copy, Eye, ExternalLink, Link as LinkIcon,
-  Smartphone, Mail,
+  Smartphone, Mail, User, Users,
 } from 'lucide-react';
 import { useProp, propDict, PROP_LANGS, PROP_LANG_LABELS, PROP_LANG_FLAG } from '@/lib/propuesta-i18n';
 import { PROPOSAL_LOGOS, DEFAULT_PROPOSAL_LOGOS } from '@/lib/proposal-logos';
@@ -837,28 +837,121 @@ export default function PropuestaAdmin() {
           <section className="card3d rounded-3xl border border-line bg-card p-6 sm:p-8">
             <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.whoTitle}</h2>
             <p className="mt-1.5 text-sm text-paper-mute">{t.whoSub}</p>
-            <div className="mt-6 space-y-4">
-              {/* Paso 1: a la creadora (externa) vs interna (revisión del equipo). */}
-              <Field label="¿A quién va?">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Chip active={recipient.kind !== 'internal'} onClick={() => { if (recipient.kind === 'internal') setRecipient((r) => ({ ...r, kind: 'new' })); }}>A la creadora</Chip>
-                  <Chip active={recipient.kind === 'internal'} onClick={() => { setRecipient((r) => ({ ...r, kind: 'internal', name: '', email: '' })); setCreatorId(''); setNeedsApproval(false); }}>Interna (equipo)</Chip>
-                </div>
-              </Field>
+            {/* Decisión principal: dos tarjetas grandes (a prueba de confusión). */}
+            <div className="mt-6 space-y-2.5">
+              <PathCard
+                active={!isInternal}
+                onClick={() => { if (recipient.kind === 'internal') setRecipient((r) => ({ ...r, kind: 'new' })); }}
+                icon={<User size={19} />}
+                title="A la creadora"
+                desc="Se la mandás directo a la modelo por su link."
+              />
+              <PathCard
+                active={isInternal}
+                onClick={() => { setRecipient((r) => ({ ...r, kind: 'internal', name: '', email: '' })); setCreatorId(''); setNeedsApproval(false); }}
+                icon={<Users size={19} />}
+                title="Interna (equipo)"
+                desc="La revisa y aprueba tu equipo antes de que le llegue a la creadora."
+              />
+            </div>
 
-              {/* Paso 2 (solo si va a la creadora): nueva o activa. */}
-              {recipient.kind !== 'internal' && (
-                <Field label="¿Creadora nueva o activa?">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Chip active={recipient.kind === 'new'} onClick={() => { setRecipient((r) => ({ ...r, kind: 'new' })); setCreatorId(''); }}>Creadora nueva</Chip>
-                    <Chip active={recipient.kind === 'active'} onClick={() => setRecipient((r) => ({ ...r, kind: 'active' }))}>Creadora activa</Chip>
-                  </div>
-                </Field>
-              )}
-
-              {recipient.kind === 'internal' && (
+            {/* Formulario de la opción elegida — separado para que no se amontone. */}
+            <div className="mt-6 space-y-4 border-t border-line/70 pt-6">
+              {!isInternal ? (
                 <>
-                  <Field label="Elegí a quién se la mandás (equipo)">
+                  <Field label="¿Creadora nueva o activa?">
+                    <Seg
+                      value={recipient.kind === 'active' ? 'active' : 'new'}
+                      onChange={(v) => {
+                        if (v === 'new') { setRecipient((r) => ({ ...r, kind: 'new' })); setCreatorId(''); }
+                        else setRecipient((r) => ({ ...r, kind: 'active' }));
+                      }}
+                      options={[{ value: 'new', label: 'Creadora nueva' }, { value: 'active', label: 'Creadora activa' }]}
+                    />
+                  </Field>
+
+                  {recipient.kind === 'active' && (
+                    <Field label="Elegí la creadora activa">
+                      <div className="relative">
+                        <select
+                          value={creatorId}
+                          onChange={(e) => {
+                            const c = activeCreators.find((x) => x.id === e.target.value);
+                            setCreatorId(e.target.value);
+                            if (c) setRecipient((r) => ({ ...r, name: c.full_name || '' }));
+                          }}
+                          className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60"
+                        >
+                          <option value="">{activeCreators.length ? '— Elegí una creadora activa —' : 'No hay creadoras activas todavía'}</option>
+                          {activeCreators.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                        </select>
+                        <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                      </div>
+                    </Field>
+                  )}
+
+                  <Field label={t.recipName}>
+                    <input
+                      value={recipient.name}
+                      onChange={(e) => setRecipient((r) => ({ ...r, name: e.target.value }))}
+                      placeholder={t.recipNamePh}
+                      className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                    />
+                  </Field>
+
+                  {/* El correo SOLO para creadora nueva (la activa ya tiene cuenta → va por link). */}
+                  {recipient.kind === 'new' && (
+                    <Field label={t.recipEmail}>
+                      <input
+                        type="email"
+                        value={recipient.email}
+                        onChange={(e) => setRecipient((r) => ({ ...r, email: e.target.value }))}
+                        placeholder={t.recipEmailPh}
+                        className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                      />
+                    </Field>
+                  )}
+
+                  {/* Chulito de aprobación externa. */}
+                  <div className="rounded-xl border border-line bg-ink-2/40 p-3.5">
+                    <button type="button" onClick={() => setNeedsApproval((v) => !v)} className="flex w-full items-start gap-3 text-left">
+                      <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${needsApproval ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
+                        {needsApproval && <Check size={13} />}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-paper">Necesita aprobación</span>
+                        <span className="mt-0.5 block text-[11px] leading-relaxed text-paper-mute">Alguien la revisa y aprueba antes de que le llegue a la creadora.</span>
+                      </span>
+                    </button>
+                    {needsApproval && (
+                      <div className="mt-3.5">
+                        <Field label="Correos que pueden aprobar">
+                          <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-ink-2 px-2.5 py-2 focus-within:border-brand/60">
+                            {approverEmails.map((e) => (
+                              <span key={e} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-paper">
+                                {e}
+                                <button type="button" onClick={() => removeApprover(e)} className="text-paper-mute transition-colors hover:text-rose-300"><X size={12} /></button>
+                              </span>
+                            ))}
+                            <input
+                              type="email"
+                              value={approverInput}
+                              onChange={(e) => setApproverInput(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addApprover(approverInput); } }}
+                              onBlur={() => addApprover(approverInput)}
+                              placeholder={approverEmails.length ? 'Agregar otro…' : 'quien-aprueba@correo.com'}
+                              className="min-w-[150px] flex-1 bg-transparent px-1 py-1 text-sm text-paper placeholder:text-paper-dim outline-none"
+                            />
+                          </div>
+                        </Field>
+                        <p className="mt-1.5 text-[11px] text-paper-dim">Enter o coma para agregar. Cualquiera de ellos puede aprobar.</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Field label="Elegí a quién revisa (equipo)">
                     <div className="relative">
                       <select
                         value={internalReviewerId}
@@ -878,10 +971,11 @@ export default function PropuestaAdmin() {
 
                   {/* Para QUÉ modelo es la propuesta interna. */}
                   <Field label="¿Para qué modelo es?">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Chip active={subjectKind === 'new'} onClick={() => { setSubjectKind('new'); setSubjectCreatorId(''); }}>Creadora nueva</Chip>
-                      <Chip active={subjectKind === 'active'} onClick={() => setSubjectKind('active')}>Creadora activa</Chip>
-                    </div>
+                    <Seg
+                      value={subjectKind}
+                      onChange={(v) => { if (v === 'new') { setSubjectKind('new'); setSubjectCreatorId(''); } else setSubjectKind('active'); }}
+                      options={[{ value: 'new', label: 'Creadora nueva' }, { value: 'active', label: 'Creadora activa' }]}
+                    />
                   </Field>
                   {subjectKind === 'active' ? (
                     <Field label="Elegí la creadora activa">
@@ -915,89 +1009,6 @@ export default function PropuestaAdmin() {
                     Propuesta interna: la revisa y aprueba tu equipo (con su feedback aparte). Cuando esté aprobada, desde el admin la mandás a la creadora.
                   </div>
                 </>
-              )}
-
-              {recipient.kind === 'active' && (
-                <Field label="Elegí la creadora activa">
-                  <div className="relative">
-                    <select
-                      value={creatorId}
-                      onChange={(e) => {
-                        const c = activeCreators.find((x) => x.id === e.target.value);
-                        setCreatorId(e.target.value);
-                        if (c) setRecipient((r) => ({ ...r, name: c.full_name || '' }));
-                      }}
-                      className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60"
-                    >
-                      <option value="">{activeCreators.length ? '— Elegí una creadora activa —' : 'No hay creadoras activas todavía'}</option>
-                      {activeCreators.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                    </select>
-                    <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-                  </div>
-                </Field>
-              )}
-
-              {recipient.kind !== 'internal' && (
-                <Field label={t.recipName}>
-                  <input
-                    value={recipient.name}
-                    onChange={(e) => setRecipient((r) => ({ ...r, name: e.target.value }))}
-                    placeholder={t.recipNamePh}
-                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
-                  />
-                </Field>
-              )}
-              {/* El correo SOLO para creadora nueva (la activa ya tiene cuenta → va por link). */}
-              {recipient.kind === 'new' && (
-                <Field label={t.recipEmail}>
-                  <input
-                    type="email"
-                    value={recipient.email}
-                    onChange={(e) => setRecipient((r) => ({ ...r, email: e.target.value }))}
-                    placeholder={t.recipEmailPh}
-                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
-                  />
-                </Field>
-              )}
-
-              {/* Chulito de aprobación externa — solo para creadora (la interna ya
-                  va por su propio revisor). */}
-              {recipient.kind !== 'internal' && (
-              <div className="rounded-xl border border-line bg-ink-2/40 p-3.5">
-                <button type="button" onClick={() => setNeedsApproval((v) => !v)} className="flex w-full items-start gap-3 text-left">
-                  <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${needsApproval ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
-                    {needsApproval && <Check size={13} />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-paper">Necesita aprobación</span>
-                    <span className="mt-0.5 block text-[11px] leading-relaxed text-paper-mute">Alguien la revisa y aprueba antes de que le llegue a la creadora.</span>
-                  </span>
-                </button>
-                {needsApproval && (
-                  <div className="mt-3.5">
-                    <Field label="Correos que pueden aprobar">
-                      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-ink-2 px-2.5 py-2 focus-within:border-brand/60">
-                        {approverEmails.map((e) => (
-                          <span key={e} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-paper">
-                            {e}
-                            <button type="button" onClick={() => removeApprover(e)} className="text-paper-mute transition-colors hover:text-rose-300"><X size={12} /></button>
-                          </span>
-                        ))}
-                        <input
-                          type="email"
-                          value={approverInput}
-                          onChange={(e) => setApproverInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addApprover(approverInput); } }}
-                          onBlur={() => addApprover(approverInput)}
-                          placeholder={approverEmails.length ? 'Agregar otro…' : 'quien-aprueba@correo.com'}
-                          className="min-w-[150px] flex-1 bg-transparent px-1 py-1 text-sm text-paper placeholder:text-paper-dim outline-none"
-                        />
-                      </div>
-                    </Field>
-                    <p className="mt-1.5 text-[11px] text-paper-dim">Enter o coma para agregar. Cualquiera de ellos puede aprobar.</p>
-                  </div>
-                )}
-              </div>
               )}
             </div>
           </section>
@@ -1719,6 +1730,58 @@ function Chip({ active, onClick, dot, grow, children }) {
       {dot && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />}
       {children}
     </button>
+  );
+}
+
+// Tarjeta grande de decisión (destino de la propuesta): ícono + título + una
+// línea. La elegida se resalta con borde brand + chulito. A prueba de confusión.
+function PathCard({ active, onClick, icon, title, desc }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group flex w-full items-center gap-3.5 rounded-2xl border p-4 text-left transition-all ${
+        active
+          ? 'border-brand/70 bg-brand/[0.07] shadow-glow-sm'
+          : 'border-line bg-ink-2/40 hover:border-hair hover:bg-ink-2/70'
+      }`}
+    >
+      <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl border transition-colors ${
+        active ? 'border-brand/50 bg-brand/15 text-brand' : 'border-line bg-ink-2 text-paper-mute group-hover:text-paper'
+      }`}>
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold text-paper">{title}</span>
+        <span className="mt-0.5 block text-[12px] leading-snug text-paper-mute">{desc}</span>
+      </span>
+      <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition-all ${
+        active ? 'border-brand bg-brand text-on-accent' : 'border-line text-transparent'
+      }`}>
+        <Check size={12} />
+      </span>
+    </button>
+  );
+}
+
+// Control segmentado (dos o más opciones que llenan el ancho). Reemplaza los
+// chips sueltos para la sub-decisión y se ve más ordenado / boutique.
+function Seg({ options, value, onChange }) {
+  return (
+    <div className="flex gap-1 rounded-xl border border-line bg-ink-2/60 p-1">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={`flex-1 rounded-lg px-3 py-2 text-[13px] font-semibold transition-colors ${
+            value === o.value ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
