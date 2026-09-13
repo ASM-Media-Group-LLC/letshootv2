@@ -191,6 +191,19 @@ export default function PropuestaAdmin() {
   const toggleLogo = (key) =>
     setLogos((s) => (s.includes(key) ? s.filter((k) => k !== key) : [...s, key]));
 
+  // Tipo de propuesta: 'visual' (fotos), 'audio' (voces de ElevenLabs) o 'both'.
+  // La bóveda de audios vive acá: cada uno { id, label, src } (URL del bucket
+  // público 'proposal-audios'). El equipo sube el mp3 y le pone nombre.
+  const [proposalType, setProposalType] = useState('visual');
+  const [audios, setAudios] = useState([]);
+  const [audioBusy, setAudioBusy] = useState(false);
+  const [audioErr, setAudioErr] = useState('');
+  const audioInputRef = useRef(null);
+  const setAudio = (id, patch) => setAudios((s) => s.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+  const removeAudio = (id) => setAudios((s) => s.filter((a) => a.id !== id));
+  const wantsVisual = proposalType === 'visual' || proposalType === 'both';
+  const wantsAudio = proposalType === 'audio' || proposalType === 'both';
+
   const [name, setName] = useState(presetFor('es').name);
   const [subtitle, setSubtitle] = useState(presetFor('es').subtitle);
   const [intro, setIntro] = useState(presetFor('es').intro);
@@ -279,6 +292,8 @@ export default function PropuestaAdmin() {
         // Solo pisa el logo recordado si esta propuesta ya trae uno (si no, deja el prefill).
         if (typeof data.agency_logo_url === 'string' && data.agency_logo_url) setAgencyLogoUrl(data.agency_logo_url);
         if (Array.isArray(data.logos)) setLogos(data.logos);
+        if (['visual', 'audio', 'both'].includes(data.proposal_type)) setProposalType(data.proposal_type);
+        if (Array.isArray(data.audios)) setAudios(data.audios.filter((a) => a?.src).map((a) => ({ id: a.id || `au-${Math.random().toString(36).slice(2, 9)}`, label: a.label || 'Audio', src: a.src })));
         if (data.expires_at) {
           const rem = Math.ceil((new Date(data.expires_at).getTime() - Date.now()) / 86400000);
           const snap = [3, 7, 10, 14, 30].reduce((a, b) => (Math.abs(b - rem) < Math.abs(a - rem) ? b : a), 30);
@@ -463,6 +478,34 @@ export default function PropuestaAdmin() {
     if (nuevos.length === 1 && picker) assign(nuevos[0].src);
   };
 
+  // ── Subir AUDIOS a la bóveda (mp3/wav de ElevenLabs) ──
+  // Van tal cual al bucket público 'proposal-audios' (sin comprimir; los mp3 son
+  // livianos) y en la propuesta se guarda solo la URL + el nombre editable.
+  const onAudiosPicked = async (e) => {
+    const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('audio/'));
+    e.target.value = '';
+    if (!files.length) return;
+    setAudioBusy(true);
+    setAudioErr('');
+    const sb = getSupabase();
+    const nuevos = [];
+    for (const f of files) {
+      const ext = (f.name.match(/\.([a-z0-9]+)$/i)?.[1] || 'mp3').toLowerCase();
+      const path = `${authorId || 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await sb.storage.from('proposal-audios').upload(path, f, { contentType: f.type || 'audio/mpeg', upsert: false });
+      if (upErr) { setAudioErr(upErr.message || 'No se pudo subir el audio. Reintentá.'); continue; }
+      const src = sb.storage.from('proposal-audios').getPublicUrl(path)?.data?.publicUrl;
+      if (!src) { setAudioErr('No se pudo obtener la URL del audio.'); continue; }
+      nuevos.push({
+        id: `au-${Math.random().toString(36).slice(2, 9)}`,
+        src,
+        label: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').slice(0, 60) || 'Audio',
+      });
+    }
+    setAudioBusy(false);
+    if (nuevos.length) setAudios((prev) => [...prev, ...nuevos]);
+  };
+
   // ── Subir el LOGO de la agencia ──
   // Se guarda como PNG (conserva transparencia, a diferencia de las fotos que van
   // a JPEG) en el bucket público 'proposal-photos/logos'. Se recuerda el último
@@ -513,6 +556,13 @@ export default function PropuestaAdmin() {
   }), [uploads, pickerKind, pickerQ]);
 
   const completeCount = looks.filter(isComplete).length;
+  const audioCount = audios.filter((a) => a?.src).length;
+  // ¿Hay contenido suficiente para el tipo elegido? (visual→fotos, audio→audios,
+  // ambas→al menos una de cada una).
+  const hasContent =
+    (wantsVisual || wantsAudio) &&
+    (wantsVisual ? completeCount > 0 : true) &&
+    (wantsAudio ? audioCount > 0 : true);
   const selIdx = looks.findIndex((l) => l.id === selectedId);
   const selected = looks[selIdx >= 0 ? selIdx : 0];
   const lookNo = selected ? pad2((selIdx >= 0 ? selIdx : 0) + 1) : '00';
@@ -531,13 +581,15 @@ export default function PropuestaAdmin() {
     closingUrl: closingUrl || null,
     agencyLogoUrl: agencyLogoUrl || null,
     logos,
+    proposalType,
+    audios: audios.filter((a) => a?.src).map(({ id, label, src }) => ({ id, label, src })),
     createdBy: authorName || '',
     looks: (includeIncomplete ? looks : looks.filter(isComplete))
       .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
   });
 
   const saveDraft = () => {
-    if (completeCount === 0) return;
+    if (completeCount === 0 && audioCount === 0) return;
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(buildProposal(code, { includeIncomplete: true }))); } catch {}
   };
 
@@ -547,7 +599,7 @@ export default function PropuestaAdmin() {
   // feedback en el paso 4) y marca 'ls_prop_last' + draft (header/preview).
   // Devuelve true si el insert funcionó; false si falló (con pubError visible).
   const publish = async () => {
-    if (completeCount === 0) return false;
+    if (!hasContent) return false;
     setPubError('');
     setPublishing(true);
     const editing = !!editCode;
@@ -565,6 +617,8 @@ export default function PropuestaAdmin() {
       closing_url: closingUrl || null,
       agency_logo_url: agencyLogoUrl || null,
       logos,
+      proposal_type: proposalType,
+      audios: audios.filter((a) => a?.src).map(({ id, label, src }) => ({ id, label, src })),
       looks: looks
         .filter(isComplete)
         .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
@@ -669,7 +723,7 @@ export default function PropuestaAdmin() {
             : recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())) // nueva: nombre + correo
             && (!needsApproval || approverEmails.length > 0)))       // si va a aprobación, al menos un aprobador
     : step === 3
-      ? completeCount > 0
+      ? hasContent
       : step < 4;
 
   const goNext = async () => {
@@ -814,15 +868,15 @@ export default function PropuestaAdmin() {
           <div className="flex shrink-0 items-center gap-3">
             {step === 3 && (
               <span className="hidden items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute sm:inline-flex">
-                <span className={`h-1.5 w-1.5 rounded-full ${completeCount === looks.length && looks.length > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                {completeCount}/{looks.length} {t.looks}
+                <span className={`h-1.5 w-1.5 rounded-full ${hasContent ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                {[wantsVisual ? `${completeCount}/${looks.length} ${t.looks}` : null, wantsAudio ? `${audioCount} audios` : null].filter(Boolean).join(' · ')}
               </span>
             )}
             {(step === 2 || step === 3) && (
               <button
                 type="button"
                 onClick={() => { saveDraft(); window.open(previewUrl, '_blank', 'noopener'); }}
-                disabled={completeCount === 0}
+                disabled={!hasContent}
                 className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold disabled:pointer-events-none disabled:opacity-40 sm:px-4 sm:text-sm"
               >
                 <Eye size={14} /> <span className="hidden sm:inline">{t.viewAsClient}</span><span className="sm:hidden">{t.previewLbl}</span>
@@ -1023,6 +1077,23 @@ export default function PropuestaAdmin() {
             <p className="mt-1.5 text-sm text-paper-mute">{t.moldSub}</p>
           </div>
 
+          {/* Tipo de propuesta: visual (fotos), audio (voces) o ambas. */}
+          <section className="card3d rounded-3xl border border-line bg-card p-5">
+            <div className="mb-3">
+              <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">¿Qué le vas a mandar?</div>
+              <p className="mt-1 text-[12px] leading-relaxed text-paper-mute">Fotos, audios (voces de ElevenLabs) o las dos cosas. En «Ambas» salen en secciones separadas.</p>
+            </div>
+            <Seg
+              value={proposalType}
+              onChange={setProposalType}
+              options={[
+                { value: 'visual', label: 'Visual (fotos)' },
+                { value: 'audio', label: 'Audio (voces)' },
+                { value: 'both', label: 'Ambas' },
+              ]}
+            />
+          </section>
+
           {/* Hoy hay UN solo tipo de contenido: redes. (El exclusivo, más adelante.) */}
           <div className="card3d relative rounded-3xl border border-brand bg-card p-5 text-left ring-1 ring-brand/50 shadow-glow-sm">
             <span className="absolute right-4 top-4 grid h-6 w-6 place-items-center rounded-full bg-brand text-on-accent">
@@ -1175,7 +1246,9 @@ export default function PropuestaAdmin() {
 
       {step === 3 && (
         <div className="mx-auto flex w-full max-w-[1200px] items-start gap-6 px-4 py-8 lg:px-8">
-          <main className="min-w-0 flex-1">
+          <main className="min-w-0 flex-1 space-y-8">
+            {wantsVisual && (
+            <div>
             <div className="mb-4 flex items-end justify-between gap-3 px-1">
               <div>
                 <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.photosTitle}</h2>
@@ -1262,8 +1335,59 @@ export default function PropuestaAdmin() {
                 <span className="inline-flex items-center gap-2 text-sm font-semibold"><Plus size={16} /> {t.addLook}</span>
               </button>
             </div>
+            </div>
+            )}
+
+            {/* ── Bóveda de AUDIO: subís los mp3 de ElevenLabs, les ponés nombre
+                 y los escuchás. Igual que las fotos pero en audio. ── */}
+            {wantsAudio && (
+            <div>
+              <div className="mb-4 flex items-end justify-between gap-3 px-1">
+                <div>
+                  <h2 className="font-display text-2xl font-bold tracking-tight text-paper">Audios</h2>
+                  <p className="mt-1 hidden text-[12px] italic text-paper-dim sm:block">Voces de ElevenLabs. La creadora las escucha y elige las que le gustan.</p>
+                </div>
+                <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
+                  {pad2(audios.length)} audios
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {audios.map((a, i) => (
+                  <article key={a.id} className="card3d rounded-3xl border border-line bg-card p-3.5">
+                    <div className="mb-2.5 flex items-center gap-2">
+                      <span className="shrink-0 font-mono text-[11px] font-bold text-paper-dim">{pad2(i + 1)}</span>
+                      <input
+                        value={a.label}
+                        onChange={(e) => setAudio(a.id, { label: e.target.value })}
+                        placeholder="Nombre del audio (ej: Saludo coqueto)"
+                        className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-semibold text-paper placeholder:text-paper-dim outline-none transition-colors focus:border-brand"
+                      />
+                      <IconBtn danger onClick={() => removeAudio(a.id)}><Trash2 size={14} /></IconBtn>
+                    </div>
+                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                    <audio src={a.src} controls preload="none" className="w-full" />
+                  </article>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => audioInputRef.current?.click()}
+                  disabled={audioBusy}
+                  className="grid w-full place-items-center rounded-3xl border-2 border-dashed border-line py-6 text-paper-mute transition-colors hover:border-brand/50 hover:text-paper disabled:opacity-50"
+                >
+                  <span className="inline-flex items-center gap-2 text-sm font-semibold">
+                    <Plus size={16} /> {audioBusy ? 'Subiendo…' : 'Agregar audio'}
+                  </span>
+                </button>
+                {audioErr && <p className="px-1 text-[12px] text-rose-300">{audioErr}</p>}
+                <input ref={audioInputRef} type="file" accept="audio/*" multiple hidden onChange={onAudiosPicked} />
+              </div>
+            </div>
+            )}
           </main>
 
+          {wantsVisual && (
           <aside className="hidden w-[340px] shrink-0 lg:block">
             <div className="lg:sticky lg:top-[97px]">
               <div className="mb-2 flex items-center justify-between px-1">
@@ -1322,6 +1446,7 @@ export default function PropuestaAdmin() {
               </div>
             </div>
           </aside>
+          )}
         </div>
       )}
 
@@ -1517,7 +1642,8 @@ export default function PropuestaAdmin() {
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
             <div className="space-y-2">
-              <StatRow dot="bg-brand" label={t.looks} value={String(completeCount)} />
+              {wantsVisual && <StatRow dot="bg-brand" label={t.looks} value={String(completeCount)} />}
+              {wantsAudio && <StatRow dot="bg-brand" label="Audios" value={String(audioCount)} />}
               <StatRow dot="bg-amber-400" label={t.expiresField} value={`${days}d · ${new Date(Date.now() + days * 86400000).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`} />
               <StatRow dot="bg-zinc-400" label={t.langField} value={`${PROP_LANG_FLAG[lang]} ${PROP_LANG_LABELS[lang]}`} />
             </div>
