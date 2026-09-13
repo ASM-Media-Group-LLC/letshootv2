@@ -127,12 +127,28 @@ export default function PropuestaAdmin() {
     })();
   }, []);
 
+  // Equipo interno (para elegir a quién se le manda una propuesta INTERNA).
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await getSupabase().rpc('team_staff');
+        if (Array.isArray(data)) setStaff(data.filter((m) => m?.id && m?.full_name));
+      } catch {}
+    })();
+  }, []);
+
   const [step, setStep] = useState(1);
   // Destinatario VACÍO al crear una nueva (nada de datos demo pre-llenados).
   // kind: 'new' (creadora nueva, se escribe a mano) | 'active' (ya activa, se elige).
   const [recipient, setRecipient] = useState({ name: '', email: '', kind: 'new' });
   const [creatorId, setCreatorId] = useState(''); // creadora activa elegida del dropdown
   const [activeCreators, setActiveCreators] = useState([]);
+  // Propuesta INTERNA: se le manda a un integrante del equipo (revisor logueado)
+  // para revisión/aprobación; NO va a una creadora hasta que se apruebe y se
+  // reenvíe desde /admin.
+  const [staff, setStaff] = useState([]);
+  const [internalReviewerId, setInternalReviewerId] = useState('');
+  const [internalReviewerName, setInternalReviewerName] = useState('');
   // Aprobación: si el empleado marca el chulito, la propuesta va primero al que
   // aprueba (approverEmail); recién si él aprueba, se le manda a la creadora.
   const [needsApproval, setNeedsApproval] = useState(false);
@@ -226,16 +242,23 @@ export default function PropuestaAdmin() {
   }, []);
 
   // Modo EDICIÓN: ?edit=<link_id> → carga la propuesta publicada en el formulario.
+  // Con &tocreator=1 (desde una interna aprobada) NO editamos la misma: cargamos
+  // el contenido y publicamos una COPIA nueva para la creadora — la interna queda
+  // intacta como registro.
   useEffect(() => {
     let editParam = '';
-    try { editParam = new URLSearchParams(window.location.search).get('edit') || ''; } catch {}
+    let toCreator = false;
+    try {
+      const q = new URLSearchParams(window.location.search);
+      editParam = q.get('edit') || '';
+      toCreator = q.get('tocreator') === '1';
+    } catch {}
     if (!editParam) return;
     (async () => {
       try {
         const { data } = await getSupabase().from('photo_proposals').select('*').eq('link_id', editParam).maybeSingle();
         if (!data) return;
-        setEditCode(data.link_id);
-        setCode(data.link_id);
+        if (!toCreator) { setEditCode(data.link_id); setCode(data.link_id); }
         if (typeof data.name === 'string') setName(data.name);
         if (typeof data.subtitle === 'string') setSubtitle(data.subtitle);
         if (typeof data.intro === 'string') setIntro(data.intro);
@@ -252,14 +275,21 @@ export default function PropuestaAdmin() {
           const snap = [3, 7, 10, 14, 30].reduce((a, b) => (Math.abs(b - rem) < Math.abs(a - rem) ? b : a), 30);
           setDays(snap);
         }
+        // ?tocreator=1 (calculado arriba) → arrancamos en Creadora nueva (limpio)
+        // para llenar la creadora y mandarle la copia.
+        const loadedKind = data.recipient_kind === 'active' ? 'active' : data.recipient_kind === 'internal' ? 'internal' : 'new';
         setRecipient({
-          name: data.recipient_name || '',
-          email: data.recipient_email || '',
-          kind: data.recipient_kind === 'active' ? 'active' : 'new',
+          name: toCreator ? '' : (data.recipient_name || ''),
+          email: toCreator ? '' : (data.recipient_email || ''),
+          kind: toCreator ? 'new' : loadedKind,
         });
-        if (data.recipient_user_id) setCreatorId(data.recipient_user_id);
-        setNeedsApproval(!!data.approval_required);
-        if (typeof data.approver_email === 'string') setApproverEmails(data.approver_email.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean));
+        if (!toCreator) {
+          if (data.recipient_user_id) setCreatorId(data.recipient_user_id);
+          if (data.internal_reviewer_id) setInternalReviewerId(data.internal_reviewer_id);
+          if (typeof data.internal_reviewer_name === 'string') setInternalReviewerName(data.internal_reviewer_name || '');
+          setNeedsApproval(!!data.approval_required && data.recipient_kind !== 'internal');
+          if (typeof data.approver_email === 'string') setApproverEmails(data.approver_email.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean));
+        }
         if (Array.isArray(data.looks) && data.looks.length > 0) {
           const seeded = data.looks.map((l) => ({
             id: l.id, caption: l.caption || '',
@@ -528,10 +558,13 @@ export default function PropuestaAdmin() {
       // Creadora activa → sellamos su id para que la propuesta le aparezca en su
       // cuenta ("Mis propuestas") apenas se publica, sin que abra el link.
       recipient_user_id: recipient.kind === 'active' ? (creatorId || null) : null,
-      // Aprobación: si va con chulito, arranca 'pending' y se manda al aprobador.
-      approval_required: needsApproval,
-      approver_email: needsApproval ? approverEmails.join(', ') : null,
-      approval_status: needsApproval ? 'pending' : null,
+      // Propuesta interna → revisor del equipo (logueado); no lleva creadora todavía.
+      internal_reviewer_id: recipient.kind === 'internal' ? (internalReviewerId || null) : null,
+      internal_reviewer_name: recipient.kind === 'internal' ? (internalReviewerName || null) : null,
+      // Aprobación: con chulito (externa) O si es interna (siempre pasa por revisión).
+      approval_required: needsApproval || recipient.kind === 'internal',
+      approver_email: (needsApproval && recipient.kind !== 'internal') ? approverEmails.join(', ') : null,
+      approval_status: (needsApproval || recipient.kind === 'internal') ? 'pending' : null,
       status: 'published',
       expires_at: new Date(Date.now() + days * 86400000).toISOString(),
     };
@@ -603,11 +636,14 @@ export default function PropuestaAdmin() {
   const fbRejected = fbItems.filter((i) => i.status === 'rejected').length;
   const fbNotes = fbItems.filter((i) => (i.note || '').trim()).length;
 
+  const isInternal = recipient.kind === 'internal';
   const canNext = step === 1
-    ? ((recipient.kind === 'active'
-        ? !!creatorId && recipient.name.trim().length > 0            // activa: elegí creadora (sin correo)
-        : recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())) // nueva: nombre + correo
-        && (!needsApproval || approverEmails.length > 0))  // si va a aprobación, al menos un aprobador
+    ? (isInternal
+        ? !!internalReviewerId                                        // interna: elegí a quién revisa
+        : ((recipient.kind === 'active'
+            ? !!creatorId && recipient.name.trim().length > 0        // activa: elegí creadora (sin correo)
+            : recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())) // nueva: nombre + correo
+            && (!needsApproval || approverEmails.length > 0)))       // si va a aprobación, al menos un aprobador
     : step === 3
       ? completeCount > 0
       : step < 4;
@@ -782,8 +818,35 @@ export default function PropuestaAdmin() {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Chip active={recipient.kind === 'new'} onClick={() => { setRecipient((r) => ({ ...r, kind: 'new' })); setCreatorId(''); }}>Creadora nueva</Chip>
                   <Chip active={recipient.kind === 'active'} onClick={() => setRecipient((r) => ({ ...r, kind: 'active' }))}>Creadora activa</Chip>
+                  <Chip active={recipient.kind === 'internal'} onClick={() => { setRecipient((r) => ({ ...r, kind: 'internal', name: '', email: '' })); setCreatorId(''); setNeedsApproval(false); }}>Interna</Chip>
                 </div>
               </Field>
+
+              {recipient.kind === 'internal' && (
+                <>
+                  <Field label="Elegí a quién se la mandás (equipo)">
+                    <div className="relative">
+                      <select
+                        value={internalReviewerId}
+                        onChange={(e) => {
+                          const s = staff.find((x) => x.id === e.target.value);
+                          setInternalReviewerId(e.target.value);
+                          setInternalReviewerName(s?.full_name || '');
+                        }}
+                        className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60"
+                      >
+                        <option value="">{staff.length ? '— Elegí a quién revisa —' : 'Cargando equipo…'}</option>
+                        {staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}{s.job_title ? ` · ${s.job_title}` : ''}</option>)}
+                      </select>
+                      <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                    </div>
+                  </Field>
+                  <div className="flex items-start gap-2 rounded-xl border border-line bg-ink-2/40 px-3.5 py-3 text-[12px] leading-relaxed text-paper-mute">
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+                    Propuesta interna: la revisa y aprueba tu equipo (con su feedback aparte). Cuando esté aprobada, desde el admin la mandás a la creadora.
+                  </div>
+                </>
+              )}
 
               {recipient.kind === 'active' && (
                 <Field label="Elegí la creadora activa">
@@ -805,14 +868,16 @@ export default function PropuestaAdmin() {
                 </Field>
               )}
 
-              <Field label={t.recipName}>
-                <input
-                  value={recipient.name}
-                  onChange={(e) => setRecipient((r) => ({ ...r, name: e.target.value }))}
-                  placeholder={t.recipNamePh}
-                  className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
-                />
-              </Field>
+              {recipient.kind !== 'internal' && (
+                <Field label={t.recipName}>
+                  <input
+                    value={recipient.name}
+                    onChange={(e) => setRecipient((r) => ({ ...r, name: e.target.value }))}
+                    placeholder={t.recipNamePh}
+                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                  />
+                </Field>
+              )}
               {/* El correo SOLO para creadora nueva (la activa ya tiene cuenta → va por link). */}
               {recipient.kind === 'new' && (
                 <Field label={t.recipEmail}>
@@ -826,8 +891,9 @@ export default function PropuestaAdmin() {
                 </Field>
               )}
 
-              {/* Chulito: la propuesta va primero a quien decide (aprobador). Si lo
-                  aprueba, se le manda automáticamente a la creadora. */}
+              {/* Chulito de aprobación externa — solo para creadora (la interna ya
+                  va por su propio revisor). */}
+              {recipient.kind !== 'internal' && (
               <div className="rounded-xl border border-line bg-ink-2/40 p-3.5">
                 <button type="button" onClick={() => setNeedsApproval((v) => !v)} className="flex w-full items-start gap-3 text-left">
                   <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${needsApproval ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
@@ -863,6 +929,7 @@ export default function PropuestaAdmin() {
                   </div>
                 )}
               </div>
+              )}
             </div>
           </section>
 
@@ -1192,14 +1259,16 @@ export default function PropuestaAdmin() {
           </div>
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
-            {needsApproval ? (
+            {(needsApproval || isInternal) ? (
               <>
-                {/* Va PRIMERO a aprobación. Se comparte un LINK (con token) con quien
-                    decide — no depende de correo. Cualquiera con el link aprueba;
-                    al aprobar, se le manda sola a la creadora. */}
+                {/* Va PRIMERO a revisión/aprobación. Se comparte un LINK (con token).
+                    Interna → la revisa el equipo y, una vez aprobada, la mandás a la
+                    creadora desde el admin. Externa → al aprobar, se manda sola. */}
                 <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5 text-[12px] text-amber-200/90">
                   <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                  Necesita aprobación. Compartí este link con quien decide; cuando apruebe, se le manda sola a la creadora.
+                  {isInternal
+                    ? <>Revisión interna. Compartí este link con <span className="font-semibold">{internalReviewerName || 'tu equipo'}</span>; cuando la apruebe, la mandás a la creadora desde el admin.</>
+                    : <>Necesita aprobación. Compartí este link con quien decide; cuando apruebe, se le manda sola a la creadora.</>}
                 </div>
                 {approvalUrl ? (
                   <>

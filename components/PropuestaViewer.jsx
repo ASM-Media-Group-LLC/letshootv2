@@ -126,6 +126,9 @@ export default function PropuestaViewer({ linkId }) {
   // Modo APROBACIÓN: si el link trae ?approve=<token>, el que decide ve la
   // propuesta completa (sin gate) con barra Aprobar/Rechazar.
   const [approveToken, setApproveToken] = useState(null);
+  // Quién mira: { staff: bool, name } si hay sesión (para separar el feedback
+  // interno del de la creadora y atribuir la revisión).
+  const [viewer, setViewer] = useState(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -171,12 +174,29 @@ export default function PropuestaViewer({ linkId }) {
       if (qLang) setLang(qLang);
       else if (mapped.lang && PROP_LANGS.includes(mapped.lang)) setLang(mapped.lang);
 
+      // Quién está mirando: si es STAFF logueado, su feedback va al bucket "equipo"
+      // (interno) y no al de la creadora. Se resuelve una vez acá.
+      let session = null;
+      try { session = (await getSupabase().auth.getSession())?.data?.session || null; } catch {}
+      let viewerInfo = null;
+      if (session?.user?.id) {
+        try {
+          const { data: prof } = await getSupabase().from('profiles').select('role, full_name, stage_name').eq('id', session.user.id).maybeSingle();
+          if (prof) {
+            const staffRoles = ['admin', 'supervisor', 'producer', 'chatter'];
+            viewerInfo = { staff: staffRoles.includes(prof.role), name: prof.full_name || prof.stage_name || session.user.email || '' };
+          }
+        } catch {}
+      }
+      if (cancelled) return;
+      setViewer(viewerInfo);
+
       // Modo APROBACIÓN: ?approve=<token> → el que decide ve la propuesta completa
       // (sin gate) con barra Aprobar/Rechazar. Tiene prioridad sobre todo lo demás.
       const approveParam = new URLSearchParams(window.location.search).get('approve');
       if (approveParam) {
         setApproveToken(approveParam);
-        setReg({ id: null, name: mapped.recipient?.name || '', email: '' });
+        setReg({ id: null, name: viewerInfo?.name || mapped.recipient?.name || '', email: '' });
         setPhase('view');
         return;
       }
@@ -190,8 +210,6 @@ export default function PropuestaViewer({ linkId }) {
         const raw = window.localStorage.getItem(regKey(linkId));
         if (raw) saved = JSON.parse(raw);
       } catch {}
-      let session = null;
-      try { session = (await getSupabase().auth.getSession())?.data?.session || null; } catch {}
       if (cancelled) return;
 
       if (regParam) {
@@ -224,8 +242,8 @@ export default function PropuestaViewer({ linkId }) {
   if (phase === 'gate') return <RegisterGate t={t} cfg={cfg} linkId={linkId} onDone={onRegistered} />;
   return (
     <>
-      <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} />
-      {approveToken && <ApproveBar lang={lang} linkId={linkId} token={approveToken} />}
+      <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} viewer={viewer} />
+      {approveToken && <ApproveBar lang={lang} linkId={linkId} token={approveToken} viewer={viewer} />}
     </>
   );
 }
@@ -235,7 +253,7 @@ export default function PropuestaViewer({ linkId }) {
 // o rechaza (con motivo). Aprobar → la edge function invita sola a la creadora.
 // ══════════════════════════════════════════════════════════════════════════
 
-function ApproveBar({ lang, linkId, token }) {
+function ApproveBar({ lang, linkId, token, viewer }) {
   const es = lang !== 'en';
   const [state, setState] = useState('idle'); // idle | rejecting | sending | approved | rejected | error
   const [reason, setReason] = useState('');
@@ -245,7 +263,7 @@ function ApproveBar({ lang, linkId, token }) {
     setState('sending'); setErr('');
     try {
       const { data, error } = await getSupabase().functions.invoke('proposal-approval', {
-        body: { action: 'decide', link_id: linkId, token, decision, reason: decision === 'rejected' ? reason.trim() : '' },
+        body: { action: 'decide', link_id: linkId, token, decision, reason: decision === 'rejected' ? reason.trim() : '', reviewer_name: viewer?.name || '' },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || (es ? 'No se pudo procesar.' : 'Could not process.'));
@@ -516,7 +534,7 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
 // Viewer tríptico (el componente original de /p/demo, ya sin carga propia).
 // ══════════════════════════════════════════════════════════════════════════
 
-function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
+function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
   const looks = cfg.looks;
   const total = looks.length;
 
@@ -585,11 +603,15 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
     setSending(true);
     setSendErr('');
     try {
+      // Si mira un STAFF logueado, su feedback va al bucket 'internal' (equipo),
+      // aparte del de la creadora ('creator') — no se pisan.
+      const isStaff = !!viewer?.staff;
       const { error } = await getSupabase().rpc('save_proposal_feedback', {
         p_link: linkId,
         p_reg: reg?.id || null,
         p_items: items,
-        p_name: reg?.name || cfg.recipient?.name || '',
+        p_name: isStaff ? (viewer.name || 'Equipo') : (reg?.name || cfg.recipient?.name || ''),
+        p_kind: isStaff ? 'internal' : 'creator',
       });
       if (error) throw error;
       setSent(true);

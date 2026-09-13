@@ -129,18 +129,20 @@ Deno.serve(async (req) => {
       const token = String(body.token || '').trim();
       const decision = body.decision === 'approved' ? 'approved' : body.decision === 'rejected' ? 'rejected' : '';
       const reason = String(body.reason || '').trim().slice(0, 800);
+      const reviewer = String(body.reviewer_name || '').trim().slice(0, 120) || null;
       if (!prop.approval_required || !prop.approval_token) return reply({ ok: false, error: 'Esta propuesta no requiere aprobación.' });
       if (!token || token !== String(prop.approval_token)) return reply({ ok: false, error: 'Link de aprobación inválido.' }, 403);
       if (!decision) return reply({ ok: false, error: 'Decisión inválida.' });
       if (prop.approval_status === 'approved') return reply({ ok: true, already: true, status: 'approved' });
 
       if (decision === 'rejected') {
-        await svc.from('photo_proposals').update({ approval_status: 'rejected', approval_reason: reason || null }).eq('id', prop.id);
+        await svc.from('photo_proposals').update({ approval_status: 'rejected', approval_reason: reason || null, approval_reviewer_name: reviewer }).eq('id', prop.id);
         return reply({ ok: true, status: 'rejected' });
       }
 
-      // approved → marcar y disparar invitación a la creadora (si hay correo).
-      await svc.from('photo_proposals').update({ approval_status: 'approved', approved_at: new Date().toISOString(), approval_reason: reason || null }).eq('id', prop.id);
+      // approved → marcar y disparar invitación a la creadora (si hay correo; las
+      // INTERNAS no tienen correo → no se manda sola, se reenvía desde el admin).
+      await svc.from('photo_proposals').update({ approval_status: 'approved', approved_at: new Date().toISOString(), approval_reason: reason || null, approval_reviewer_name: reviewer }).eq('id', prop.id);
       let invited = false, inviteError: string | null = null;
       const creatorEmail = String(prop.recipient_email || '').trim();
       if (creatorEmail) {

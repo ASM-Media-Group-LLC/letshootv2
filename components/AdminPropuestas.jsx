@@ -122,7 +122,8 @@ function demoSeed() {
 
 // Normaliza una fila de photo_proposals (+ feedback/registro resueltos por
 // proposal_id) al shape que usa la vista.
-function mapProposal(row, fb, reg) {
+function mapProposal(row, fb, reg, fbInt) {
+  const isInternal = row.recipient_kind === 'internal';
   return {
     _demo: false,
     id: row.id,
@@ -135,13 +136,19 @@ function mapProposal(row, fb, reg) {
     createdBy: row.created_by_name || '',
     expiresAt: row.expires_at || null,
     _status: row.status || 'published',
+    _internal: isInternal,
     approval: row.approval_required
-      ? { required: true, status: row.approval_status || 'pending', approver: row.approver_email || '', reason: row.approval_reason || '' }
+      ? {
+          required: true, status: row.approval_status || 'pending',
+          approver: row.approver_email || row.internal_reviewer_name || '',
+          reviewer: row.approval_reviewer_name || '', reason: row.approval_reason || '',
+        }
       : null,
     model: { name: row.model_name || '', agency: row.model_agency || '' },
     recipient: { name: row.recipient_name || '', email: row.recipient_email || '', kind: row.recipient_kind || '' },
     looks: Array.isArray(row.looks) ? row.looks : [],
     _feedback: fb ? { items: Array.isArray(fb.items) ? fb.items : [], recipientName: fb.recipient_name || '', updatedAt: fb.updated_at || null } : null,
+    _internalFeedback: fbInt ? { items: Array.isArray(fbInt.items) ? fbInt.items : [], recipientName: fbInt.recipient_name || '', updatedAt: fbInt.updated_at || null } : null,
     _reg: reg ? { name: reg.name || '', email: reg.email || '', phone: reg.phone || '', at: reg.created_at || null } : null,
   };
 }
@@ -170,15 +177,19 @@ export default function AdminPropuestas() {
       try {
         const [propsRes, fbRes, regRes] = await Promise.all([
           sb.from('photo_proposals').select('*').order('created_at', { ascending: false }),
-          sb.from('photo_proposal_feedback').select('proposal_id, items, recipient_name, updated_at').order('updated_at', { ascending: false }),
+          sb.from('photo_proposal_feedback').select('proposal_id, items, recipient_name, updated_at, reviewer_kind').order('updated_at', { ascending: false }),
           sb.from('photo_proposal_registrations').select('proposal_id, name, email, phone, created_at').order('created_at', { ascending: false }),
         ]);
         if (cancelled) return;
         const props = Array.isArray(propsRes.data) ? propsRes.data : [];
 
-        // feedback por proposal_id (el upsert garantiza 1 por propuesta).
-        const fbMap = {};
-        (Array.isArray(fbRes.data) ? fbRes.data : []).forEach((f) => { if (f?.proposal_id && !fbMap[f.proposal_id]) fbMap[f.proposal_id] = f; });
+        // Feedback en DOS buckets por proposal_id: creadora vs equipo (interno).
+        const fbCreator = {}, fbInternal = {};
+        (Array.isArray(fbRes.data) ? fbRes.data : []).forEach((f) => {
+          if (!f?.proposal_id) return;
+          const map = f.reviewer_kind === 'internal' ? fbInternal : fbCreator;
+          if (!map[f.proposal_id]) map[f.proposal_id] = f;
+        });
 
         // registro por proposal_id — nos quedamos con el más reciente (ya viene
         // ordenado desc, así que el primero gana).
@@ -188,7 +199,7 @@ export default function AdminPropuestas() {
         });
 
         if (props.length > 0) {
-          setRows(props.map((p) => mapProposal(p, fbMap[p.id], regMap[p.id])));
+          setRows(props.map((p) => mapProposal(p, fbCreator[p.id], regMap[p.id], fbInternal[p.id])));
           setUsingDemo(false);
         } else {
           // Sin reales: sembramos ejemplos en memoria para no verse vacío.
@@ -389,6 +400,9 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
   const d = daysLeft(p);
   const items = Array.isArray(p._feedback?.items) ? p._feedback.items : [];
   const fs = feedbackSummary(p._feedback);
+  // Feedback del EQUIPO (interno) — bucket aparte del de la creadora.
+  const internalItems = (Array.isArray(p._internalFeedback?.items) ? p._internalFeedback.items : [])
+    .filter((i) => i.status || (i.note || '').trim());
 
   // Filtro de respuestas + orden: SIEMPRE primero lo rechazado, luego lo que
   // gustó, luego lo sin decidir. Los contadores de arriba son los filtros.
@@ -441,15 +455,20 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                 </span>
               } />
             )}
+            {p._internal && (
+              <Row label="Tipo" value={<StatusDot tone="brand">Interna (equipo)</StatusDot>} />
+            )}
             {p.approval && (
-              <Row label="Aprobación" value={
+              <Row label={p._internal ? 'Revisión interna' : 'Aprobación'} value={
                 <span>
                   {p.approval.status === 'approved'
                     ? <StatusDot tone="ok">Aprobada</StatusDot>
                     : p.approval.status === 'rejected'
                       ? <StatusDot tone="bad">Rechazada</StatusDot>
                       : <StatusDot tone="warn">Pendiente</StatusDot>}
-                  {p.approval.approver ? <span className="text-paper-dim"> · {p.approval.approver}</span> : null}
+                  {p.approval.reviewer
+                    ? <span className="text-paper-dim"> · {p.approval.reviewer}</span>
+                    : p.approval.approver ? <span className="text-paper-dim"> · {p.approval.approver}</span> : null}
                   {p.approval.reason
                     ? <span className="mt-1 block text-[12px] italic text-rose-200/80">&ldquo;{p.approval.reason}&rdquo;</span> : null}
                 </span>
@@ -459,8 +478,14 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
 
           {/* Acciones */}
           <div className="mt-4 flex flex-wrap gap-2">
+            {!p._demo && p._internal && p.approval?.status === 'approved' && (
+              <a href={`/propuestas?edit=${encodeURIComponent(p.code)}&tocreator=1`}
+                className="btn3d inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
+                <Send size={14} /> Enviar a la creadora
+              </a>
+            )}
             <a href={link} target="_blank" rel="noopener noreferrer"
-              className="btn3d inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
+              className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
               <ExternalLink size={14} /> Ver como cliente
             </a>
             {!p._demo && (
@@ -483,11 +508,48 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
             </button>
           </div>
 
-          {/* Respuestas foto por foto — rechazadas primero, luego gustadas.
+          {/* Feedback del EQUIPO (interno) — separado del de la creadora. */}
+          {(p._internal || internalItems.length > 0) && (
+            <div className="mt-6">
+              <h4 className="font-display text-sm font-semibold text-paper">Feedback del equipo <span className="font-normal text-paper-dim">· interno</span></h4>
+              {internalItems.length === 0 ? (
+                <p className="mt-3 rounded-xl border border-dashed border-line bg-card/40 p-5 text-center text-sm text-paper-dim">
+                  {p.approval?.status === 'pending' ? 'En revisión — el equipo todavía no dejó feedback.' : 'Sin feedback del equipo.'}
+                </p>
+              ) : (
+                <div className="mt-3 space-y-2.5">
+                  {[...internalItems].sort((a, b) => (a.status === 'rejected' ? 0 : a.status === 'liked' ? 1 : 2) - (b.status === 'rejected' ? 0 : b.status === 'liked' ? 1 : 2)).map((it) => {
+                    const tone = it.status === 'liked' ? 'ok' : it.status === 'rejected' ? 'bad' : 'zinc';
+                    const lbl = it.status === 'liked' ? 'Va' : it.status === 'rejected' ? 'Recrear' : 'Nota';
+                    return (
+                      <div key={`int-${it.id}`} className={`flex gap-3 rounded-xl border bg-ink-2/30 p-2.5 ${it.status === 'rejected' ? 'border-rose-500/40' : 'border-line'}`}>
+                        <div className="h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-hair/10">
+                          {it.result ? <img src={it.result} alt="" className="h-full w-full object-cover" /> : null}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm text-paper">{it.caption || 'Sin título'}</span>
+                            <StatusDot tone={tone}>{lbl}</StatusDot>
+                          </div>
+                          {(it.note || '').trim() && (
+                            <p className="mt-1 flex items-start gap-1.5 text-xs text-paper-mute">
+                              <MessageSquare size={12} className="mt-0.5 shrink-0 text-paper-dim" /><span className="min-w-0">{it.note}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Respuestas de la CREADORA — rechazadas primero, luego gustadas.
               Los contadores son filtros clicables (tap para aislar cada tipo). */}
           <div className="mt-6">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <h4 className="font-display text-sm font-semibold text-paper">Respuestas</h4>
+              <h4 className="font-display text-sm font-semibold text-paper">Respuestas de la creadora</h4>
               {fs.total > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <RespChip active={fResp === 'all'} onClick={() => setFResp('all')}>Todas · {fs.total}</RespChip>
