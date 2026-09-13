@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Propuestas · Almacén (preview)</title>
+<style>
+  :root{
+    --ink:#070a0f; --ink2:#0f1620; --card:#0d1319; --card2:#111a24;
+    --line:rgba(255,255,255,.07); --hair:rgba(255,255,255,.13);
+    --paper:#eaf0f6; --mute:#9aa8b8; --dim:#5a6b7a;
+    --brand:#00B1F6; --onacc:#04222f;
+    --ok:#34d399; --bad:#fb7185; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--paper);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;padding-bottom:60px}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .kicker{font:600 10px/1 ui-monospace,monospace;letter-spacing:.22em;text-transform:uppercase;color:var(--mute)}
+
+  /* top bar */
+  header{position:sticky;top:0;z-index:20;background:rgba(7,10,15,.86);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line)}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{font:800 19px/1 system-ui;letter-spacing:-.02em}
+  .logo b{color:var(--brand)}
+  .title{font:700 15px/1.1 system-ui}
+  .title small{display:block;color:var(--mute);font:500 11px/1.3 ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
+  .right{display:flex;align-items:center;gap:12px}
+  .novedades{display:inline-flex;align-items:center;gap:8px;background:rgba(0,177,246,.14);
+    border:1px solid rgba(0,177,246,.4);color:#bfe9ff;border-radius:999px;padding:7px 13px;font-weight:700;font-size:12px;cursor:pointer}
+  .novedades .dot{width:7px;height:7px;border-radius:50%;background:var(--brand);box-shadow:0 0 10px 1px var(--brand)}
+  .avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#1b2a38,#0d1319);
+    border:1px solid var(--hair);display:grid;place-items:center;font-weight:700;font-size:12px;color:var(--mute)}
+
+  /* novedades banner */
+  .newsbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 4px;
+    background:linear-gradient(90deg,rgba(0,177,246,.10),rgba(0,177,246,0));border:1px solid rgba(0,177,246,.22);
+    border-radius:14px;padding:11px 14px}
+  .newsbar b{color:#bfe9ff}
+  .newsbar .chip{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--paper)}
+  .newsbar .mailnote{margin-left:auto;color:var(--mute);font-size:11.5px}
+
+  /* toolbar */
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 18px}
+  .search{flex:1;min-width:220px;display:flex;align-items:center;gap:9px;background:var(--ink2);
+    border:1px solid var(--line);border-radius:12px;padding:10px 13px;color:var(--dim)}
+  .search input{border:0;background:transparent;color:var(--paper);outline:none;width:100%;font-size:13.5px}
+  .filters{display:flex;gap:6px;flex-wrap:wrap}
+  .fchip{border:1px solid var(--line);color:var(--mute);background:transparent;border-radius:999px;
+    padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer}
+  .fchip .n{color:var(--dim);margin-left:5px;font-weight:700}
+  .fchip.on{background:var(--brand);border-color:transparent;color:var(--onacc)}
+  .fchip.on .n{color:rgba(4,34,47,.6)}
+
+  /* creadora group */
+  .group{border:1px solid var(--line);background:var(--card);border-radius:20px;margin-bottom:14px;overflow:hidden}
+  .ghead{display:flex;align-items:center;gap:14px;padding:16px 18px;cursor:pointer}
+  .gav{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:700;
+    background:linear-gradient(135deg,#22384a,#0d1319);border:1px solid var(--hair)}
+  .gname{font:700 15px/1.15 system-ui}
+  .gname .handle{color:var(--mute);font-weight:500;font-size:12.5px;margin-left:7px}
+  .gsum{display:flex;gap:16px;margin-left:auto;font-size:12px}
+  .gsum span{color:var(--mute)}
+  .gsum b{color:var(--paper)}
+  .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:700}
+  .pill.brand{background:rgba(0,177,246,.14);color:#bfe9ff}
+  .pill.rose{background:rgba(251,113,133,.14);color:#ffc4cd}
+  .pill.ok{background:rgba(52,211,153,.14);color:#b6f2dc}
+  .caret{color:var(--dim);margin-left:6px}
+
+  .gbody{border-top:1px solid var(--line);padding:6px 14px 14px}
+
+  /* proposal card */
+  .prop{border:1px solid var(--line);background:var(--card2);border-radius:16px;padding:14px;margin-top:12px}
+  .prow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .pname{font-weight:700;font-size:14px}
+  .pcode{color:var(--dim);font-size:11px;margin-left:6px}
+  .status{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:5px 11px;font-size:11.5px;font-weight:700}
+  .sdot{width:7px;height:7px;border-radius:50%}
+  .s-prod{background:rgba(0,177,246,.13);color:#bfe9ff} .s-prod .sdot{background:var(--brand)}
+  .s-wait{background:rgba(251,191,36,.13);color:#ffe6a3} .s-wait .sdot{background:var(--warn)}
+  .s-done{background:rgba(52,211,153,.13);color:#b6f2dc} .s-done .sdot{background:var(--ok)}
+  .s-redo{background:rgba(251,113,133,.13);color:#ffc4cd} .s-redo .sdot{background:var(--bad)}
+  .fb{margin-left:auto;display:flex;gap:12px;font-size:12px;color:var(--mute)}
+  .fb .ok{color:var(--ok)} .fb .bad{color:var(--bad)}
+
+  /* link row */
+  .linkrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;
+    background:var(--ink2);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+  .linkrow .lk{font-family:ui-monospace,monospace;font-size:12px;color:var(--paper)}
+  .opened{color:var(--ok);font-size:11.5px;display:inline-flex;align-items:center;gap:5px}
+  .notopened{color:var(--dim);font-size:11.5px}
+  .linkactions{margin-left:auto;display:flex;gap:7px}
+  .btn{border:1px solid var(--line);background:transparent;color:var(--mute);border-radius:9px;
+    padding:6px 11px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{color:var(--paper);border-color:var(--hair)}
+  .btn.kill:hover{color:#ffc4cd;border-color:rgba(251,113,133,.5);background:rgba(251,113,133,.08)}
+  .autonote{color:var(--dim);font-size:10.5px;margin-top:6px;padding-left:2px}
+
+  /* items -> a la cuenta */
+  .items{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .thumb{width:64px;height:78px;border-radius:10px;background:#1a2530 center/cover;position:relative;border:1px solid var(--line);overflow:hidden}
+  .thumb .tag{position:absolute;left:4px;bottom:4px;right:4px;font-size:9px;font-weight:700;border-radius:6px;padding:2px 5px;text-align:center}
+  .thumb.acc .tag{background:rgba(52,211,153,.85);color:#04231a}
+  .thumb.rej{filter:grayscale(.7) brightness(.7)}
+  .thumb.rej .tag{background:rgba(251,113,133,.85);color:#2a0810}
+  .achip{display:inline-flex;align-items:center;gap:7px;background:var(--ink);border:1px solid var(--line);
+    border-radius:10px;padding:8px 11px;font-size:12px}
+  .achip.acc{border-color:rgba(52,211,153,.4)} .achip.rej{border-color:rgba(251,113,133,.35);color:var(--mute)}
+  .play{width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;font-size:9px}
+
+  /* account line */
+  .accline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;border-top:1px dashed var(--line);padding-top:11px;font-size:12.5px}
+  .accline .to{color:var(--ok);font-weight:700}
+  .accline .redo{color:var(--bad);font-weight:700}
+  .accline .arrow{color:var(--dim)}
+  .accbtn{margin-left:auto;background:var(--brand);color:var(--onacc);border:0;border-radius:9px;padding:7px 13px;font-weight:700;font-size:12px;cursor:pointer}
+
+  .legend{color:var(--dim);font-size:11.5px;text-align:center;margin:22px 0 4px}
+  .banner{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:12px;
+    padding:10px 14px;color:#ffe6a3;font-size:12px;margin:14px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap topbar">
+    <div class="brand">
+      <div class="logo">Let<b>Shoot</b></div>
+      <div class="title">Propuestas · Almacén<small>Vista de trabajo</small></div>
+    </div>
+    <div class="right">
+      <div class="novedades"><span class="dot"></span> 3 novedades</div>
+      <div class="avatar">IT</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="banner">⚑ Maqueta de preview — así se verá el panel. Todavía no está conectado; es para aprobar el look.</div>
+
+  <!-- NOVEDADES (Q4) -->
+  <div class="newsbar">
+    <b>Novedades:</b>
+    <span class="chip">Valentina respondió · hace 12 min</span>
+    <span class="chip">Enit respondió · hace 1 h</span>
+    <span class="chip">Delphine respondió · hace 3 h</span>
+    <span class="mailnote">✉ además le llegó un correo a quien la creó</span>
+  </div>
+
+  <!-- TOOLBAR: buscador + filtros (Q2·3) -->
+  <div class="toolbar">
+    <div class="search">🔎 <input placeholder="Buscar creadora, @ o correo…"></div>
+    <div class="filters">
+      <button class="fchip on">Todas <span class="n">18</span></button>
+      <button class="fchip">Esperando <span class="n">4</span></button>
+      <button class="fchip">Por producir <span class="n">7</span></button>
+      <button class="fchip">Recrear <span class="n">2</span></button>
+      <button class="fchip">Entregado <span class="n">19</span></button>
+      <button class="fchip">Archivadas</button>
+    </div>
+  </div>
+
+  <!-- GRUPO POR CREADORA (Q2·2) -->
+  <div class="group">
+    <div class="ghead">
+      <div class="gav">VR</div>
+      <div>
+        <div class="gname">Valentina Ríos <span class="handle">@valentinar · activa</span></div>
+        <div class="gsum" style="margin-left:0;margin-top:4px">
+          <span><b>2</b> propuestas</span>
+          <span class="pill brand">5 por producir</span>
+          <span class="pill rose">1 recrear</span>
+        </div>
+      </div>
+      <div class="caret" style="margin-left:auto">▲</div>
+    </div>
+    <div class="gbody">
+
+      <!-- propuesta 1 -->
+      <div class="prop">
+        <div class="prow">
+          <div><span class="pname">Contenido para redes</span><span class="pcode mono">JP-9F4L2C-x7k4a2</span></div>
+          <span class="status s-prod"><span class="sdot"></span> Por producir</span>
+          <div class="fb"><span class="ok">♥ 5</span><span class="bad">✕ 1</span><span>💬 2</span></div>
+        </div>
+
+        <div class="items">
+          <div class="thumb acc" style="background-image:url('/model-latina.jpg')"><span class="tag">→ cuenta</span></div>
+          <div class="thumb acc" style="background-image:url('/model-resort.jpg')"><span class="tag">→ cuenta</span></div>
+          <div class="thumb acc" style="background-image:url('/model-noche.jpg')"><span class="tag">→ cuenta</span></div>
+          <div class="thumb rej" style="background-image:url('/model-europea.jpg')"><span class="tag">recrear</span></div>
+          <div class="achip acc"><span class="play">▶</span> Saludo coqueto <span style="color:var(--ok);font-weight:700">→ cuenta</span></div>
+          <div class="achip acc"><span class="play">▶</span> Bienvenida OF <span style="color:var(--ok);font-weight:700">→ cuenta</span></div>
+        </div>
+
+        <div class="accline">
+          <span class="to">✓ 5 ítems pasaron a la cuenta de Valentina</span>
+          <span class="arrow">·</span>
+          <span class="redo">1 a recrear</span>
+          <button class="accbtn">Marcar entregado</button>
+        </div>
+
+        <div class="linkrow">
+          🔗 <span class="lk">letshoot.ai/p/9F4L2C-x7k4a2</span>
+          <span class="opened">● abierto hace 2 h</span>
+          <div class="linkactions">
+            <button class="btn">Copiar</button>
+            <button class="btn kill">✕ Matar link</button>
+          </div>
+        </div>
+        <div class="autonote">El link se apaga solo cuando marcás <b>entregado</b>. Código largo, no se adivina.</div>
+      </div>
+
+      <!-- propuesta 2 -->
+      <div class="prop">
+        <div class="prow">
+          <div><span class="pname">Set nocturno · neón</span><span class="pcode mono">JP-2M8Q1B-r9p3zz</span></div>
+          <span class="status s-done"><span class="sdot"></span> Entregado</span>
+          <div class="fb"><span class="ok">♥ 3</span><span class="bad">✕ 0</span><span>💬 1</span></div>
+        </div>
+        <div class="accline" style="border-top:0;padding-top:4px">
+          <span class="to">✓ 3 ítems en la cuenta</span>
+          <span class="arrow">·</span>
+          <span style="color:var(--mute)">entregado el 10 sep</span>
+        </div>
+        <div class="linkrow" style="opacity:.6">
+          🔗 <span class="lk">letshoot.ai/p/2M8Q1B-r9p3zz</span>
+          <span class="notopened">🔒 link apagado (entregado)</span>
+          <div class="linkactions"><button class="btn">Archivar</button></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- GRUPO 2 -->
+  <div class="group">
+    <div class="ghead">
+      <div class="gav">EN</div>
+      <div>
+        <div class="gname">Enit <span class="handle">@enit · con Delphine</span></div>
+        <div class="gsum" style="margin-left:0;margin-top:4px">
+          <span><b>1</b> propuesta</span>
+          <span class="pill ok">respondió recién</span>
+        </div>
+      </div>
+      <div class="caret" style="margin-left:auto">▲</div>
+    </div>
+    <div class="gbody">
+      <div class="prop">
+        <div class="prow">
+          <div><span class="pname">Propuesta de audios</span><span class="pcode mono">JP-7K2M9A-b4t6vh</span></div>
+          <span class="status s-prod"><span class="sdot"></span> Por producir</span>
+          <div class="fb"><span class="ok">♥ 4</span><span class="bad">✕ 2</span><span>💬 3</span></div>
+        </div>
+        <div class="items">
+          <div class="achip acc"><span class="play">▶</span> Voz susurrada <span style="color:var(--ok);font-weight:700">→ cuenta</span></div>
+          <div class="achip acc"><span class="play">▶</span> Saludo mañanero <span style="color:var(--ok);font-weight:700">→ cuenta</span></div>
+          <div class="achip acc"><span class="play">▶</span> Audio personalizado <span style="color:var(--ok);font-weight:700">→ cuenta</span></div>
+          <div class="achip acc"><span class="play">▶</span> Despedida <span style="color:var(--ok);font-weight:700">→ cuenta</span></div>
+          <div class="achip rej"><span class="play">▶</span> Risa · recrear</div>
+          <div class="achip rej"><span class="play">▶</span> Gemido · recrear</div>
+        </div>
+        <div class="accline">
+          <span class="to">✓ 4 audios pasaron a la cuenta de Enit</span>
+          <span class="arrow">·</span>
+          <span class="redo">2 a recrear</span>
+          <button class="accbtn">Marcar entregado</button>
+        </div>
+        <div class="linkrow">
+          🔗 <span class="lk">letshoot.ai/p/7K2M9A-b4t6vh</span>
+          <span class="opened">● abierto hace 1 h</span>
+          <div class="linkactions"><button class="btn">Copiar</button><button class="btn kill">✕ Matar link</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GRUPO 3: esperando (link no abierto) -->
+  <div class="group">
+    <div class="ghead">
+      <div class="gav">DM</div>
+      <div>
+        <div class="gname">Danik Michell <span class="handle">@danik · nueva</span></div>
+        <div class="gsum" style="margin-left:0;margin-top:4px">
+          <span><b>1</b> propuesta</span>
+          <span class="pill" style="background:rgba(251,191,36,.14);color:#ffe6a3">esperando respuesta</span>
+        </div>
+      </div>
+      <div class="caret" style="margin-left:auto">▼</div>
+    </div>
+    <div class="gbody">
+      <div class="prop">
+        <div class="prow">
+          <div><span class="pname">Contenido para redes</span><span class="pcode mono">JP-5B6N3D-k2w8mq</span></div>
+          <span class="status s-wait"><span class="sdot"></span> Esperando creadora</span>
+          <div class="fb"><span>sin respuesta aún</span></div>
+        </div>
+        <div class="linkrow">
+          🔗 <span class="lk">letshoot.ai/p/5B6N3D-k2w8mq</span>
+          <span class="notopened">○ todavía no lo abre</span>
+          <div class="linkactions">
+            <button class="btn">Copiar</button>
+            <button class="btn">✉ Reenviar</button>
+            <button class="btn kill">✕ Matar link</button>
+          </div>
+        </div>
+        <div class="autonote">Cuando la creadora nueva acepta, se le crea la cuenta y lo aprobado cae ahí solo.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    Estados: <span style="color:var(--warn)">● Esperando</span> ·
+    <span style="color:var(--brand)">● Por producir</span> ·
+    <span style="color:var(--bad)">● Recrear</span> ·
+    <span style="color:var(--ok)">● Entregado</span>
+  </div>
+
+</div>
+</body>
+</html>
