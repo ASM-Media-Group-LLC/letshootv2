@@ -717,7 +717,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
             key={l.id}
             ref={(el) => (slidesRef.current[i] = el)}
             data-idx={i}
-            className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-4 py-6 sm:px-10"
+            className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-4 py-3 sm:px-10 sm:py-6"
           >
             {/* Desktop: UN SOLO CUADRO dividido — las tres fotos pegadas (sin
                 «+»/«=»), esquinas redondeadas solo por fuera (overflow-hidden en
@@ -759,9 +759,9 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo }) {
                 como fila pegada debajo, todo en un marco con líneas de 2px. Sin
                 «+»/«=»; caption superpuesto sobre el resultado. */}
             <div className="w-full sm:hidden [perspective:1200px]">
-              <div className="flex h-[70svh] w-full flex-col gap-[2px] overflow-hidden rounded-3xl bg-white/10 shadow-glow ring-1 ring-brand/25">
-                {/* Resultado: celda grande, caption superpuesto abajo */}
-                <div className="relative min-h-0 flex-[2.35]">
+              <div className="flex h-[80svh] w-full flex-col gap-[2px] overflow-hidden rounded-3xl bg-white/10 shadow-glow ring-1 ring-brand/25">
+                {/* Resultado: celda grande y bien vertical (protagonista), caption abajo */}
+                <div className="relative min-h-0 flex-[2.9]">
                   <Shot src={l.result} alt={l.caption} label={t.aiResult} dot="bg-brand" big code={cfg.code} uid={`${l.id}-mai`} active={active} delay="delay-300" className="h-full w-full ring-0" />
                   <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-4 pb-4 pt-14 ${fade}`}>
                     <div className="pr-20">
@@ -932,8 +932,10 @@ function Shot({ src, alt, label, dot, code, uid, big = false, active = true, del
     : 'opacity-100 [transform:translateY(0)_scale(0.985)]';
   return (
     <div className={`relative overflow-hidden ring-1 transition-all duration-700 ease-out ${delay} ${flip} ${className}`}>
+      {/* object-position sesgado hacia arriba: las fotos son verticales y la CARA
+          va en el tercio superior — así el recorte nunca se la come. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} draggable={false} className="h-full w-full object-cover" style={{ WebkitUserDrag: 'none' }} />
+      <img src={src} alt={alt} draggable={false} className="h-full w-full object-cover object-[center_22%]" style={{ WebkitUserDrag: 'none' }} />
       <Watermark code={code} uid={uid} />
       <span className="absolute left-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/45 px-2 py-1 backdrop-blur-sm">
         <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
