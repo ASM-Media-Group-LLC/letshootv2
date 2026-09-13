@@ -145,7 +145,7 @@ function mapProposal(row, fb, reg, fbInt) {
         }
       : null,
     model: { name: row.model_name || '', agency: row.model_agency || '' },
-    recipient: { name: row.recipient_name || '', email: row.recipient_email || '', kind: row.recipient_kind || '' },
+    recipient: { name: row.recipient_name || '', email: row.recipient_email || '', kind: row.recipient_kind || '', instagram: row.recipient_instagram || '' },
     looks: Array.isArray(row.looks) ? row.looks : [],
     _feedback: fb ? { items: Array.isArray(fb.items) ? fb.items : [], recipientName: fb.recipient_name || '', updatedAt: fb.updated_at || null } : null,
     _internalFeedback: fbInt ? { items: Array.isArray(fbInt.items) ? fbInt.items : [], recipientName: fbInt.recipient_name || '', updatedAt: fbInt.updated_at || null } : null,
@@ -457,6 +457,11 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
             )}
             {p._internal && (
               <Row label="Tipo" value={<StatusDot tone="brand">Interna (equipo)</StatusDot>} />
+            )}
+            {p._internal && (p.recipient?.name || p.recipient?.instagram) && (
+              <Row label="Para (modelo)" value={
+                <span>{p.recipient.name || '—'}{p.recipient.instagram ? <span className="text-paper-dim"> · {p.recipient.instagram}</span> : null}</span>
+              } />
             )}
             {p.approval && (
               <Row label={p._internal ? 'Revisión interna' : 'Aprobación'} value={

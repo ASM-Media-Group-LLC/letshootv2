@@ -149,6 +149,11 @@ export default function PropuestaAdmin() {
   const [staff, setStaff] = useState([]);
   const [internalReviewerId, setInternalReviewerId] = useState('');
   const [internalReviewerName, setInternalReviewerName] = useState('');
+  // Interna: PARA QUÉ modelo es. Nueva (con Instagram obligatorio) o activa (de la lista).
+  const [subjectKind, setSubjectKind] = useState('new'); // 'new' | 'active'
+  const [subjectName, setSubjectName] = useState('');
+  const [subjectInstagram, setSubjectInstagram] = useState('');
+  const [subjectCreatorId, setSubjectCreatorId] = useState('');
   // Aprobación: si el empleado marca el chulito, la propuesta va primero al que
   // aprueba (approverEmail); recién si él aprueba, se le manda a la creadora.
   const [needsApproval, setNeedsApproval] = useState(false);
@@ -287,6 +292,12 @@ export default function PropuestaAdmin() {
           if (data.recipient_user_id) setCreatorId(data.recipient_user_id);
           if (data.internal_reviewer_id) setInternalReviewerId(data.internal_reviewer_id);
           if (typeof data.internal_reviewer_name === 'string') setInternalReviewerName(data.internal_reviewer_name || '');
+          // Interna: para qué modelo es (nueva con Instagram o activa por id).
+          if (data.recipient_kind === 'internal') {
+            setSubjectName(data.recipient_name || '');
+            if (data.recipient_user_id) { setSubjectKind('active'); setSubjectCreatorId(data.recipient_user_id); }
+            else if (data.recipient_instagram) { setSubjectKind('new'); setSubjectInstagram(data.recipient_instagram || ''); }
+          }
           setNeedsApproval(!!data.approval_required && data.recipient_kind !== 'internal');
           if (typeof data.approver_email === 'string') setApproverEmails(data.approver_email.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean));
         }
@@ -552,12 +563,18 @@ export default function PropuestaAdmin() {
       looks: looks
         .filter(isComplete)
         .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
-      recipient_name: recipient.name.trim(),
+      // Para una INTERNA, el "destinatario" mostrado es la MODELO (subject); el
+      // revisor va aparte. Para creadora nueva/activa, es la creadora normal.
+      recipient_name: recipient.kind === 'internal' ? subjectName.trim() : recipient.name.trim(),
       recipient_email: recipient.email.trim(),
       recipient_kind: recipient.kind,
+      recipient_instagram: (recipient.kind === 'internal' && subjectKind === 'new') ? (subjectInstagram.trim() || null) : null,
       // Creadora activa → sellamos su id para que la propuesta le aparezca en su
-      // cuenta ("Mis propuestas") apenas se publica, sin que abra el link.
-      recipient_user_id: recipient.kind === 'active' ? (creatorId || null) : null,
+      // cuenta ("Mis propuestas") apenas se publica. Interna sobre creadora activa
+      // también la liga a su id.
+      recipient_user_id: recipient.kind === 'active'
+        ? (creatorId || null)
+        : (recipient.kind === 'internal' && subjectKind === 'active') ? (subjectCreatorId || null) : null,
       // Propuesta interna → revisor del equipo (logueado); no lleva creadora todavía.
       internal_reviewer_id: recipient.kind === 'internal' ? (internalReviewerId || null) : null,
       internal_reviewer_name: recipient.kind === 'internal' ? (internalReviewerName || null) : null,
@@ -639,7 +656,9 @@ export default function PropuestaAdmin() {
   const isInternal = recipient.kind === 'internal';
   const canNext = step === 1
     ? (isInternal
-        ? !!internalReviewerId                                        // interna: elegí a quién revisa
+        ? (!!internalReviewerId && (subjectKind === 'active'          // interna: revisor + para qué modelo
+            ? !!subjectCreatorId
+            : (subjectName.trim().length > 0 && subjectInstagram.trim().length > 0)))
         : ((recipient.kind === 'active'
             ? !!creatorId && recipient.name.trim().length > 0        // activa: elegí creadora (sin correo)
             : recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())) // nueva: nombre + correo
@@ -841,6 +860,41 @@ export default function PropuestaAdmin() {
                       <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
                     </div>
                   </Field>
+
+                  {/* Para QUÉ modelo es la propuesta interna. */}
+                  <Field label="¿Para qué modelo es?">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Chip active={subjectKind === 'new'} onClick={() => { setSubjectKind('new'); setSubjectCreatorId(''); }}>Creadora nueva</Chip>
+                      <Chip active={subjectKind === 'active'} onClick={() => setSubjectKind('active')}>Creadora activa</Chip>
+                    </div>
+                  </Field>
+                  {subjectKind === 'active' ? (
+                    <Field label="Elegí la creadora activa">
+                      <div className="relative">
+                        <select
+                          value={subjectCreatorId}
+                          onChange={(e) => { const c = activeCreators.find((x) => x.id === e.target.value); setSubjectCreatorId(e.target.value); setSubjectName(c?.full_name || ''); }}
+                          className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60"
+                        >
+                          <option value="">{activeCreators.length ? '— Elegí una creadora activa —' : 'No hay creadoras activas todavía'}</option>
+                          {activeCreators.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                        </select>
+                        <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                      </div>
+                    </Field>
+                  ) : (
+                    <>
+                      <Field label="Nombre de la modelo">
+                        <input value={subjectName} onChange={(e) => setSubjectName(e.target.value)} placeholder="Ej: Valentina Ríos"
+                          className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                      </Field>
+                      <Field label="Instagram de la modelo (obligatorio)">
+                        <input value={subjectInstagram} onChange={(e) => setSubjectInstagram(e.target.value)} placeholder="instagram.com/usuaria  ·  @usuaria"
+                          className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                      </Field>
+                    </>
+                  )}
+
                   <div className="flex items-start gap-2 rounded-xl border border-line bg-ink-2/40 px-3.5 py-3 text-[12px] leading-relaxed text-paper-mute">
                     <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
                     Propuesta interna: la revisa y aprueba tu equipo (con su feedback aparte). Cuando esté aprobada, desde el admin la mandás a la creadora.
