@@ -481,21 +481,37 @@ export default function PropuestaAdmin() {
   // ── Subir AUDIOS a la bóveda (mp3/wav de ElevenLabs) ──
   // Van tal cual al bucket público 'proposal-audios' (sin comprimir; los mp3 son
   // livianos) y en la propuesta se guarda solo la URL + el nombre editable.
+  // Tope de 50 MB (el máximo del storage): más que suficiente para una voz. Un
+  // archivo más grande se rechaza con mensaje claro (antes fallaba en silencio).
+  const AUDIO_MAX_MB = 50;
+  const AUDIO_EXT = /\.(mp3|wav|m4a|aac|ogg|oga|opus|weba|flac|aif|aiff|mp4)$/i;
   const onAudiosPicked = async (e) => {
-    const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('audio/'));
+    const picked = Array.from(e.target.files || []);
     e.target.value = '';
-    if (!files.length) return;
+    if (!picked.length) return;
+    // Aceptar por MIME de audio O por extensión (algunos teléfonos/navegadores no
+    // reportan el type del m4a/mp3).
+    const audioFiles = picked.filter((f) => (f.type && f.type.startsWith('audio/')) || AUDIO_EXT.test(f.name));
+    if (!audioFiles.length) { setAudioErr('Ese archivo no parece un audio. Subí un mp3, wav o m4a.'); return; }
+    const okFiles = audioFiles.filter((f) => f.size <= AUDIO_MAX_MB * 1024 * 1024);
+    const tooBig = audioFiles.filter((f) => f.size > AUDIO_MAX_MB * 1024 * 1024);
+    if (!okFiles.length) {
+      const f = tooBig[0];
+      setAudioErr(`"${f.name}" pesa ${(f.size / 1048576).toFixed(0)} MB. El máximo es ${AUDIO_MAX_MB} MB — usá el MP3 de ElevenLabs (pesa mucho menos) o comprimilo.`);
+      return;
+    }
     setAudioBusy(true);
     setAudioErr('');
     const sb = getSupabase();
     const nuevos = [];
-    for (const f of files) {
+    let failMsg = '';
+    for (const f of okFiles) {
       const ext = (f.name.match(/\.([a-z0-9]+)$/i)?.[1] || 'mp3').toLowerCase();
       const path = `${authorId || 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       const { error: upErr } = await sb.storage.from('proposal-audios').upload(path, f, { contentType: f.type || 'audio/mpeg', upsert: false });
-      if (upErr) { setAudioErr(upErr.message || 'No se pudo subir el audio. Reintentá.'); continue; }
+      if (upErr) { failMsg = `No se pudo subir "${f.name}": ${upErr.message || 'error de subida'}. Reintentá.`; continue; }
       const src = sb.storage.from('proposal-audios').getPublicUrl(path)?.data?.publicUrl;
-      if (!src) { setAudioErr('No se pudo obtener la URL del audio.'); continue; }
+      if (!src) { failMsg = `No se pudo obtener la URL de "${f.name}".`; continue; }
       nuevos.push({
         id: `au-${Math.random().toString(36).slice(2, 9)}`,
         src,
@@ -504,6 +520,8 @@ export default function PropuestaAdmin() {
     }
     setAudioBusy(false);
     if (nuevos.length) setAudios((prev) => [...prev, ...nuevos]);
+    if (tooBig.length) setAudioErr(`${tooBig.length} audio(s) pasan de ${AUDIO_MAX_MB} MB y no se subieron. Usá el MP3 de ElevenLabs (más liviano).`);
+    else if (failMsg) setAudioErr(failMsg);
   };
 
   // ── Subir el LOGO de la agencia ──
