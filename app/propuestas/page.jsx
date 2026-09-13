@@ -833,13 +833,23 @@ export default function PropuestaAdmin() {
             <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.whoTitle}</h2>
             <p className="mt-1.5 text-sm text-paper-mute">{t.whoSub}</p>
             <div className="mt-6 space-y-4">
-              <Field label={t.recipKind}>
+              {/* Paso 1: a la creadora (externa) vs interna (revisión del equipo). */}
+              <Field label="¿A quién va?">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <Chip active={recipient.kind === 'new'} onClick={() => { setRecipient((r) => ({ ...r, kind: 'new' })); setCreatorId(''); }}>Creadora nueva</Chip>
-                  <Chip active={recipient.kind === 'active'} onClick={() => setRecipient((r) => ({ ...r, kind: 'active' }))}>Creadora activa</Chip>
-                  <Chip active={recipient.kind === 'internal'} onClick={() => { setRecipient((r) => ({ ...r, kind: 'internal', name: '', email: '' })); setCreatorId(''); setNeedsApproval(false); }}>Interna</Chip>
+                  <Chip active={recipient.kind !== 'internal'} onClick={() => { if (recipient.kind === 'internal') setRecipient((r) => ({ ...r, kind: 'new' })); }}>A la creadora</Chip>
+                  <Chip active={recipient.kind === 'internal'} onClick={() => { setRecipient((r) => ({ ...r, kind: 'internal', name: '', email: '' })); setCreatorId(''); setNeedsApproval(false); }}>Interna (equipo)</Chip>
                 </div>
               </Field>
+
+              {/* Paso 2 (solo si va a la creadora): nueva o activa. */}
+              {recipient.kind !== 'internal' && (
+                <Field label="¿Creadora nueva o activa?">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Chip active={recipient.kind === 'new'} onClick={() => { setRecipient((r) => ({ ...r, kind: 'new' })); setCreatorId(''); }}>Creadora nueva</Chip>
+                    <Chip active={recipient.kind === 'active'} onClick={() => setRecipient((r) => ({ ...r, kind: 'active' }))}>Creadora activa</Chip>
+                  </div>
+                </Field>
+              )}
 
               {recipient.kind === 'internal' && (
                 <>
