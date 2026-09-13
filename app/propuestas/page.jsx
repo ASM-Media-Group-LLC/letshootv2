@@ -1312,14 +1312,21 @@ export default function PropuestaAdmin() {
       {step === 4 && (
         <div className="mx-auto w-full max-w-lg space-y-4 px-4 py-10">
           <div className="text-center">
-            <div className="inline-flex items-center gap-2.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-              <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.linkTitle}</h2>
+            <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-line bg-ink-2/60 px-3.5 py-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]" />
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">
+                {isInternal ? 'Revisión interna' : 'Link listo'}
+              </span>
             </div>
-            <p className="mt-1.5 text-sm text-paper-mute">{t.linkSub}</p>
-            <p className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
-              {t.preparedFor} <span className="text-brand">{recipient.name}</span>
+            <h2 className="mt-4 font-display text-2xl font-bold tracking-tight text-paper">{t.linkTitle}</h2>
+            <p className="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed text-paper-mute">
+              {isInternal ? 'Compartilo con quien revisa. Vos ves todo su feedback.' : t.linkSub}
             </p>
+            {recipient.name && (
+              <p className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-dim">
+                {isInternal ? 'Modelo' : t.preparedFor} <span className="text-brand">{recipient.name}</span>
+              </p>
+            )}
           </div>
 
           <section className="card3d rounded-3xl border border-line bg-card p-5">
@@ -1328,15 +1335,23 @@ export default function PropuestaAdmin() {
                 {/* Va PRIMERO a revisión/aprobación. Se comparte un LINK (con token).
                     Interna → la revisa el equipo y, una vez aprobada, la mandás a la
                     creadora desde el admin. Externa → al aprobar, se manda sola. */}
-                <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5 text-[12px] text-amber-200/90">
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                  {isInternal
-                    ? <>Revisión interna. Compartí este link con <span className="font-semibold">{internalReviewerName || 'tu equipo'}</span>; cuando la apruebe, la mandás a la creadora desde el admin.</>
-                    : <>Necesita aprobación. Compartí este link con quien decide; cuando apruebe, se le manda sola a la creadora.</>}
+                <div className="mb-5 rounded-2xl border border-amber-500/25 bg-gradient-to-b from-amber-500/[0.09] to-amber-500/[0.02] px-4 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-amber-400/15 text-amber-300"><Eye size={13} /></span>
+                    <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200/90">
+                      {isInternal ? 'Revisión interna' : 'Necesita aprobación'}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[12.5px] leading-relaxed text-amber-100/80">
+                    {isInternal
+                      ? <>Compartí este link con <span className="font-semibold text-amber-50">{internalReviewerName || 'tu equipo'}</span>. Cuando lo apruebe, la mandás a la creadora desde el admin.</>
+                      : <>Compartí este link con quien decide. Cuando apruebe, se le manda sola a la creadora.</>}
+                  </p>
                 </div>
                 {approvalUrl ? (
                   <>
-                    <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
+                    <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-dim">Link de revisión</div>
+                    <div className="mb-4 flex items-center gap-2 rounded-2xl border border-line bg-ink-2/50 py-2 pl-3.5 pr-2">
                       <LinkIcon size={13} className="shrink-0 text-paper-dim" />
                       <input readOnly value={approvalUrl} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-paper outline-none" />
                       <button type="button" onClick={() => doCopy(approvalUrl)}
@@ -1344,17 +1359,17 @@ export default function PropuestaAdmin() {
                         {copied ? <><Check size={13} /> {t.copied}</> : <><Copy size={13} /> {t.copy}</>}
                       </button>
                     </div>
-                    <div className="mb-4 rounded-2xl border border-line bg-ink p-4">
-                      <div className="mb-3 inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">
+                    <div className="mb-4 flex flex-col items-center rounded-2xl border border-line bg-gradient-to-b from-white/[0.03] to-transparent p-5">
+                      <div className="mb-4 inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">
                         <Smartphone size={11} /> {t.scanPhone}
                       </div>
-                      <div className="grid place-items-center">
+                      <div className="overflow-hidden rounded-2xl ring-1 ring-white/10">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={approvalQr} alt="QR" className="h-40 w-40 rounded-lg" />
+                        <img src={approvalQr} alt="QR" className="h-44 w-44" />
                       </div>
                     </div>
                     <a href={approvalUrl} target="_blank" rel="noreferrer"
-                      className="btn3d mb-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold">
+                      className="btn3d inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-bold">
                       <Eye size={15} /> Abrir para revisar <ExternalLink size={12} className="opacity-60" />
                     </a>
                   </>
@@ -1432,7 +1447,7 @@ export default function PropuestaAdmin() {
           <section className="card3d rounded-3xl border border-line bg-card p-5">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="min-w-0 truncate font-display text-base font-bold text-paper">
-                {t.responsesOf} {feedback?.recipientName || recipient.name}
+                {t.responsesOf} {feedback?.recipientName || recipient.name || (isInternal ? 'la revisión' : 'el link')}
               </h3>
               {feedback && (
                 <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-paper-dim">
