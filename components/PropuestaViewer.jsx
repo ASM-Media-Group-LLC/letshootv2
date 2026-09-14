@@ -757,11 +757,11 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
         {/* Co-branding KASH + LetShoot — centrado, bien abajo del borde, sin cajas.
             KASH un punto más grande que LetShoot (glifos medidos) para presencia. */}
         <div className="absolute inset-x-0 top-12 z-20 flex justify-center sm:top-20">
-          <div className="flex origin-center scale-[0.7] items-center gap-4 sm:scale-100 sm:gap-5">
+          <div className="flex origin-center scale-[0.72] items-center gap-4 sm:scale-100 sm:gap-5">
             {cfg.agencyLogoUrl && (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={cfg.agencyLogoUrl} alt="" className="h-11 w-auto max-w-[200px] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:h-[52px]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+                <img src={cfg.agencyLogoUrl} alt="" className="h-[54px] w-auto max-w-[200px] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:h-[58px]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
                 <span className="text-3xl font-light leading-none text-white/75 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:text-4xl">+</span>
               </>
             )}

@@ -45,22 +45,23 @@ export async function generateMetadata({ params }) {
     } catch { /* si falla, quedan los defaults lindos */ }
   }
 
-  const ogTitle = meta.ogTitle || meta.title.replace(' · LetShoot', '');
-  // La og:image la genera el card de marca (opengraph-image.jsx). Acá solo el
-  // título y la descripción.
+  // El <title> de la pestaña lleva el nombre de la propuesta (útil). El COMPARTIR
+  // (og/twitter) va limpio y de marca: "LetShoot" + tagline, sin datos de la
+  // propuesta. La imagen la genera opengraph-image.jsx (card de marca).
+  const BRAND_DESC = 'Tu clon digital y de voz.';
   return {
     title: meta.title,
     description: meta.description,
     openGraph: {
-      title: ogTitle,
-      description: meta.description,
+      title: 'LetShoot',
+      description: BRAND_DESC,
       type: 'website',
       siteName: 'LetShoot',
     },
     twitter: {
       card: 'summary_large_image',
-      title: ogTitle,
-      description: meta.description,
+      title: 'LetShoot',
+      description: BRAND_DESC,
     },
   };
 }
