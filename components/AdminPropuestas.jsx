@@ -177,7 +177,7 @@ function mapProposal(row, fb, reg, fbInt) {
   };
 }
 
-export default function AdminPropuestas({ view = 'calendario' }) {
+export default function AdminPropuestas() {
   const [rows, setRows] = useState([]);         // lista normalizada (reales o, si no hay, demos)
   const [loading, setLoading] = useState(true);
   const [usingDemo, setUsingDemo] = useState(false);
@@ -186,6 +186,7 @@ export default function AdminPropuestas({ view = 'calendario' }) {
   const [empSel, setEmpSel] = useState(null);   // nombre del empleado con el expediente abierto
   const [copied, setCopied] = useState('');
   const [selDay, setSelDay] = useState(startOfToday()); // día seleccionado en el calendario (ms 00:00 local)
+  const [view, setView] = useState('calendario');       // 'calendario' (día a día) | 'historial' (lista completa)
 
   // Filtros
   const [q, setQ] = useState('');
@@ -375,6 +376,17 @@ export default function AdminPropuestas({ view = 'calendario' }) {
         >
           <Send size={15} /> Crear propuesta
         </a>
+      </div>
+
+      {/* Switch Calendario | Historial — el día a día y el listado completo, juntos. */}
+      <div className="mt-4 inline-flex rounded-full border border-line bg-card p-1">
+        {[['calendario', 'Calendario'], ['historial', 'Historial']].map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setView(id)}
+            className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+              view === id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:text-paper'}`}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Aviso: solo cuando no hay propuestas reales y se muestran ejemplos. */}
