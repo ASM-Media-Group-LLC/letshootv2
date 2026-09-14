@@ -1,13 +1,8 @@
 // Ruta pública dinámica de propuestas: /p/<CODE> (y /p/demo → fallback DEMO).
 import PropuestaViewer from '@/components/PropuestaViewer';
 
-// Foto linda por defecto (si la propuesta no trae portada propia).
+// Foto linda por defecto (por si la propuesta no trae portada propia).
 const OG_FALLBACK_IMG = '/model-latina.jpg';
-// El link se comparte SIEMPRE apuntando a producción → la og:image tiene que ser
-// una URL absoluta pública (WhatsApp la baja desde afuera). Portada relativa
-// (/foto.jpg) → letshoot.ai/foto.jpg; portada de Supabase (https…) queda igual.
-const SHARE_ORIGIN = 'https://letshoot.ai';
-const absUrl = (u) => (/^https?:\/\//.test(u) ? u : `${SHARE_ORIGIN}${u.startsWith('/') ? '' : '/'}${u}`);
 
 // ── Open Graph / Twitter ──────────────────────────────────────────────────
 // Para que al compartir el link por WhatsApp / redes salga una tarjeta linda
@@ -51,14 +46,14 @@ export async function generateMetadata({ params }) {
   }
 
   const ogTitle = meta.ogTitle || meta.title.replace(' · LetShoot', '');
-  const img = absUrl(meta.image);
+  // La og:image la genera el card de marca (opengraph-image.jsx). Acá solo el
+  // título y la descripción.
   return {
     title: meta.title,
     description: meta.description,
     openGraph: {
       title: ogTitle,
       description: meta.description,
-      images: [{ url: img, width: 1200, height: 1500 }],
       type: 'website',
       siteName: 'LetShoot',
     },
@@ -66,7 +61,6 @@ export async function generateMetadata({ params }) {
       card: 'summary_large_image',
       title: ogTitle,
       description: meta.description,
-      images: [img],
     },
   };
 }
