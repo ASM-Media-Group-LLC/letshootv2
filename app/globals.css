@@ -228,50 +228,35 @@ button:focus-visible,
    (tarjetas/KPIs) · .tab3d-active (tab activo). Funcionan en dark y light.
    ═══════════════════════════════════════════════════════════════════════ */
 
-/* CTA primario: gradiente azul + bisel inferior 3D + brillo superior. */
+/* CTA primario: PLANO sólido de marca (mate, sin brillo/bisel/salto). */
 .btn3d {
   position: relative;
-  background: linear-gradient(180deg, #22c3ff 0%, #00b1f6 45%, #0a84ff 100%);
+  background: #00b1f6;
   color: #06101a;
   border: none;
-  border-bottom: 4px solid #0063c4;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 8px 24px -8px rgba(0, 177, 246, 0.55);
-  transition: transform 0.12s ease, border-bottom-width 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  box-shadow: none;
+  transition: background 0.14s ease, opacity 0.14s ease;
 }
-.btn3d:hover {
-  filter: brightness(1.07);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    0 12px 32px -8px rgba(0, 177, 246, 0.7);
-}
-.btn3d:active {
-  transform: translateY(3px);
-  border-bottom-width: 1px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.25),
-    0 3px 10px -4px rgba(0, 177, 246, 0.5);
-}
+.btn3d:hover { background: #1cbcff; }
+.btn3d:active { opacity: 0.88; }
 .btn3d:disabled {
-  filter: grayscale(0.6) brightness(0.75);
-  transform: none;
-  border-bottom-width: 4px;
+  opacity: 0.45;
+  filter: grayscale(0.25);
   cursor: not-allowed;
 }
 
-/* Secundario: mismo lenguaje, sin gradiente lleno. */
+/* Secundario: PLANO, solo borde fino + texto azul (sin relleno, sin bisel). */
 .btn3d-ghost {
   position: relative;
-  background: rgba(0, 177, 246, 0.08);
+  background: transparent;
   color: #00b1f6;
   border: 1px solid rgba(0, 177, 246, 0.35);
-  border-bottom: 3px solid rgba(0, 130, 200, 0.55);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  transition: transform 0.12s ease, border-bottom-width 0.12s ease, background 0.15s ease;
+  box-shadow: none;
+  transition: background 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
 }
-.btn3d-ghost:hover { background: rgba(0, 177, 246, 0.16); }
-.btn3d-ghost:active { transform: translateY(2px); border-bottom-width: 1px; }
+.btn3d-ghost:hover { background: rgba(0, 177, 246, 0.10); border-color: rgba(0, 177, 246, 0.55); }
+.btn3d-ghost:active { opacity: 0.85; }
+.btn3d-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Card con profundidad SOBRIA (tipo Linear/Notion, no Fortnite) ──
  * Diseño intencional pero sin gritar: bisel superior muy fino, sombra

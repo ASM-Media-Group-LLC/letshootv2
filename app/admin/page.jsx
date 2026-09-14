@@ -484,7 +484,7 @@ export default function AdminPage() {
     <div className="min-h-[100svh] bg-ink text-paper">
       <Header me={me} router={router} creators={creators} />
 
-      <main className="mx-auto max-w-5xl px-5 py-6">
+      <main className="mx-auto max-w-6xl px-5 py-6">
         {/* ── Header denso: título compacto, alerts inline, acciones a la
             derecha. Nada de banner separado ni "sub-subtítulo" explicativo. ── */}
         {(() => {
@@ -524,26 +524,30 @@ export default function AdminPage() {
           );
         })()}
 
-        {/* Tabs compactos */}
-        <div className="mt-5 flex gap-1 overflow-x-auto border-b border-line">
-          {[
-            { id: 'registros', label: 'Registros', icon: ClipboardList },
-            { id: 'metricas', label: 'Métricas', icon: BarChart3 },
-            { id: 'reacciones', label: 'Reacciones', icon: Heart },
-            { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
-            { id: 'equipo', label: 'Equipo interno', icon: Users },
-            { id: 'agencias', label: 'Agencias', icon: Building2, badge: agencyLeads.length },
-            { id: 'actividad', label: 'Actividad', icon: Activity },
-            { id: 'propuestas', label: 'Propuestas', icon: Send },
-          ].map((tb) => (
-            <button key={tb.id} onClick={() => setTab(tb.id)}
-              className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-2.5 text-sm font-medium transition-colors ${tab === tb.id ? 'tab3d-active' : 'text-paper-mute hover:text-paper'}`}>
-              <tb.icon size={14} /> {tb.label}
-              {tb.badge ? <span className="grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent">{tb.badge}</span> : null}
-            </button>
-          ))}
-        </div>
+        {/* Navegación — barra lateral: vertical en desktop, scroll horizontal en móvil.
+            Propuestas primero (lo más usado, a la mano). Activo = tinte azul plano. */}
+        <div className="mt-5 flex flex-col gap-6 lg:flex-row lg:items-start">
+          <nav className="flex gap-1 overflow-x-auto pb-1 lg:w-56 lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:border-r lg:border-line lg:pb-0 lg:pr-3">
+            {[
+              { id: 'propuestas', label: 'Propuestas', icon: Send },
+              { id: 'registros', label: 'Registros', icon: ClipboardList },
+              { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
+              { id: 'equipo', label: 'Equipo interno', icon: Users },
+              { id: 'agencias', label: 'Agencias', icon: Building2, badge: agencyLeads.length },
+              { id: 'reacciones', label: 'Reacciones', icon: Heart },
+              { id: 'metricas', label: 'Métricas', icon: BarChart3 },
+              { id: 'actividad', label: 'Actividad', icon: Activity },
+            ].map((tb) => (
+              <button key={tb.id} onClick={() => setTab(tb.id)}
+                className={`flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:w-full ${
+                  tab === tb.id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:bg-hair/[0.05] hover:text-paper'}`}>
+                <tb.icon size={16} /> <span>{tb.label}</span>
+                {tb.badge ? <span className="ml-auto grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent">{tb.badge}</span> : null}
+              </button>
+            ))}
+          </nav>
 
+          <div className="min-w-0 flex-1">
         {loading ? (
           <p className="mt-8 text-paper-dim">Cargando datos…</p>
         ) : tab === 'registros' ? (
@@ -1112,6 +1116,8 @@ export default function AdminPage() {
             <AdminPropuestas />
           </div>
         ) : null}
+          </div>
+        </div>
       </main>
 
       {agConfirm && (
