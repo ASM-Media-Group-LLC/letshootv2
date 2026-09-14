@@ -146,6 +146,7 @@ function mapProposal(row, fb, reg, fbInt) {
     intro: row.intro || '',
     createdBy: row.created_by_name || '',
     createdAt: row.created_at || null,
+    approvedAt: row.approved_at || null,
     expiresAt: row.expires_at || null,
     _status: row.status || 'published',
     _internal: isInternal,
@@ -171,6 +172,7 @@ export default function AdminPropuestas() {
   const [usingDemo, setUsingDemo] = useState(false);
   const [origin, setOrigin] = useState('');
   const [sel, setSel] = useState(null);         // id de la propuesta abierta en el drawer
+  const [empSel, setEmpSel] = useState(null);   // nombre del empleado con el expediente abierto
   const [copied, setCopied] = useState('');
 
   // Filtros
@@ -340,6 +342,7 @@ export default function AdminPropuestas() {
         <div className="mt-4">
           <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
             <UserCheck size={13} /> Por empleado
+            <span className="font-normal normal-case tracking-normal text-paper-dim/70">· clic para ver el expediente completo</span>
           </div>
           <div className="flex gap-2.5 overflow-x-auto pb-1">
             {teamTally.map((e) => {
@@ -348,7 +351,8 @@ export default function AdminPropuestas() {
                 <button
                   key={e.name}
                   type="button"
-                  onClick={() => setFEmpleado((f) => (f === e.name ? 'all' : e.name))}
+                  onClick={() => setEmpSel(e.name)}
+                  title={`Ver el expediente de ${e.name}`}
                   aria-pressed={active}
                   className={`shrink-0 rounded-2xl border px-4 py-3 text-left transition-colors ${
                     active ? 'border-brand/60 bg-brand/10' : 'border-line bg-card hover:border-brand/40'
@@ -451,6 +455,16 @@ export default function AdminPropuestas() {
         })}
       </div>
 
+      {empSel && (
+        <EmpleadoExpediente
+          name={empSel}
+          props={all.filter((p) => (p.createdBy || '') === empSel)}
+          origin={origin}
+          onOpenProp={(id) => setSel(id)}
+          onClose={() => setEmpSel(null)}
+        />
+      )}
+
       {selProp && (
         <PropDetail
           key={selProp.id}
@@ -490,7 +504,7 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
     : (i.note || '').trim() !== '';
   const visibleItems = sortedItems.filter(matchResp);
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-ink/70 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex justify-end bg-ink/70 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
         className="flex h-full w-full max-w-lg flex-col border-l border-line bg-card shadow-glow-sm">
         {/* Header */}
@@ -677,6 +691,181 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                   );
                 })}
               </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Expediente de empleado (pantalla completa) ──────────────────────────────
+// "Entrar y ver qué hizo Isabel": todo lo de una persona en una vista amplia —
+// totales por estado, respuestas recibidas de las creadoras, su historial
+// cronológico y la lista de sus propuestas (cada una abre el detalle completo).
+const EVENT_META = {
+  created:   { dot: 'bg-brand' },
+  approved:  { dot: 'bg-emerald-400' },
+  rejected:  { dot: 'bg-rose-400' },
+  opened:    { dot: 'bg-sky-400' },
+  responded: { dot: 'bg-amber-400' },
+};
+
+function Tile({ label, value, tone }) {
+  const color = tone === 'ok' ? 'text-emerald-300' : tone === 'bad' ? 'text-rose-300' : tone === 'warn' ? 'text-amber-300' : 'text-paper';
+  return (
+    <div className="rounded-2xl border border-line bg-card px-4 py-3">
+      <div className={`font-display text-2xl font-bold leading-none tabular-nums ${color}`}>{value}</div>
+      <div className="mt-1 text-[11px] uppercase tracking-wider text-paper-dim">{label}</div>
+    </div>
+  );
+}
+
+function EmpleadoExpediente({ name, props, origin, onOpenProp, onClose }) {
+  const stats = useMemo(() => {
+    const s = { total: props.length, active: 0, archived: 0, publicadas: 0, vencidas: 0, borradores: 0, pend: 0, aprob: 0, rech: 0, abiertas: 0, liked: 0, rejected: 0, comments: 0 };
+    props.forEach((p) => {
+      if (p._status === 'archived') { s.archived += 1; return; }
+      s.active += 1;
+      const st = stateOf(p);
+      if (st === 'vencida') s.vencidas += 1;
+      else if (st === 'borrador') s.borradores += 1;
+      else s.publicadas += 1;
+      if (p.approval?.status === 'pending') s.pend += 1;
+      else if (p.approval?.status === 'approved') s.aprob += 1;
+      else if (p.approval?.status === 'rejected') s.rech += 1;
+      if (p._reg) s.abiertas += 1;
+      const fs = feedbackSummary(p._feedback);
+      s.liked += fs.liked; s.rejected += fs.rejected; s.comments += fs.comments;
+    });
+    return s;
+  }, [props]);
+
+  const sorted = useMemo(
+    () => [...props].sort((a, b) => new Date(b.createdAt || b.expiresAt || 0) - new Date(a.createdAt || a.expiresAt || 0)),
+    [props],
+  );
+
+  const timeline = useMemo(() => {
+    const ev = [];
+    props.forEach((p) => {
+      if (p.createdAt) ev.push({ at: p.createdAt, kind: 'created', p });
+      if (p.approval && p.approvedAt && (p.approval.status === 'approved' || p.approval.status === 'rejected'))
+        ev.push({ at: p.approvedAt, kind: p.approval.status, p });
+      if (p._reg?.at) ev.push({ at: p._reg.at, kind: 'opened', p });
+      if (p._feedback?.updatedAt && (p._feedback.items || []).some((i) => i.status || (i.note || '').trim()))
+        ev.push({ at: p._feedback.updatedAt, kind: 'responded', p });
+    });
+    return ev.filter((e) => e.at).sort((a, b) => new Date(b.at) - new Date(a.at));
+  }, [props]);
+
+  const primera = sorted.length ? sorted[sorted.length - 1].createdAt : null;
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-ink/95 backdrop-blur-sm">
+      <div className="mx-auto max-w-5xl px-5 py-6 sm:px-8 sm:py-10">
+        <button onClick={onClose} className="btn3d-ghost inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold">
+          <ChevronDown size={16} className="rotate-90" /> Volver a Propuestas
+        </button>
+
+        {/* Título */}
+        <div className="mt-5 flex flex-wrap items-end gap-x-3 gap-y-1">
+          <h2 className="font-display text-2xl font-bold text-paper sm:text-3xl">{name}</h2>
+          <span className="font-display text-3xl font-bold leading-none tabular-nums text-brand">{stats.total}</span>
+          <span className="pb-1 text-sm text-paper-mute">propuestas armadas</span>
+        </div>
+        <p className="mt-1 text-xs text-paper-dim">
+          {stats.active} activas{stats.archived ? ` · ${stats.archived} archivadas` : ''}{primera ? ` · desde ${fmtFecha(primera)}` : ''}
+        </p>
+
+        {/* Estados desglosados */}
+        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+          <Tile label="Publicadas" value={stats.publicadas} />
+          <Tile label="Pend. aprob." value={stats.pend} tone="warn" />
+          <Tile label="Aprobadas" value={stats.aprob} tone="ok" />
+          <Tile label="Rechazadas" value={stats.rech} tone="bad" />
+          <Tile label="Vencidas" value={stats.vencidas} />
+          <Tile label="Abrieron" value={stats.abiertas} tone="ok" />
+        </div>
+
+        {/* Respuestas recibidas de las creadoras */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-line bg-card px-5 py-3.5 text-sm">
+          <span className="text-xs uppercase tracking-wider text-paper-dim">Respuestas recibidas</span>
+          <span className="inline-flex items-center gap-1.5 text-paper"><Heart size={14} className="text-emerald-400" /> {stats.liked} le gustaron</span>
+          <span className="inline-flex items-center gap-1.5 text-paper"><ThumbsDown size={14} className="text-rose-400" /> {stats.rejected} rechazó</span>
+          <span className="inline-flex items-center gap-1.5 text-paper"><MessageSquare size={14} className="text-paper-dim" /> {stats.comments} comentarios</span>
+        </div>
+
+        {/* Dos columnas: sus propuestas + historial */}
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1.35fr_1fr]">
+          <div>
+            <h3 className="mb-2.5 font-display text-sm font-semibold text-paper">Sus propuestas <span className="font-normal text-paper-dim">· {sorted.length}</span></h3>
+            <div className="space-y-2">
+              {sorted.length === 0 && <p className="rounded-xl border border-dashed border-line bg-card/40 p-6 text-center text-sm text-paper-dim">Sin propuestas.</p>}
+              {sorted.map((p) => {
+                const st = STATE_META[stateOf(p)];
+                const fs = feedbackSummary(p._feedback);
+                const who = p.approval?.reviewer || p.approval?.approver || '';
+                return (
+                  <button key={p.id} type="button" onClick={() => onOpenProp(p.id)}
+                    className="flex w-full items-center gap-3 rounded-xl border border-line bg-card px-4 py-3 text-left transition-colors hover:border-brand/40">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-paper">{p.recipient?.name || 'Sin destinatario'}</span>
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-paper-dim">
+                        <span className="font-mono">{p.code}</span>
+                        <span>· {fmtFecha(p.createdAt) || '—'}</span>
+                        {p.model?.name ? <span>· {p.model.name}</span> : null}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <StatusDot tone={st.tone}>{st.label}</StatusDot>
+                      {p.approval && (
+                        p.approval.status === 'approved'
+                          ? <span className="text-[11px] font-medium text-emerald-300/90">✓ aprobada{who ? ` · ${who}` : ''}</span>
+                          : p.approval.status === 'rejected'
+                            ? <span className="text-[11px] font-medium text-rose-300/90">rechazada{who ? ` · ${who}` : ''}</span>
+                            : <span className="text-[11px] font-medium text-amber-300/90">pend. aprob.{who ? ` · ${who}` : ''}</span>
+                      )}
+                      {fs.total > 0 && (
+                        <span className="flex items-center gap-2 text-[11px] text-paper-mute">
+                          {fs.liked > 0 && <span className="inline-flex items-center gap-0.5"><Heart size={11} className="text-emerald-400" />{fs.liked}</span>}
+                          {fs.rejected > 0 && <span className="inline-flex items-center gap-0.5"><ThumbsDown size={11} className="text-rose-400" />{fs.rejected}</span>}
+                          {p._reg && <StatusDot tone="ok">abrió</StatusDot>}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-2.5 font-display text-sm font-semibold text-paper">Historial</h3>
+            {timeline.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-line bg-card/40 p-6 text-center text-sm text-paper-dim">Sin actividad todavía.</p>
+            ) : (
+              <ol className="relative ml-1 space-y-3 border-l border-line pl-4">
+                {timeline.map((e, i) => {
+                  const meta = EVENT_META[e.kind] || EVENT_META.created;
+                  const who = e.p.recipient?.name || 'el receptor';
+                  const label =
+                    e.kind === 'created' ? <>Creó la propuesta para <b className="font-medium text-paper">{who}</b></>
+                    : e.kind === 'approved' ? <>Aprobada{e.p.approval?.reviewer ? <> por {e.p.approval.reviewer}</> : ''}</>
+                    : e.kind === 'rejected' ? <>Rechazada{e.p.approval?.reviewer ? <> por {e.p.approval.reviewer}</> : ''}</>
+                    : e.kind === 'opened' ? <><b className="font-medium text-paper">{who}</b> abrió / se registró</>
+                    : <><b className="font-medium text-paper">{who}</b> respondió</>;
+                  return (
+                    <li key={`${e.p.id}-${e.kind}-${i}`} className="relative">
+                      <span className={`absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-ink ${meta.dot}`} />
+                      <button type="button" onClick={() => onOpenProp(e.p.id)} className="block w-full text-left">
+                        <span className="text-sm text-paper-mute">{label}</span>
+                        <span className="mt-0.5 block text-[11px] text-paper-dim">{fmtFecha(e.at) || ''} · {e.p.name || e.p.code}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
             )}
           </div>
         </div>
