@@ -489,20 +489,10 @@ export default function AdminPage() {
         {/* Header: título + acciones a la derecha. Sin el chip "en producción". */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="font-display text-2xl font-bold tracking-tight sm:text-[1.75rem]">Administración</h1>
-          <div className="flex shrink-0 items-center gap-2">
-            <button onClick={load} title="Actualizar"
-              className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-              <RefreshCw size={14} />
-            </button>
-            <button onClick={() => { setNewAgency({ full_name: '', email: '', password: '' }); setNaErr(''); }}
-              className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">
-              <Building2 size={14} /> Crear agencia
-            </button>
-            <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
-              className="btn3d inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
-              <UserPlus size={14} /> Alta de creadora
-            </button>
-          </div>
+          <button onClick={load} title="Actualizar"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+            <RefreshCw size={14} />
+          </button>
         </div>
 
         {/* Navegación — barra lateral: vertical en desktop, scroll horizontal en móvil.
@@ -544,6 +534,13 @@ export default function AdminPage() {
           <p className="mt-8 text-paper-dim">Cargando datos…</p>
         ) : tab === 'registros' ? (
           <div className="mt-6">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-paper-mute">Todas las creadoras registradas — clic en una para ver su perfil.</p>
+              <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
+                className="btn3d inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
+                <UserPlus size={14} /> Alta de creadora
+              </button>
+            </div>
             {(() => {
               const cr = profiles.filter((p) => p.role === 'creator');
               const inCat = (p, cat) => cat === 'all' ? true
@@ -1076,7 +1073,16 @@ export default function AdminPage() {
             })()}
           </div>
         ) : tab === 'agencias' ? (
-          <AgenciasTab agencies={profiles.filter((p) => p.role === 'agency')} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} profiles={profiles} agencyLeads={agencyLeads} onAssign={setAgConfirm} onDeleted={load} reload={load} flash={flash} />
+          <div className="mt-6">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-paper-mute">Agencias y las modelos que gestionan.</p>
+              <button onClick={() => { setNewAgency({ full_name: '', email: '', password: '' }); setNaErr(''); }}
+                className="btn3d inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
+                <Building2 size={14} /> Crear agencia
+              </button>
+            </div>
+            <AgenciasTab agencies={profiles.filter((p) => p.role === 'agency')} creators={creators} agencyLinks={agencyLinks} agencyMembers={agencyMembers} profiles={profiles} agencyLeads={agencyLeads} onAssign={setAgConfirm} onDeleted={load} reload={load} flash={flash} />
+          </div>
         ) : tab === 'actividad' ? (
           <div className="mt-6">
             <EmailStudio defaultTo="rusin24@gmail.com" />
@@ -3056,7 +3062,8 @@ function Header({ me, router, creators }) {
       roleLabel={roleLabel}
       switchTo={{ href: '/trabajo', label: 'Trabajo' }}
       extras={<ImpersonateMenu creators={creators} />}
-      backHref="/"
+      homeHref="/admin"
+      maxW="max-w-6xl"
     />
   );
 }

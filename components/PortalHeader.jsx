@@ -50,6 +50,7 @@ export default function PortalHeader({
   extras,             // nodo extra (ej. <ImpersonateMenu/>)
   backHref,           // si existe, muestra ← Volver a esa ruta
   maxW = 'max-w-5xl', // ancho del contenedor (igual al de la página)
+  homeHref = '/',     // a dónde lleva el LOGO (por defecto la raíz; nunca cierra sesión)
   accountHref = '/cuenta',
   labels: labelsProp, // override traducible (páginas de creadora)
 }) {
@@ -74,7 +75,7 @@ export default function PortalHeader({
       <div className={`mx-auto flex ${maxW} items-center justify-between gap-3 px-5 py-3`}>
         {/* ── Izquierda: logo + volver + sección ── */}
         <div className="flex min-w-0 items-center gap-3">
-          <Link href="/" aria-label="LetShoot" className="flex shrink-0 items-center transition-opacity hover:opacity-80">
+          <Link href={homeHref} aria-label="LetShoot" className="flex shrink-0 items-center transition-opacity hover:opacity-80">
             <Logo size="sm" />
           </Link>
           {backHref && (
