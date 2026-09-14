@@ -842,9 +842,9 @@ export default function PropuestaAdmin() {
           <div className="flex min-w-0 items-center gap-4">
             <button
               type="button"
-              onClick={() => { if (step > 1) setStep((s) => Math.max(1, s - 1)); else router.push('/admin'); }}
+              onClick={() => { if (step > 1) setStep((s) => Math.max(1, s - 1)); else router.push('/admin?tab=propuestas'); }}
               className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"
-              title={step > 1 ? 'Paso anterior' : 'Volver al admin'}
+              title={step > 1 ? 'Paso anterior' : 'Volver a Propuestas'}
             >
               <ArrowLeft size={17} />
             </button>
@@ -1703,7 +1703,7 @@ export default function PropuestaAdmin() {
               </span>
               <button
                 type="button"
-                onClick={() => router.push('/admin')}
+                onClick={() => router.push('/admin?tab=propuestas')}
                 className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold"
               >
                 <Check size={15} /> Terminar

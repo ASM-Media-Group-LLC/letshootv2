@@ -30,7 +30,7 @@ import { getSupabase } from '@/lib/supabase/client';
 // Estado derivado de una propuesta: borrador (solo demo), vencida (expiró) o publicada.
 // El archivado NO es un estado acá — es un flag aparte (status === 'archived').
 function stateOf(p) {
-  if (p._draft) return 'borrador';
+  if (p._draft || p._status === 'draft') return 'borrador';
   if (p.expiresAt && new Date(p.expiresAt).getTime() < Date.now()) return 'vencida';
   return 'publicada';
 }

@@ -95,7 +95,7 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
         sb.from('photo_proposal_feedback').select('proposal_id, items, recipient_name, updated_at, reviewer_kind').order('updated_at', { ascending: false }),
         sb.from('photo_proposal_registrations').select('proposal_id, name, email, created_at').order('created_at', { ascending: false }),
       ]);
-      const props = (Array.isArray(propsRes.data) ? propsRes.data : []).filter((p) => p.recipient_kind !== 'internal');
+      const props = (Array.isArray(propsRes.data) ? propsRes.data : []).filter((p) => p.recipient_kind !== 'internal' && p.status !== 'draft');
 
       const contentBy = {};
       (Array.isArray(contentRes.data) ? contentRes.data : []).forEach((c) => {

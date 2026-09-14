@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import StatusDot from '@/components/StatusDot';
 import PortalHeader from '@/components/PortalHeader';
@@ -17,6 +17,7 @@ import { PACKS } from '@/lib/packs';
 
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import AdminPropuestas from '@/components/AdminPropuestas';
+import AdminPeticiones from '@/components/AdminPeticiones';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -81,7 +82,7 @@ export default function AdminPage() {
   useEffect(() => {
     try {
       const q = new URLSearchParams(window.location.search).get('tab');
-      const valid = ['registros', 'metricas', 'reacciones', 'verificaciones', 'equipo', 'agencias', 'actividad', 'propuestas'];
+      const valid = ['registros', 'metricas', 'reacciones', 'verificaciones', 'equipo', 'agencias', 'actividad', 'propuestas', 'peticiones'];
       if (q && valid.includes(q)) setTab(q);
     } catch {}
   }, []);
@@ -488,7 +489,7 @@ export default function AdminPage() {
       <main className="mx-auto max-w-6xl px-5 py-6">
         {/* Header: título + acciones a la derecha. Sin el chip "en producción". */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="font-display text-2xl font-bold tracking-tight sm:text-[1.75rem]">Administración</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-paper">Administración</h1>
           <button onClick={load} title="Actualizar"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
             <RefreshCw size={14} />
@@ -501,12 +502,12 @@ export default function AdminPage() {
           <nav className={`flex gap-1 overflow-x-auto pb-1 lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:border-r lg:border-line lg:pb-0 ${navOpen ? 'lg:w-56 lg:pr-3' : 'lg:w-[3.75rem] lg:pr-0'}`}>
             {/* Toggle acordeón — solo desktop (en móvil la nav es fila con scroll) */}
             <button onClick={() => setNavOpen((o) => !o)} title={navOpen ? 'Colapsar menú' : 'Expandir menú'}
-              className={`mb-1 hidden h-9 items-center rounded-lg px-3 text-paper-dim transition-colors hover:bg-hair/[0.05] hover:text-paper lg:flex ${navOpen ? 'justify-end' : 'justify-center'}`}>
-              <ChevronDown size={16} className={navOpen ? 'rotate-90' : '-rotate-90'} />
+              className={`mb-1 hidden h-9 items-center rounded-lg px-3 text-paper-mute transition-colors hover:bg-hair/[0.05] hover:text-paper lg:flex ${navOpen ? 'justify-end' : 'justify-center'}`}>
+              {navOpen ? <ChevronsLeft size={18} /> : <ChevronsRight size={18} />}
             </button>
             {[
               { id: 'propuestas', label: 'Propuestas', icon: Send },
-              { id: 'peticiones', label: 'Peticiones', icon: Inbox, href: '/trabajo?tab=pedidos' },
+              { id: 'peticiones', label: 'Peticiones', icon: Inbox },
               { id: 'registros', label: 'Registros', icon: ClipboardList },
               { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
               { id: 'equipo', label: 'Equipo interno', icon: Users },
@@ -1113,6 +1114,8 @@ export default function AdminPage() {
           <div className="mt-6">
             <AdminPropuestas />
           </div>
+        ) : tab === 'peticiones' ? (
+          <AdminPeticiones creators={creators} me={me} flash={flash} />
         ) : null}
           </div>
         </div>
