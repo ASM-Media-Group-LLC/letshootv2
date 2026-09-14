@@ -175,13 +175,21 @@ export default function AdminPropuestas() {
     (async () => {
       const sb = getSupabase();
       try {
-        const [propsRes, fbRes, regRes] = await Promise.all([
+        const [propsRes, fbRes, regRes, contentRes] = await Promise.all([
           sb.from('photo_proposals').select('*').order('created_at', { ascending: false }),
           sb.from('photo_proposal_feedback').select('proposal_id, items, recipient_name, updated_at, reviewer_kind').order('updated_at', { ascending: false }),
           sb.from('photo_proposal_registrations').select('proposal_id, name, email, phone, created_at').order('created_at', { ascending: false }),
+          sb.from('proposal_content').select('proposal_id, item_id, kind, label, src, decision, prod_state').order('created_at', { ascending: true }),
         ]);
         if (cancelled) return;
         const props = Array.isArray(propsRes.data) ? propsRes.data : [];
+
+        // Contenido que cayó a la cuenta (aprobado→por producir / rechazado→recrear), por propuesta.
+        const contentMap = {};
+        (Array.isArray(contentRes.data) ? contentRes.data : []).forEach((c) => {
+          if (!c?.proposal_id) return;
+          (contentMap[c.proposal_id] = contentMap[c.proposal_id] || []).push(c);
+        });
 
         // Feedback en DOS buckets por proposal_id: creadora vs equipo (interno).
         const fbCreator = {}, fbInternal = {};
@@ -229,6 +237,23 @@ export default function AdminPropuestas() {
   }, [all]);
 
   const isArch = (p) => p?._status === 'archived';
+
+  // Marcador por empleado: cuántas armó cada uno (de un vistazo, sin filtrar) y
+  // cómo les fue — aprobadas / abiertas / vencidas. Sobre las NO archivadas y
+  // SIN depender del filtro de empleado (para poder saltar entre personas).
+  const teamTally = useMemo(() => {
+    const byEmp = new Map();
+    all.filter((p) => !isArch(p)).forEach((p) => {
+      const name = p.createdBy || '—';
+      if (!byEmp.has(name)) byEmp.set(name, { name, total: 0, approved: 0, opened: 0, expired: 0 });
+      const e = byEmp.get(name);
+      e.total += 1;
+      if (p.approval?.status === 'approved') e.approved += 1;
+      if (p._reg) e.opened += 1;
+      if (stateOf(p) === 'vencida') e.expired += 1;
+    });
+    return [...byEmp.values()].sort((a, b) => b.total - a.total);
+  }, [all]);
 
   const shown = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -294,6 +319,42 @@ export default function AdminPropuestas() {
         <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-line bg-card/50 px-4 py-3 text-xs text-paper-dim">
           <Inbox size={14} className="mt-0.5 shrink-0 text-paper-mute" />
           <span>Todavía no hay propuestas publicadas. Se muestran ejemplos para ilustrar la vista; cuando el equipo publique desde <span className="text-paper-mute">Propuestas › crear</span>, aparecerán acá automáticamente.</span>
+        </div>
+      )}
+
+      {/* Marcador por empleado — cuántas hizo cada uno + cómo les fue. Click en
+          una tarjeta = filtra a ese empleado (y de nuevo = quita el filtro). */}
+      {teamTally.length > 0 && (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+            <UserCheck size={13} /> Por empleado
+          </div>
+          <div className="flex gap-2.5 overflow-x-auto pb-1">
+            {teamTally.map((e) => {
+              const active = fEmpleado === e.name;
+              return (
+                <button
+                  key={e.name}
+                  type="button"
+                  onClick={() => setFEmpleado((f) => (f === e.name ? 'all' : e.name))}
+                  aria-pressed={active}
+                  className={`shrink-0 rounded-2xl border px-4 py-3 text-left transition-colors ${
+                    active ? 'border-brand/60 bg-brand/10' : 'border-line bg-card hover:border-brand/40'
+                  }`}
+                >
+                  <div className="flex items-baseline gap-2.5">
+                    <span className="max-w-[140px] truncate text-sm font-medium text-paper">{e.name}</span>
+                    <span className="font-display text-2xl font-bold leading-none tabular-nums text-brand">{e.total}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
+                    <span className="inline-flex items-center gap-1 text-paper-mute"><Check size={11} className="text-emerald-400" />{e.approved} aprob.</span>
+                    <span className="inline-flex items-center gap-1 text-paper-mute"><UserCheck size={11} className="text-brand" />{e.opened} abrió</span>
+                    {e.expired > 0 && <span className="text-paper-dim">{e.expired} venc.</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
