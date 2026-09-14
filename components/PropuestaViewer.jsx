@@ -546,21 +546,44 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
 // ══════════════════════════════════════════════════════════════════════════
 
 
-// Reproductor de audio MINIMALISTA (para la propuesta de audio): solo play/pausa
-// + barra fina seekable + tiempo. Sin volumen ni menú de 3 puntitos del navegador.
+// Reproductor de audio MINIMALISTA (para la propuesta de audio): play/pausa +
+// barra ARRASTRABLE con el dedo (adelante/atrás, como WhatsApp) + tiempo. Sin
+// volumen ni menú de 3 puntitos del navegador.
 function AudioPlayer({ src }) {
   const ref = useRef(null);
+  const trackRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const fmt = (s) => { if (!s || !Number.isFinite(s)) return '0:00'; const m = Math.floor(s / 60); const ss = Math.floor(s % 60); return `${m}:${String(ss).padStart(2, '0')}`; };
   const toggle = () => { const a = ref.current; if (!a) return; if (a.paused) a.play().catch(() => {}); else a.pause(); };
-  const seek = (e) => {
-    const a = ref.current; if (!a || !dur) return;
-    const r = e.currentTarget.getBoundingClientRect();
-    const pct = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    a.currentTime = pct * dur; setCur(a.currentTime);
+
+  // Posición (en segundos) a partir del X del dedo/mouse sobre la barra.
+  const timeAt = (clientX) => {
+    const el = trackRef.current; if (!el || !dur) return 0;
+    const r = el.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (clientX - r.left) / r.width)) * dur;
   };
+  const applySeek = (clientX) => {
+    if (!dur) return;
+    const t = timeAt(clientX);
+    setCur(t);
+    if (ref.current) ref.current.currentTime = t; // scrub en vivo
+  };
+  const onDown = (e) => {
+    if (!dur) return;
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
+    setDragging(true);
+    applySeek(e.clientX);
+  };
+  const onMove = (e) => { if (dragging) applySeek(e.clientX); };
+  const onUp = (e) => {
+    if (!dragging) return;
+    setDragging(false);
+    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+  };
+
   const pct = dur ? (cur / dur) * 100 : 0;
   return (
     <div className="flex items-center gap-3">
@@ -571,7 +594,7 @@ function AudioPlayer({ src }) {
         preload="metadata"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
-        onTimeUpdate={() => setCur(ref.current?.currentTime || 0)}
+        onTimeUpdate={() => { if (!dragging) setCur(ref.current?.currentTime || 0); }}
         onLoadedMetadata={() => setDur(ref.current?.duration || 0)}
         onEnded={() => { setPlaying(false); setCur(0); }}
       />
@@ -583,10 +606,19 @@ function AudioPlayer({ src }) {
       >
         {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" className="ml-0.5" />}
       </button>
-      <div className="min-w-0 flex-1">
-        <div onClick={seek} className="relative h-1.5 cursor-pointer rounded-full bg-white/15">
+      {/* Área de agarre alta (h-6) para que sea fácil arrastrar en el teléfono;
+          touch-none evita que la página haga scroll mientras arrastrás. */}
+      <div
+        ref={trackRef}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        className="flex h-6 min-w-0 flex-1 cursor-pointer touch-none select-none items-center"
+      >
+        <div className="relative h-1.5 w-full rounded-full bg-white/15">
           <div className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${pct}%` }} />
-          <div className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" style={{ left: `${pct}%` }} />
+          <div className={`absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow transition-transform ${dragging ? 'scale-125' : ''}`} style={{ left: `${pct}%` }} />
         </div>
       </div>
       <span className="shrink-0 font-mono text-[11px] tabular-nums text-white/70">{playing || cur > 0 ? fmt(cur) : fmt(dur)}</span>
