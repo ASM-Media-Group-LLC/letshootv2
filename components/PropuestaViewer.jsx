@@ -751,23 +751,43 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
               key={l.id}
               ref={(el) => (slidesRef.current[i] = el)}
               data-idx={i}
-              className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-5 py-12 sm:px-10"
+              className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden px-5 py-16 sm:px-10"
             >
-              <div className="mx-auto w-full max-w-xl">
-                <div className="rounded-3xl border border-line bg-card/70 p-6 shadow-glow ring-1 ring-brand/20 sm:p-8">
-                  <div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
+              {/* Fondo = mezcla de la foto de ENTRADA (arriba) y la de SALIDA
+                  (abajo) con un degradé de color de marca — nada de hueco negro. */}
+              <div className="absolute inset-0 overflow-hidden bg-ink">
+                {cfg.coverUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={cfg.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover object-[center_30%]" draggable={false}
+                    style={{ opacity: 0.5, WebkitMaskImage: 'linear-gradient(to bottom, black 0%, transparent 62%)', maskImage: 'linear-gradient(to bottom, black 0%, transparent 62%)' }} />
+                )}
+                {cfg.closingUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={cfg.closingUrl} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false}
+                    style={{ opacity: 0.5, WebkitMaskImage: 'linear-gradient(to top, black 0%, transparent 62%)', maskImage: 'linear-gradient(to top, black 0%, transparent 62%)' }} />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-b from-ink/75 via-brand/12 to-ink/80" />
+                <Watermark code={cfg.code} uid={`au-${l.id}`} />
+              </div>
+
+              {/* Tarjeta compacta frosted sobre el fondo de color. */}
+              <div className="relative z-10 w-full max-w-md">
+                <div className="rounded-2xl border border-white/12 bg-ink/55 p-5 shadow-glow backdrop-blur-xl sm:p-6">
+                  <div className="flex items-center gap-2 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-white/60">
                     <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" /> {t.audio || 'Audio'} {pad2(i + 1)} · {pad2(total)}
                   </div>
-                  <h3 className="mt-3 font-display text-2xl font-bold tracking-tight text-paper sm:text-3xl">{l.label || `${t.audio || 'Audio'} ${pad2(i + 1)}`}</h3>
+                  <h3 className="mt-2 font-display text-lg font-bold leading-snug tracking-tight text-white sm:text-xl">{l.label || `${t.audio || 'Audio'} ${pad2(i + 1)}`}</h3>
                   {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <audio src={l.src} controls preload="none" className="mt-6 w-full" />
+                  <audio src={l.src} controls preload="none" className="mt-4 w-full" />
                   {st.note?.trim() && (
-                    <p className="mt-4 flex items-start gap-1.5 text-[13px] italic text-paper-mute">
+                    <p className="mt-3 flex items-start gap-1.5 text-[12px] italic text-white/75">
                       <MessageSquare size={12} className="mt-0.5 shrink-0" /><span>{st.note.trim()}</span>
                     </p>
                   )}
                 </div>
               </div>
+
+              {/* Mismos botones flotantes que las fotos. */}
               <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2.5 sm:right-6 sm:gap-3">
                 <BigActionBtn active={st.status === 'liked'} onClick={() => setLook(l.id, { status: st.status === 'liked' ? null : 'liked' })} tone="like" label={t.like}>
                   <Heart size={20} fill={st.status === 'liked' ? 'currentColor' : 'none'} />
