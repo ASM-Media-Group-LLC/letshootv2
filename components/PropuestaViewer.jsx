@@ -55,6 +55,33 @@ const DEMO = {
 
 const EMPTY_FB = { status: null, note: '' };
 
+// ── Idioma por GEO ────────────────────────────────────────────────────────
+// La propuesta se abre en el idioma de quien la mira (según su ubicación), igual
+// que la home: US/Canadá → inglés, resto de América → español, y Europa por el
+// idioma del navegador (de/it/fr). Mapeado a los idiomas de la propuesta.
+const US_CA_TZ = new Set([
+  'America/New_York', 'America/Detroit', 'America/Toronto', 'America/Chicago',
+  'America/Denver', 'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage',
+  'America/Vancouver', 'America/Edmonton', 'America/Winnipeg', 'America/Halifax',
+  'America/Boise', 'America/Indiana/Indianapolis', 'America/Kentucky/Louisville',
+  'America/Regina', 'America/St_Johns', 'Pacific/Honolulu',
+]);
+function detectPropLang() {
+  if (typeof Intl !== 'undefined') {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      if (tz.startsWith('US/') || tz.startsWith('Canada/') || US_CA_TZ.has(tz)) return 'en';
+      if (tz.startsWith('America/')) return 'es'; // resto de América = Latinoamérica
+    } catch { /* ignore */ }
+  }
+  if (typeof navigator !== 'undefined') {
+    const prefs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ''];
+    const match = prefs.map((l) => (l || '').slice(0, 2).toLowerCase()).find((l) => PROP_LANGS.includes(l));
+    if (match) return match;
+  }
+  return null; // sin señal clara → se usa el idioma con el que se armó la propuesta
+}
+
 // Mapea la fila cruda de get_proposal_by_link → cfg que consume el viewer.
 // (el link_id hace de "code" del watermark/nav; looks ya viene como jsonb).
 function mapRow(row) {
@@ -177,7 +204,12 @@ export default function PropuestaViewer({ linkId }) {
 
       const mapped = mapRow(row);
       setCfg(mapped);
-      if (qLang) setLang(qLang);
+      // Prioridad: idioma por GEO (dónde está quien mira) → ?lang → idioma con el
+      // que se armó la propuesta. El GEO manda: US/Canadá inglés, LatAm español,
+      // Europa por el navegador; sin señal, cae al ?lang o al idioma guardado.
+      const geoLang = detectPropLang();
+      if (geoLang) setLang(geoLang);
+      else if (qLang) setLang(qLang);
       else if (mapped.lang && PROP_LANGS.includes(mapped.lang)) setLang(mapped.lang);
 
       // Quién está mirando: si es STAFF logueado, su feedback va al bucket "equipo"
@@ -634,6 +666,12 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
   const looks = isAudio ? (cfg.audios || []) : cfg.looks;
   const total = looks.length;
 
+  // El título y el intro por defecto (los del molde) se localizan al idioma de
+  // quien mira; si el equipo los editó a mano, se respetan tal cual.
+  const storedLang = cfg.lang || 'es';
+  const dispName = cfg.name && propDict(storedLang)?.redesName === cfg.name ? (t.redesName || cfg.name) : cfg.name;
+  const dispIntro = cfg.intro && propDict(storedLang)?.redesIntro === cfg.intro ? (t.redesIntro || cfg.intro) : cfg.intro;
+
   const [state, setState] = useState({});
   const [openComment, setOpenComment] = useState(null);
   const [currentIdx, setCurrentIdx] = useState(-1);
@@ -802,14 +840,14 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
         </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl px-6 py-16 sm:px-10 sm:py-20">
           {/* Rótulo chico = título del paquete ("Contenido para tus redes"). */}
-          {cfg.recipient?.name && cfg.name && (
+          {cfg.recipient?.name && dispName && (
             <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.24em] text-white/55 sm:text-xs">
-              {cfg.name}
+              {dispName}
             </div>
           )}
           {/* Hero gigante = el NOMBRE de la creadora (la protagonista, sin "Preparada para"). */}
           <h1 className="font-display text-[clamp(2.8rem,8.5vw,6rem)] font-bold leading-[0.95] tracking-[-0.03em] text-white drop-shadow-[0_2px_34px_rgba(0,0,0,0.75)]">
-            {cfg.recipient?.name || cfg.name}
+            {cfg.recipient?.name || dispName}
             {/* El subtítulo solo sale si hay uno (por defecto va vacío). */}
             {cfg.subtitle && (
               <span className="mt-1 block text-[clamp(1.1rem,2.4vw,1.75rem)] font-medium italic text-white/70">
@@ -818,7 +856,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
             )}
           </h1>
           <p className="mt-5 max-w-sm text-[12.5px] leading-relaxed text-white/70 sm:text-[13.5px]">
-            {cfg.intro}
+            {dispIntro}
           </p>
           <button
             onClick={() => scrollTo(0)}
