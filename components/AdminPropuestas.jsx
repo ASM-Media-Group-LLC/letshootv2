@@ -46,6 +46,17 @@ function daysLeft(p) {
   return Math.ceil((new Date(p.expiresAt).getTime() - Date.now()) / 86400000);
 }
 
+// Fecha de creación, corta y en español ("14 sep"; agrega el año si no es el
+// actual). Devuelve null si no hay fecha válida.
+const MES_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function fmtFecha(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const base = `${d.getDate()} ${MES_ES[d.getMonth()]}`;
+  return d.getFullYear() === new Date().getFullYear() ? base : `${base} ${d.getFullYear()}`;
+}
+
 // Resumen de respuestas del receptor a partir del feedback.
 function feedbackSummary(fb) {
   const items = Array.isArray(fb?.items) ? fb.items : [];
@@ -66,7 +77,7 @@ function demoSeed() {
     {
       _demo: true, id: 'JP-7K2M9A', code: 'JP-7K2M9A', lang: 'es', _status: 'published',
       name: 'Sesión exclusiva — Valentina', subtitle: 'Un look que no se repite',
-      createdBy: 'Isabel Tuiran', expiresAt: iso(6),
+      createdBy: 'Isabel Tuiran', createdAt: iso(-2), expiresAt: iso(6),
       model: { name: 'Julia Parker', agency: 'Kash Agency' },
       recipient: { name: 'Valentina Cruz', email: 'valentina@example.com', kind: 'prospect' },
       _feedback: { items: [
@@ -79,7 +90,7 @@ function demoSeed() {
     {
       _demo: true, id: 'JP-3X8Q1B', code: 'JP-3X8Q1B', lang: 'en', _status: 'published',
       name: 'Your first drop — Monica', subtitle: 'Fire your photographer',
-      createdBy: 'David Aunta', expiresAt: iso(2),
+      createdBy: 'David Aunta', createdAt: iso(-4), expiresAt: iso(2),
       model: { name: 'Monica Rivas', agency: 'Kash Agency' },
       recipient: { name: 'Chris Bennett', email: 'chris@example.com', kind: 'client' },
       _feedback: { items: [
@@ -91,7 +102,7 @@ function demoSeed() {
     {
       _demo: true, id: 'JP-9F4L2C', code: 'JP-9F4L2C', lang: 'es', _status: 'published',
       name: 'Propuesta — Monica Rivas', subtitle: 'Contenido premium listo',
-      createdBy: 'Lizeth Jerez', expiresAt: iso(-3), // vencida
+      createdBy: 'Lizeth Jerez', createdAt: iso(-9), expiresAt: iso(-3), // vencida
       model: { name: 'Monica Rivas', agency: 'Kash Agency' },
       recipient: { name: 'Laura Méndez', email: 'laura.mendez@example.com', kind: 'prospect' },
       _feedback: { items: [
@@ -104,7 +115,7 @@ function demoSeed() {
     {
       _demo: true, _draft: true, id: 'JP-5B6N3D', code: 'JP-5B6N3D', lang: 'es', _status: 'published',
       name: 'Borrador — Julia Parker', subtitle: 'Sin publicar todavía',
-      createdBy: 'Isabel Tuiran', expiresAt: null,
+      createdBy: 'Isabel Tuiran', createdAt: iso(-1), expiresAt: null,
       model: { name: 'Julia Parker', agency: 'Kash Agency' },
       recipient: { name: 'Sofía Ramírez', email: '', kind: 'prospect' },
       _feedback: null, _reg: null,
@@ -112,7 +123,7 @@ function demoSeed() {
     {
       _demo: true, id: 'JP-1P0R7E', code: 'JP-1P0R7E', lang: 'pt', _status: 'published',
       name: 'Proposta exclusiva — Julia', subtitle: 'Um ensaio só seu',
-      createdBy: 'David Aunta', expiresAt: iso(9),
+      createdBy: 'David Aunta', createdAt: iso(-6), expiresAt: iso(9),
       model: { name: 'Julia Parker', agency: 'Kash Agency' },
       recipient: { name: 'Rafael Souza', email: 'rafael@example.com', kind: 'model' },
       _feedback: null, _reg: null,
@@ -134,6 +145,7 @@ function mapProposal(row, fb, reg, fbInt) {
     subtitle: row.subtitle || '',
     intro: row.intro || '',
     createdBy: row.created_by_name || '',
+    createdAt: row.created_at || null,
     expiresAt: row.expires_at || null,
     _status: row.status || 'published',
     _internal: isInternal,
@@ -270,7 +282,7 @@ export default function AdminPropuestas() {
         if (!hay.includes(query)) return false;
       }
       return true;
-    }).sort((a, b) => new Date(b.expiresAt || 0) - new Date(a.expiresAt || 0));
+    }).sort((a, b) => new Date(b.createdAt || b.expiresAt || 0) - new Date(a.createdAt || a.expiresAt || 0));
   }, [all, q, fEmpleado, fEstado, fModelo]);
 
   const linkFor = (p) => `${origin}/p/${p.code}?lang=${p.lang || 'es'}`;
@@ -383,8 +395,8 @@ export default function AdminPropuestas() {
 
       {/* Lista */}
       <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-        <div className="grid min-w-[820px] grid-cols-[1.5fr_1fr_1fr_0.9fr_1.1fr] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-          <span>Destinatario</span><span>Creó</span><span>Estado</span><span>Modelo</span><span>Respuestas</span>
+        <div className="grid min-w-[900px] grid-cols-[1.4fr_0.95fr_1fr_0.85fr_0.7fr_1.05fr] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+          <span>Destinatario</span><span>Creó</span><span>Estado</span><span>Modelo</span><span>Fecha</span><span>Respuestas</span>
         </div>
         {shown.length === 0 && (
           <p className="px-5 py-8 text-center text-sm text-paper-dim">{loading ? 'Cargando propuestas…' : 'No hay propuestas que coincidan con el filtro.'}</p>
@@ -397,7 +409,7 @@ export default function AdminPropuestas() {
           return (
             <div key={p.id} role="button" tabIndex={0} onClick={() => setSel(p.id)}
               onKeyDown={(e) => { if (e.key === 'Enter') setSel(p.id); }}
-              className="grid min-w-[820px] cursor-pointer grid-cols-[1.5fr_1fr_1fr_0.9fr_1.1fr] items-center gap-3 border-b border-line px-5 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+              className="grid min-w-[900px] cursor-pointer grid-cols-[1.4fr_0.95fr_1fr_0.85fr_0.7fr_1.05fr] items-center gap-3 border-b border-line px-5 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
               <span className="min-w-0">
                 <span className="block truncate font-medium text-paper">{p.recipient?.name || 'Sin destinatario'}</span>
                 <span className="block truncate text-[11px] text-paper-dim">{p.recipient?.email || 'sin correo'}</span>
@@ -421,6 +433,7 @@ export default function AdminPropuestas() {
                 <span className="block truncate text-paper">{p.model?.name || '—'}</span>
                 <span className="block truncate font-mono text-[10px] text-paper-dim">{p.code}</span>
               </span>
+              <span className="min-w-0 truncate tabular-nums text-paper-mute">{fmtFecha(p.createdAt) || '—'}</span>
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
                 {fs.total === 0 ? (
                   <span className="text-paper-dim">Sin respuestas</span>
@@ -499,6 +512,7 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
           <div className="grid gap-3 rounded-2xl border border-line bg-ink-2/40 p-4 text-sm">
             <Row label="Destinatario" value={<span>{p.recipient?.name || '—'}{p.recipient?.email ? <span className="text-paper-dim"> · {p.recipient.email}</span> : null}</span>} />
             <Row label="Creada por" value={p.createdBy || '—'} />
+            <Row label="Fecha" value={fmtFecha(p.createdAt) || '—'} />
             <Row label="Modelo" value={<span>{p.model?.name || '—'}{p.model?.agency ? <span className="text-paper-dim"> · {p.model.agency}</span> : null}</span>} />
             <Row label="Código" value={<span className="font-mono text-xs">{p.code}</span>} />
             <Row label="Vencimiento" value={stateOf(p) === 'borrador' || d === null ? '—'
