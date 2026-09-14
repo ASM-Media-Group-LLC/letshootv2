@@ -701,15 +701,17 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
 
         {/* Co-branding KASH + LetShoot — centrado, bien abajo del borde, sin cajas.
             KASH un punto más grande que LetShoot (glifos medidos) para presencia. */}
-        <div className="absolute left-1/2 top-12 z-20 flex -translate-x-1/2 items-center gap-4 sm:top-20 sm:gap-5">
-          {cfg.agencyLogoUrl && (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={cfg.agencyLogoUrl} alt="" className="h-11 w-auto max-w-[200px] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:h-[52px]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
-              <span className="text-3xl font-light leading-none text-white/75 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:text-4xl">+</span>
-            </>
-          )}
-          <Logo size="lg" forceDark className="drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]" />
+        <div className="absolute left-1/2 top-12 z-20 -translate-x-1/2 sm:top-20">
+          <div className="flex origin-center scale-[0.66] items-center gap-4 sm:scale-100 sm:gap-5">
+            {cfg.agencyLogoUrl && (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={cfg.agencyLogoUrl} alt="" className="h-11 w-auto max-w-[200px] object-contain drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:h-[52px]" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+                <span className="text-3xl font-light leading-none text-white/75 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] sm:text-4xl">+</span>
+              </>
+            )}
+            <Logo size="lg" forceDark className="drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]" />
+          </div>
         </div>
         <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-10 sm:pb-24">
           {/* Rótulo chico = título del paquete ("Contenido para tus redes"). */}
@@ -749,7 +751,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
         <section
           ref={(el) => (slidesRef.current[0] = el)}
           data-idx={0}
-          className="relative flex min-h-[100svh] w-full flex-col justify-center overflow-hidden px-5 py-20"
+          className="relative flex w-full flex-col justify-center overflow-hidden px-5 py-20 sm:min-h-[100svh] sm:py-16"
           style={{ background: 'radial-gradient(120% 60% at 82% 4%, rgba(0,177,246,0.30), transparent 55%), linear-gradient(165deg, #0a2434 0%, #08131d 60%, #04121a 100%)' }}
         >
           <Watermark code={cfg.code} uid="audios" />
