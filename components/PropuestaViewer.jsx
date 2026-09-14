@@ -749,36 +749,36 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
         <section
           ref={(el) => (slidesRef.current[0] = el)}
           data-idx={0}
-          className="relative min-h-[100svh] w-full overflow-hidden px-5 py-16 sm:py-24"
+          className="relative flex min-h-[100svh] w-full flex-col justify-center overflow-hidden px-5 py-20"
           style={{ background: 'radial-gradient(120% 60% at 82% 4%, rgba(0,177,246,0.30), transparent 55%), linear-gradient(165deg, #0a2434 0%, #08131d 60%, #04121a 100%)' }}
         >
           <Watermark code={cfg.code} uid="audios" />
-          <div className="relative z-10 mx-auto w-full max-w-2xl">
-            <div className="mb-6 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">
+          <div className="relative z-10 mx-auto w-full max-w-xl">
+            <div className="mb-5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">
               <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" /> {t.audios || 'Audios'} · {pad2(total)}
             </div>
             <div className="space-y-3">
               {looks.map((l, i) => {
                 const st = fb(l.id);
                 return (
-                  <div key={l.id} className={`rounded-2xl border bg-ink/45 p-4 backdrop-blur-xl transition-colors ${st.status === 'liked' ? 'border-emerald-400/50' : st.status === 'rejected' ? 'border-rose-400/40' : 'border-white/12'}`}>
+                  <div key={l.id} className={`rounded-2xl border bg-ink/45 p-3.5 backdrop-blur-xl transition-colors ${st.status === 'liked' ? 'border-emerald-400/55' : st.status === 'rejected' ? 'border-rose-400/45' : 'border-white/12'}`}>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[11px] font-bold text-white/40">{pad2(i + 1)}</span>
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{l.label || `${t.audio || 'Audio'} ${pad2(i + 1)}`}</span>
                     </div>
                     {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    <audio src={l.src} controls preload="none" className="mt-3 w-full" />
-                    <div className="mt-3 flex items-center gap-2">
+                    <audio src={l.src} controls preload="none" className="mt-2.5 w-full" />
+                    <div className="mt-2.5 flex items-center gap-2">
                       <button type="button" onClick={() => setLook(l.id, { status: st.status === 'liked' ? null : 'liked' })}
-                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${st.status === 'liked' ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-200' : 'border-white/15 text-white/70 hover:text-white'}`}>
+                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${st.status === 'liked' ? 'border-emerald-400/70 bg-emerald-500/25 text-emerald-50 shadow-[0_0_18px_rgba(52,211,153,0.25)]' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
                         <Heart size={14} fill={st.status === 'liked' ? 'currentColor' : 'none'} /> {t.like}
                       </button>
                       <button type="button" onClick={() => setLook(l.id, { status: st.status === 'rejected' ? null : 'rejected' })}
-                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${st.status === 'rejected' ? 'border-rose-400/60 bg-rose-500/15 text-rose-200' : 'border-white/15 text-white/70 hover:text-white'}`}>
+                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${st.status === 'rejected' ? 'border-rose-400/70 bg-rose-500/25 text-rose-50 shadow-[0_0_18px_rgba(251,113,133,0.22)]' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
                         <X size={14} /> {t.reject}
                       </button>
                       <button type="button" onClick={() => setOpenComment(l.id)}
-                        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors ${st.note?.trim() ? 'border-brand/60 text-brand' : 'border-white/15 text-white/70 hover:text-white'}`}>
+                        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-all ${st.note?.trim() ? 'border-brand/70 bg-brand/15 text-brand' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
                         <MessageSquare size={14} />
                       </button>
                     </div>
