@@ -753,20 +753,12 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
               data-idx={i}
               className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden px-5 py-16 sm:px-10"
             >
-              {/* Fondo = mezcla de la foto de ENTRADA (arriba) y la de SALIDA
-                  (abajo) con un degradé de color de marca — nada de hueco negro. */}
-              <div className="absolute inset-0 overflow-hidden bg-ink">
-                {cfg.coverUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cfg.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover object-[center_30%]" draggable={false}
-                    style={{ opacity: 0.5, WebkitMaskImage: 'linear-gradient(to bottom, black 0%, transparent 62%)', maskImage: 'linear-gradient(to bottom, black 0%, transparent 62%)' }} />
-                )}
-                {cfg.closingUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cfg.closingUrl} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false}
-                    style={{ opacity: 0.5, WebkitMaskImage: 'linear-gradient(to top, black 0%, transparent 62%)', maskImage: 'linear-gradient(to top, black 0%, transparent 62%)' }} />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-b from-ink/75 via-brand/12 to-ink/80" />
+              {/* Fondo azul de marca (degradé CSS, liviano para el teléfono) — sin
+                  fotos apagadas: brillo cian arriba-derecha sobre azul profundo. */}
+              <div
+                className="absolute inset-0"
+                style={{ background: 'radial-gradient(120% 85% at 82% 8%, rgba(0,177,246,0.38), transparent 55%), linear-gradient(165deg, #0a2434 0%, #08131d 58%, #04121a 100%)' }}
+              >
                 <Watermark code={cfg.code} uid={`au-${l.id}`} />
               </div>
 
