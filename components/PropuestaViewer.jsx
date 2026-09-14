@@ -245,9 +245,8 @@ export default function PropuestaViewer({ linkId }) {
   if (phase === 'gate') return <RegisterGate t={t} cfg={cfg} linkId={linkId} onDone={onRegistered} />;
   return (
     <>
-      {cfg.proposalType === 'audio'
-        ? <AudioBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} viewer={viewer} />
-        : <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} viewer={viewer} />}
+      {/* Audio y fotos usan EXACTAMENTE el mismo cuerpo (portada, cierre, flujo). */}
+      <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} viewer={viewer} />
       {approveToken && <ApproveBar lang={lang} linkId={linkId} token={approveToken} viewer={viewer} />}
     </>
   );
@@ -539,130 +538,13 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
 // Viewer tríptico (el componente original de /p/demo, ya sin carga propia).
 // ══════════════════════════════════════════════════════════════════════════
 
-// ══════════════════════════════════════════════════════════════════════════
-// Cuerpo de una propuesta de AUDIO — la creadora escucha cada clip (voces de
-// ElevenLabs), marca los que le gustan / no y comenta. Mismo mecanismo de
-// feedback que las fotos (save_proposal_feedback, items por id).
-// ══════════════════════════════════════════════════════════════════════════
-function AudioBody({ t, cfg, linkId, reg, isDemo, viewer }) {
-  const audios = cfg.audios || [];
-  const [state, setState] = useState({});
-  const [openComment, setOpenComment] = useState(null);
-  const [sent, setSent] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [sendErr, setSendErr] = useState('');
-
-  const fb = (id) => state[id] || EMPTY_FB;
-  const setOne = (id, patch) => setState((s) => ({ ...s, [id]: { ...(s[id] || EMPTY_FB), ...patch } }));
-  const liked = audios.filter((a) => fb(a.id).status === 'liked').length;
-
-  const send = async () => {
-    if (sending) return;
-    const items = audios.map((a) => { const st = fb(a.id); return { id: a.id, caption: a.label, status: st.status ?? null, note: st.note || '' }; });
-    if (isDemo) { setSent(true); return; }
-    setSending(true); setSendErr('');
-    try {
-      const isStaff = !!viewer?.staff;
-      const { error } = await getSupabase().rpc('save_proposal_feedback', {
-        p_link: linkId, p_reg: reg?.id || null, p_items: items,
-        p_name: isStaff ? (viewer.name || 'Equipo') : (reg?.name || cfg.recipient?.name || ''),
-        p_kind: isStaff ? 'internal' : 'creator',
-      });
-      if (error) throw error;
-      setSent(true);
-    } catch (e) { setSendErr(e?.message || t.regError); }
-    finally { setSending(false); }
-  };
-
-  if (sent) {
-    return (
-      <div className="flex min-h-[100svh] flex-col items-center justify-center bg-ink px-6 text-center text-paper">
-        <div className="grid h-14 w-14 place-items-center rounded-full bg-emerald-500/15 text-emerald-300"><Check size={26} /></div>
-        <h2 className="mt-5 font-display text-2xl font-bold">{t.thanks || '¡Gracias!'}</h2>
-        <p className="mt-2 max-w-sm text-sm text-paper-mute">{t.thanksSub}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-[100svh] bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
-      {isDemo && (
-        <button type="button" onClick={() => { try { window.close(); } catch {} setTimeout(() => { try { if (!window.closed) window.history.back(); } catch {} }, 120); }}
-          className="fixed left-3 top-[calc(env(safe-area-inset-top,0px)+0.9rem)] z-[70] inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/70 px-3.5 py-2 text-xs font-semibold text-white backdrop-blur-md hover:bg-black/85 sm:left-6 sm:top-6">
-          <ArrowRight size={14} className="rotate-180" /> Volver al editor
-        </button>
-      )}
-      <div className="mx-auto w-full max-w-xl px-5 py-14 sm:py-20">
-        {/* Co-branding: agencia + LetShoot, arriba y centrado. */}
-        <div className="flex items-center justify-center gap-4 sm:gap-5">
-          {cfg.agencyLogoUrl && (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={cfg.agencyLogoUrl} alt="" className="h-10 w-auto max-w-[140px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
-              <span className="text-xl font-light text-white/40">+</span>
-            </>
-          )}
-          <Logo size="md" />
-        </div>
-
-        <div className="mt-10 text-center">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand"><Sparkles size={13} /> {cfg.model?.name || t.privateSel}</span>
-          <h1 className="mt-5 font-display text-4xl font-bold tracking-tight sm:text-5xl">{cfg.recipient?.name || cfg.name}</h1>
-          {cfg.intro && <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-paper-mute">{cfg.intro}</p>}
-        </div>
-
-        <div className="mt-10 space-y-3">
-          {audios.map((a, i) => {
-            const st = fb(a.id);
-            return (
-              <div key={a.id} className={`rounded-2xl border bg-card p-4 transition-colors ${st.status === 'liked' ? 'border-emerald-400/50' : st.status === 'rejected' ? 'border-rose-400/40' : 'border-line'}`}>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] font-bold text-paper-dim">{pad2(i + 1)}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-paper">{a.label}</span>
-                </div>
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                <audio src={a.src} controls preload="none" className="mt-3 w-full" />
-                <div className="mt-3 flex items-center gap-2">
-                  <button type="button" onClick={() => setOne(a.id, { status: st.status === 'liked' ? null : 'liked' })}
-                    className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${st.status === 'liked' ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-200' : 'border-line text-paper-mute hover:text-paper'}`}>
-                    <Heart size={14} fill={st.status === 'liked' ? 'currentColor' : 'none'} /> {t.like}
-                  </button>
-                  <button type="button" onClick={() => setOne(a.id, { status: st.status === 'rejected' ? null : 'rejected' })}
-                    className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${st.status === 'rejected' ? 'border-rose-400/60 bg-rose-500/15 text-rose-200' : 'border-line text-paper-mute hover:text-paper'}`}>
-                    <X size={14} /> {t.reject}
-                  </button>
-                  <button type="button" onClick={() => setOpenComment(openComment === a.id ? null : a.id)}
-                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors ${st.note ? 'border-brand/60 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
-                    <MessageSquare size={14} />
-                  </button>
-                </div>
-                {openComment === a.id && (
-                  <textarea value={st.note} onChange={(e) => setOne(a.id, { note: e.target.value })} rows={2} autoFocus
-                    placeholder={t.commentPh}
-                    className="mt-2.5 w-full resize-none rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <ProposalLogos logos={cfg.logos} className="mt-12" />
-
-        <div className="mt-10">
-          <button type="button" onClick={send} disabled={sending}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-brand px-6 py-3.5 text-sm font-bold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:opacity-60">
-            <Send size={16} /> {sending ? (t.sending || 'Enviando…') : t.sendFeedback}
-          </button>
-          {sendErr && <p className="mt-2 text-center text-[12px] text-rose-300">{sendErr}</p>}
-          <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-widest text-paper-dim">{liked}/{audios.length} {t.liked}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
-  const looks = cfg.looks;
+  // Mismo formato para fotos y audios. Para audio, los "looks" son los audios
+  // (cada uno { id, label, src }); la portada, el cierre, el feedback y el flujo
+  // son idénticos — solo cambia lo que se muestra en cada pantalla.
+  const isAudio = cfg.proposalType === 'audio';
+  const looks = isAudio ? (cfg.audios || []) : cfg.looks;
   const total = looks.length;
 
   const [state, setState] = useState({});
@@ -723,7 +605,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
     if (sending) return;
     const items = looks.map((l) => {
       const st = fb(l.id);
-      return { id: l.id, caption: l.caption, result: l.result, status: st.status ?? null, note: st.note || '' };
+      return { id: l.id, caption: l.caption || l.label || '', result: l.result || l.src || null, status: st.status ?? null, note: st.note || '' };
     });
     // /p/demo es preview del wizard: no hay backend ni registro → confirmación local.
     if (isDemo) { setSent(true); setSummaryOpen(false); return; }
@@ -861,6 +743,45 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
         const st = fb(l.id);
         const active = currentIdx === i;
         const fade = `transition-opacity duration-700 ease-out delay-500 ${active ? 'opacity-100' : 'opacity-0'}`;
+        // Pantalla de un AUDIO — mismo lugar que el tríptico de fotos: reproductor
+        // grande + los mismos botones flotantes (me gusta / rechaza / comenta).
+        if (isAudio) {
+          return (
+            <section
+              key={l.id}
+              ref={(el) => (slidesRef.current[i] = el)}
+              data-idx={i}
+              className="relative flex min-h-[100svh] w-full items-center justify-center overflow-hidden bg-ink px-5 py-12 sm:px-10"
+            >
+              <div className="mx-auto w-full max-w-xl">
+                <div className="rounded-3xl border border-line bg-card/70 p-6 shadow-glow ring-1 ring-brand/20 sm:p-8">
+                  <div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
+                    <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" /> {t.audio || 'Audio'} {pad2(i + 1)} · {pad2(total)}
+                  </div>
+                  <h3 className="mt-3 font-display text-2xl font-bold tracking-tight text-paper sm:text-3xl">{l.label || `${t.audio || 'Audio'} ${pad2(i + 1)}`}</h3>
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <audio src={l.src} controls preload="none" className="mt-6 w-full" />
+                  {st.note?.trim() && (
+                    <p className="mt-4 flex items-start gap-1.5 text-[13px] italic text-paper-mute">
+                      <MessageSquare size={12} className="mt-0.5 shrink-0" /><span>{st.note.trim()}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2.5 sm:right-6 sm:gap-3">
+                <BigActionBtn active={st.status === 'liked'} onClick={() => setLook(l.id, { status: st.status === 'liked' ? null : 'liked' })} tone="like" label={t.like}>
+                  <Heart size={20} fill={st.status === 'liked' ? 'currentColor' : 'none'} />
+                </BigActionBtn>
+                <BigActionBtn active={st.status === 'rejected'} onClick={() => setLook(l.id, { status: st.status === 'rejected' ? null : 'rejected' })} tone="reject" label={t.reject}>
+                  <X size={20} />
+                </BigActionBtn>
+                <BigActionBtn active={!!st.note?.trim()} onClick={() => setOpenComment(l.id)} tone="comment" label={t.comment}>
+                  <MessageSquare size={18} />
+                </BigActionBtn>
+              </div>
+            </section>
+          );
+        }
         return (
           <section
             key={l.id}
@@ -1178,10 +1099,14 @@ function SummaryModal({ t, looks, fb, setLook, onComment, onClose, onSend, sendi
             const st = fb(l.id);
             return (
               <div key={l.id} className="flex items-center gap-3 rounded-2xl px-2 py-2.5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={l.result} alt="" className="h-14 w-11 shrink-0 rounded-md object-cover" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+                {l.result ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={l.result} alt="" className="h-14 w-11 shrink-0 rounded-md object-cover" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+                ) : (
+                  <div className="grid h-14 w-11 shrink-0 place-items-center rounded-md bg-brand/15 text-lg text-brand">▶</div>
+                )}
                 <div className="min-w-0 flex-1">
-                  <div className="line-clamp-1 text-sm text-paper">{l.caption}</div>
+                  <div className="line-clamp-1 text-sm text-paper">{l.caption || l.label}</div>
                   {st.status === null && !st.note?.trim() && (
                     <div className="mt-0.5 text-[11px] text-paper-dim">{t.noMark}</div>
                   )}
@@ -1251,11 +1176,15 @@ function CommentSheet({ t, look, value, onChange, onClose }) {
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
         <div className="flex items-center gap-3 border-b border-line pb-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={look.result} alt="" className="h-14 w-11 rounded-md object-cover" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+          {look?.result ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={look.result} alt="" className="h-14 w-11 rounded-md object-cover" draggable={false} style={{ WebkitUserDrag: 'none' }} />
+          ) : (
+            <div className="grid h-14 w-11 shrink-0 place-items-center rounded-md bg-brand/15 text-lg text-brand">▶</div>
+          )}
           <div className="min-w-0 flex-1">
             <div className="text-[10px] font-mono font-semibold uppercase tracking-[0.22em] text-paper-mute">{t.commentFor}</div>
-            <div className="line-clamp-1 font-display font-semibold text-paper">{look.caption}</div>
+            <div className="line-clamp-1 font-display font-semibold text-paper">{look?.caption || look?.label}</div>
           </div>
           <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute hover:border-brand/40 hover:text-paper">
             <X size={15} />
