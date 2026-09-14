@@ -19,7 +19,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, ArrowRight, Sparkles, KeyRound, Eye, EyeOff, Check } from 'lucide-react';
+import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, ArrowRight, Sparkles, KeyRound, Eye, EyeOff, Check, Play, Pause } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { getSupabase } from '@/lib/supabase/client';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
@@ -539,6 +539,54 @@ function RegisterGate({ t, cfg, linkId, onDone }) {
 // ══════════════════════════════════════════════════════════════════════════
 
 
+// Reproductor de audio MINIMALISTA (para la propuesta de audio): solo play/pausa
+// + barra fina seekable + tiempo. Sin volumen ni menú de 3 puntitos del navegador.
+function AudioPlayer({ src }) {
+  const ref = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
+  const fmt = (s) => { if (!s || !Number.isFinite(s)) return '0:00'; const m = Math.floor(s / 60); const ss = Math.floor(s % 60); return `${m}:${String(ss).padStart(2, '0')}`; };
+  const toggle = () => { const a = ref.current; if (!a) return; if (a.paused) a.play().catch(() => {}); else a.pause(); };
+  const seek = (e) => {
+    const a = ref.current; if (!a || !dur) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    a.currentTime = pct * dur; setCur(a.currentTime);
+  };
+  const pct = dur ? (cur / dur) * 100 : 0;
+  return (
+    <div className="flex items-center gap-3">
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio
+        ref={ref}
+        src={src}
+        preload="metadata"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onTimeUpdate={() => setCur(ref.current?.currentTime || 0)}
+        onLoadedMetadata={() => setDur(ref.current?.duration || 0)}
+        onEnded={() => { setPlaying(false); setCur(0); }}
+      />
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={playing ? 'Pausar' : 'Reproducir'}
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand text-on-accent shadow-glow-sm transition-transform hover:scale-105 active:scale-95"
+      >
+        {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" className="ml-0.5" />}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div onClick={seek} className="relative h-1.5 cursor-pointer rounded-full bg-white/15">
+          <div className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${pct}%` }} />
+          <div className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" style={{ left: `${pct}%` }} />
+        </div>
+      </div>
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-white/70">{playing || cur > 0 ? fmt(cur) : fmt(dur)}</span>
+    </div>
+  );
+}
+
 function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
   // Mismo formato para fotos y audios. Para audio, los "looks" son los audios
   // (cada uno { id, label, src }); la portada, el cierre, el feedback y el flujo
@@ -768,9 +816,10 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
                       <span className="font-mono text-[11px] font-bold text-white/40">{pad2(i + 1)}</span>
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{l.label || `${t.audio || 'Audio'} ${pad2(i + 1)}`}</span>
                     </div>
-                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    <audio src={l.src} controls preload="none" className="mt-2.5 w-full" />
-                    <div className="mt-2.5 flex items-center gap-2">
+                    <div className="mt-3">
+                      <AudioPlayer src={l.src} />
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
                       <button type="button" onClick={() => setLook(l.id, { status: st.status === 'liked' ? null : 'liked' })}
                         className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${st.status === 'liked' ? 'border-emerald-400/70 bg-emerald-500/25 text-emerald-50 shadow-[0_0_18px_rgba(52,211,153,0.25)]' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
                         <Heart size={14} fill={st.status === 'liked' ? 'currentColor' : 'none'} /> {t.like}

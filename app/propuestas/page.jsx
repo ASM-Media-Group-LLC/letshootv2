@@ -512,11 +512,13 @@ export default function PropuestaAdmin() {
       if (upErr) { failMsg = `No se pudo subir "${f.name}": ${upErr.message || 'error de subida'}. Reintentá.`; continue; }
       const src = sb.storage.from('proposal-audios').getPublicUrl(path)?.data?.publicUrl;
       if (!src) { failMsg = `No se pudo obtener la URL de "${f.name}".`; continue; }
-      nuevos.push({
-        id: `au-${Math.random().toString(36).slice(2, 9)}`,
-        src,
-        label: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').slice(0, 60) || 'Audio',
-      });
+      // Nombre por defecto LIMPIO: si el archivo viene con nombre genérico
+      // (WhatsApp, grabación, fecha…) usamos "Audio N" en vez del choclo feo.
+      // Igual siempre es editable en el campo "Nombre del audio".
+      const cleanName = f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim();
+      const isGeneric = !cleanName || /whatsapp|^aud\b|^ptt|grabaci|record|voice|nota de voz|audio\s*\d|\d{4}[-.\s]\d{1,2}[-.\s]\d{1,2}|\d{1,2}[.\s:]\d{2}[.\s:]\d{2}/i.test(cleanName);
+      const label = isGeneric ? `Audio ${audios.length + nuevos.length + 1}` : cleanName.slice(0, 60);
+      nuevos.push({ id: `au-${Math.random().toString(36).slice(2, 9)}`, src, label });
     }
     setAudioBusy(false);
     if (nuevos.length) setAudios((prev) => [...prev, ...nuevos]);
