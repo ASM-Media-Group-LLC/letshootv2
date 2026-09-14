@@ -14,7 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Inbox, Search, Check, X, Plus, AlertTriangle, Pencil, Loader2 } from 'lucide-react';
+import { Inbox, Search, Check, X, Plus, AlertTriangle, Pencil, Loader2, ChevronDown } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -233,12 +233,13 @@ function NuevoPedido({ creators, me, onClose, onCreated, flash }) {
     } catch (e) { setErr(e?.message || 'No se pudo crear.'); setBusy(false); }
   };
 
+  // Segmentado igual al del wizard de propuesta: ancho completo, activo relleno azul.
   const Seg = ({ value, set, options }) => (
-    <div className="inline-flex flex-wrap rounded-full border border-line bg-ink-2 p-1">
-      {options.map(([id, l, tone]) => (
+    <div className="flex gap-1 rounded-xl border border-line bg-ink-2/60 p-1">
+      {options.map(([id, l]) => (
         <button key={id} type="button" onClick={() => set(id)}
-          className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
-            value === id ? (tone === 'bad' ? 'bg-rose-500/15 text-rose-300' : 'bg-brand/15 text-brand') : 'text-paper-mute hover:text-paper'}`}>{l}</button>
+          className={`flex-1 rounded-lg px-3 py-2 text-[13px] font-semibold transition-colors ${
+            value === id ? 'bg-brand text-on-accent shadow-glow-sm' : 'text-paper-mute hover:text-paper'}`}>{l}</button>
       ))}
     </div>
   );
@@ -252,14 +253,17 @@ function NuevoPedido({ creators, me, onClose, onCreated, flash }) {
         </div>
 
         <div className="mt-4">
-          <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-paper-dim">Creadora</label>
-          <Seg value={mode} set={setMode} options={[['existing', 'Ya está'], ['new', 'Es nueva']]} />
+          <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">Creadora</label>
+          <Seg value={mode} set={setMode} options={[['existing', 'Creadora activa'], ['new', 'Creadora nueva']]} />
           {mode === 'existing' ? (
-            <select value={creatorId} onChange={(e) => setCreatorId(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
-              <option value="">Elegí una creadora…</option>
-              {creators.map((c) => (<option key={c.id} value={c.id} className="bg-ink">{c.stage_name || c.full_name || c.email}</option>))}
-            </select>
+            <div className="relative mt-2">
+              <select value={creatorId} onChange={(e) => setCreatorId(e.target.value)}
+                className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60">
+                <option value="">Elegí una creadora…</option>
+                {creators.map((c) => (<option key={c.id} value={c.id} className="bg-ink">{c.stage_name || c.full_name || c.email}</option>))}
+              </select>
+              <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+            </div>
           ) : (
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               <input value={nn.name} onChange={(e) => setNn((v) => ({ ...v, name: e.target.value }))} placeholder="Nombre" className="rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
@@ -270,23 +274,23 @@ function NuevoPedido({ creators, me, onClose, onCreated, flash }) {
         </div>
 
         <div className="mt-3">
-          <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-paper-dim">Título del pedido</label>
+          <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">Título del pedido</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej. Set nocturno · neón" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-4">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-paper-dim">Tipo</label>
+            <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">Tipo</label>
             <Seg value={type} set={setType} options={[['visual', 'Visual'], ['audio', 'Audio'], ['both', 'Ambas']]} />
           </div>
           <div>
-            <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-paper-dim">Prioridad</label>
-            <Seg value={priority} set={setPriority} options={[['normal', 'Normal'], ['urgent', 'Urgente', 'bad']]} />
+            <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">Prioridad</label>
+            <Seg value={priority} set={setPriority} options={[['normal', 'Normal'], ['urgent', 'Urgente']]} />
           </div>
         </div>
 
         <div className="mt-3">
-          <label className="mb-1.5 block text-[11px] uppercase tracking-wide text-paper-dim">Qué se pide (brief)</label>
+          <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">Qué se pide (brief)</label>
           <textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={4} placeholder="Describí el contenido: ideas, looks, referencias…"
             className="w-full resize-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
         </div>
