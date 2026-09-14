@@ -153,7 +153,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: auditRows }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test').order('role'),
+      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test, delivery_cadence').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -2327,9 +2327,29 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
   );
 }
 
+// Cadencia de entrega por creadora — cada cuánto se le debe entregar contenido.
+// El "días" es el tope de días sin entrega antes de marcar atraso.
+const CADENCIAS = [
+  { id: 'daily', label: 'Diaria', short: 'Diaria', days: 1 },
+  { id: 'thrice_week', label: '2-3 / semana', short: '2-3/sem', days: 3 },
+  { id: 'weekly', label: 'Semanal', short: 'Semanal', days: 7 },
+  { id: 'monthly', label: 'Mensual', short: 'Mensual', days: 30 },
+];
+// Estado de entrega según cadencia + última entrega (assets.created_at).
+// Devuelve null si no hay cadencia definida.
+function deliveryState(cadenceId, lastDeliveryAt) {
+  const c = CADENCIAS.find((x) => x.id === cadenceId);
+  if (!c) return null;
+  if (!lastDeliveryAt) return { tone: 'warn', label: 'Sin entregas aún', due: true };
+  const gapDays = (Date.now() - new Date(lastDeliveryAt).getTime()) / 86400000;
+  if (gapDays > c.days) return { tone: 'bad', label: `Atrasada · hace ${Math.floor(gapDays)}d`, due: true };
+  return { tone: 'ok', label: 'Al día', due: false };
+}
+
 function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, onDeleted }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
   const [loraCount, setLoraCount] = useState(null);
+  const [lastDelivery, setLastDelivery] = useState(undefined); // ISO | null | undefined(cargando)
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
@@ -2377,10 +2397,12 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
     if (!creator) return;
     (async () => {
       const supabase = getSupabase();
-      const [{ data: kd }, { count }] = await Promise.all([
+      const [{ data: kd }, { count }, { data: lastA }] = await Promise.all([
         supabase.from('kyc_documents').select('doc_type, storage_path').eq('user_id', creator.id),
         supabase.from('lora_photos').select('id', { count: 'exact', head: true }).eq('user_id', creator.id),
+        supabase.from('assets').select('created_at').eq('creator_id', creator.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       ]);
+      setLastDelivery(lastA?.created_at || null);
       const signed = {};
       for (const d of kd || []) {
         if (!d.storage_path) continue;
@@ -2533,6 +2555,35 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Cadencia de entrega — cada cuánto se le entrega + aviso de atraso */}
+          <div className="rounded-2xl border border-line bg-ink-2 p-4">
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <h4 className="flex items-center gap-2 font-display font-semibold text-paper"><Send size={15} className="text-brand" /> Cadencia de entrega</h4>
+              {(() => {
+                const ds = deliveryState(creator.delivery_cadence, lastDelivery);
+                if (!ds || lastDelivery === undefined) return null;
+                const tone = ds.tone === 'ok' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                  : ds.tone === 'bad' ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+                  : 'border-amber-400/40 bg-amber-400/10 text-amber-300';
+                return <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${tone}`}>{ds.label}</span>;
+              })()}
+            </div>
+            <p className="mb-3 text-[11px] text-paper-dim">Cada cuánto se le debe entregar contenido. Marca el atraso según la última entrega.</p>
+            <div className="flex flex-wrap gap-1.5">
+              {CADENCIAS.map((c) => (
+                <button key={c.id} disabled={saving}
+                  onClick={() => patch({ delivery_cadence: creator.delivery_cadence === c.id ? null : c.id }, creator.delivery_cadence === c.id ? 'Cadencia quitada' : `Cadencia: ${c.label}`)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                    creator.delivery_cadence === c.id ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2.5 text-[11px] text-paper-dim">
+              Última entrega: {lastDelivery === undefined ? '…' : lastDelivery ? new Date(lastDelivery).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'sin entregas registradas'}
+            </p>
           </div>
 
           {/* Modelo de prueba — no cuenta en contabilidad (solo el dueño) */}
