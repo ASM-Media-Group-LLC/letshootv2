@@ -177,7 +177,7 @@ function mapProposal(row, fb, reg, fbInt) {
   };
 }
 
-export default function AdminPropuestas() {
+export default function AdminPropuestas({ view = 'calendario' }) {
   const [rows, setRows] = useState([]);         // lista normalizada (reales o, si no hay, demos)
   const [loading, setLoading] = useState(true);
   const [usingDemo, setUsingDemo] = useState(false);
@@ -185,6 +185,7 @@ export default function AdminPropuestas() {
   const [sel, setSel] = useState(null);         // id de la propuesta abierta en el drawer
   const [empSel, setEmpSel] = useState(null);   // nombre del empleado con el expediente abierto
   const [copied, setCopied] = useState('');
+  const [selDay, setSelDay] = useState(startOfToday()); // día seleccionado en el calendario (ms 00:00 local)
 
   // Filtros
   const [q, setQ] = useState('');
@@ -280,11 +281,12 @@ export default function AdminPropuestas() {
     return [...byEmp.values()].sort((a, b) => b.total - a.total);
   }, [all]);
 
-  // Movimiento del día: conteos de HOY vs AYER para el pulso del equipo.
+  // Movimiento del día SELECCIONADO vs el día anterior (pulso del equipo).
   const dayStats = useMemo(() => {
-    const t0 = startOfToday();
+    const t0 = selDay;
+    const t1 = t0 + 86400000;
     const y0 = t0 - 86400000;
-    const bucket = (ts) => { if (!ts) return null; const m = new Date(ts).getTime(); if (Number.isNaN(m)) return null; return m >= t0 ? 'hoy' : m >= y0 ? 'ayer' : null; };
+    const bucket = (ts) => { if (!ts) return null; const m = new Date(ts).getTime(); if (Number.isNaN(m)) return null; if (m >= t0 && m < t1) return 'hoy'; if (m >= y0 && m < t0) return 'ayer'; return null; };
     const z = () => ({ hoy: 0, ayer: 0 });
     const s = { creadas: z(), respondieron: z(), aprobadas: z(), abrieron: z(), entregadas: z() };
     all.forEach((p) => {
@@ -295,13 +297,13 @@ export default function AdminPropuestas() {
       const d = bucket(p.deliveredAt); if (d) s.entregadas[d] += 1;
     });
     return s;
-  }, [all]);
+  }, [all, selDay]);
 
-  // Feed de actividad de HOY (lo que se movió: armó / aprobó / respondió /
-  // abrió / entregó). Cada evento abre esa propuesta.
-  const activityToday = useMemo(() => {
-    const t0 = startOfToday();
-    const fresh = (ts) => ts && new Date(ts).getTime() >= t0;
+  // Feed de actividad del día SELECCIONADO (armó / aprobó / respondió / abrió /
+  // entregó). Cada evento abre esa propuesta.
+  const activityForDay = useMemo(() => {
+    const t0 = selDay, t1 = selDay + 86400000;
+    const fresh = (ts) => { if (!ts) return false; const m = new Date(ts).getTime(); return m >= t0 && m < t1; };
     const ev = [];
     all.forEach((p) => {
       if (fresh(p.createdAt)) ev.push({ at: p.createdAt, kind: 'created', p });
@@ -310,8 +312,8 @@ export default function AdminPropuestas() {
       if (fresh(p.firstOpenedAt)) ev.push({ at: p.firstOpenedAt, kind: 'opened', p });
       if (fresh(p.deliveredAt)) ev.push({ at: p.deliveredAt, kind: 'delivered', p });
     });
-    return ev.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 24);
-  }, [all]);
+    return ev.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 40);
+  }, [all, selDay]);
 
   const shown = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -358,11 +360,21 @@ export default function AdminPropuestas() {
     ? all.filter((p) => isArch(p)).length
     : all.filter((p) => !isArch(p)).length;
 
+  // Etiqueta y navegación del día seleccionado.
+  const _t0 = startOfToday();
+  const isToday = selDay === _t0;
+  const dayLabel = selDay === _t0 ? 'Hoy'
+    : selDay === _t0 - 86400000 ? 'Ayer'
+    : new Date(selDay).toLocaleDateString('es-US', { weekday: 'short', day: 'numeric', month: 'short' });
+  const prevLabel = isToday ? 'ayer' : 'día ant.';
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-xl text-sm text-paper-mute">
-          Toda foto que llega a una creadora pasa por una propuesta. Este es el movimiento del equipo: qué se armó, a quién se le mandó y quién aprobó.
+          {view === 'historial'
+            ? 'El historial completo de todas las propuestas. Buscá, filtrá y abrí cualquiera para ver el detalle y las respuestas.'
+            : 'Toda foto que llega a una creadora pasa por una propuesta. Este es el movimiento del equipo, día por día: qué se armó, a quién se le mandó y quién aprobó.'}
         </p>
         <a
           href="/propuestas"
@@ -380,28 +392,47 @@ export default function AdminPropuestas() {
         </div>
       )}
 
-      {/* MOVIMIENTO DEL DÍA — el pulso de hoy vs ayer (lo primero que se ve). */}
-      <div className="mt-5">
+      {view === 'calendario' && (
+      <>
+      {/* Navegador de día — arranca en HOY, se mueve día por día (no al futuro). */}
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <button onClick={() => setSelDay((d) => d - 86400000)} aria-label="Día anterior"
+          className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+          <ChevronDown size={16} className="rotate-90" />
+        </button>
+        <span className="min-w-[96px] text-center font-display text-lg font-semibold capitalize text-paper">{dayLabel}</span>
+        <button onClick={() => setSelDay((d) => Math.min(d + 86400000, _t0))} disabled={isToday} aria-label="Día siguiente"
+          className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper disabled:opacity-40">
+          <ChevronDown size={16} className="-rotate-90" />
+        </button>
+        {!isToday && (
+          <button onClick={() => setSelDay(_t0)}
+            className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/15">Hoy</button>
+        )}
+      </div>
+
+      {/* MOVIMIENTO del día seleccionado (vs el día anterior). */}
+      <div className="mt-4">
         <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
-          <TrendingUp size={13} /> Movimiento de hoy
+          <TrendingUp size={13} /> Movimiento · <span className="capitalize">{dayLabel}</span>
         </div>
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-          <DayStat label="Creadas" today={dayStats.creadas.hoy} yesterday={dayStats.creadas.ayer} />
-          <DayStat label="Respondieron" today={dayStats.respondieron.hoy} yesterday={dayStats.respondieron.ayer} />
-          <DayStat label="Aprobadas" today={dayStats.aprobadas.hoy} yesterday={dayStats.aprobadas.ayer} />
-          <DayStat label="Abrieron" today={dayStats.abrieron.hoy} yesterday={dayStats.abrieron.ayer} />
-          <DayStat label="Entregadas" today={dayStats.entregadas.hoy} yesterday={dayStats.entregadas.ayer} />
+          <DayStat label="Creadas" today={dayStats.creadas.hoy} yesterday={dayStats.creadas.ayer} prevLabel={prevLabel} />
+          <DayStat label="Respondieron" today={dayStats.respondieron.hoy} yesterday={dayStats.respondieron.ayer} prevLabel={prevLabel} />
+          <DayStat label="Aprobadas" today={dayStats.aprobadas.hoy} yesterday={dayStats.aprobadas.ayer} prevLabel={prevLabel} />
+          <DayStat label="Abrieron" today={dayStats.abrieron.hoy} yesterday={dayStats.abrieron.ayer} prevLabel={prevLabel} />
+          <DayStat label="Entregadas" today={dayStats.entregadas.hoy} yesterday={dayStats.entregadas.ayer} prevLabel={prevLabel} />
         </div>
       </div>
 
-      {/* ACTIVIDAD DE HOY — qué se hizo, a quién, quién aprobó (el trabajo del día). */}
+      {/* ACTIVIDAD del día — qué se hizo, a quién, quién aprobó. */}
       <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-card">
-        <div className="border-b border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Actividad de hoy</div>
-        {activityToday.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-paper-dim">Sin movimiento todavía hoy. Cuando el equipo arme, mande o aprueben, aparece acá.</p>
+        <div className="border-b border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Actividad · <span className="capitalize">{dayLabel}</span></div>
+        {activityForDay.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-paper-dim">Sin movimiento {isToday ? 'todavía hoy' : 'ese día'}.</p>
         ) : (
-          <ul className="max-h-[340px] divide-y divide-line overflow-y-auto">
-            {activityToday.map((e, i) => {
+          <ul className="max-h-[420px] divide-y divide-line overflow-y-auto">
+            {activityForDay.map((e, i) => {
               const meta = EVENT_META[e.kind] || EVENT_META.created;
               return (
                 <li key={`${e.p.id}-${e.kind}-${i}`}>
@@ -454,7 +485,11 @@ export default function AdminPropuestas() {
           </div>
         </div>
       )}
+      </>
+      )}
 
+      {view === 'historial' && (
+      <>
       {/* Filtros */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
@@ -535,6 +570,8 @@ export default function AdminPropuestas() {
           );
         })}
       </div>
+      </>
+      )}
 
       {empSel && (
         <EmpleadoExpediente
@@ -808,7 +845,7 @@ function eventLine(e) {
 }
 
 // Tarjeta de una métrica del día (número grande + tendencia vs ayer).
-function DayStat({ label, today, yesterday }) {
+function DayStat({ label, today, yesterday, prevLabel = 'ayer' }) {
   const delta = today - yesterday;
   const up = delta > 0, down = delta < 0;
   return (
@@ -820,7 +857,7 @@ function DayStat({ label, today, yesterday }) {
         </span>
       </div>
       <div className="mt-1.5 text-[11px] font-medium uppercase tracking-wider text-paper-dim">{label}</div>
-      <div className="text-[10px] text-paper-dim">ayer {yesterday}</div>
+      <div className="text-[10px] text-paper-dim">{prevLabel} {yesterday}</div>
     </div>
   );
 }

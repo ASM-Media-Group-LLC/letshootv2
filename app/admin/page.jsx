@@ -80,7 +80,7 @@ export default function AdminPage() {
   useEffect(() => {
     try {
       const q = new URLSearchParams(window.location.search).get('tab');
-      const valid = ['registros', 'metricas', 'reacciones', 'verificaciones', 'equipo', 'agencias', 'actividad', 'propuestas'];
+      const valid = ['registros', 'metricas', 'reacciones', 'verificaciones', 'equipo', 'agencias', 'actividad', 'propuestas', 'historial'];
       if (q && valid.includes(q)) setTab(q);
     } catch {}
   }, []);
@@ -535,6 +535,7 @@ export default function AdminPage() {
             { id: 'agencias', label: 'Agencias', icon: Building2, badge: agencyLeads.length },
             { id: 'actividad', label: 'Actividad', icon: Activity },
             { id: 'propuestas', label: 'Propuestas', icon: Send },
+            { id: 'historial', label: 'Historial', icon: Clock },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
               className={`relative -mb-px flex shrink-0 items-center gap-2 whitespace-nowrap px-3.5 py-2.5 text-sm font-medium transition-colors ${tab === tb.id ? 'tab3d-active' : 'text-paper-mute hover:text-paper'}`}>
@@ -1109,7 +1110,11 @@ export default function AdminPage() {
           </div>
         ) : tab === 'propuestas' ? (
           <div className="mt-6">
-            <AdminPropuestas />
+            <AdminPropuestas view="calendario" />
+          </div>
+        ) : tab === 'historial' ? (
+          <div className="mt-6">
+            <AdminPropuestas view="historial" />
           </div>
         ) : null}
       </main>
