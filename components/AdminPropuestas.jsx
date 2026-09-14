@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil } from 'lucide-react';
+import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -55,6 +55,15 @@ function fmtFecha(iso) {
   if (isNaN(d.getTime())) return null;
   const base = `${d.getDate()} ${MES_ES[d.getMonth()]}`;
   return d.getFullYear() === new Date().getFullYear() ? base : `${base} ${d.getFullYear()}`;
+}
+
+// Inicio del día de HOY (medianoche local) en ms — para el "movimiento del día".
+function startOfToday() { const x = new Date(); x.setHours(0, 0, 0, 0); return x.getTime(); }
+// Hora HH:MM (24h) de un ISO, para el feed de actividad.
+function hhmm(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('es-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 // Resumen de respuestas del receptor a partir del feedback.
@@ -147,6 +156,8 @@ function mapProposal(row, fb, reg, fbInt) {
     createdBy: row.created_by_name || '',
     createdAt: row.created_at || null,
     approvedAt: row.approved_at || null,
+    deliveredAt: row.delivered_at || null,
+    firstOpenedAt: row.first_opened_at || null,
     expiresAt: row.expires_at || null,
     _status: row.status || 'published',
     _internal: isInternal,
@@ -269,6 +280,39 @@ export default function AdminPropuestas() {
     return [...byEmp.values()].sort((a, b) => b.total - a.total);
   }, [all]);
 
+  // Movimiento del día: conteos de HOY vs AYER para el pulso del equipo.
+  const dayStats = useMemo(() => {
+    const t0 = startOfToday();
+    const y0 = t0 - 86400000;
+    const bucket = (ts) => { if (!ts) return null; const m = new Date(ts).getTime(); if (Number.isNaN(m)) return null; return m >= t0 ? 'hoy' : m >= y0 ? 'ayer' : null; };
+    const z = () => ({ hoy: 0, ayer: 0 });
+    const s = { creadas: z(), respondieron: z(), aprobadas: z(), abrieron: z(), entregadas: z() };
+    all.forEach((p) => {
+      const c = bucket(p.createdAt); if (c) s.creadas[c] += 1;
+      if (p.approval && (p.approval.status === 'approved' || p.approval.status === 'rejected')) { const a = bucket(p.approvedAt); if (a) s.aprobadas[a] += 1; }
+      if (feedbackSummary(p._feedback).total > 0) { const r = bucket(p._feedback?.updatedAt); if (r) s.respondieron[r] += 1; }
+      const o = bucket(p.firstOpenedAt); if (o) s.abrieron[o] += 1;
+      const d = bucket(p.deliveredAt); if (d) s.entregadas[d] += 1;
+    });
+    return s;
+  }, [all]);
+
+  // Feed de actividad de HOY (lo que se movió: armó / aprobó / respondió /
+  // abrió / entregó). Cada evento abre esa propuesta.
+  const activityToday = useMemo(() => {
+    const t0 = startOfToday();
+    const fresh = (ts) => ts && new Date(ts).getTime() >= t0;
+    const ev = [];
+    all.forEach((p) => {
+      if (fresh(p.createdAt)) ev.push({ at: p.createdAt, kind: 'created', p });
+      if (p.approval && fresh(p.approvedAt) && (p.approval.status === 'approved' || p.approval.status === 'rejected')) ev.push({ at: p.approvedAt, kind: p.approval.status, p });
+      if (fresh(p._feedback?.updatedAt) && feedbackSummary(p._feedback).total > 0) ev.push({ at: p._feedback.updatedAt, kind: 'responded', p });
+      if (fresh(p.firstOpenedAt)) ev.push({ at: p.firstOpenedAt, kind: 'opened', p });
+      if (fresh(p.deliveredAt)) ev.push({ at: p.deliveredAt, kind: 'delivered', p });
+    });
+    return ev.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 24);
+  }, [all]);
+
   const shown = useMemo(() => {
     const query = q.trim().toLowerCase();
     return all.filter((p) => {
@@ -318,7 +362,7 @@ export default function AdminPropuestas() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-xl text-sm text-paper-mute">
-          Todas las propuestas que arma el equipo. Ves a quién van, quién las creó y qué respondió cada receptor.
+          Toda foto que llega a una creadora pasa por una propuesta. Este es el movimiento del equipo: qué se armó, a quién se le mandó y quién aprobó.
         </p>
         <a
           href="/propuestas"
@@ -336,10 +380,47 @@ export default function AdminPropuestas() {
         </div>
       )}
 
-      {/* Marcador por empleado — cuántas hizo cada uno + cómo les fue. Click en
-          una tarjeta = filtra a ese empleado (y de nuevo = quita el filtro). */}
+      {/* MOVIMIENTO DEL DÍA — el pulso de hoy vs ayer (lo primero que se ve). */}
+      <div className="mt-5">
+        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+          <TrendingUp size={13} /> Movimiento de hoy
+        </div>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+          <DayStat label="Creadas" today={dayStats.creadas.hoy} yesterday={dayStats.creadas.ayer} />
+          <DayStat label="Respondieron" today={dayStats.respondieron.hoy} yesterday={dayStats.respondieron.ayer} />
+          <DayStat label="Aprobadas" today={dayStats.aprobadas.hoy} yesterday={dayStats.aprobadas.ayer} />
+          <DayStat label="Abrieron" today={dayStats.abrieron.hoy} yesterday={dayStats.abrieron.ayer} />
+          <DayStat label="Entregadas" today={dayStats.entregadas.hoy} yesterday={dayStats.entregadas.ayer} />
+        </div>
+      </div>
+
+      {/* ACTIVIDAD DE HOY — qué se hizo, a quién, quién aprobó (el trabajo del día). */}
+      <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-card">
+        <div className="border-b border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Actividad de hoy</div>
+        {activityToday.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-paper-dim">Sin movimiento todavía hoy. Cuando el equipo arme, mande o aprueben, aparece acá.</p>
+        ) : (
+          <ul className="max-h-[340px] divide-y divide-line overflow-y-auto">
+            {activityToday.map((e, i) => {
+              const meta = EVENT_META[e.kind] || EVENT_META.created;
+              return (
+                <li key={`${e.p.id}-${e.kind}-${i}`}>
+                  <button type="button" onClick={() => setSel(e.p.id)}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-hair/[0.04]">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
+                    <span className="min-w-0 flex-1 truncate text-sm text-paper-mute">{eventLine(e)}</span>
+                    <span className="shrink-0 font-mono text-[11px] text-paper-dim">{hhmm(e.at)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {/* Marcador por empleado (secundario) — clic abre el expediente completo. */}
       {teamTally.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-5">
           <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
             <UserCheck size={13} /> Por empleado
             <span className="font-normal normal-case tracking-normal text-paper-dim/70">· clic para ver el expediente completo</span>
@@ -360,7 +441,7 @@ export default function AdminPropuestas() {
                 >
                   <div className="flex items-baseline gap-2.5">
                     <span className="max-w-[140px] truncate text-sm font-medium text-paper">{e.name}</span>
-                    <span className="font-display text-2xl font-bold leading-none tabular-nums text-brand">{e.total}</span>
+                    <span className="font-display text-xl font-bold leading-none tabular-nums text-brand">{e.total}</span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px]">
                     <span className="inline-flex items-center gap-1 text-paper-mute"><Check size={11} className="text-emerald-400" />{e.approved} aprob.</span>
@@ -709,7 +790,40 @@ const EVENT_META = {
   rejected:  { dot: 'bg-rose-400' },
   opened:    { dot: 'bg-sky-400' },
   responded: { dot: 'bg-amber-400' },
+  delivered: { dot: 'bg-emerald-300' },
 };
+
+// Un renglón del feed de actividad: quién hizo qué, a quién.
+function eventLine(e) {
+  const to = e.p.recipient?.name || 'destinatario';
+  const who = e.p.createdBy || 'Equipo';
+  const rev = e.p.approval?.reviewer || e.p.approval?.approver || '';
+  if (e.kind === 'created') return <><b className="font-medium text-paper">{who}</b> armó una propuesta para <b className="font-medium text-paper">{to}</b></>;
+  if (e.kind === 'approved') return <><b className="font-medium text-paper">{rev || 'Alguien'}</b> aprobó · {to}</>;
+  if (e.kind === 'rejected') return <><b className="font-medium text-paper">{rev || 'Alguien'}</b> rechazó · {to}</>;
+  if (e.kind === 'responded') { const f = feedbackSummary(e.p._feedback); return <><b className="font-medium text-paper">{to}</b> respondió · {f.liked} ♥ · {f.rejected} ✕</>; }
+  if (e.kind === 'opened') return <><b className="font-medium text-paper">{to}</b> abrió el link</>;
+  if (e.kind === 'delivered') return <>Entregada a <b className="font-medium text-paper">{to}</b></>;
+  return null;
+}
+
+// Tarjeta de una métrica del día (número grande + tendencia vs ayer).
+function DayStat({ label, today, yesterday }) {
+  const delta = today - yesterday;
+  const up = delta > 0, down = delta < 0;
+  return (
+    <div className="rounded-2xl border border-line bg-card px-4 py-3">
+      <div className="flex items-baseline gap-2">
+        <span className="font-display text-3xl font-bold leading-none tabular-nums text-paper">{today}</span>
+        <span className={`text-[11px] font-semibold ${up ? 'text-emerald-300' : down ? 'text-rose-300' : 'text-paper-dim'}`}>
+          {up ? `↑${delta}` : down ? `↓${Math.abs(delta)}` : '='}
+        </span>
+      </div>
+      <div className="mt-1.5 text-[11px] font-medium uppercase tracking-wider text-paper-dim">{label}</div>
+      <div className="text-[10px] text-paper-dim">ayer {yesterday}</div>
+    </div>
+  );
+}
 
 function Tile({ label, value, tone }) {
   const color = tone === 'ok' ? 'text-emerald-300' : tone === 'bad' ? 'text-rose-300' : tone === 'warn' ? 'text-amber-300' : 'text-paper';
