@@ -191,7 +191,6 @@ export default function AdminPropuestas({ view = 'calendario' }) {
   const [q, setQ] = useState('');
   const [fEmpleado, setFEmpleado] = useState('all');
   const [fEstado, setFEstado] = useState('all');
-  const [fModelo, setFModelo] = useState('all');
 
   // Carga desde Supabase — el staff tiene sesión y su RLS (is_staff()) permite
   // leer TODAS las propuestas del equipo con consultas normales a las tablas.
@@ -254,11 +253,6 @@ export default function AdminPropuestas({ view = 'calendario' }) {
   const empleados = useMemo(() => {
     const s = new Set();
     all.forEach((p) => { if (p.createdBy) s.add(p.createdBy); });
-    return [...s].sort();
-  }, [all]);
-  const modelos = useMemo(() => {
-    const s = new Set();
-    all.forEach((p) => { if (p.model?.name) s.add(p.model.name); });
     return [...s].sort();
   }, [all]);
 
@@ -324,14 +318,13 @@ export default function AdminPropuestas({ view = 'calendario' }) {
       else if (archived) return false;
       if (fEstado !== 'all' && fEstado !== 'archivadas' && stateOf(p) !== fEstado) return false;
       if (fEmpleado !== 'all' && (p.createdBy || '') !== fEmpleado) return false;
-      if (fModelo !== 'all' && (p.model?.name || '') !== fModelo) return false;
       if (query) {
         const hay = `${p.recipient?.name || ''} ${p.recipient?.email || ''} ${p.model?.name || ''} ${p.code || ''} ${p.createdBy || ''}`.toLowerCase();
         if (!hay.includes(query)) return false;
       }
       return true;
     }).sort((a, b) => new Date(b.createdAt || b.expiresAt || 0) - new Date(a.createdAt || a.expiresAt || 0));
-  }, [all, q, fEmpleado, fEstado, fModelo]);
+  }, [all, q, fEmpleado, fEstado]);
 
   const linkFor = (p) => `${origin}/p/${p.code}?lang=${p.lang || 'es'}`;
 
@@ -507,16 +500,14 @@ export default function AdminPropuestas({ view = 'calendario' }) {
           ]} />
         <FilterSelect value={fEmpleado} onChange={setFEmpleado}
           options={[{ value: 'all', label: 'Todo el equipo' }, ...empleados.map((e) => ({ value: e, label: e }))]} />
-        <FilterSelect value={fModelo} onChange={setFModelo}
-          options={[{ value: 'all', label: 'Todas las modelos' }, ...modelos.map((m) => ({ value: m, label: m }))]} />
       </div>
 
       <p className="mt-3 text-xs text-paper-dim">{shown.length} de {activeCount} · haz clic en una propuesta para ver el detalle y las respuestas.</p>
 
       {/* Lista */}
       <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-        <div className="grid min-w-[900px] grid-cols-[1.4fr_0.95fr_1fr_0.85fr_0.7fr_1.05fr] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-          <span>Destinatario</span><span>Creó</span><span>Estado</span><span>Modelo</span><span>Fecha</span><span>Respuestas</span>
+        <div className="grid min-w-[820px] grid-cols-[1.7fr_0.95fr_1fr_0.7fr_1.05fr] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+          <span>Destinatario</span><span>Creó</span><span>Estado</span><span>Fecha</span><span>Respuestas</span>
         </div>
         {shown.length === 0 && (
           <p className="px-5 py-8 text-center text-sm text-paper-dim">{loading ? 'Cargando propuestas…' : 'No hay propuestas que coincidan con el filtro.'}</p>
@@ -529,10 +520,14 @@ export default function AdminPropuestas({ view = 'calendario' }) {
           return (
             <div key={p.id} role="button" tabIndex={0} onClick={() => setSel(p.id)}
               onKeyDown={(e) => { if (e.key === 'Enter') setSel(p.id); }}
-              className="grid min-w-[900px] cursor-pointer grid-cols-[1.4fr_0.95fr_1fr_0.85fr_0.7fr_1.05fr] items-center gap-3 border-b border-line px-5 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+              className="grid min-w-[820px] cursor-pointer grid-cols-[1.7fr_0.95fr_1fr_0.7fr_1.05fr] items-center gap-3 border-b border-line px-5 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
               <span className="min-w-0">
                 <span className="block truncate font-medium text-paper">{p.recipient?.name || 'Sin destinatario'}</span>
-                <span className="block truncate text-[11px] text-paper-dim">{p.recipient?.email || 'sin correo'}</span>
+                <span className="block truncate text-[11px] text-paper-dim">
+                  <span className="font-mono text-paper-mute">{p.code}</span>
+                  {p.recipient?.email ? ` · ${p.recipient.email}` : ''}
+                  {p.model?.name ? ` · ${p.model.name}` : ''}
+                </span>
               </span>
               <span className="min-w-0 truncate text-paper-mute">{p.createdBy || '—'}</span>
               <span className="flex flex-col gap-1">
@@ -548,10 +543,6 @@ export default function AdminPropuestas({ view = 'calendario' }) {
                       ? <span className="text-[11px] font-medium text-rose-300/90">rechazada</span>
                       : <span className="text-[11px] font-medium text-amber-300/90">pend. aprobación</span>
                 )}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-paper">{p.model?.name || '—'}</span>
-                <span className="block truncate font-mono text-[10px] text-paper-dim">{p.code}</span>
               </span>
               <span className="min-w-0 truncate tabular-nums text-paper-mute">{fmtFecha(p.createdAt) || '—'}</span>
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
@@ -645,7 +636,7 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
             <Row label="Destinatario" value={<span>{p.recipient?.name || '—'}{p.recipient?.email ? <span className="text-paper-dim"> · {p.recipient.email}</span> : null}</span>} />
             <Row label="Creada por" value={p.createdBy || '—'} />
             <Row label="Fecha" value={fmtFecha(p.createdAt) || '—'} />
-            <Row label="Modelo" value={<span>{p.model?.name || '—'}{p.model?.agency ? <span className="text-paper-dim"> · {p.model.agency}</span> : null}</span>} />
+            {p.model?.name && <Row label="Modelo" value={<span>{p.model.name}{p.model?.agency ? <span className="text-paper-dim"> · {p.model.agency}</span> : null}</span>} />}
             <Row label="Código" value={<span className="font-mono text-xs">{p.code}</span>} />
             <Row label="Vencimiento" value={stateOf(p) === 'borrador' || d === null ? '—'
               : d < 0 ? <span className="text-paper-dim">venció hace {Math.abs(d)}d</span>
