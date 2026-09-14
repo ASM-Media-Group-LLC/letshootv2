@@ -18,6 +18,7 @@ import { PACKS } from '@/lib/packs';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import AdminPropuestas from '@/components/AdminPropuestas';
 import AdminPeticiones from '@/components/AdminPeticiones';
+import { CADENCIAS, deliveryState, cadenceLabel } from '@/lib/cadence';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -100,6 +101,7 @@ export default function AdminPage() {
   const [agencyMembers, setAgencyMembers] = useState([]); // agency_members rows (empleados de cada agencia)
   const [agencyLeads, setAgencyLeads] = useState([]);     // solicitudes desde el landing /agency
   const [assetStats, setAssetStats] = useState([]);   // una fila por foto entregada (conteo de producción)
+  const [lastDelivByCreator, setLastDelivByCreator] = useState({}); // { creatorId: última entrega ISO } — semáforo de cadencia
   const [audit, setAudit] = useState([]);             // bitácora (audit_log)
   const [invites, setInvites] = useState([]);         // pending staff invite links
   const [invBusy, setInvBusy] = useState(false);
@@ -154,7 +156,7 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: auditRows }] = await Promise.all([
+    const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: auditRows }, { data: lastDeliv }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test, delivery_cadence').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
@@ -162,6 +164,7 @@ export default function AdminPage() {
       supabase.from('agency_members').select('agency_id, member_id, capabilities'),
       supabase.from('assets').select('creator_id'),
       supabase.from('audit_log').select('id, actor_id, action, target_id, meta, created_at').order('created_at', { ascending: false }).limit(200),
+      supabase.rpc('last_delivery_by_creator'),
     ]);
     // Si la query base de perfiles falla (RLS/red), no pintamos listas vacías
     // como si la DB estuviera vacía — el admin toma decisiones de facturación
@@ -172,6 +175,9 @@ export default function AdminPage() {
     setAgencyMembers(agMembers || []);
     setAssetStats(assetRows || []);
     setAudit(auditRows || []);
+    const ldMap = {};
+    (Array.isArray(lastDeliv) ? lastDeliv : []).forEach((r) => { if (r?.creator_id) ldMap[r.creator_id] = r.last_at; });
+    setLastDelivByCreator(ldMap);
     const { data: inv } = await supabase.from('staff_invites').select('*').eq('status', 'pending').order('created_at', { ascending: false });
     setInvites(inv || []);
     // Solicitudes de registro de agencia (landing /agency) — pendientes de revisar.
@@ -508,7 +514,7 @@ export default function AdminPage() {
             {[
               { id: 'propuestas', label: 'Propuestas', icon: Send },
               { id: 'peticiones', label: 'Peticiones', icon: Inbox },
-              { id: 'registros', label: 'Registros', icon: ClipboardList },
+              { id: 'registros', label: 'Creadoras', icon: ClipboardList },
               { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
               { id: 'equipo', label: 'Equipo interno', icon: Users },
               { id: 'agencias', label: 'Agencias', icon: Building2, badge: agencyLeads.length },
@@ -681,8 +687,8 @@ export default function AdminPage() {
 
                       <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
                       <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-                        <div className="grid min-w-[720px] grid-cols-[1.4fr_0.6fr_0.5fr_0.9fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-                          <span>Creadora</span><span>Entró</span><span>Fotos</span><span>Vence</span><span>Estado</span><span></span>
+                        <div className="grid min-w-[600px] grid-cols-[1.6fr_0.8fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                          <span>Creadora</span><span>Cadencia</span><span>Entrega</span><span></span>
                         </div>
                         {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
                         {cr.length > 0 && shown.length === 0 && <p className="px-5 py-6 text-paper-dim">Ninguna creadora coincide con el filtro.</p>}
@@ -695,7 +701,7 @@ export default function AdminPage() {
                           return (
                             <div key={u.id} role="button" tabIndex={0} onClick={() => setSelCreator(u.id)}
                               onKeyDown={(e) => { if (e.key === 'Enter') setSelCreator(u.id); }}
-                              className="grid w-full min-w-[720px] cursor-pointer grid-cols-[1.4fr_0.6fr_0.5fr_0.9fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+                              className="grid w-full min-w-[600px] cursor-pointer grid-cols-[1.6fr_0.8fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
                               <span className="flex min-w-0 items-center gap-2.5">
                                 <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                                 <span className="min-w-0">
@@ -703,24 +709,18 @@ export default function AdminPage() {
                                   <span className="block truncate text-[11px] text-paper-dim">{u.handle ? `@${u.handle}` : u.email}</span>
                                 </span>
                               </span>
-                              {/* ENTRÓ: fecha corta visible + hora exacta en el tooltip */}
-                              <span className="text-paper-mute" title={joinedFull}>{joined}</span>
-                              <span className={nFotos ? 'font-medium text-paper' : 'text-paper-dim'}>{nFotos}</span>
+                              {/* CADENCIA: cada cuánto debe recibir contenido */}
+                              <span className="text-paper-mute">
+                                {cadenceLabel(u.delivery_cadence) || <span className="text-paper-dim">— sin definir</span>}
+                                {u.is_test && <span className="ml-2 text-[11px] text-amber-300/80">prueba</span>}
+                              </span>
+                              {/* ENTREGA: semáforo (al día / atrasada / sin entregas) */}
                               <span className="text-xs">
                                 {(() => {
-                                  const d = daysUntil(u);
-                                  if (!isPaying(u) || d === null) return <span className="text-paper-dim">—</span>;
-                                  const dateLabel = new Date(u.subscription_ends_at + 'T00:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short' });
-                                  if (d < 0) return <StatusDot tone="bad">Venció {dateLabel}</StatusDot>;
-                                  if (d <= 7) return <StatusDot tone="warn">{d}d · {dateLabel}</StatusDot>;
-                                  return <span className="text-paper-mute">{dateLabel}</span>;
+                                  const ds = deliveryState(u.delivery_cadence, lastDelivByCreator[u.id]);
+                                  if (!ds) return <span className="text-paper-dim">—</span>;
+                                  return <StatusDot tone={ds.tone}>{ds.label}</StatusDot>;
                                 })()}
-                              </span>
-                              {/* ESTADO: pills minimal dot + texto (Linear/Notion) */}
-                              <span className="flex flex-wrap items-center gap-3">
-                                <StatusDot tone={st.tone === 'brand' ? 'brand' : st.tone === 'amber' ? 'warn' : st.tone === 'rose' ? 'bad' : st.tone === 'sky' ? 'brand' : 'zinc'}>{st.label}</StatusDot>
-                                {planLabel && <StatusDot tone="zinc">{planLabel}</StatusDot>}
-                                {u.is_test && <StatusDot tone="warn">Prueba</StatusDot>}
                               </span>
                               {/* Acciones: «Ver como ella» siempre visible (abre su panel en otra pestaña) + menú ⋯ */}
                               <span className="flex items-center justify-end gap-1.5">
@@ -1112,7 +1112,7 @@ export default function AdminPage() {
           </div>
         ) : tab === 'propuestas' ? (
           <div className="mt-6">
-            <AdminPropuestas />
+            <AdminPropuestas creators={creators} lastDeliv={lastDelivByCreator} />
           </div>
         ) : tab === 'peticiones' ? (
           <AdminPeticiones creators={creators} me={me} flash={flash} />
@@ -2332,25 +2332,6 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
       )}
     </div>
   );
-}
-
-// Cadencia de entrega por creadora — cada cuánto se le debe entregar contenido.
-// El "días" es el tope de días sin entrega antes de marcar atraso.
-const CADENCIAS = [
-  { id: 'daily', label: 'Diaria', short: 'Diaria', days: 1 },
-  { id: 'thrice_week', label: '2-3 / semana', short: '2-3/sem', days: 3 },
-  { id: 'weekly', label: 'Semanal', short: 'Semanal', days: 7 },
-  { id: 'monthly', label: 'Mensual', short: 'Mensual', days: 30 },
-];
-// Estado de entrega según cadencia + última entrega (assets.created_at).
-// Devuelve null si no hay cadencia definida.
-function deliveryState(cadenceId, lastDeliveryAt) {
-  const c = CADENCIAS.find((x) => x.id === cadenceId);
-  if (!c) return null;
-  if (!lastDeliveryAt) return { tone: 'warn', label: 'Sin entregas aún', due: true };
-  const gapDays = (Date.now() - new Date(lastDeliveryAt).getTime()) / 86400000;
-  if (gapDays > c.days) return { tone: 'bad', label: `Atrasada · hace ${Math.floor(gapDays)}d`, due: true };
-  return { tone: 'ok', label: 'Al día', due: false };
 }
 
 function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, onDeleted }) {

@@ -26,6 +26,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
+import { deliveryState, cadenceLabel } from '@/lib/cadence';
 
 // Estado derivado de una propuesta: borrador (solo demo), vencida (expiró) o publicada.
 // El archivado NO es un estado acá — es un flag aparte (status === 'archived').
@@ -177,7 +178,7 @@ function mapProposal(row, fb, reg, fbInt) {
   };
 }
 
-export default function AdminPropuestas() {
+export default function AdminPropuestas({ creators = [], lastDeliv = {} }) {
   const [rows, setRows] = useState([]);         // lista normalizada (reales o, si no hay, demos)
   const [loading, setLoading] = useState(true);
   const [usingDemo, setUsingDemo] = useState(false);
@@ -186,7 +187,8 @@ export default function AdminPropuestas() {
   const [empSel, setEmpSel] = useState(null);   // nombre del empleado con el expediente abierto
   const [copied, setCopied] = useState('');
   const [selDay, setSelDay] = useState(startOfToday()); // día seleccionado en el calendario (ms 00:00 local)
-  const [view, setView] = useState('calendario');       // 'calendario' (día a día) | 'historial' (lista completa)
+  const [view, setView] = useState('calendario');       // 'calendario' (día a día) | 'historial' (lista completa) | 'entregas'
+  const [empOpen, setEmpOpen] = useState(false);         // marcador "Por empleado": arranca colapsado
 
   // Filtros
   const [q, setQ] = useState('');
@@ -310,6 +312,12 @@ export default function AdminPropuestas() {
     return ev.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 40);
   }, [all, selDay]);
 
+  // Entregas: creadoras CON cadencia definida, atrasadas primero.
+  const entregas = useMemo(() => {
+    const rank = (c) => { const ds = deliveryState(c.delivery_cadence, lastDeliv[c.id]); return ds?.tone === 'bad' ? 0 : ds?.tone === 'warn' ? 1 : 2; };
+    return creators.filter((c) => c.delivery_cadence).slice().sort((a, b) => rank(a) - rank(b));
+  }, [creators, lastDeliv]);
+
   const shown = useMemo(() => {
     const query = q.trim().toLowerCase();
     return all.filter((p) => {
@@ -380,7 +388,7 @@ export default function AdminPropuestas() {
 
       {/* Switch Calendario | Historial — el día a día y el listado completo, juntos. */}
       <div className="mt-4 inline-flex rounded-full border border-line bg-card p-1">
-        {[['calendario', 'Calendario'], ['historial', 'Historial']].map(([id, label]) => (
+        {[['calendario', 'Calendario'], ['historial', 'Historial'], ['entregas', 'Entregas']].map(([id, label]) => (
           <button key={id} type="button" onClick={() => setView(id)}
             className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
               view === id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:text-paper'}`}>
@@ -454,14 +462,17 @@ export default function AdminPropuestas() {
         )}
       </div>
 
-      {/* Marcador por empleado (secundario) — clic abre el expediente completo. */}
+      {/* Marcador por empleado (colapsable, secundario) — clic abre el expediente. */}
       {teamTally.length > 0 && (
         <div className="mt-5">
-          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+          <button type="button" onClick={() => setEmpOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim transition-colors hover:text-paper">
             <UserCheck size={13} /> Por empleado
-            <span className="font-normal normal-case tracking-normal text-paper-dim/70">· clic para ver el expediente completo</span>
-          </div>
-          <div className="flex gap-2.5 overflow-x-auto pb-1">
+            <ChevronDown size={13} className={`transition-transform ${empOpen ? '' : '-rotate-90'}`} />
+            <span className="font-normal normal-case tracking-normal text-paper-dim/70">· {empOpen ? 'clic en una para el expediente' : 'mostrar'}</span>
+          </button>
+          {empOpen && (
+          <div className="mt-2 flex gap-2.5 overflow-x-auto pb-1">
             {teamTally.map((e) => {
               const active = fEmpleado === e.name;
               return (
@@ -488,6 +499,7 @@ export default function AdminPropuestas() {
               );
             })}
           </div>
+          )}
         </div>
       )}
       </>
@@ -574,6 +586,33 @@ export default function AdminPropuestas() {
         })}
       </div>
       </>
+      )}
+
+      {view === 'entregas' && (
+        <div className="mt-4">
+          <p className="mb-3 max-w-2xl text-sm text-paper-mute">Cada creadora con su <b className="text-paper">cadencia</b> y si va al día. Las atrasadas primero. La cadencia se pone en la ficha de cada creadora (Creadoras).</p>
+          <div className="overflow-x-auto rounded-2xl border border-line">
+            <div className="grid min-w-[560px] grid-cols-[1.6fr_0.9fr_1.1fr] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+              <span>Creadora</span><span>Cadencia</span><span>Entrega</span>
+            </div>
+            {entregas.length === 0 && (
+              <p className="px-5 py-10 text-center text-sm text-paper-dim">Todavía ninguna creadora tiene cadencia. Ponésela en su ficha: Creadoras → abrí una → Datos.</p>
+            )}
+            {entregas.map((c) => {
+              const ds = deliveryState(c.delivery_cadence, lastDeliv[c.id]);
+              return (
+                <div key={c.id} className="grid min-w-[560px] grid-cols-[1.6fr_0.9fr_1.1fr] items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-0">
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium text-paper">{c.stage_name || c.full_name || c.email}</span>
+                    {c.handle ? <span className="ml-2 text-[11px] text-paper-dim">@{c.handle}</span> : null}
+                  </span>
+                  <span className="text-paper-mute">{cadenceLabel(c.delivery_cadence)}</span>
+                  <span>{ds ? <StatusDot tone={ds.tone}>{ds.label}</StatusDot> : <span className="text-paper-dim">—</span>}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {empSel && (
