@@ -742,7 +742,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
       <section
         ref={coverRef}
         data-idx="-1"
-        className="relative flex h-[100svh] w-full items-end overflow-hidden bg-ink"
+        className="relative flex h-[100svh] w-full items-center overflow-hidden bg-ink"
       >
         <div className="absolute inset-0">
           {/* Si NO hay foto de portada, queda en negro (no se usa la del look). */}
@@ -768,7 +768,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
             <Logo size="lg" forceDark className="drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)]" />
           </div>
         </div>
-        <div className="relative z-10 mx-auto w-full max-w-4xl px-6 pb-[calc(env(safe-area-inset-bottom,0px)+4.5rem)] sm:px-10 sm:pb-24">
+        <div className="relative z-10 mx-auto w-full max-w-4xl px-6 py-16 sm:px-10 sm:py-20">
           {/* Rótulo chico = título del paquete ("Contenido para tus redes"). */}
           {cfg.recipient?.name && cfg.name && (
             <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.24em] text-white/55 sm:text-xs">
