@@ -300,13 +300,23 @@ function ApproveBar({ lang, linkId, token, viewer, initialStatus, reviewer }) {
     initialStatus === 'approved' ? 'approved' : initialStatus === 'rejected' ? 'rejected' : 'idle'
   );
   const [reason, setReason] = useState('');
+  const [who, setWho] = useState('');           // quién decide — queda como "quién aprobó"
   const [err, setErr] = useState('');
 
+  // Prellenar con el nombre del que mira si está logueado (equipo). Igual se
+  // puede editar; si nadie está logueado, lo tiene que escribir.
+  useEffect(() => { if (viewer?.name) setWho((w) => w || viewer.name); }, [viewer]);
+
   const decide = async (decision) => {
+    const name = who.trim();
+    if (!name) {
+      setErr(es ? 'Poné tu nombre para dejar registro de quién decidió.' : 'Enter your name so we record who decided.');
+      return;
+    }
     setState('sending'); setErr('');
     try {
       const { data, error } = await getSupabase().functions.invoke('proposal-approval', {
-        body: { action: 'decide', link_id: linkId, token, decision, reason: decision === 'rejected' ? reason.trim() : '', reviewer_name: viewer?.name || '' },
+        body: { action: 'decide', link_id: linkId, token, decision, reason: decision === 'rejected' ? reason.trim() : '', reviewer_name: name },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || (es ? 'No se pudo procesar.' : 'Could not process.'));
@@ -337,7 +347,17 @@ function ApproveBar({ lang, linkId, token, viewer, initialStatus, reviewer }) {
   }
   return (
     <div className={wrap}>
-      <div className="mx-auto w-full max-w-lg">
+      <div className="mx-auto w-full max-w-lg space-y-2.5">
+        {/* Quién decide — queda registrado como "aprobada/rechazada por …". Se
+            prellena con el equipo logueado; si no, lo escribe quien aprueba. */}
+        <div className="flex items-center gap-2">
+          <label className="shrink-0 text-[12px] text-paper-dim">{es ? 'Decidís como' : 'Deciding as'}</label>
+          <input
+            value={who} onChange={(e) => setWho(e.target.value)}
+            placeholder={es ? 'Tu nombre' : 'Your name'}
+            className="min-w-0 flex-1 rounded-full border border-line bg-ink-2 px-3.5 py-2 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+          />
+        </div>
         {state === 'rejecting' ? (
           <div className="space-y-2.5">
             <textarea
