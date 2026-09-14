@@ -79,6 +79,9 @@ function mapRow(row) {
     logos: Array.isArray(row?.logos) ? row.logos : [],
     proposalType: ['visual', 'audio', 'both'].includes(row?.proposal_type) ? row.proposal_type : 'visual',
     audios: Array.isArray(row?.audios) ? row.audios.filter((a) => a?.id && a?.src) : [],
+    approvalRequired: !!row?.approval_required,
+    approvalStatus: row?.approval_status || null,       // 'pending' | 'approved' | 'rejected'
+    approvalReviewer: row?.approval_reviewer_name || '',
     looks,
   };
 }
@@ -247,7 +250,7 @@ export default function PropuestaViewer({ linkId }) {
     <>
       {/* Audio y fotos usan EXACTAMENTE el mismo cuerpo (portada, cierre, flujo). */}
       <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} viewer={viewer} />
-      {approveToken && <ApproveBar lang={lang} linkId={linkId} token={approveToken} viewer={viewer} />}
+      {approveToken && <ApproveBar lang={lang} linkId={linkId} token={approveToken} viewer={viewer} initialStatus={cfg.approvalStatus} reviewer={cfg.approvalReviewer} />}
     </>
   );
 }
@@ -257,9 +260,13 @@ export default function PropuestaViewer({ linkId }) {
 // o rechaza (con motivo). Aprobar → la edge function invita sola a la creadora.
 // ══════════════════════════════════════════════════════════════════════════
 
-function ApproveBar({ lang, linkId, token, viewer }) {
+function ApproveBar({ lang, linkId, token, viewer, initialStatus, reviewer }) {
   const es = lang !== 'en';
-  const [state, setState] = useState('idle'); // idle | rejecting | sending | approved | rejected | error
+  // Si la propuesta YA fue decidida (aprobada/rechazada), arrancamos mostrando el
+  // resultado — NO se aprueba ni rechaza dos veces.
+  const [state, setState] = useState(
+    initialStatus === 'approved' ? 'approved' : initialStatus === 'rejected' ? 'rejected' : 'idle'
+  );
   const [reason, setReason] = useState('');
   const [err, setErr] = useState('');
 
@@ -282,7 +289,7 @@ function ApproveBar({ lang, linkId, token, viewer }) {
     return (
       <div className={wrap}>
         <div className="mx-auto flex max-w-lg items-center justify-center gap-2 text-sm font-semibold text-emerald-300">
-          <Check size={16} /> {es ? 'Aprobada — se le envió a la creadora.' : 'Approved — sent to the creator.'}
+          <Check size={16} /> {es ? 'Aprobada — se le envió a la creadora.' : 'Approved — sent to the creator.'}{reviewer ? (es ? ` · por ${reviewer}` : ` · by ${reviewer}`) : ''}
         </div>
       </div>
     );
@@ -291,7 +298,7 @@ function ApproveBar({ lang, linkId, token, viewer }) {
     return (
       <div className={wrap}>
         <div className="mx-auto flex max-w-lg items-center justify-center gap-2 text-sm font-semibold text-rose-300">
-          <X size={16} /> {es ? 'Rechazada — el equipo queda avisado.' : 'Rejected — the team has been notified.'}
+          <X size={16} /> {es ? 'Rechazada — el equipo queda avisado.' : 'Rejected — the team has been notified.'}{reviewer ? (es ? ` · por ${reviewer}` : ` · by ${reviewer}`) : ''}
         </div>
       </div>
     );
