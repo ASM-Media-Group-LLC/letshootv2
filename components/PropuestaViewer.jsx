@@ -749,8 +749,8 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
 
         {/* Co-branding KASH + LetShoot — centrado, bien abajo del borde, sin cajas.
             KASH un punto más grande que LetShoot (glifos medidos) para presencia. */}
-        <div className="absolute left-1/2 top-12 z-20 -translate-x-1/2 sm:top-20">
-          <div className="flex origin-center scale-[0.66] items-center gap-4 sm:scale-100 sm:gap-5">
+        <div className="absolute inset-x-0 top-12 z-20 flex justify-center sm:top-20">
+          <div className="flex origin-center scale-[0.7] items-center gap-4 sm:scale-100 sm:gap-5">
             {cfg.agencyLogoUrl && (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
