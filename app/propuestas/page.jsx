@@ -30,9 +30,12 @@ const LAN_HOST = '10.0.0.67:3001';
 const SHARE_ORIGIN = 'https://letshoot.ai';
 
 // CODE de propuesta: uno NUEVO por cada publicación (el link cambia cada vez).
+// Dos segmentos (JP-XXXXXX-xxxxxx) → largo y NO adivinable (candado de link):
+// ~31^6 · 32^6 combinaciones. Sin caracteres confundibles (I/L/O/0/1).
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const genCode = () =>
-  'JP-' + Array.from({ length: 6 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+const CODE_TAIL = 'abcdefghijkmnpqrstuvwxyz23456789';
+const randFrom = (set, n) => Array.from({ length: n }, () => set[Math.floor(Math.random() * set.length)]).join('');
+const genCode = () => `JP-${randFrom(CODE_ALPHABET, 6)}-${randFrom(CODE_TAIL, 6)}`;
 
 const EMAIL_RE = /.+@.+\..+/;
 

@@ -232,6 +232,11 @@ export default function PropuestaViewer({ linkId }) {
       // Modo APROBACIÓN: ?approve=<token> → el que decide ve la propuesta completa
       // (sin gate) con barra Aprobar/Rechazar. Tiene prioridad sobre todo lo demás.
       const approveParam = new URLSearchParams(window.location.search).get('approve');
+      // "Abierto" para el almacén: sólo cuando la mira la CREADORA/receptor (no
+      // staff, no modo aprobación). Fire-and-forget, no bloquea el render.
+      if (!approveParam && !viewerInfo?.staff) {
+        try { getSupabase().rpc('mark_proposal_opened', { p_link: linkId }); } catch {}
+      }
       if (approveParam) {
         setApproveToken(approveParam);
         setReg({ id: null, name: viewerInfo?.name || mapped.recipient?.name || '', email: '' });
@@ -770,6 +775,11 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
       if (error) throw error;
       setSent(true);
       setSummaryOpen(false);
+      // Aviso al equipo: si respondió la CREADORA (no staff), le llega un correo
+      // a quien armó la propuesta. Fire-and-forget, no bloquea la confirmación.
+      if (!isStaff) {
+        try { getSupabase().functions.invoke('proposal-notify', { body: { link_id: linkId } }); } catch {}
+      }
     } catch (e) {
       setSendErr(e?.message || t.regError);
     } finally {

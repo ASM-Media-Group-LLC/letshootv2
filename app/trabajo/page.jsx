@@ -12,7 +12,7 @@ import {
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
   ImageIcon, Building2, Film, TrendingUp, TrendingDown,
-  CreditCard, ListChecks, ChevronDown, Trash2, Music,
+  CreditCard, ListChecks, ChevronDown, Trash2, Music, Send,
 } from 'lucide-react';
 import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
@@ -25,6 +25,7 @@ import Avatar from '@/components/Avatar';
 import PortalHeader from '@/components/PortalHeader';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ProposalEditor from '@/components/ProposalEditor';
+import AlmacenPropuestas from '@/components/AlmacenPropuestas';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import AudioCard from '@/components/AudioCard';
 import WelcomeTour from '@/components/WelcomeTour';
@@ -100,6 +101,7 @@ function TrabajoPageInner() {
   const [billRows, setBillRows] = useState([]); // creadoras con estado de suscripción (acceso 'billing')
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
+  const [almCount, setAlmCount] = useState(null); // "propuestas en juego" para la tarjeta Almacén
   const meRef = useRef(null);
 
   // Only the admin has every function; other staff have exactly the functions
@@ -113,6 +115,26 @@ function TrabajoPageInner() {
   const can = (c) => caps.includes(c);
   const asName = viewAs ? ((viewAs.full_name || '').trim().split(/\s+/)[0] || viewAs.stage_name || viewAs.full_name || 'empleado') : '';
   function exitAsView() { window.close(); if (!window.closed) router.push('/admin'); }
+
+  // Conteo liviano para la tarjeta "Almacén": propuestas en juego (no internas,
+  // no archivadas, sin entregar). Aproximado — sólo alimenta el número grande.
+  useEffect(() => {
+    if (!can('content')) return;
+    let cancel = false;
+    (async () => {
+      try {
+        const { count } = await getSupabase()
+          .from('photo_proposals')
+          .select('id', { count: 'exact', head: true })
+          .neq('recipient_kind', 'internal')
+          .neq('status', 'archived')
+          .is('delivered_at', null);
+        if (!cancel) setAlmCount(count || 0);
+      } catch { if (!cancel) setAlmCount(null); }
+    })();
+    return () => { cancel = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me]);
 
   // One load for everything the cards summarize, guarded by the puesto's caps.
   const load = useCallback(async () => {
@@ -182,7 +204,7 @@ function TrabajoPageInner() {
   // Se usa desde /admin (banner de pedidos pendientes) y desde emails.
   useEffect(() => {
     const t = searchParams?.get('tab');
-    if (t && ['creadoras', 'pedidos', 'feedback', 'altas', 'cobros', 'equipo', 'gestagencias'].includes(t)) setTab(t);
+    if (t && ['creadoras', 'almacen', 'pedidos', 'feedback', 'altas', 'cobros', 'equipo', 'gestagencias'].includes(t)) setTab(t);
   }, [searchParams]);
 
   // Live pop-up: when a new request notification lands for me, toast it.
@@ -325,6 +347,7 @@ function TrabajoPageInner() {
     ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
     ...(can('requests') ? [{ id: 'pedidos', icon: Inbox, label: 'Pedidos', value: nf((counts?.reqPend || 0) + (counts?.reqProg || 0)), sub: `${counts?.reqPend || 0} pendientes · ${counts?.reqProg || 0} en producción`, alert: (counts?.reqPend || 0) > 0 }] : []),
     ...(can('feedback') ? [{ id: 'feedback', icon: MessageSquare, label: 'Feedback', value: nf(counts?.fbOpen || 0), sub: counts?.fbOpen ? 'cambios sin resolver' : `al día · ${counts?.fbLove || 0} me encanta`, alert: (counts?.fbOpen || 0) > 0 }] : []),
+    ...(can('content') ? [{ id: 'almacen', icon: Send, label: 'Almacén', value: almCount === null ? '·' : nf(almCount), sub: 'Propuestas por producir' }] : []),
     ...(can('content') ? [{ id: 'miproduccion', icon: TrendingUp, label: 'Lo que TÚ subiste', value: nf(mine.length), sub: `${myWeek} en 7 días · ${myMonth} este mes` }] : []),
   ];
   const BIZ_CARDS = [
@@ -552,6 +575,7 @@ function TrabajoPageInner() {
             })()}
             {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} readOnly={readOnly} />}
             {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} pendingByCreator={pendingByCreator} readOnly={readOnly} />}
+            {tab === 'almacen' && can('content') && <AlmacenPropuestas creators={creators} me={me} flash={flash} readOnly={readOnly} />}
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
             {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} readOnly={readOnly} />}
             {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} readOnly={readOnly} />}
