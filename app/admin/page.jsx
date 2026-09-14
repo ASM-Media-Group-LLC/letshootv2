@@ -76,6 +76,7 @@ export default function AdminPage() {
   const router = useRouter();
   const [me, setMe] = useState(undefined);
   const [tab, setTab] = useState('registros');
+  const [navOpen, setNavOpen] = useState(true); // sidebar abierto (labels) o colapsado (solo íconos)
   // Permite abrir /admin directo en una pestaña por URL (?tab=propuestas, etc.).
   useEffect(() => {
     try {
@@ -485,51 +486,37 @@ export default function AdminPage() {
       <Header me={me} router={router} creators={creators} />
 
       <main className="mx-auto max-w-6xl px-5 py-6">
-        {/* ── Header denso: título compacto, alerts inline, acciones a la
-            derecha. Nada de banner separado ni "sub-subtítulo" explicativo. ── */}
-        {(() => {
-          const pending = metrics.requests.filter((r) => r.status === 'pending').length;
-          const inProg  = metrics.requests.filter((r) => r.status === 'in_progress').length;
-          const hasAlert = pending + inProg > 0;
-          return (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 flex-wrap items-center gap-3">
-                <h1 className="font-display text-2xl font-bold tracking-tight sm:text-[1.75rem]">Administración</h1>
-                {hasAlert && (
-                  <a href="/trabajo?tab=pedidos"
-                    className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1.5 text-xs font-medium text-paper transition-colors hover:border-brand/40">
-                    <Inbox size={12} className={pending > 0 ? 'text-amber-400' : 'text-brand'} />
-                    {pending > 0 && <><b className="tabular-nums">{pending}</b> por revisar</>}
-                    {pending > 0 && inProg > 0 && <span className="text-paper-dim">·</span>}
-                    {inProg > 0 && <><b className="tabular-nums">{inProg}</b> en producción</>}
-                    <span className="text-paper-dim">→</span>
-                  </a>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button onClick={load} title="Actualizar"
-                  className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-                  <RefreshCw size={14} />
-                </button>
-                <button onClick={() => { setNewAgency({ full_name: '', email: '', password: '' }); setNaErr(''); }}
-                  className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">
-                  <Building2 size={14} /> Crear agencia
-                </button>
-                <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
-                  className="btn3d inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
-                  <UserPlus size={14} /> Alta de creadora
-                </button>
-              </div>
-            </div>
-          );
-        })()}
+        {/* Header: título + acciones a la derecha. Sin el chip "en producción". */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="font-display text-2xl font-bold tracking-tight sm:text-[1.75rem]">Administración</h1>
+          <div className="flex shrink-0 items-center gap-2">
+            <button onClick={load} title="Actualizar"
+              className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+              <RefreshCw size={14} />
+            </button>
+            <button onClick={() => { setNewAgency({ full_name: '', email: '', password: '' }); setNaErr(''); }}
+              className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">
+              <Building2 size={14} /> Crear agencia
+            </button>
+            <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
+              className="btn3d inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
+              <UserPlus size={14} /> Alta de creadora
+            </button>
+          </div>
+        </div>
 
         {/* Navegación — barra lateral: vertical en desktop, scroll horizontal en móvil.
             Propuestas primero (lo más usado, a la mano). Activo = tinte azul plano. */}
         <div className="mt-5 flex flex-col gap-6 lg:flex-row lg:items-start">
-          <nav className="flex gap-1 overflow-x-auto pb-1 lg:w-56 lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:border-r lg:border-line lg:pb-0 lg:pr-3">
+          <nav className={`flex gap-1 overflow-x-auto pb-1 lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:border-r lg:border-line lg:pb-0 ${navOpen ? 'lg:w-56 lg:pr-3' : 'lg:w-[3.75rem] lg:pr-0'}`}>
+            {/* Toggle acordeón — solo desktop (en móvil la nav es fila con scroll) */}
+            <button onClick={() => setNavOpen((o) => !o)} title={navOpen ? 'Colapsar menú' : 'Expandir menú'}
+              className={`mb-1 hidden h-9 items-center rounded-lg px-3 text-paper-dim transition-colors hover:bg-hair/[0.05] hover:text-paper lg:flex ${navOpen ? 'justify-end' : 'justify-center'}`}>
+              <ChevronDown size={16} className={navOpen ? 'rotate-90' : '-rotate-90'} />
+            </button>
             {[
               { id: 'propuestas', label: 'Propuestas', icon: Send },
+              { id: 'peticiones', label: 'Peticiones', icon: Inbox, href: '/trabajo?tab=pedidos' },
               { id: 'registros', label: 'Registros', icon: ClipboardList },
               { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
               { id: 'equipo', label: 'Equipo interno', icon: Users },
@@ -538,11 +525,16 @@ export default function AdminPage() {
               { id: 'metricas', label: 'Métricas', icon: BarChart3 },
               { id: 'actividad', label: 'Actividad', icon: Activity },
             ].map((tb) => (
-              <button key={tb.id} onClick={() => setTab(tb.id)}
-                className={`flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:w-full ${
+              <button key={tb.id} title={tb.label}
+                onClick={() => (tb.href ? router.push(tb.href) : setTab(tb.id))}
+                className={`flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:w-full ${!navOpen ? 'lg:justify-center lg:px-2' : ''} ${
                   tab === tb.id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:bg-hair/[0.05] hover:text-paper'}`}>
-                <tb.icon size={16} /> <span>{tb.label}</span>
-                {tb.badge ? <span className="ml-auto grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent">{tb.badge}</span> : null}
+                <span className="relative shrink-0">
+                  <tb.icon size={16} />
+                  {tb.badge ? <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand ${navOpen ? 'hidden' : 'hidden lg:block'}`} /> : null}
+                </span>
+                <span className={navOpen ? '' : 'lg:hidden'}>{tb.label}</span>
+                {tb.badge ? <span className={`ml-auto grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent ${navOpen ? '' : 'lg:hidden'}`}>{tb.badge}</span> : null}
               </button>
             ))}
           </nav>
