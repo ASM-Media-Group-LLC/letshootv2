@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
     if (!link) return reply({ ok: false, error: 'Propuesta inválida.' });
 
     const { data: prop } = await svc.from('photo_proposals')
-      .select('id, status, expires_at, name, lang, recipient_name, recipient_email, recipient_kind, model_name, approval_required, approver_email, approval_token, approval_status')
+      .select('id, status, expires_at, name, lang, recipient_name, recipient_email, recipient_kind, model_name, approval_required, approver_email, approval_token, approval_status, created_by, created_by_name')
       .eq('link_id', link).maybeSingle();
     if (!prop) return reply({ ok: false, error: 'Esta propuesta no existe.' });
     const lang = prop.lang === 'en' ? 'en' : 'es';
@@ -137,6 +137,33 @@ Deno.serve(async (req) => {
 
       if (decision === 'rejected') {
         await svc.from('photo_proposals').update({ approval_status: 'rejected', approval_reason: reason || null, approval_reviewer_name: reviewer }).eq('id', prop.id);
+        // Avisar al EQUIPO (quien armó la propuesta): rechazada en revisión → a rehacer.
+        // No llega nada a la creadora. Fire-and-forget: no bloquea la respuesta.
+        try {
+          let teamEmail = '';
+          if (prop.created_by) {
+            const { data: u } = await svc.auth.admin.getUserById(prop.created_by);
+            teamEmail = String(u?.user?.email || '').trim();
+          }
+          if (teamEmail && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(teamEmail)) {
+            const es = lang === 'es';
+            const forName = prop.recipient_name || (es ? 'una creadora' : 'a creator');
+            const who = reviewer || (es ? 'Alguien del equipo' : 'A reviewer');
+            const html = brandedLayout({
+              eyebrow: es ? 'Revisión · Rechazada' : 'Review · Rejected',
+              title: es ? `Rechazaron la propuesta para ${forName}` : `The proposal for ${forName} was rejected`,
+              body: es
+                ? `${who} rechazó en revisión la propuesta “${prop.name || ''}”. NO se le envió a la creadora.${reason ? ` Motivo: “${reason}”.` : ''} Ábrela en el admin para ajustarla y volver a enviarla a revisión.`
+                : `${who} rejected the proposal “${prop.name || ''}” in review. It was NOT sent to the creator.${reason ? ` Reason: “${reason}”.` : ''} Open it in the admin to adjust and send it back for review.`,
+              cta: es ? 'Ver en el admin' : 'Open in admin',
+              url: `${APP}/admin?tab=propuestas`,
+              pre: es ? 'Una propuesta fue rechazada en revisión.' : 'A proposal was rejected in review.',
+            });
+            const subject = es ? `Rechazada en revisión: ${prop.name || 'propuesta'}` : `Rejected in review: ${prop.name || 'proposal'}`;
+            const r = await sendResend(teamEmail, subject, html);
+            await svc.from('email_log').insert({ template: 'proposal_approval_rejected', recipient: teamEmail, subject, resend_id: r.id || null, lang }).then(() => {}, () => {});
+          }
+        } catch { /* el aviso no debe romper el rechazo */ }
         return reply({ ok: true, status: 'rejected' });
       }
 
