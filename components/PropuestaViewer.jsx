@@ -712,6 +712,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
   const [dlBusy, setDlBusy] = useState('');           // '' | 'aprobadas' | 'todas' (preparando)
   const [dlErr, setDlErr] = useState('');
   const [dlReady, setDlReady] = useState(null);       // { imgFiles, zip, fname, count } tras preparar
+  const [dlDone, setDlDone] = useState('');           // '' | 'shared' (teléfono) | 'zip' (compu) — confirmación
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState('');
   const slidesRef = useRef([]);
@@ -842,7 +843,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
     try {
       if (navigator.canShare && navigator.canShare({ files: imgFiles })) {
         await navigator.share({ files: imgFiles, title: 'Fotos LetShoot' });
-        setDlOpen(false); setDlReady(null);
+        setDlDone('shared'); setDlReady(null);   // el share sheet terminó → confirmar
         return;
       }
     } catch (e) { if (e?.name === 'AbortError') return; /* si falla el share, cae al ZIP */ }
@@ -852,7 +853,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
       a.href = url; a.download = fname;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 8000);
-      setDlOpen(false); setDlReady(null);
+      setDlDone('zip'); setDlReady(null);
     } catch { setDlErr(t.dlError || 'No se pudieron guardar. Reintentá.'); }
   };
 
@@ -1195,7 +1196,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
             </button>
             {photosWithResult.length > 0 && (
               <button
-                onClick={() => { setDlErr(''); setDlReady(null); setDlOpen(true); }}
+                onClick={() => { setDlErr(''); setDlReady(null); setDlDone(''); setDlOpen(true); }}
                 className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-medium text-paper-mute hover:border-brand/40 hover:text-paper"
               >
                 <Download size={14} /> {t.downloadPhotos || 'Descargar fotos'}
@@ -1218,9 +1219,23 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
       {dlOpen && (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-ink/80 p-5 backdrop-blur-sm" onClick={() => !dlBusy && setDlOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-3xl border border-line bg-card p-6 text-center shadow-glow-sm">
-            <div className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-brand/15 text-brand"><Download size={20} /></div>
-            <h3 className="mt-3 font-display text-lg font-semibold text-paper">{t.downloadTitle || 'Descargar fotos'}</h3>
-            {dlReady ? (
+            <div className={`mx-auto grid h-11 w-11 place-items-center rounded-full ${dlDone ? 'bg-emerald-500/15 text-emerald-300' : 'bg-brand/15 text-brand'}`}>
+              {dlDone ? <Check size={22} /> : <Download size={20} />}
+            </div>
+            <h3 className="mt-3 font-display text-lg font-semibold text-paper">{dlDone ? '¡Listo!' : (t.downloadTitle || 'Descargar fotos')}</h3>
+            {dlDone ? (
+              <>
+                <p className="mt-1 text-[13px] leading-relaxed text-paper-mute">
+                  {dlDone === 'shared'
+                    ? <>Se guardaron en tu teléfono. Revisá tu <b className="text-paper">galería / Fotos</b> (o el chat donde las mandaste).</>
+                    : <>Descargado. Buscá el archivo en <b className="text-paper">Descargas</b> de tu compu.</>}
+                </p>
+                <button onClick={() => { setDlOpen(false); setDlDone(''); }}
+                  className="btn3d mt-5 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold">
+                  <Check size={15} /> Listo
+                </button>
+              </>
+            ) : dlReady ? (
               <>
                 <p className="mt-1 text-[13px] leading-relaxed text-paper-mute">{dlReady.count} {dlReady.count === 1 ? 'foto lista' : 'fotos listas'}. En el teléfono se guardan en <b className="text-paper">Fotos</b> (o las mandás a WhatsApp/Telegram); en la compu bajan en un ZIP.</p>
                 <div className="mt-5 space-y-2.5">
@@ -1234,7 +1249,11 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
               </>
             ) : (
               <>
-                <p className="mt-1 text-[13px] leading-relaxed text-paper-mute">{t.downloadSub || 'Solo las fotos creadas (no la inspiración ni la de modelo real). En el teléfono se guardan en Fotos.'}</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-paper-mute">
+                  {viewer?.staff
+                    ? (t.downloadSubStaff || 'Solo las fotos creadas. En el teléfono se guardan en Fotos.')
+                    : (t.downloadSubCreator || 'Bajás solo las que marcaste que te gustan. En el teléfono se guardan en Fotos.')}
+                </p>
                 <div className="mt-5 space-y-2.5">
                   <button onClick={() => preparePhotos(true)} disabled={!!dlBusy}
                     className="btn3d flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-60">
@@ -1242,17 +1261,20 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
                       ? <><Clock size={15} className="animate-pulse" /> {t.dlPreparing || 'Preparando…'}</>
                       : <><Heart size={15} fill="currentColor" /> {t.dlLiked || 'Solo las que me gustaron'} · {stats.liked}</>}
                   </button>
-                  <button onClick={() => preparePhotos(false)} disabled={!!dlBusy}
-                    className="btn3d-ghost flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">
-                    {dlBusy === 'todas'
-                      ? <><Clock size={15} className="animate-pulse" /> {t.dlPreparing || 'Preparando…'}</>
-                      : <><Download size={15} /> {t.dlAll || 'Todas las de la propuesta'} · {photosWithResult.length}</>}
-                  </button>
+                  {/* SOLO el equipo (staff) puede bajar TODAS; la creadora solo las que le gustaron. */}
+                  {viewer?.staff && (
+                    <button onClick={() => preparePhotos(false)} disabled={!!dlBusy}
+                      className="btn3d-ghost flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">
+                      {dlBusy === 'todas'
+                        ? <><Clock size={15} className="animate-pulse" /> {t.dlPreparing || 'Preparando…'}</>
+                        : <><Download size={15} /> {t.dlAll || 'Todas las de la propuesta'} · {photosWithResult.length}</>}
+                    </button>
+                  )}
                 </div>
               </>
             )}
             {dlErr && <p className="mt-3 text-[12px] text-rose-300">{dlErr}</p>}
-            <button onClick={() => !dlBusy && (setDlOpen(false), setDlReady(null))} className="mt-4 text-[12px] font-medium text-paper-dim hover:text-paper">{t.cancel || 'Cerrar'}</button>
+            {!dlDone && <button onClick={() => !dlBusy && (setDlOpen(false), setDlReady(null))} className="mt-4 text-[12px] font-medium text-paper-dim hover:text-paper">{t.cancel || 'Cerrar'}</button>}
           </div>
         </div>
       )}
