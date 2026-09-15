@@ -487,16 +487,16 @@ export default function AdminPropuestas() {
           de la pestaña). Clic → salta al Historial para perseguirlas. */}
       {backlog.total > 0 && (
         <button onClick={() => setView('historial')}
-          className="mt-4 flex w-full flex-col gap-1.5 rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-left transition-colors hover:border-amber-500/50 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          className="mt-4 flex w-full flex-col gap-1.5 rounded-2xl border border-rose-500/30 bg-rose-500/[0.06] px-4 py-3 text-left transition-colors hover:border-rose-500/50 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <span className="flex items-center gap-2.5">
-            <AlertTriangle size={16} className="shrink-0 text-amber-300" />
-            <span className="text-sm font-semibold text-paper">Se está atrasando · {backlog.total}</span>
+            <AlertTriangle size={16} className="shrink-0 text-rose-300" />
+            <span className="flex flex-wrap items-center gap-x-2 text-sm font-semibold text-paper">
+              {backlog.sinAprobar > 0 && <span>{backlog.sinAprobar} sin aprobar</span>}
+              {backlog.sinAprobar > 0 && backlog.atrasadas > 0 && <span className="font-normal text-paper-dim">·</span>}
+              {backlog.atrasadas > 0 && <span>{backlog.atrasadas} vencidas sin responder</span>}
+            </span>
           </span>
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-[26px] text-[12px] text-paper-mute sm:pl-0">
-            {backlog.sinAprobar > 0 && <span><b className="text-paper">{backlog.sinAprobar}</b> sin aprobar</span>}
-            {backlog.sinAprobar > 0 && backlog.atrasadas > 0 && <span className="text-paper-dim">·</span>}
-            {backlog.atrasadas > 0 && <span><b className="text-paper">{backlog.atrasadas}</b> vencidas sin responder</span>}
-          </span>
+          <span className="pl-[26px] text-[12px] text-paper-mute sm:pl-0">se está atrasando</span>
         </button>
       )}
 

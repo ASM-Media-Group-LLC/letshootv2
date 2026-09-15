@@ -523,7 +523,7 @@ export default function AdminPage() {
   // selector desplegable (móvil). Propuestas primero (lo más usado).
   // `badges`: pills con contador (tono bad=rojo urgente, warn=ámbar, brand=azul).
   const NAV_TABS = [
-    { id: 'propuestas', label: 'Propuestas', icon: Send, badges: propCounts.backlog ? [{ n: propCounts.backlog, tone: 'warn' }] : [] },
+    { id: 'propuestas', label: 'Propuestas', icon: Send, badges: propCounts.backlog ? [{ n: propCounts.backlog, tone: 'bad' }] : [] },
     { id: 'peticiones', label: 'Peticiones', icon: Inbox, badges: [
       ...(delivOverdue ? [{ n: delivOverdue, tone: 'bad' }] : []),
       ...(delivPending ? [{ n: delivPending, tone: 'brand' }] : []),
