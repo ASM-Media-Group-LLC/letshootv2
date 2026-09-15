@@ -5,15 +5,16 @@
 //
 // Pensada para que el equipo que produce trabaje MUCHAS propuestas sin mierdero:
 // agrupadas POR CREADORA, con estados de trabajo (Esperando / Por producir /
-// Recrear / Entregado), lo que la creadora aprobó cae a su cuenta como «por
-// producir» y lo rechazado a «recrear», y el trabajador sólo marca «entregado».
+// Entregado). SOLO lo que a la creadora le gustó cae a su cuenta como «por
+// producir»; lo que no le gustó NO se produce — queda únicamente como feedback
+// (se ve en el resumen de respuestas). El trabajador sólo marca «entregado».
 // Candados de link (matar / se apaga solo al entregar / ver si lo abrió) y una
 // barra de «Novedades» con lo que respondieron las creadoras recién.
 //
 // FUENTE: Supabase con la sesión del staff (RLS is_staff). Tablas:
 //   · photo_proposals              (la propuesta + delivered_at / link_killed /
 //                                    first_opened_at)
-//   · proposal_content            (lo que cayó a la cuenta: approved/rejected +
+//   · proposal_content            (SOLO lo aprobado que cae a la cuenta +
 //                                    prod_state to_produce/delivered)
 //   · photo_proposal_feedback     (respuesta de la creadora, para el resumen)
 //   · photo_proposal_registrations(quién abrió / se registró)
@@ -27,7 +28,6 @@ import { getSupabase } from '@/lib/supabase/client';
 const S = {
   esperando:   { label: 'Esperando creadora', tone: 'warn' },
   porproducir: { label: 'Por producir',        tone: 'brand' },
-  recrear:     { label: 'Recrear',             tone: 'bad' },
   entregado:   { label: 'Entregado',           tone: 'ok' },
   archivada:   { label: 'Archivada',           tone: 'zinc' },
 };
@@ -37,7 +37,6 @@ function stateOf(p) {
   if (p.status === 'archived') return 'archivada';
   if (p.delivered_at) return 'entregado';
   if (p.approved.length > 0) return 'porproducir';
-  if (p.rejected.length > 0) return 'recrear';
   return 'esperando';
 }
 
@@ -81,7 +80,7 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
   const [loading, setLoading] = useState(true);
   const [origin, setOrigin] = useState('');
   const [q, setQ] = useState('');
-  const [chip, setChip] = useState('todas');  // todas | esperando | porproducir | recrear | entregado | archivadas
+  const [chip, setChip] = useState('todas');  // todas | esperando | porproducir | entregado | archivadas
   const [busy, setBusy] = useState('');        // id de la propuesta en una acción
   const [copied, setCopied] = useState('');
   const [open, setOpen] = useState({});        // grupos abiertos por key (undefined = abierto)
@@ -115,9 +114,9 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
         const content = contentBy[p.id] || [];
         return {
           ...p,
-          content,
+          // SOLO lo aprobado cae a la cuenta; lo rechazado ya no se guarda acá
+          // (queda como feedback en photo_proposal_feedback).
           approved: content.filter((c) => c.decision === 'approved'),
-          rejected: content.filter((c) => c.decision === 'rejected'),
           fb: fbBy[p.id] || null,
           reg: regBy[p.id] || null,
         };
@@ -137,7 +136,7 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
 
   // Conteos por estado (sobre las NO archivadas; archivadas es su propio filtro).
   const counts = useMemo(() => {
-    const c = { todas: 0, esperando: 0, porproducir: 0, recrear: 0, entregado: 0, archivadas: 0 };
+    const c = { todas: 0, esperando: 0, porproducir: 0, entregado: 0, archivadas: 0 };
     rows.forEach((p) => {
       if (p.status === 'archived') { c.archivadas += 1; return; }
       c.todas += 1;
@@ -243,7 +242,7 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
       )}
 
       <p className="max-w-2xl text-sm text-paper-mute">
-        Las propuestas agrupadas por creadora. Lo que aprueba cae a su cuenta como «por producir»; lo rechazado, a «recrear». Vos sólo marcás <b className="text-paper">entregado</b> cuando lo subiste.
+        Las propuestas agrupadas por creadora. <b className="text-paper">Solo lo que le gustó</b> cae a su cuenta como «por producir»; lo que no le gustó no se produce — queda como feedback. Vos sólo marcás <b className="text-paper">entregado</b> cuando lo subiste.
       </p>
 
       {/* Toolbar: buscador + filtros */}
@@ -258,7 +257,6 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
             ['todas', 'Todas', counts.todas],
             ['esperando', 'Esperando', counts.esperando],
             ['porproducir', 'Por producir', counts.porproducir],
-            ['recrear', 'Recrear', counts.recrear],
             ['entregado', 'Entregado', counts.entregado],
             ['archivadas', 'Archivadas', counts.archivadas],
           ].map(([id, label, n]) => (
@@ -286,7 +284,6 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
         {groups.map((g) => {
           const opened = isOpen(g.key);
           const approvedItems = g.props.reduce((n, p) => n + p.approved.length, 0);
-          const rejectedItems = g.props.reduce((n, p) => n + p.rejected.length, 0);
           const kindLabel = g.kind === 'active' ? 'activa' : g.kind === 'new' ? 'nueva' : g.kind === 'model' ? 'modelo' : '';
           return (
             <div key={g.key} className="overflow-hidden rounded-2xl border border-line bg-card">
@@ -300,7 +297,6 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
                   <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-paper-mute">
                     <span><b className="text-paper">{g.props.length}</b> {g.props.length === 1 ? 'propuesta' : 'propuestas'}</span>
                     {approvedItems > 0 && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-bold text-[#bfe9ff]">{approvedItems} por producir</span>}
-                    {rejectedItems > 0 && <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] font-bold text-[#ffc4cd]">{rejectedItems} recrear</span>}
                   </span>
                 </span>
                 <ChevronDown size={18} className={`ml-auto shrink-0 text-paper-dim transition-transform ${opened ? '' : '-rotate-90'}`} />
@@ -332,7 +328,6 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
         Estados:
         <span className="text-amber-300">● Esperando</span>
         <span className="text-brand">● Por producir</span>
-        <span className="text-rose-300">● Recrear</span>
         <span className="text-emerald-300">● Entregado</span>
       </div>
     </div>
@@ -347,9 +342,7 @@ function PropCard({ p, origin, busy, readOnly, copied, onCopy, mailHref, onDeliv
   const killed = !!p.link_killed || delivered;
   const photos = p.approved.filter((c) => c.kind === 'photo');
   const audios = p.approved.filter((c) => c.kind === 'audio');
-  const rejPhotos = p.rejected.filter((c) => c.kind === 'photo');
-  const rejAudios = p.rejected.filter((c) => c.kind === 'audio');
-  const hasContent = p.content.length > 0;
+  const hasContent = p.approved.length > 0;
   const creadora = (p.recipient_name || 'la creadora').split(/\s+/)[0];
 
   return (
@@ -379,20 +372,9 @@ function PropCard({ p, origin, busy, readOnly, copied, onCopy, mailHref, onDeliv
               <span className="absolute inset-x-0 bottom-0 bg-emerald-500/80 py-0.5 text-center text-[8px] font-bold text-white">→ cuenta</span>
             </span>
           ))}
-          {rejPhotos.map((c) => (
-            <span key={c.item_id} className="relative h-16 w-14 overflow-hidden rounded-lg border border-rose-500/40 bg-hair/10 opacity-70">
-              {c.src ? <img src={c.src} alt="" className="h-full w-full object-cover grayscale" /> : null}
-              <span className="absolute inset-x-0 bottom-0 bg-rose-500/80 py-0.5 text-center text-[8px] font-bold text-white">recrear</span>
-            </span>
-          ))}
           {audios.map((c) => (
             <span key={c.item_id} className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/[0.06] px-2.5 py-1.5 text-[12px] text-paper">
               <Play size={11} className="text-emerald-400" /> {c.label || 'Audio'} <span className="font-bold text-emerald-300">→ cuenta</span>
-            </span>
-          ))}
-          {rejAudios.map((c) => (
-            <span key={c.item_id} className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/[0.06] px-2.5 py-1.5 text-[12px] text-paper-mute">
-              <Play size={11} className="text-rose-400" /> {c.label || 'Audio'} · recrear
             </span>
           ))}
         </div>
@@ -409,7 +391,6 @@ function PropCard({ p, origin, busy, readOnly, copied, onCopy, mailHref, onDeliv
           ) : (
             <>
               <span className="text-emerald-300">✓ {p.approved.length} ítems a la cuenta de {creadora}</span>
-              {p.rejected.length > 0 && <span className="text-rose-300">· {p.rejected.length} a recrear</span>}
               {!readOnly && (
                 <button type="button" onClick={onDeliver} disabled={busy}
                   className="btn3d ml-auto inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-bold disabled:opacity-60">

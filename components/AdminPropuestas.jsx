@@ -211,7 +211,7 @@ export default function AdminPropuestas() {
         if (cancelled) return;
         const props = Array.isArray(propsRes.data) ? propsRes.data : [];
 
-        // Contenido que cayó a la cuenta (aprobado→por producir / rechazado→recrear), por propuesta.
+        // Contenido que cayó a la cuenta (SOLO lo aprobado → por producir), por propuesta.
         const contentMap = {};
         (Array.isArray(contentRes.data) ? contentRes.data : []).forEach((c) => {
           if (!c?.proposal_id) return;
