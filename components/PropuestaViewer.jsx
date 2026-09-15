@@ -688,8 +688,13 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
   // (cada uno { id, label, src }); la portada, el cierre, el feedback y el flujo
   // son idénticos — solo cambia lo que se muestra en cada pantalla.
   const isAudio = cfg.proposalType === 'audio';
-  const looks = isAudio ? (cfg.audios || []) : cfg.looks;
+  const wantsVisual = cfg.proposalType !== 'audio';                        // visual o ambas
+  const wantsAudio = cfg.proposalType === 'audio' || cfg.proposalType === 'both';
+  const photos = wantsVisual ? (cfg.looks || []) : [];
+  const audios = wantsAudio ? (cfg.audios || []) : [];
+  const looks = [...photos, ...audios];   // combinado: alimenta stats, envío y el observer
   const total = looks.length;
+  const audioIdx = photos.length;         // la sección de audios ocupa UNA pantalla, después de las fotos
 
   // El título y el intro por defecto (los del molde) se localizan al idioma de
   // quien mira; si el equipo los editó a mano, se respetan tal cual.
@@ -811,7 +816,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
       {!isAudio && (
       <div className="fixed left-3 top-1/2 z-40 hidden -translate-y-1/2 flex-col gap-2 sm:flex">
         <button onClick={() => scrollTo(-1)} className="grid h-6 w-6 place-items-center rounded-full bg-white/10 text-white/60 backdrop-blur hover:bg-white/20" title={t.backToCover}>◄</button>
-        {looks.map((_, i) => (
+        {photos.map((_, i) => (
           <button
             key={i}
             onClick={() => scrollTo(i)}
@@ -900,59 +905,8 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
       </section>
 
       {/* ═════════════ CONTENIDO ═════════════ */}
-      {isAudio ? (
-        /* AUDIO: varios en UNA página (lista compacta) sobre el azul de marca —
-           no uno por pantalla (desperdiciaba espacio, sobre todo en compu). */
-        <section
-          ref={(el) => (slidesRef.current[0] = el)}
-          data-idx={0}
-          className="relative flex w-full flex-col justify-center overflow-hidden px-5 py-20 sm:min-h-[100svh] sm:py-16"
-          style={{ background: 'radial-gradient(120% 60% at 82% 4%, rgba(0,177,246,0.30), transparent 55%), linear-gradient(165deg, #0a2434 0%, #08131d 60%, #04121a 100%)' }}
-        >
-          <Watermark code={cfg.code} uid="audios" />
-          <div className="relative z-10 mx-auto w-full max-w-xl">
-            <div className="mb-5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" /> {t.audios || 'Audios'} · {pad2(total)}
-            </div>
-            <div className="space-y-3">
-              {looks.map((l, i) => {
-                const st = fb(l.id);
-                return (
-                  <div key={l.id} className={`rounded-2xl border bg-ink/45 p-3.5 backdrop-blur-xl transition-colors ${st.status === 'liked' ? 'border-emerald-400/55' : st.status === 'rejected' ? 'border-rose-400/45' : 'border-white/12'}`}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[11px] font-bold text-white/40">{pad2(i + 1)}</span>
-                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{l.label || `${t.audio || 'Audio'} ${pad2(i + 1)}`}</span>
-                    </div>
-                    <div className="mt-3">
-                      <AudioPlayer src={l.src} />
-                    </div>
-                    <div className="mt-3 flex items-center gap-2">
-                      <button type="button" onClick={() => setLook(l.id, { status: st.status === 'liked' ? null : 'liked' })}
-                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${st.status === 'liked' ? 'border-emerald-400/70 bg-emerald-500/25 text-emerald-50 shadow-[0_0_18px_rgba(52,211,153,0.25)]' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
-                        <Heart size={14} fill={st.status === 'liked' ? 'currentColor' : 'none'} /> {t.like}
-                      </button>
-                      <button type="button" onClick={() => setLook(l.id, { status: st.status === 'rejected' ? null : 'rejected' })}
-                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${st.status === 'rejected' ? 'border-rose-400/70 bg-rose-500/25 text-rose-50 shadow-[0_0_18px_rgba(251,113,133,0.22)]' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
-                        <X size={14} /> {t.reject}
-                      </button>
-                      <button type="button" onClick={() => setOpenComment(l.id)}
-                        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-all ${st.note?.trim() ? 'border-brand/70 bg-brand/15 text-brand' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
-                        <MessageSquare size={14} />
-                      </button>
-                    </div>
-                    {st.note?.trim() && (
-                      <p className="mt-2.5 flex items-start gap-1.5 text-[12px] italic text-white/70">
-                        <MessageSquare size={12} className="mt-0.5 shrink-0" /><span>{st.note.trim()}</span>
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      ) : (
-        looks.map((l, i) => {
+      {/* FOTOS — una pantalla por look (visual o ambas). Va PRIMERO. */}
+      {wantsVisual && photos.map((l, i) => {
         const st = fb(l.id);
         const active = currentIdx === i;
         const fade = `transition-opacity duration-700 ease-out delay-500 ${active ? 'opacity-100' : 'opacity-0'}`;
@@ -985,7 +939,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
                   <div className="flex items-end justify-between gap-3">
                     <div className="text-sm text-white/90">{l.caption}</div>
                     <div className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
-                      {t.look} {pad2(i + 1)} · {pad2(total)}
+                      {t.look} {pad2(i + 1)} · {pad2(photos.length)}
                     </div>
                   </div>
                   {st.note?.trim() && (
@@ -1010,7 +964,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
                   <div className={`pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-4 pb-4 pt-14 ${fade}`}>
                     <div className="pr-20">
                       <div className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-white/55">
-                        {t.look} {pad2(i + 1)} · {pad2(total)}
+                        {t.look} {pad2(i + 1)} · {pad2(photos.length)}
                       </div>
                       <div className="mt-1 text-[15px] leading-snug text-white/95">{l.caption}</div>
                       {st.note?.trim() && (
@@ -1059,7 +1013,58 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
             </div>
           </section>
         );
-        })
+      })}
+
+      {/* AUDIOS — sección aparte (audio o ambas). Va DESPUÉS de las fotos. */}
+      {wantsAudio && (
+        <section
+          ref={(el) => (slidesRef.current[audioIdx] = el)}
+          data-idx={audioIdx}
+          className="relative flex w-full flex-col justify-center overflow-hidden px-5 py-20 sm:min-h-[100svh] sm:py-16"
+          style={{ background: 'radial-gradient(120% 60% at 82% 4%, rgba(0,177,246,0.30), transparent 55%), linear-gradient(165deg, #0a2434 0%, #08131d 60%, #04121a 100%)' }}
+        >
+          <Watermark code={cfg.code} uid="audios" />
+          <div className="relative z-10 mx-auto w-full max-w-xl">
+            <div className="mb-5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">
+              <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" /> {t.audios || 'Audios'} · {pad2(audios.length)}
+            </div>
+            <div className="space-y-3">
+              {audios.map((l, i) => {
+                const st = fb(l.id);
+                return (
+                  <div key={l.id} className={`rounded-2xl border bg-ink/45 p-3.5 backdrop-blur-xl transition-colors ${st.status === 'liked' ? 'border-emerald-400/55' : st.status === 'rejected' ? 'border-rose-400/45' : 'border-white/12'}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[11px] font-bold text-white/40">{pad2(i + 1)}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{l.label || `${t.audio || 'Audio'} ${pad2(i + 1)}`}</span>
+                    </div>
+                    <div className="mt-3">
+                      <AudioPlayer src={l.src} />
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button type="button" onClick={() => setLook(l.id, { status: st.status === 'liked' ? null : 'liked' })}
+                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${st.status === 'liked' ? 'border-emerald-400/70 bg-emerald-500/25 text-emerald-50 shadow-[0_0_18px_rgba(52,211,153,0.25)]' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
+                        <Heart size={14} fill={st.status === 'liked' ? 'currentColor' : 'none'} /> {t.like}
+                      </button>
+                      <button type="button" onClick={() => setLook(l.id, { status: st.status === 'rejected' ? null : 'rejected' })}
+                        className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${st.status === 'rejected' ? 'border-rose-400/70 bg-rose-500/25 text-rose-50 shadow-[0_0_18px_rgba(251,113,133,0.22)]' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
+                        <X size={14} /> {t.reject}
+                      </button>
+                      <button type="button" onClick={() => setOpenComment(l.id)}
+                        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-all ${st.note?.trim() ? 'border-brand/70 bg-brand/15 text-brand' : 'border-white/15 text-white/75 hover:border-white/35 hover:text-white'}`}>
+                        <MessageSquare size={14} />
+                      </button>
+                    </div>
+                    {st.note?.trim() && (
+                      <p className="mt-2.5 flex items-start gap-1.5 text-[12px] italic text-white/70">
+                        <MessageSquare size={12} className="mt-0.5 shrink-0" /><span>{st.note.trim()}</span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
       )}
 
       {/* ═════════════ CIERRE ═════════════ */}
