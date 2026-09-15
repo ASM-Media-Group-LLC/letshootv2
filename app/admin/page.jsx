@@ -19,6 +19,7 @@ import ReactionsDashboard from '@/components/ReactionsDashboard';
 import AdminPropuestas from '@/components/AdminPropuestas';
 import AdminPeticiones from '@/components/AdminPeticiones';
 import { CADENCIAS, deliveryState, cadenceLabel, nextDelivery } from '@/lib/cadence';
+import { COUNTRIES, flagEmoji } from '@/lib/countries';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -326,9 +327,18 @@ export default function AdminPage() {
     if (!f.full_name?.trim() || !f.email?.trim() || !f.password) { setNcErr('Completa nombre, correo y contraseña.'); return; }
     if (f.password.length < 8) { setNcErr('La contraseña debe tener al menos 8 caracteres.'); return; }
     setNcBusy(true);
+    const nombre = f.full_name.trim();
+    const apellido = (f.last_name || '').trim();
+    const fullName = [nombre, apellido].filter(Boolean).join(' ');
+    // @usuario AUTOMÁTICO a partir del nombre (sin acentos, único vs los existentes).
+    const base = fullName.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 22) || 'creadora';
+    const takenHandles = new Set(profiles.map((p) => (p.handle || '').toLowerCase()));
+    let handle = base, hi = 1;
+    while (takenHandles.has(handle)) handle = `${base}${hi++}`;
     // 1) Crear cuenta auth + perfil base vía la edge function (role creator).
     const { data, error } = await getSupabase().functions.invoke('create-user', {
-      body: { full_name: f.full_name.trim(), email: f.email.trim().toLowerCase(), password: f.password, role: 'creator' },
+      body: { full_name: fullName, email: f.email.trim().toLowerCase(), password: f.password, role: 'creator' },
     });
     let out = data;
     if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
@@ -345,15 +355,10 @@ export default function AdminPage() {
       return;
     }
 
-    // 2) Llenar el resto del perfil con lo que ya tenemos (admin puede update).
-    const patch = {};
-    if (f.stage_name?.trim())        patch.stage_name = f.stage_name.trim();
-    if (f.handle?.trim())            patch.handle = f.handle.trim().replace(/^@/, '');
-    if (f.phone?.trim())             patch.phone = f.phone.trim();
-    if (f.country?.trim())           patch.country = f.country.trim();
-    if (f.legal_first_name?.trim())  patch.legal_first_name = f.legal_first_name.trim();
-    if (f.legal_last_name?.trim())   patch.legal_last_name = f.legal_last_name.trim();
-    if (f.date_of_birth)             patch.date_of_birth = f.date_of_birth;
+    // 2) Completar el perfil: @usuario auto, nombre/apellido legal, país (ISO).
+    const patch = { handle, legal_first_name: nombre };
+    if (apellido)  patch.legal_last_name = apellido;
+    if (f.country) patch.country = f.country; // código ISO-2 (ej. 'MX') → bandera
     // Sin suscripción (por ahora): la creadora nace ACTIVA y usable de inmediato —
     // la ve ella, su agencia y el equipo. Nada de plan/pago/vencimiento.
     patch.payment_status = 'paid';
@@ -618,7 +623,7 @@ export default function AdminPage() {
           <div className="mt-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-paper-mute">Todas las creadoras registradas — clic en una para ver su perfil.</p>
-              <button onClick={() => { const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); setNewCreator({ full_name: '', stage_name: '', handle: '', email: '', password: '', phone: '', country: '', legal_first_name: '', legal_last_name: '', date_of_birth: '', plan: '', activate: false, ends_at: in30 }); setNcErr(''); }}
+              <button onClick={() => { setNewCreator({ full_name: '', last_name: '', email: '', password: '', country: '' }); setNcErr(''); }}
                 className="btn3d inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
                 <UserPlus size={14} /> Alta de creadora
               </button>
@@ -1278,14 +1283,19 @@ export default function AdminPage() {
               <button type="button" onClick={() => setNewCreator(null)} className="rounded-full p-1 text-paper-dim hover:text-paper"><X size={18} /></button>
             </div>
 
-            {/* Acceso — lo único obligatorio */}
+            {/* Acceso — nombre, apellido, correo y contraseña. Nada más. */}
             <div className="mt-5 space-y-3">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Acceso a la plataforma</div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
+                <div>
                   <label className="mb-1 block text-xs font-medium text-paper-dim">Nombre <span className="text-rose-300">*</span></label>
                   <input autoFocus value={newCreator.full_name} onChange={(e) => setNewCreator((v) => ({ ...v, full_name: e.target.value }))}
-                    placeholder="Ej. Valentina Ríos" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                    placeholder="Ej. Valentina" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Apellido</label>
+                  <input value={newCreator.last_name || ''} onChange={(e) => setNewCreator((v) => ({ ...v, last_name: e.target.value }))}
+                    placeholder="Ej. Ríos" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-paper-dim">Correo <span className="text-rose-300">*</span></label>
@@ -1300,54 +1310,22 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Perfil público */}
+            {/* País — selector con banderita (opcional). Su @usuario se genera solo. */}
             <div className="mt-5 space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Perfil público</div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-paper-dim">Nombre artístico</label>
-                  <input value={newCreator.stage_name} onChange={(e) => setNewCreator((v) => ({ ...v, stage_name: e.target.value }))}
-                    placeholder="Como se hace llamar" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-paper-dim">Usuario (@)</label>
-                  <input value={newCreator.handle} onChange={(e) => setNewCreator((v) => ({ ...v, handle: e.target.value }))}
-                    placeholder="valentina.rios" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-paper-dim">Teléfono</label>
-                  <input value={newCreator.phone} onChange={(e) => setNewCreator((v) => ({ ...v, phone: e.target.value }))}
-                    placeholder="+1 555…" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-paper-dim">País</label>
-                  <input value={newCreator.country} onChange={(e) => setNewCreator((v) => ({ ...v, country: e.target.value }))}
-                    placeholder="US, MX, CO…" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              <div>
+                <label className="mb-1 block text-xs font-medium text-paper-dim">País <span className="font-normal text-paper-dim/70">(opcional)</span></label>
+                <div className="relative">
+                  <select value={newCreator.country || ''} onChange={(e) => setNewCreator((v) => ({ ...v, country: e.target.value }))}
+                    className={`w-full appearance-none rounded-xl border border-line bg-ink-2 py-2.5 pl-3 pr-9 text-sm outline-none focus:border-brand/60 ${newCreator.country ? 'text-paper' : 'text-paper-dim'}`}>
+                    <option value="" className="bg-ink text-paper-dim">Elegí el país…</option>
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code} className="bg-ink text-paper">{flagEmoji(c.code)}  {c.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-paper-dim" />
                 </div>
               </div>
-            </div>
-
-            {/* Identidad (opcional en este paso) */}
-            <div className="mt-5 space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Identidad</div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-paper-dim">Nombre legal</label>
-                  <input value={newCreator.legal_first_name} onChange={(e) => setNewCreator((v) => ({ ...v, legal_first_name: e.target.value }))}
-                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-paper-dim">Apellido legal</label>
-                  <input value={newCreator.legal_last_name} onChange={(e) => setNewCreator((v) => ({ ...v, legal_last_name: e.target.value }))}
-                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-paper-dim">Nacimiento</label>
-                  <input type="date" value={newCreator.date_of_birth} onChange={(e) => setNewCreator((v) => ({ ...v, date_of_birth: e.target.value }))}
-                    className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60" />
-                </div>
-              </div>
-              <p className="text-[11px] text-paper-dim">La foto del ID se sube después desde su perfil (pestaña Identidad).</p>
+              <p className="text-[11px] text-paper-dim">Su usuario <b className="text-paper-mute">@</b> se crea solo con su nombre. Fecha de nacimiento y foto del ID los completa ella al entrar.</p>
             </div>
 
             {/* Sin suscripción (por ahora): la creadora nace ACTIVA y lista para

@@ -59,11 +59,12 @@ function fmtFecha(iso) {
 
 // Inicio del día de HOY (medianoche local) en ms — para el "movimiento del día".
 function startOfToday() { const x = new Date(); x.setHours(0, 0, 0, 0); return x.getTime(); }
-// Hora HH:MM (24h) de un ISO, para el feed de actividad.
+// Hora de un ISO en 12h con AM/PM y en horario de COLOMBIA (Bogotá), para el
+// feed de actividad — así el equipo ve la misma hora sin importar su zona.
 function hhmm(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('es-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Bogota' });
 }
 
 // Resumen de respuestas del receptor a partir del feedback.
