@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell } from 'lucide-react';
+import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell, AlertTriangle } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -301,6 +301,21 @@ export default function AdminPropuestas() {
     return [...byEmp.values()].sort((a, b) => b.total - a.total);
   }, [all]);
 
+  // Backlog: lo que se está ATRASANDO ahorita = pendientes de aprobación +
+  // vencidas sin respuesta. Externas (no internas), sin borradores/archivadas.
+  // Coincide con el badge de la pestaña (que se calcula en /admin).
+  const backlog = useMemo(() => {
+    let sinAprobar = 0, atrasadas = 0;
+    all.forEach((p) => {
+      if (isArch(p) || p._internal) return;
+      const stt = stateOf(p);
+      if (stt === 'borrador') return;
+      if (p.approval?.required && p.approval?.status === 'pending') sinAprobar += 1;
+      else if (stt === 'vencida' && feedbackSummary(p._feedback).total === 0) atrasadas += 1;
+    });
+    return { sinAprobar, atrasadas, total: sinAprobar + atrasadas };
+  }, [all]);
+
   // Movimiento del día SELECCIONADO vs el día anterior (pulso del equipo).
   const dayStats = useMemo(() => {
     const t0 = selDay;
@@ -467,6 +482,23 @@ export default function AdminPropuestas() {
           )}
         </div>
       </div>
+
+      {/* BACKLOG — lo que se está atrasando ahorita (mismo número que el badge
+          de la pestaña). Clic → salta al Historial para perseguirlas. */}
+      {backlog.total > 0 && (
+        <button onClick={() => setView('historial')}
+          className="mt-4 flex w-full flex-col gap-1.5 rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-left transition-colors hover:border-amber-500/50 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <span className="flex items-center gap-2.5">
+            <AlertTriangle size={16} className="shrink-0 text-amber-300" />
+            <span className="text-sm font-semibold text-paper">Se está atrasando · {backlog.total}</span>
+          </span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-[26px] text-[12px] text-paper-mute sm:pl-0">
+            {backlog.sinAprobar > 0 && <span><b className="text-paper">{backlog.sinAprobar}</b> sin aprobar</span>}
+            {backlog.sinAprobar > 0 && backlog.atrasadas > 0 && <span className="text-paper-dim">·</span>}
+            {backlog.atrasadas > 0 && <span><b className="text-paper">{backlog.atrasadas}</b> vencidas sin responder</span>}
+          </span>
+        </button>
+      )}
 
       {/* MOVIMIENTO del día seleccionado (vs el día anterior). */}
       <div className="mt-4">

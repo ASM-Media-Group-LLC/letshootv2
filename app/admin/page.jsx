@@ -18,7 +18,7 @@ import { PACKS } from '@/lib/packs';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import AdminPropuestas from '@/components/AdminPropuestas';
 import AdminPeticiones from '@/components/AdminPeticiones';
-import { CADENCIAS, deliveryState, cadenceLabel } from '@/lib/cadence';
+import { CADENCIAS, deliveryState, cadenceLabel, nextDelivery } from '@/lib/cadence';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -90,6 +90,7 @@ export default function AdminPage() {
   const [tab, setTab] = useState('registros');
   const [navOpen, setNavOpen] = useState(true); // sidebar abierto (labels) o colapsado (solo íconos)
   const [mobNav, setMobNav] = useState(false);  // móvil: menú de secciones desplegable abierto
+  const [propCounts, setPropCounts] = useState({ backlog: 0 }); // backlog de propuestas (lo reporta AdminPropuestas)
   // Permite abrir /admin directo en una pestaña por URL (?tab=propuestas, etc.).
   useEffect(() => {
     try {
@@ -196,6 +197,26 @@ export default function AdminPage() {
     const { data: leads } = await supabase.from('agency_leads').select('*').eq('status', 'new').order('created_at', { ascending: false });
     setAgencyLeads(leads || []);
     setMetrics({ requests: reqs || [], lora: loraCount || 0 });
+    // Backlog de propuestas (badge de la pestaña, siempre fresco): lo que se está
+    // atrasando = pendientes de aprobación + vencidas sin respuesta. Externas (no
+    // internas), no borradores.
+    try {
+      const [{ data: propsRows }, { data: fbRows }] = await Promise.all([
+        supabase.from('photo_proposals').select('id, status, approval_required, approval_status, recipient_kind, expires_at'),
+        supabase.from('photo_proposal_feedback').select('proposal_id'),
+      ]);
+      const fbset = new Set((fbRows || []).map((f) => f.proposal_id));
+      const now = Date.now();
+      let backlog = 0;
+      for (const p of (propsRows || [])) {
+        if (p.status === 'draft' || p.recipient_kind === 'internal') continue;
+        const sinAprobar = p.approval_required && (p.approval_status || 'pending') === 'pending';
+        const overdue = p.expires_at && new Date(p.expires_at).getTime() < now;
+        const sinResponder = !fbset.has(p.id);
+        if (sinAprobar || (overdue && sinResponder)) backlog += 1;
+      }
+      setPropCounts({ backlog });
+    } catch { /* si falla la query, dejamos el badge en 0 sin romper el panel */ }
     await loadKyc();
     setLoading(false);
   }, [loadKyc]);
@@ -488,20 +509,35 @@ export default function AdminPage() {
 
   const creators = profiles.filter((p) => p.role === 'creator');
 
+  // Entregas pendientes AHORITA (cola de Peticiones): por cada creadora con
+  // entregable, su próxima entrega. `due` = toca ya (atrasada o primera vez);
+  // `overdue` = ya venció. Dos números en la pestaña: atrasadas · pendientes.
+  let delivOverdue = 0, delivPending = 0;
+  for (const c of creators) {
+    if (!c.delivery_cadence) continue;
+    const nd = nextDelivery(c.delivery_cadence, lastDelivByCreator[c.id]);
+    if (nd?.due) { delivPending += 1; if (nd.overdue) delivOverdue += 1; }
+  }
+
   // Secciones del panel — una sola fuente para el sidebar (desktop) y el
   // selector desplegable (móvil). Propuestas primero (lo más usado).
+  // `badges`: pills con contador (tono bad=rojo urgente, warn=ámbar, brand=azul).
   const NAV_TABS = [
-    { id: 'propuestas', label: 'Propuestas', icon: Send },
-    { id: 'peticiones', label: 'Peticiones', icon: Inbox },
-    { id: 'registros', label: 'Creadoras', icon: ClipboardList },
-    { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
-    { id: 'equipo', label: 'Equipo interno', icon: Users },
-    { id: 'agencias', label: 'Agencias', icon: Building2, badge: agencyLeads.length },
-    { id: 'reacciones', label: 'Reacciones', icon: Heart },
-    { id: 'metricas', label: 'Métricas', icon: BarChart3 },
-    { id: 'actividad', label: 'Actividad', icon: Activity },
+    { id: 'propuestas', label: 'Propuestas', icon: Send, badges: propCounts.backlog ? [{ n: propCounts.backlog, tone: 'warn' }] : [] },
+    { id: 'peticiones', label: 'Peticiones', icon: Inbox, badges: [
+      ...(delivOverdue ? [{ n: delivOverdue, tone: 'bad' }] : []),
+      ...(delivPending ? [{ n: delivPending, tone: 'brand' }] : []),
+    ] },
+    { id: 'registros', label: 'Creadoras', icon: ClipboardList, badges: [] },
+    { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badges: kyc.length ? [{ n: kyc.length, tone: 'brand' }] : [] },
+    { id: 'equipo', label: 'Equipo interno', icon: Users, badges: [] },
+    { id: 'agencias', label: 'Agencias', icon: Building2, badges: agencyLeads.length ? [{ n: agencyLeads.length, tone: 'brand' }] : [] },
+    { id: 'reacciones', label: 'Reacciones', icon: Heart, badges: [] },
+    { id: 'metricas', label: 'Métricas', icon: BarChart3, badges: [] },
+    { id: 'actividad', label: 'Actividad', icon: Activity, badges: [] },
   ];
   const activeTab = NAV_TABS.find((t) => t.id === tab) || NAV_TABS[0];
+  const badgeCls = { bad: 'bg-rose-500 text-white', warn: 'bg-amber-400 text-[#04222f]', brand: 'bg-brand text-on-accent' };
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
@@ -527,9 +563,9 @@ export default function AdminPage() {
               <span className="flex min-w-0 items-center gap-2.5 font-semibold text-paper">
                 <activeTab.icon size={18} className="shrink-0 text-brand" /> <span className="truncate">{activeTab.label}</span>
               </span>
-              <span className="flex shrink-0 items-center gap-2">
-                {activeTab.badge ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-on-accent">{activeTab.badge}</span> : null}
-                <ChevronDown size={18} className={`text-paper-dim transition-transform ${mobNav ? 'rotate-180' : ''}`} />
+              <span className="flex shrink-0 items-center gap-1.5">
+                {activeTab.badges.map((b, i) => <span key={i} className={`grid h-5 min-w-5 place-items-center rounded-full px-1 text-[11px] font-bold ${badgeCls[b.tone]}`}>{b.n}</span>)}
+                <ChevronDown size={18} className={`ml-0.5 text-paper-dim transition-transform ${mobNav ? 'rotate-180' : ''}`} />
               </span>
             </button>
             {mobNav && (
@@ -542,7 +578,8 @@ export default function AdminPage() {
                         tab === tb.id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:bg-hair/[0.06] hover:text-paper'}`}>
                       <tb.icon size={17} className="shrink-0" />
                       <span className="flex-1">{tb.label}</span>
-                      {tb.badge ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-on-accent">{tb.badge}</span>
+                      {tb.badges.length
+                        ? <span className="flex items-center gap-1.5">{tb.badges.map((b, i) => <span key={i} className={`grid h-5 min-w-5 place-items-center rounded-full px-1 text-[11px] font-bold ${badgeCls[b.tone]}`}>{b.n}</span>)}</span>
                         : tab === tb.id ? <Check size={16} /> : null}
                     </button>
                   ))}
@@ -564,10 +601,10 @@ export default function AdminPage() {
                   tab === tb.id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:bg-hair/[0.05] hover:text-paper'}`}>
                 <span className="relative shrink-0">
                   <tb.icon size={16} />
-                  {tb.badge && !navOpen ? <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand" /> : null}
+                  {tb.badges.length && !navOpen ? <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${tb.badges[0].tone === 'bad' ? 'bg-rose-400' : tb.badges[0].tone === 'warn' ? 'bg-amber-400' : 'bg-brand'}`} /> : null}
                 </span>
                 <span className={navOpen ? '' : 'hidden'}>{tb.label}</span>
-                {tb.badge && navOpen ? <span className="ml-auto grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent">{tb.badge}</span> : null}
+                {tb.badges.length && navOpen ? <span className="ml-auto flex items-center gap-1">{tb.badges.map((b, i) => <span key={i} className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold ${badgeCls[b.tone]}`}>{b.n}</span>)}</span> : null}
               </button>
             ))}
           </nav>
