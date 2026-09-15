@@ -537,7 +537,9 @@ export default function AdminPage() {
     { id: 'actividad', label: 'Actividad', icon: Activity, badges: [] },
   ];
   const activeTab = NAV_TABS.find((t) => t.id === tab) || NAV_TABS[0];
-  const badgeCls = { bad: 'bg-rose-500 text-white', warn: 'bg-amber-400 text-[#04222f]', brand: 'bg-brand text-on-accent' };
+  // Rojo MATE (no neón — el rose-500 sólido lastima la vista): tinte suave con
+  // aro fino, el mismo rojo apagado que usan los avisos de la app. Azul se queda.
+  const badgeCls = { bad: 'bg-rose-500/20 text-rose-200 ring-1 ring-inset ring-rose-500/40', warn: 'bg-amber-400 text-[#04222f]', brand: 'bg-brand text-on-accent' };
 
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
