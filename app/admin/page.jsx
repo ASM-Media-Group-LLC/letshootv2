@@ -333,38 +333,17 @@ export default function AdminPage() {
     if (f.legal_first_name?.trim())  patch.legal_first_name = f.legal_first_name.trim();
     if (f.legal_last_name?.trim())   patch.legal_last_name = f.legal_last_name.trim();
     if (f.date_of_birth)             patch.date_of_birth = f.date_of_birth;
-    if (f.plan)                      patch.plan = f.plan;
-    if (f.billing_note?.trim())      patch.billing_note = f.billing_note.trim();
-    const in30 = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
-    if (f.comp) {
-      // Cortesía: nace activa, sin cobro, gratis hasta la fecha elegida (dinámica).
-      patch.comp_until = f.comp_until || in30;
-      patch.payment_status = 'paid';
-      patch.onboarding_status = 'active';
-      if (!patch.plan) patch.plan = 'core';
-      patch.subscription_ends_at = f.comp_until || in30;
-      if (!patch.billing_note) patch.billing_note = 'Cortesía (gratis)';
-    } else if (f.activate) {
-      patch.payment_status = 'paid';
-      patch.onboarding_status = 'active';
-      if (!patch.plan) patch.plan = 'core';
-      patch.subscription_ends_at = f.ends_at || in30;
-    } else {
-      // Armada por el admin pero aún sin pagar: la deja lista (no repite datos),
-      // pendiente de pago. Sigue paywalled hasta que actives la suscripción.
-      patch.onboarding_status = 'authorized';
-    }
+    // Sin suscripción (por ahora): la creadora nace ACTIVA y usable de inmediato —
+    // la ve ella, su agencia y el equipo. Nada de plan/pago/vencimiento.
+    patch.payment_status = 'paid';
+    patch.onboarding_status = 'active';
     if (Object.keys(patch).length) {
       const { error: upErr } = await getSupabase().from('profiles').update(patch).eq('id', out.id);
       if (upErr) { setNcBusy(false); setNcErr('Cuenta creada, pero fallaron los datos extra: ' + upErr.message); await load(); return; }
     }
     setNcBusy(false);
     setNewCreator(null);
-    flash(f.comp
-      ? 'Creadora dada de alta en CORTESÍA (gratis) — queda registrada'
-      : f.activate
-      ? 'Creadora dada de alta y ACTIVA — lista para trabajar'
-      : 'Creadora creada (inactiva) — actívala en Suscripción cuando corresponda para que la vea ella y su agencia');
+    flash('Creadora dada de alta y ACTIVA — lista para trabajar');
     await load();
   }
 
@@ -1255,7 +1234,7 @@ export default function AdminPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="flex items-center gap-2 font-display text-lg font-semibold text-paper"><UserPlus size={18} className="text-brand" /> Alta de creadora</h3>
-                <p className="mt-1 text-sm text-paper-mute">Deja la cuenta lista con lo que ya sepas: acceso, contacto, identidad y suscripción. Todo es opcional menos el acceso.</p>
+                <p className="mt-1 text-sm text-paper-mute">Deja la cuenta lista con lo que ya sepas: acceso, contacto e identidad. Solo el acceso es obligatorio; entra activa al crearla.</p>
               </div>
               <button type="button" onClick={() => setNewCreator(null)} className="rounded-full p-1 text-paper-dim hover:text-paper"><X size={18} /></button>
             </div>
@@ -1332,64 +1311,14 @@ export default function AdminPage() {
               <p className="text-[11px] text-paper-dim">La foto del ID se sube después desde su perfil (pestaña Identidad).</p>
             </div>
 
-            {/* Suscripción — conectada al pricing */}
-            <div className="mt-5 space-y-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Suscripción</div>
-              <div className="grid grid-cols-3 gap-2">
-                {PACKS.map((p) => {
-                  const on = newCreator.plan === p.key;
-                  return (
-                    <button key={p.key} type="button" onClick={() => setNewCreator((v) => ({ ...v, plan: on ? '' : p.key }))}
-                      className={`rounded-xl border p-3 text-left transition-colors ${on ? 'border-brand bg-brand/10' : 'border-line hover:border-brand/40'}`}>
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{p.name}</span>
-                        {on && <Check size={13} className="text-brand" />}
-                      </div>
-                      <div className="mt-1 text-[10px] text-paper-dim">{p.photos} fotos · {p.videos} vid al mes</div>
-                    </button>
-                  );
-                })}
-              </div>
-              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-ink-2 p-3">
-                <input type="checkbox" checked={!!newCreator.activate} onChange={(e) => setNewCreator((v) => ({ ...v, activate: e.target.checked }))}
-                  className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-brand focus:ring-brand" />
-                <span className="min-w-0 text-sm text-paper">
-                  Activar suscripción ya
-                  <span className="mt-0.5 block text-[11px] text-paper-dim">La cuenta nace «Activa» y la ve la modelo, la agencia y los uploaders. Si no, queda inactiva hasta que la actives.</span>
-                </span>
-              </label>
-              {newCreator.activate && !newCreator.comp && (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-                  <label className="mb-1 block text-xs font-medium text-emerald-200">Vence el</label>
-                  <input type="date" value={newCreator.ends_at || ''} onChange={(e) => setNewCreator((v) => ({ ...v, ends_at: e.target.value }))}
-                    className="w-full rounded-lg border border-emerald-500/40 bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-emerald-400" />
-                  <p className="mt-1 text-[11px] text-emerald-200/80">El admin te avisa (banner) cuando esté por vencer o vencida. Al vencer la marcas inactiva a mano y deja de verla la modelo y la agencia.</p>
-                </div>
-              )}
-
-              {/* Cortesía dinámica — regalar acceso gratis hasta una fecha que tú eliges. */}
-              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.05] p-3">
-                <input type="checkbox" checked={!!newCreator.comp} onChange={(e) => setNewCreator((v) => ({ ...v, comp: e.target.checked, activate: e.target.checked ? true : v.activate }))}
-                  className="mt-0.5 h-4 w-4 rounded border-line bg-ink-2 text-amber-400 focus:ring-amber-400" />
-                <span className="min-w-0 text-sm text-paper">
-                  Cortesía <span className="text-paper-dim">(gratis)</span>
-                  <span className="mt-0.5 block text-[11px] text-paper-dim">Nace activa como cortesía. Elige hasta cuándo; queda registrado que fue cortesía.</span>
-                </span>
-              </label>
-              {newCreator.comp && (
-                <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.05] p-3">
-                  <label className="mb-1 block text-xs font-medium text-amber-200">Gratis hasta</label>
-                  <input type="date" value={newCreator.comp_until || ''} onChange={(e) => setNewCreator((v) => ({ ...v, comp_until: e.target.value }))}
-                    className="w-full rounded-lg border border-amber-400/40 bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-amber-300" />
-                </div>
-              )}
-
-              {/* Nota de facturación — qué se le dio / por qué (visible en su perfil). */}
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-paper-dim">Nota (opcional) — ej. «1 mes gratis de cortesía»</label>
-                <input value={newCreator.billing_note || ''} onChange={(e) => setNewCreator((v) => ({ ...v, billing_note: e.target.value }))} placeholder="Qué se le dio / por qué"
-                  className="w-full rounded-lg border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-              </div>
+            {/* Sin suscripción (por ahora): la creadora nace ACTIVA y lista para
+                usarse — nada de planes/pagos/vencimiento. Entra fácil y rápido. */}
+            <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.05] p-3.5">
+              <Check size={16} className="mt-0.5 shrink-0 text-emerald-300" />
+              <span className="min-w-0 text-sm text-paper">
+                Entra activa y lista de una
+                <span className="mt-0.5 block text-[11px] text-paper-dim">Al crearla queda lista para usarse: la ve ella, su agencia y el equipo. Sin planes ni pagos.</span>
+              </span>
             </div>
 
             {ncErr && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{ncErr}</p>}
