@@ -55,6 +55,16 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
     return { due, okCount, total: withCad.length };
   }, [creators, lastDeliv]);
 
+  // Creadoras que YA tienen trabajo en curso (pedido pendiente o propuesta
+  // borrador ya creada) → no invitar a pedir doble.
+  const inProgress = useMemo(() => {
+    const s = new Set();
+    rows.forEach((r) => {
+      if ((r.status === 'pending' || r.status === 'approved') && r.creator_user_id) s.add(r.creator_user_id);
+    });
+    return s;
+  }, [rows]);
+
   const pedirPara = (c) => {
     if (readOnly) return;
     setPreset({ mode: 'existing', creatorId: c.id });
@@ -167,11 +177,15 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
                     <span className="block truncate text-[11px] text-paper-dim">{c.handle ? `@${c.handle}` : c.email} · {cadenceLabel(c.delivery_cadence)}</span>
                   </span>
                   <StatusDot tone={ds.tone}>{ds.label}</StatusDot>
-                  {!readOnly && (
+                  {inProgress.has(c.id) ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12px] font-semibold text-paper-mute">
+                      <Clock size={12} /> Pedido en curso
+                    </span>
+                  ) : (!readOnly && (
                     <button onClick={() => pedirPara(c)} className="btn3d inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold">
                       <Plus size={13} /> Pedir
                     </button>
-                  )}
+                  ))}
                 </div>
               ))}
             </div>

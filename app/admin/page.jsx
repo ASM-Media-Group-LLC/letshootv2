@@ -1401,6 +1401,7 @@ export default function AdminPage() {
           flash={flash}
           onSaved={load}
           onDeleted={() => { setSelCreator(null); load(); }}
+          canSetCadence={me?.role === 'admin' || isOwnerAccount(me)}
         />
       )}
 
@@ -2349,7 +2350,7 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
   );
 }
 
-function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, onDeleted }) {
+function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, onDeleted, canSetCadence = false }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
   const [loraCount, setLoraCount] = useState(null);
   const [lastDelivery, setLastDelivery] = useState(undefined); // ISO | null | undefined(cargando)
@@ -2574,16 +2575,26 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
               })()}
             </div>
             <p className="mb-3 text-[11px] text-paper-dim">Cada cuánto se le debe entregar contenido. Marca el atraso según la última entrega.</p>
-            <div className="flex flex-wrap gap-1.5">
-              {CADENCIAS.map((c) => (
-                <button key={c.id} disabled={saving}
-                  onClick={() => patch({ delivery_cadence: creator.delivery_cadence === c.id ? null : c.id }, creator.delivery_cadence === c.id ? 'Cadencia quitada' : `Cadencia: ${c.label}`)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                    creator.delivery_cadence === c.id ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
-                  {c.label}
-                </button>
-              ))}
-            </div>
+            {canSetCadence ? (
+              <div className="flex flex-wrap gap-1.5">
+                {CADENCIAS.map((c) => (
+                  <button key={c.id} disabled={saving}
+                    onClick={() => patch({ delivery_cadence: creator.delivery_cadence === c.id ? null : c.id }, creator.delivery_cadence === c.id ? 'Cadencia quitada' : `Cadencia: ${c.label}`)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                      creator.delivery_cadence === c.id ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  creator.delivery_cadence ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-dim'}`}>
+                  {CADENCIAS.find((c) => c.id === creator.delivery_cadence)?.label || 'Sin definir'}
+                </span>
+                <span className="text-[11px] text-paper-dim">Solo el admin o el dueño la cambia.</span>
+              </div>
+            )}
             <p className="mt-2.5 text-[11px] text-paper-dim">
               Última entrega: {lastDelivery === undefined ? '…' : lastDelivery ? new Date(lastDelivery).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'sin entregas registradas'}
             </p>
