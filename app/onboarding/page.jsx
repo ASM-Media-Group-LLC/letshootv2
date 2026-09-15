@@ -26,7 +26,7 @@ export default function OnboardingPage() {
   const { t, lang } = usePortal();
   const router = useRouter();
   const [me, setMe] = useState(undefined);
-  const [tab, setTab] = useState('pago');
+  const [tab, setTab] = useState('datos');
   const [loraCount, setLoraCount] = useState(0);
   const [proposal, setProposal] = useState(null); // { id, intro } si está publicada
   const [proposalSlides, setProposalSlides] = useState([]);
@@ -48,9 +48,9 @@ export default function OnboardingPage() {
       setProposal(pr);
       const { data: sl } = await supabase.from('proposal_slides').select('*').eq('proposal_id', pr.id).order('position');
       setProposalSlides(sl || []);
-      // Autoabrir el deck si la CC aún NO ha pagado y no lo cerró antes en esta sesión.
+      // Autoabrir el deck de su propuesta si no lo cerró antes en esta sesión.
       const dismissed = typeof window !== 'undefined' && window.sessionStorage.getItem(`proposal-dismissed-${pr.id}`);
-      if (up.profile?.payment_status !== 'paid' && !dismissed) setShowProposal(true);
+      if (!dismissed) setShowProposal(true);
     } else {
       setProposal(null); setProposalSlides([]);
     }
@@ -67,22 +67,16 @@ export default function OnboardingPage() {
 
   const datosDone = !!(p.legal_first_name && p.legal_last_name && p.date_of_birth && p.country);
   const idApproved = ['id_approved', 'active', 'paid', 'authorized'].includes(st);
-  const paid = p.payment_status === 'paid';
-  const canActivate = idApproved && paid;
 
   // Datos + Identidad are ONE step now (kept every field — just merged).
   const esL = lang === 'es';
+  // Sin suscripción: la cuenta es gratis (plan Pro hasta 2027) y el equipo la
+  // activa a mano. El onboarding es solo: datos+identidad y fotos del clon.
   const TABS = [
-    { key: 'pago', label: h.tabs.pago, desc: h.tabDesc.pago, icon: CreditCard, done: paid },
-    { key: 'clon', label: h.tabs.clon, desc: h.tabDesc.clon, icon: Sparkles, done: loraCount > 0 },
     { key: 'datos', label: esL ? 'Datos e identidad' : 'Data & identity', desc: esL ? 'Tu información y verificación' : 'Your info & verification', icon: IdCard, done: datosDone && idApproved },
+    { key: 'clon', label: h.tabs.clon, desc: h.tabDesc.clon, icon: Sparkles, done: loraCount > 0 },
   ];
   const doneCount = TABS.filter((tb) => tb.done).length;
-
-  async function activate() {
-    await getSupabase().from('profiles').update({ onboarding_status: 'active' }).eq('id', me.user.id);
-    router.replace('/panel');
-  }
 
   const done = () => refresh();
 
@@ -173,21 +167,19 @@ export default function OnboardingPage() {
           </button>
         )}
 
-        {canActivate && (
-          <div className="mt-6 flex flex-col items-start gap-3 rounded-xl border border-brand/40 bg-brand/[0.05] p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="font-display text-base font-semibold text-paper">{h.activateTitle}</div>
-              <p className="mt-1 text-sm text-paper-mute">{h.activateDesc}</p>
-            </div>
-            <button onClick={activate}
-              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-on-accent transition-colors hover:bg-brand/90">
-              {h.activateBtn} <ArrowRight size={16} />
-            </button>
+        {/* Cuenta gratis (sin suscripción): plan Pro incluido hasta 2027. */}
+        <div className="mt-6 flex items-start gap-3 rounded-2xl border border-brand/30 bg-brand/[0.05] p-4">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand"><Sparkles size={18} /></span>
+          <div className="min-w-0">
+            <p className="font-display text-sm font-semibold text-paper">{esL ? 'Tu cuenta es gratis — plan Pro hasta 2027' : 'Your account is free — Pro plan until 2027'}</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-paper-mute">{esL
+              ? 'Sin pagos ni suscripción. Completa tus datos, sube tus fotos y acepta los permisos; el equipo revisa tu identidad y activa tu cuenta.'
+              : 'No payments, no subscription. Complete your details, upload your photos and accept the permissions; the team reviews your identity and activates your account.'}</p>
           </div>
-        )}
+        </div>
 
         {/* Premium stepper tabs — same card language as the plan cards */}
-        <div className="mt-7 grid grid-cols-3 gap-3">
+        <div className="mt-7 grid grid-cols-2 gap-3">
           {TABS.map((tb) => {
             const active = tab === tb.key;
             return (
@@ -224,7 +216,6 @@ export default function OnboardingPage() {
                 rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} pending={st === 'id_pending'} />
             </>
           )}
-          {tab === 'pago' && <PayStep me={me} t={t} lang={lang} paid={paid} paymentStatus={p.payment_status} subEndsAt={p.subscription_ends_at} plan={p.plan} onDone={done} onRefresh={refresh} />}
           {tab === 'clon' && <CloneSetup userId={me.user.id} embedded />}
         </div>
       </main>
@@ -492,8 +483,9 @@ function Field({ label, type = 'text', value, onChange, placeholder, required, m
 
 /* ── Identidad + consentimiento ─────────────────────────────────────────── */
 const KYC_SLOTS = ['id_front', 'id_back', 'selfie_id'];
-// Granular, unbundled consents (biometric + AI-likeness must be separate & specific).
-const CONSENT_KEYS = ['age', 'ownlikeness', 'biometric', 'likeness', 'aicontent', 'billing', 'terms'];
+// Consentimientos. El de clon (`likeness`) cubre IMAGEN + VOZ en una sola casilla.
+// Se quitó `billing` (ya no hay suscripción — la cuenta es gratis).
+const CONSENT_KEYS = ['age', 'ownlikeness', 'biometric', 'likeness', 'aicontent', 'terms'];
 const CONSENT_INIT = Object.fromEntries(CONSENT_KEYS.map((k) => [k, false]));
 
 function IdentityStep({ me, onDone, t, lang, rejected, reason, approved, pending }) {
@@ -544,7 +536,7 @@ function IdentityStep({ me, onDone, t, lang, rejected, reason, approved, pending
       }
       const { error: pErr } = await supabase.from('profiles').update({
         onboarding_status: 'id_pending', id_rejection_reason: null,
-        consent_clone: true, consent_billing: true, consent_at: new Date().toISOString(),
+        consent_clone: true, consent_voice: true, consent_at: new Date().toISOString(),
       }).eq('id', me.user.id);
       if (pErr) throw pErr;
       setSubmitted(true); // pop-up de gracias; onDone() se llama al cerrarlo
