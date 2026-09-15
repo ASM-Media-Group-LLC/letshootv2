@@ -18,7 +18,7 @@ import { PACKS } from '@/lib/packs';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import AdminPropuestas from '@/components/AdminPropuestas';
 import AdminPeticiones from '@/components/AdminPeticiones';
-import { CADENCIAS, deliveryState } from '@/lib/cadence';
+import { CADENCIAS, deliveryState, cadenceLabel } from '@/lib/cadence';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -125,7 +125,8 @@ export default function AdminPage() {
   const [regFilter, setRegFilter] = useState('all'); // abierto por defecto | null = cerrado | id_pending | proceso | activas
   const [regQuery, setRegQuery] = useState('');       // buscador de registros
   const [regSort, setRegSort] = useState('recent');   // recent | oldest | photos | plan — cómo ordenar el registro
-  const [regSub, setRegSub] = useState('active');     // por defecto: solo suscripción activa | all | inactive | id_pending | falta_pago
+  const [regSub, setRegSub] = useState('all');        // suscripción (los tiles de arriba); default 'all' (no se usa como filtro principal)
+  const [regDeliv, setRegDeliv] = useState('all');    // FILTRO principal: por ENTREGABLE (cadencia) — all | daily | thrice_week | weekly | biweekly | monthly | none
   const [newCreator, setNewCreator] = useState(null); // null | {full_name, email, password} — modal de alta manual
   const [ncBusy, setNcBusy] = useState(false);
   const [ncErr, setNcErr] = useState('');
@@ -608,8 +609,10 @@ export default function AdminPage() {
                 if (regSub === 'overdue') { const d = daysUntil(p); return isPaying(p) && d !== null && d < 0; }
                 return true;
               };
+              const delivOk = (p) => regDeliv === 'all' ? true : regDeliv === 'none' ? !p.delivery_cadence : p.delivery_cadence === regDeliv;
               const shown = cr.filter((p) => inCat(p, regFilter))
                 .filter(subOk)
+                .filter(delivOk)
                 .filter((p) => !q || `${p.full_name || ''} ${p.handle || ''} ${p.email || ''} ${p.stage_name || ''}`.toLowerCase().includes(q))
                 .sort(sorters[regSort] || sorters.recent);
               return (
@@ -682,32 +685,27 @@ export default function AdminPage() {
 
                       {/* Filtrar + Ordenar — dropdowns compactos, no botones abiertos. */}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Dropdown icon={SlidersHorizontal} label="Filtrar" value={regSub} onChange={(v) => { setRegSub(v); setRegFilter('all'); }}
+                        <Dropdown icon={SlidersHorizontal} label="Entregable" value={regDeliv} onChange={(v) => { setRegDeliv(v); setRegSub('all'); setRegFilter('all'); }}
                           options={[
-                            { value: 'all', label: 'Todas' },
-                            { value: 'active', label: 'Suscripción activa' },
-                            { value: 'due_soon', label: 'Vencen en ≤7 días' },
-                            { value: 'overdue', label: 'Vencidas' },
-                            { value: 'inactive', label: 'Sin suscripción' },
-                            { value: 'falta_pago', label: 'Aprobada · sin activar' },
-                            { value: 'id_pending', label: 'ID por revisar' },
+                            { value: 'all', label: 'Todos los entregables' },
+                            ...CADENCIAS.map((c) => ({ value: c.id, label: c.label })),
+                            { value: 'none', label: 'Sin entregable' },
                           ]} />
                         <Dropdown icon={ArrowUpDown} label="Ordenar" value={regSort} onChange={setRegSort}
                           options={[
                             { value: 'recent', label: 'Más recientes' },
                             { value: 'oldest', label: 'Más antiguas' },
                             { value: 'photos', label: 'Más fotos' },
-                            { value: 'plan', label: 'Suscripción más alta' },
                           ]} />
-                        {regSub !== 'all' && (
-                          <button onClick={() => setRegSub('all')} className="text-xs font-medium text-paper-dim hover:text-paper">Limpiar filtro</button>
+                        {(regDeliv !== 'all' || regSub !== 'all') && (
+                          <button onClick={() => { setRegDeliv('all'); setRegSub('all'); }} className="text-xs font-medium text-paper-dim hover:text-paper">Limpiar filtro</button>
                         )}
                       </div>
 
                       <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
                       <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-                        <div className="grid min-w-[560px] grid-cols-[1.8fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-                          <span>Creadora</span><span>Última entrega</span><span></span>
+                        <div className="grid min-w-[560px] grid-cols-[1.6fr_0.9fr_0.9fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                          <span>Creadora</span><span>Entregable</span><span>Última entrega</span><span></span>
                         </div>
                         {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
                         {cr.length > 0 && shown.length === 0 && <p className="px-5 py-6 text-paper-dim">Ninguna creadora coincide con el filtro.</p>}
@@ -720,13 +718,19 @@ export default function AdminPage() {
                           return (
                             <div key={u.id} role="button" tabIndex={0} onClick={() => setSelCreator(u.id)}
                               onKeyDown={(e) => { if (e.key === 'Enter') setSelCreator(u.id); }}
-                              className="grid w-full min-w-[560px] cursor-pointer grid-cols-[1.8fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+                              className="grid w-full min-w-[560px] cursor-pointer grid-cols-[1.6fr_0.9fr_0.9fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
                               <span className="flex min-w-0 items-center gap-2.5">
                                 <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                                 <span className="min-w-0">
                                   <span className="block truncate font-medium text-paper">{u.full_name || 'Sin nombre aún'}</span>
                                   <span className="block truncate text-[11px] text-paper-dim">{u.handle ? `@${u.handle}` : u.email}</span>
                                 </span>
+                              </span>
+                              {/* ENTREGABLE: tag de cadencia (cada cuánto recibe) — para saber quién es quién de un vistazo */}
+                              <span>
+                                {u.delivery_cadence
+                                  ? <span className="inline-flex items-center rounded-full border border-brand/40 bg-brand/10 px-2.5 py-0.5 text-[11px] font-semibold text-brand">{cadenceLabel(u.delivery_cadence)}</span>
+                                  : <span className="text-[11px] text-paper-dim">— sin definir</span>}
                               </span>
                               {/* ÚLTIMA ENTREGA: cuándo se le entregó por última vez (assets) */}
                               <span className="text-xs text-paper-mute">
