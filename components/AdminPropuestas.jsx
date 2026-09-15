@@ -188,6 +188,9 @@ export default function AdminPropuestas() {
   const [selDay, setSelDay] = useState(startOfToday()); // día seleccionado en el calendario (ms 00:00 local)
   const [view, setView] = useState('calendario');       // 'calendario' (día a día) | 'historial' (lista completa) | 'entregas'
   const [empOpen, setEmpOpen] = useState(false);         // marcador "Por empleado": arranca colapsado
+  const [calEmp, setCalEmp] = useState('');              // filtro Calendario: por empleado
+  const [calCreator, setCalCreator] = useState('');      // filtro Calendario: por creadora
+  const [calKind, setCalKind] = useState('');            // filtro Calendario: tipo (clic en un contador de Movimiento)
 
   // Filtros
   const [q, setQ] = useState('');
@@ -258,6 +261,19 @@ export default function AdminPropuestas() {
     return [...s].sort();
   }, [all]);
 
+  // Creadoras (destinatarios) para el filtro del calendario.
+  const creadorasCal = useMemo(() => {
+    const s = new Set();
+    all.forEach((p) => { const n = (p.recipient?.name || '').trim(); if (n) s.add(n); });
+    return [...s].sort();
+  }, [all]);
+
+  // Filtro del calendario (empleado + creadora) — combinables. Aplica al
+  // movimiento del día y a la actividad.
+  const calMatch = (p) =>
+    (!calEmp || p.createdBy === calEmp) &&
+    (!calCreator || (p.recipient?.name || '').trim() === calCreator);
+
   const isArch = (p) => p?._status === 'archived';
 
   // Marcador por empleado: cuántas armó cada uno (de un vistazo, sin filtrar) y
@@ -286,6 +302,7 @@ export default function AdminPropuestas() {
     const z = () => ({ hoy: 0, ayer: 0 });
     const s = { creadas: z(), respondieron: z(), aprobadas: z(), abrieron: z(), entregadas: z() };
     all.forEach((p) => {
+      if (!calMatch(p)) return;
       const c = bucket(p.createdAt); if (c) s.creadas[c] += 1;
       if (p.approval && (p.approval.status === 'approved' || p.approval.status === 'rejected')) { const a = bucket(p.approvedAt); if (a) s.aprobadas[a] += 1; }
       if (feedbackSummary(p._feedback).total > 0) { const r = bucket(p._feedback?.updatedAt); if (r) s.respondieron[r] += 1; }
@@ -293,7 +310,7 @@ export default function AdminPropuestas() {
       const d = bucket(p.deliveredAt); if (d) s.entregadas[d] += 1;
     });
     return s;
-  }, [all, selDay]);
+  }, [all, selDay, calEmp, calCreator]);
 
   // Feed de actividad del día SELECCIONADO (armó / aprobó / respondió / abrió /
   // entregó). Cada evento abre esa propuesta.
@@ -302,14 +319,16 @@ export default function AdminPropuestas() {
     const fresh = (ts) => { if (!ts) return false; const m = new Date(ts).getTime(); return m >= t0 && m < t1; };
     const ev = [];
     all.forEach((p) => {
+      if (!calMatch(p)) return;
       if (fresh(p.createdAt)) ev.push({ at: p.createdAt, kind: 'created', p });
       if (p.approval && fresh(p.approvedAt) && (p.approval.status === 'approved' || p.approval.status === 'rejected')) ev.push({ at: p.approvedAt, kind: p.approval.status, p });
       if (fresh(p._feedback?.updatedAt) && feedbackSummary(p._feedback).total > 0) ev.push({ at: p._feedback.updatedAt, kind: 'responded', p });
       if (fresh(p.firstOpenedAt)) ev.push({ at: p.firstOpenedAt, kind: 'opened', p });
       if (fresh(p.deliveredAt)) ev.push({ at: p.deliveredAt, kind: 'delivered', p });
     });
-    return ev.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 40);
-  }, [all, selDay]);
+    const kindOk = (k) => !calKind || (calKind === 'decided' ? (k === 'approved' || k === 'rejected') : k === calKind);
+    return ev.filter((e) => kindOk(e.kind)).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 40);
+  }, [all, selDay, calEmp, calCreator, calKind]);
 
   const shown = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -415,6 +434,30 @@ export default function AdminPropuestas() {
           <button onClick={() => setSelDay(_t0)}
             className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/15">Hoy</button>
         )}
+
+        {/* Filtros del día — empleado + creadora (esquina). Combinables. */}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <select value={calEmp} onChange={(e) => setCalEmp(e.target.value)}
+              className={`appearance-none rounded-full border bg-card py-1.5 pl-3 pr-7 text-xs font-semibold outline-none focus:border-brand/60 ${calEmp ? 'border-brand/50 text-brand' : 'border-line text-paper-mute'}`}>
+              <option value="">Todo el equipo</option>
+              {empleados.map((n) => <option key={n} value={n} className="bg-ink text-paper">{n}</option>)}
+            </select>
+            <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+          </div>
+          <div className="relative">
+            <select value={calCreator} onChange={(e) => setCalCreator(e.target.value)}
+              className={`max-w-[170px] appearance-none truncate rounded-full border bg-card py-1.5 pl-3 pr-7 text-xs font-semibold outline-none focus:border-brand/60 ${calCreator ? 'border-brand/50 text-brand' : 'border-line text-paper-mute'}`}>
+              <option value="">Todas las creadoras</option>
+              {creadorasCal.map((n) => <option key={n} value={n} className="bg-ink text-paper">{n}</option>)}
+            </select>
+            <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+          </div>
+          {(calEmp || calCreator) && (
+            <button onClick={() => { setCalEmp(''); setCalCreator(''); }}
+              className="text-xs font-medium text-paper-dim hover:text-paper">Limpiar</button>
+          )}
+        </div>
       </div>
 
       {/* MOVIMIENTO del día seleccionado (vs el día anterior). */}
@@ -423,19 +466,37 @@ export default function AdminPropuestas() {
           <TrendingUp size={13} /> Movimiento · <span className="capitalize">{dayLabel}</span>
         </div>
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-          <DayStat label="Creadas" today={dayStats.creadas.hoy} yesterday={dayStats.creadas.ayer} prevLabel={prevLabel} />
-          <DayStat label="Respondieron" today={dayStats.respondieron.hoy} yesterday={dayStats.respondieron.ayer} prevLabel={prevLabel} />
-          <DayStat label="Aprobadas" today={dayStats.aprobadas.hoy} yesterday={dayStats.aprobadas.ayer} prevLabel={prevLabel} />
-          <DayStat label="Abrieron" today={dayStats.abrieron.hoy} yesterday={dayStats.abrieron.ayer} prevLabel={prevLabel} />
-          <DayStat label="Entregadas" today={dayStats.entregadas.hoy} yesterday={dayStats.entregadas.ayer} prevLabel={prevLabel} />
+          {[
+            ['creadas', 'Creadas', 'created'],
+            ['respondieron', 'Respondieron', 'responded'],
+            ['aprobadas', 'Aprobadas', 'decided'],
+            ['abrieron', 'Abrieron', 'opened'],
+            ['entregadas', 'Entregadas', 'delivered'],
+          ].map(([key, label, kind]) => (
+            <DayStat key={key} label={label} today={dayStats[key].hoy} yesterday={dayStats[key].ayer} prevLabel={prevLabel}
+              active={calKind === kind} onClick={() => setCalKind((k) => (k === kind ? '' : kind))} />
+          ))}
         </div>
+        <p className="mt-1.5 text-[11px] text-paper-dim">Tocá un número para ver <b className="text-paper-mute">quiénes</b> abajo.</p>
       </div>
 
       {/* ACTIVIDAD del día — qué se hizo, a quién, quién aprobó. */}
       <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-card">
-        <div className="border-b border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Actividad · <span className="capitalize">{dayLabel}</span></div>
+        <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+          <span>Actividad · <span className="capitalize">{dayLabel}</span>
+            {calKind && <span className="text-brand"> · {({ created: 'creadas', responded: 'respondieron', decided: 'aprobadas', opened: 'abrieron', delivered: 'entregadas' })[calKind]}</span>}
+            {calEmp && <span className="text-brand"> · {calEmp}</span>}
+            {calCreator && <span className="text-brand"> · {calCreator}</span>}
+          </span>
+          {(calKind || calEmp || calCreator) && (
+            <button onClick={() => { setCalKind(''); setCalEmp(''); setCalCreator(''); }}
+              className="normal-case tracking-normal text-paper-dim transition-colors hover:text-paper">Ver todo</button>
+          )}
+        </div>
         {activityForDay.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-paper-dim">Sin movimiento {isToday ? 'todavía hoy' : 'ese día'}.</p>
+          <p className="px-4 py-6 text-center text-sm text-paper-dim">
+            {calKind || calEmp || calCreator ? 'Nadie con ese filtro ' : 'Sin movimiento '}{isToday ? 'todavía hoy' : 'ese día'}.
+          </p>
         ) : (
           <ul className="max-h-[420px] divide-y divide-line overflow-y-auto">
             {activityForDay.map((e, i) => {
@@ -852,21 +913,24 @@ function eventLine(e) {
   return null;
 }
 
-// Tarjeta de una métrica del día (número grande + tendencia vs ayer).
-function DayStat({ label, today, yesterday, prevLabel = 'ayer' }) {
+// Tarjeta de una métrica del día (número grande + tendencia vs ayer). Clicable:
+// filtra la actividad de abajo por ese tipo (quiénes lo hicieron).
+function DayStat({ label, today, yesterday, prevLabel = 'ayer', onClick, active }) {
   const delta = today - yesterday;
   const up = delta > 0, down = delta < 0;
   return (
-    <div className="rounded-2xl border border-line bg-card px-4 py-3">
+    <button type="button" onClick={onClick}
+      className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
+        active ? 'border-brand/60 bg-brand/10' : 'border-line bg-card hover:border-brand/40'}`}>
       <div className="flex items-baseline gap-2">
-        <span className="font-display text-3xl font-bold leading-none tabular-nums text-paper">{today}</span>
+        <span className={`font-display text-3xl font-bold leading-none tabular-nums ${active ? 'text-brand' : 'text-paper'}`}>{today}</span>
         <span className={`text-[11px] font-semibold ${up ? 'text-emerald-300' : down ? 'text-rose-300' : 'text-paper-dim'}`}>
           {up ? `↑${delta}` : down ? `↓${Math.abs(delta)}` : '='}
         </span>
       </div>
       <div className="mt-1.5 text-[11px] font-medium uppercase tracking-wider text-paper-dim">{label}</div>
       <div className="text-[10px] text-paper-dim">{prevLabel} {yesterday}</div>
-    </div>
+    </button>
   );
 }
 
