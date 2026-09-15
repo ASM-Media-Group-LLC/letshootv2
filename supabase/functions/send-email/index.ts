@@ -86,6 +86,24 @@ function layout(o: { accent: string; eyebrow: string; title: string; body: strin
 // Each template receives (name, extra, lang, url). `url` is an optional caller-supplied
 // action link (e.g. a set-password recovery link); templates fall back to a safe default.
 const TEMPLATES: Record<string, (name: string, extra: string, lang: string, url: string) => { subject: string; html: string }> = {
+  // Correo a medida (solo admin). `extra` es JSON: { subject, eyebrow, title, body, cta, pre }.
+  // `body` admite HTML (links de descarga, etc.). El CTA usa la url validada (action_url).
+  custom: (_name, extra, _lang, url) => {
+    let o: Record<string, string> = {};
+    try { o = JSON.parse(extra || '{}'); } catch { /* extra no era JSON */ }
+    return {
+      subject: o.subject || 'LetShoot',
+      html: layout({
+        accent: BRAND,
+        eyebrow: o.eyebrow || 'LetShoot',
+        title: o.title || '',
+        body: o.body || '',
+        cta: o.cta || 'Abrir',
+        url: url || APP,
+        pre: o.pre || o.title || 'LetShoot',
+      }),
+    };
+  },
   welcome: (name, _e, lang) => lang === 'es'
     ? { subject: 'Bienvenida a LetShoot', html: layout({ accent: BRAND, eyebrow: 'Bienvenida', title: `Hola ${name}, te damos la bienvenida`, body: 'Tu cuenta ya está creada. Completa tu registro (datos, identidad y consentimiento) para activar tu clon y empezar a recibir contenido listo para vender — cada día, sin que muevas un dedo.', cta: 'Entrar a mi portal', url: `${APP}/login`, pre: 'Tu cuenta LetShoot está lista — completa tu registro.' }) }
     : { subject: 'Welcome to LetShoot', html: layout({ accent: BRAND, eyebrow: 'Welcome', title: `Hi ${name}, welcome`, body: 'Your account is ready. Complete your onboarding (info, identity and consent) to activate your clone and start receiving sell-ready content — every day, hands-off.', cta: 'Enter my portal', url: `${APP}/login`, pre: 'Your LetShoot account is ready — finish onboarding.' }) },
