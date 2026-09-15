@@ -2359,7 +2359,8 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);       // editar datos personales
   const [form, setForm] = useState(null);              // borrador de datos al editar
-  const [tab, setTab] = useState('datos');             // datos | identidad | suscripcion | clon
+  const [tab, setTab] = useState('datos');             // entregable | datos | identidad | suscripcion | clon | propuesta
+  const [cadDraft, setCadDraft] = useState(creator?.delivery_cadence || null); // borrador del entregable (elegir → Guardar)
   // Danger zone — hard delete (fully removes the account so the email frees up).
   const [delOpen, setDelOpen] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
@@ -2396,6 +2397,9 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
     }, 'Datos guardados');
     if (ok) setEditing(false);
   }
+
+  // Sincroniza el borrador del entregable con lo guardado (al abrir o tras Guardar).
+  useEffect(() => { setCadDraft(creator?.delivery_cadence || null); }, [creator?.delivery_cadence]);
 
   useEffect(() => {
     if (!creator) return;
@@ -2480,6 +2484,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
         {/* Pestañas — entra solo a lo que quieres, sin congestión */}
         <div className="sticky top-[73px] z-10 flex gap-1 overflow-x-auto border-b border-line bg-ink/90 px-3 py-2 backdrop-blur">
           {[
+            { id: 'entregable', label: 'Entregable', icon: Send, state: creator.delivery_cadence ? 'ok' : 'todo' },
             { id: 'datos', label: 'Datos', icon: Users, state: datosDone ? 'ok' : 'todo' },
             { id: 'identidad', label: 'Identidad', icon: IdCard, state: idApproved ? 'ok' : idRejected ? 'bad' : idPending ? 'warn' : 'todo' },
             { id: 'suscripcion', label: 'Suscripción', icon: CreditCard, state: paid ? 'ok' : 'todo' },
@@ -2496,6 +2501,62 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
         </div>
 
         <div className="p-5">
+          {/* ── ENTREGABLE ── cada cuánto recibe contenido (elegir → Guardar). Solo admin/dueño. */}
+          {tab === 'entregable' && (
+          <div className="space-y-3">
+            <div className="rounded-2xl border border-line bg-ink-2 p-4">
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <h4 className="flex items-center gap-2 font-display font-semibold text-paper"><Send size={15} className="text-brand" /> Entregable</h4>
+                {(() => {
+                  const ds = deliveryState(creator.delivery_cadence, lastDelivery);
+                  if (!ds || lastDelivery === undefined) return null;
+                  const tone = ds.tone === 'ok' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                    : ds.tone === 'bad' ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+                    : 'border-amber-400/40 bg-amber-400/10 text-amber-300';
+                  return <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${tone}`}>{ds.label}</span>;
+                })()}
+              </div>
+              <p className="mb-3 text-[11px] text-paper-dim">Cada cuánto se le debe entregar contenido. Elegí y dale <b className="text-paper-mute">Guardar</b>. Marca el atraso según la última entrega.</p>
+              {canSetCadence ? (
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CADENCIAS.map((c) => {
+                      const on = cadDraft === c.id;
+                      return (
+                        <button key={c.id} type="button" disabled={saving}
+                          onClick={() => setCadDraft(on ? null : c.id)}
+                          className={`rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                            on ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+                          {c.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <button type="button" disabled={saving || cadDraft === (creator.delivery_cadence || null)}
+                      onClick={() => patch({ delivery_cadence: cadDraft }, cadDraft ? `Entregable: ${CADENCIAS.find((c) => c.id === cadDraft)?.label}` : 'Entregable quitado')}
+                      className="btn3d inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold disabled:opacity-50">
+                      <Check size={15} /> {saving ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    {cadDraft !== (creator.delivery_cadence || null) && <span className="text-[11px] font-semibold text-amber-300/80">Cambios sin guardar</span>}
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full border px-3.5 py-2 text-sm font-semibold ${
+                    creator.delivery_cadence ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-dim'}`}>
+                    {CADENCIAS.find((c) => c.id === creator.delivery_cadence)?.label || 'Sin definir'}
+                  </span>
+                  <span className="text-[11px] text-paper-dim">Solo el admin o el dueño lo cambia.</span>
+                </div>
+              )}
+              <p className="mt-3 text-[11px] text-paper-dim">
+                Última entrega: {lastDelivery === undefined ? '…' : lastDelivery ? new Date(lastDelivery).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'sin entregas registradas'}
+              </p>
+            </div>
+          </div>
+          )}
+
           {/* ── DATOS ── */}
           {tab === 'datos' && (
           <div className="space-y-3">
@@ -2561,44 +2622,6 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
             </div>
           </div>
 
-          {/* Cadencia de entrega — cada cuánto se le entrega + aviso de atraso */}
-          <div className="rounded-2xl border border-line bg-ink-2 p-4">
-            <div className="mb-1 flex items-center justify-between gap-3">
-              <h4 className="flex items-center gap-2 font-display font-semibold text-paper"><Send size={15} className="text-brand" /> Cadencia de entrega</h4>
-              {(() => {
-                const ds = deliveryState(creator.delivery_cadence, lastDelivery);
-                if (!ds || lastDelivery === undefined) return null;
-                const tone = ds.tone === 'ok' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                  : ds.tone === 'bad' ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
-                  : 'border-amber-400/40 bg-amber-400/10 text-amber-300';
-                return <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${tone}`}>{ds.label}</span>;
-              })()}
-            </div>
-            <p className="mb-3 text-[11px] text-paper-dim">Cada cuánto se le debe entregar contenido. Marca el atraso según la última entrega.</p>
-            {canSetCadence ? (
-              <div className="flex flex-wrap gap-1.5">
-                {CADENCIAS.map((c) => (
-                  <button key={c.id} disabled={saving}
-                    onClick={() => patch({ delivery_cadence: creator.delivery_cadence === c.id ? null : c.id }, creator.delivery_cadence === c.id ? 'Cadencia quitada' : `Cadencia: ${c.label}`)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                      creator.delivery_cadence === c.id ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                  creator.delivery_cadence ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-dim'}`}>
-                  {CADENCIAS.find((c) => c.id === creator.delivery_cadence)?.label || 'Sin definir'}
-                </span>
-                <span className="text-[11px] text-paper-dim">Solo el admin o el dueño la cambia.</span>
-              </div>
-            )}
-            <p className="mt-2.5 text-[11px] text-paper-dim">
-              Última entrega: {lastDelivery === undefined ? '…' : lastDelivery ? new Date(lastDelivery).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'sin entregas registradas'}
-            </p>
-          </div>
 
           {/* Modelo de prueba — no cuenta en contabilidad (solo el dueño) */}
           <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.04] p-4">
