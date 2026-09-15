@@ -196,7 +196,7 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
         </div>
       ) : (canSetCadence && (
         <div className="mb-5 rounded-2xl border border-dashed border-line bg-card/40 px-4 py-4 text-sm text-paper-mute">
-          Nadie tiene cadencia todavía. Definí el <b className="text-paper">Entregable</b> de cada creadora (abajo, «Cadencia por creadora», o en su ficha) para que salgan solas acá con fecha.
+          Nadie tiene entregable todavía. Definí el <b className="text-paper">Entregable</b> de cada creadora (abajo, «Entregable por creadora», o en su ficha) para que salgan solas acá con fecha.
         </div>
       ))}
 
@@ -268,21 +268,21 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
         })}
       </div>
 
-      {/* ── Cadencia por creadora — solo admin/dueño la fija (también en la ficha) ── */}
+      {/* ── Entregable por creadora — solo admin/dueño lo fija (también en la ficha) ── */}
       {canSetCadence && (
         <div className="mt-6 rounded-2xl border border-line bg-card">
           <button onClick={() => setCadOpen((v) => !v)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
             <span className="flex items-center gap-2 text-sm font-semibold text-paper">
-              <SlidersHorizontal size={15} className="text-brand" /> Cadencia por creadora
+              <SlidersHorizontal size={15} className="text-brand" /> Entregable por creadora
             </span>
             <span className="flex items-center gap-2 text-[12px] text-paper-dim">
-              {board.total}/{creators.length} definidas
+              {board.total}/{creators.length} definidos
               <ChevronDown size={16} className={`transition-transform ${cadOpen ? 'rotate-180' : ''}`} />
             </span>
           </button>
           {cadOpen && (
             <div className="border-t border-line px-4 py-3">
-              <p className="mb-3 text-[12px] text-paper-dim">El admin y el dueño ponen cada cuánto debe recibir contenido cada creadora. Toca una opción para fijarla (o de nuevo para quitarla). También se puede hacer desde la ficha de la creadora.</p>
+              <p className="mb-3 text-[12px] text-paper-dim">El admin y el dueño ponen el entregable (cada cuánto recibe contenido) de cada creadora. Toca una opción para fijarlo (o de nuevo para quitarlo). También se puede hacer desde su ficha, pestaña Entregable.</p>
               <div className="space-y-2">
                 {creators.length === 0 && <p className="text-sm text-paper-dim">No hay creadoras en el roster todavía.</p>}
                 {creators.map((c) => (
