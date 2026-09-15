@@ -426,20 +426,26 @@ export default function PropuestaAdmin() {
     } catch {}
   }, []);
 
-  // Comprime a un Blob JPEG (máx 1400px, calidad 0.82). Ya no vive en
-  // localStorage, así que puede ir un poco más grande sin problema.
+  // Limpia + re-codifica a WebP alta calidad. Al redibujar en un <canvas> se cae
+  // TODA la metadata (EXIF/XMP/C2PA de Higgsfield) — queda "como un screenshot".
+  // WebP q0.95 + tope alto (2560px, casi nunca achica) = sin perder calidad al ojo.
   const compressImage = (file) => new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const max = 1400;
+      const max = 2560;
       const scale = Math.min(1, max / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
-      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.82);
+      // Preferimos WebP (limpio + liviano); si el navegador no lo soporta, JPEG q0.95.
+      canvas.toBlob(
+        (blob) => (blob ? resolve({ blob, ext: 'webp', type: 'image/webp' })
+          : canvas.toBlob((b) => resolve(b ? { blob: b, ext: 'jpg', type: 'image/jpeg' } : null), 'image/jpeg', 0.95)),
+        'image/webp', 0.95,
+      );
     };
     img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
     img.src = url;
@@ -455,11 +461,11 @@ export default function PropuestaAdmin() {
     const sb = getSupabase();
     const nuevos = [];
     for (const f of files) {
-      const blob = await compressImage(f);
-      if (!blob) continue;
+      const out = await compressImage(f);
+      if (!out?.blob) continue;
       // Sube al bucket público y guarda la URL (NO base64) en la propuesta.
-      const path = `${authorId || 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-      const { error: upErr } = await sb.storage.from('proposal-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+      const path = `${authorId || 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${out.ext}`;
+      const { error: upErr } = await sb.storage.from('proposal-photos').upload(path, out.blob, { contentType: out.type, upsert: false });
       if (upErr) { setUploadErr(upErr.message || 'No se pudo subir la foto. Reintentá.'); continue; }
       const src = sb.storage.from('proposal-photos').getPublicUrl(path)?.data?.publicUrl;
       if (!src) { setUploadErr('No se pudo obtener la URL de la foto.'); continue; }

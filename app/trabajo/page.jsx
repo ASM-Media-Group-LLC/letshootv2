@@ -18,6 +18,7 @@ import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
+import { cleanImageToWebp } from '@/lib/cleanImage';
 import { CAPS, CAP_SECTIONS, ALL_CAP_VALUES } from '@/lib/caps';
 import { PACKS } from '@/lib/packs';
 import Logo from '@/components/Logo';
@@ -1062,9 +1063,17 @@ function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
 
     async function uploadOne(file) {
       try {
-        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        // Fotos: se limpian (re-encode WebP → sin metadata de Higgsfield). Video
+        // y formatos no decodificables (HEIC…) suben tal cual.
+        let body = file;
+        let ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        let ctype = file.type;
+        if (kindOf(file) === 'photo') {
+          const cleaned = await cleanImageToWebp(file);
+          if (cleaned?.blob) { body = cleaned.blob; ext = cleaned.ext; ctype = cleaned.type; }
+        }
         const path = `${creator.id}/${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('deliveries').upload(path, file, { contentType: file.type });
+        const { error: upErr } = await supabase.storage.from('deliveries').upload(path, body, { contentType: ctype });
         if (upErr) throw upErr;
         const { error: dbErr } = await supabase.from('assets').insert({
           creator_id: creator.id, folder_id: folderSel, storage_path: path,
