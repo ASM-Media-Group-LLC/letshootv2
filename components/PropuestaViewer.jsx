@@ -19,9 +19,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, ArrowRight, Sparkles, KeyRound, Eye, EyeOff, Check, Play, Pause } from 'lucide-react';
+import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, ArrowRight, Sparkles, KeyRound, Eye, EyeOff, Check, Play, Pause, Download } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { getSupabase } from '@/lib/supabase/client';
+import { buildZip } from '@/lib/zip';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
 import { PROPOSAL_LOGOS } from '@/lib/proposal-logos';
 
@@ -707,6 +708,9 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
   const [currentIdx, setCurrentIdx] = useState(-1);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [sent, setSent] = useState(false);
+  const [dlOpen, setDlOpen] = useState(false);       // popup de descarga de fotos
+  const [dlBusy, setDlBusy] = useState('');           // '' | 'aprobadas' | 'todas'
+  const [dlErr, setDlErr] = useState('');
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState('');
   const slidesRef = useRef([]);
@@ -790,6 +794,39 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
     } finally {
       setSending(false);
     }
+  };
+
+  // ── Descarga de fotos CREADAS (result) en un ZIP ordenado ──────────────────
+  // onlyLiked → solo las que gustaron; si no, todas las de la propuesta. NUNCA la
+  // de inspiración ni la de modelo real. "De golpe" en un solo .zip.
+  const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase();
+  const photosWithResult = photos.filter((l) => l.result);
+  const downloadPhotos = async (onlyLiked) => {
+    if (dlBusy) return;
+    const set = photosWithResult.filter((l) => !onlyLiked || fb(l.id).status === 'liked');
+    if (!set.length) { setDlErr(onlyLiked ? (t.dlNoneLiked || 'Todavía no marcaste ninguna que te guste.') : (t.dlNone || 'No hay fotos para bajar.')); return; }
+    setDlErr(''); setDlBusy(onlyLiked ? 'aprobadas' : 'todas');
+    try {
+      const files = [];
+      for (let i = 0; i < set.length; i++) {
+        const l = set[i];
+        const res = await fetch(l.result, { mode: 'cors' });
+        if (!res.ok) continue;
+        const buf = new Uint8Array(await res.arrayBuffer());
+        const ext = ((l.result.split('?')[0].split('.').pop() || 'webp').toLowerCase().replace(/[^a-z0-9]/g, '') || 'webp').slice(0, 4);
+        files.push({ name: `${pad2(i + 1)}-${slug(l.caption) || 'foto'}.${ext}`, data: buf });
+      }
+      if (!files.length) throw new Error('fetch');
+      const zip = buildZip(files);
+      const base = slug(cfg.recipient?.name) || slug(cfg.name) || 'letshoot';
+      const url = URL.createObjectURL(zip);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${base}-${cfg.code || 'fotos'}-${onlyLiked ? 'aprobadas' : 'todas'}.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 8000);
+      setDlOpen(false);
+    } catch { setDlErr(t.dlError || 'No se pudieron bajar las fotos. Reintentá.'); }
+    finally { setDlBusy(''); }
   };
 
   return (
@@ -1129,6 +1166,14 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
             >
               {t.reviewAgain}
             </button>
+            {photosWithResult.length > 0 && (
+              <button
+                onClick={() => { setDlErr(''); setDlOpen(true); }}
+                className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-medium text-paper-mute hover:border-brand/40 hover:text-paper"
+              >
+                <Download size={14} /> {t.downloadPhotos || 'Descargar fotos'}
+              </button>
+            )}
           </div>
 
           {/* Logos de plataformas elegidos — al final. */}
@@ -1141,6 +1186,33 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
           </div>
         </div>
       </section>
+
+      {/* ═════════════ DESCARGA DE FOTOS (popup) ═════════════ */}
+      {dlOpen && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-ink/80 p-5 backdrop-blur-sm" onClick={() => !dlBusy && setDlOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-3xl border border-line bg-card p-6 text-center shadow-glow-sm">
+            <div className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-brand/15 text-brand"><Download size={20} /></div>
+            <h3 className="mt-3 font-display text-lg font-semibold text-paper">{t.downloadTitle || 'Descargar fotos'}</h3>
+            <p className="mt-1 text-[13px] leading-relaxed text-paper-mute">{t.downloadSub || 'Solo las fotos creadas (no la inspiración ni la de modelo real), en un ZIP ordenado, listo para compartir.'}</p>
+            <div className="mt-5 space-y-2.5">
+              <button onClick={() => downloadPhotos(true)} disabled={!!dlBusy}
+                className="btn3d flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-60">
+                {dlBusy === 'aprobadas'
+                  ? <><Clock size={15} className="animate-pulse" /> {t.dlPreparing || 'Preparando…'}</>
+                  : <><Heart size={15} fill="currentColor" /> {t.dlLiked || 'Solo las que me gustaron'} · {stats.liked}</>}
+              </button>
+              <button onClick={() => downloadPhotos(false)} disabled={!!dlBusy}
+                className="btn3d-ghost flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">
+                {dlBusy === 'todas'
+                  ? <><Clock size={15} className="animate-pulse" /> {t.dlPreparing || 'Preparando…'}</>
+                  : <><Download size={15} /> {t.dlAll || 'Todas las de la propuesta'} · {photosWithResult.length}</>}
+              </button>
+            </div>
+            {dlErr && <p className="mt-3 text-[12px] text-rose-300">{dlErr}</p>}
+            <button onClick={() => !dlBusy && setDlOpen(false)} className="mt-4 text-[12px] font-medium text-paper-dim hover:text-paper">{t.cancel || 'Cerrar'}</button>
+          </div>
+        </div>
+      )}
 
       {/* ═════════════ RESUMEN FINAL ═════════════ */}
       {summaryOpen && (
