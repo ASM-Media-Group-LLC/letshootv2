@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp } from 'lucide-react';
+import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -205,11 +205,12 @@ export default function AdminPropuestas() {
     (async () => {
       const sb = getSupabase();
       try {
-        const [propsRes, fbRes, regRes, contentRes] = await Promise.all([
+        const [propsRes, fbRes, regRes, contentRes, remRes] = await Promise.all([
           sb.from('photo_proposals').select('*').order('created_at', { ascending: false }),
           sb.from('photo_proposal_feedback').select('proposal_id, items, recipient_name, updated_at, reviewer_kind').order('updated_at', { ascending: false }),
           sb.from('photo_proposal_registrations').select('proposal_id, name, email, phone, created_at').order('created_at', { ascending: false }),
           sb.from('proposal_content').select('proposal_id, item_id, kind, label, src, decision, prod_state').order('created_at', { ascending: true }),
+          sb.from('proposal_reminders').select('proposal_id, kind, count, last_sent_at, paused'),
         ]);
         if (cancelled) return;
         const props = Array.isArray(propsRes.data) ? propsRes.data : [];
@@ -237,7 +238,14 @@ export default function AdminPropuestas() {
         });
 
         if (props.length > 0) {
-          setRows(props.map((p) => mapProposal(p, fbCreator[p.id], regMap[p.id], fbInternal[p.id])));
+          // Recordatorios por propuesta: { approval: fila, response: fila }.
+          const remMap = {};
+          (Array.isArray(remRes.data) ? remRes.data : []).forEach((r) => {
+            if (!r?.proposal_id) return;
+            (remMap[r.proposal_id] = remMap[r.proposal_id] || {})[r.kind] = r;
+          });
+
+          setRows(props.map((p) => ({ ...mapProposal(p, fbCreator[p.id], regMap[p.id], fbInternal[p.id]), _reminders: remMap[p.id] || null })));
           setUsingDemo(false);
         } else {
           // Sin reales: sembramos ejemplos en memoria para no verse vacío.
@@ -690,6 +698,43 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
     : fResp === 'liked' ? i.status === 'liked'
     : (i.note || '').trim() !== '';
   const visibleItems = sortedItems.filter(matchResp);
+
+  // Recordatorio manual ("Recordar ahora"): solo si hay algo pendiente —
+  // aprobación pendiente, o la creadora ya la tiene y no ha respondido.
+  const approvalPending = p.approval?.status === 'pending';
+  const responsePending = !p._internal && !archived && !p.deliveredAt
+    && (!p.approval || p.approval.status === 'approved')
+    && fs.total === 0 && !!p.recipient?.email && stateOf(p) !== 'borrador';
+  const reminderKind = approvalPending ? 'approval' : responsePending ? 'response' : null;
+  const [remindState, setRemindState] = useState(''); // '' | sending | sent | error
+  // Historial de recordatorios (cuántos se enviaron, cuándo) + pausa manual.
+  const remInfo = (reminderKind && p._reminders?.[reminderKind])
+    || p._reminders?.response || p._reminders?.approval || null;
+  const [pausedLocal, setPausedLocal] = useState(null); // null = lo que diga la DB
+  const isPaused = pausedLocal ?? !!remInfo?.paused;
+  const [pauseBusy, setPauseBusy] = useState(false);
+  async function togglePause() {
+    if (!reminderKind || pauseBusy) return;
+    setPauseBusy(true);
+    try {
+      const { data, error } = await getSupabase().functions.invoke('proposal-reminders', { body: { action: 'set_pause', proposal_id: p.id, kind: reminderKind, paused: !isPaused } });
+      let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = null; } }
+      if (!out?.ok) throw new Error();
+      setPausedLocal(!isPaused);
+    } catch {}
+    setPauseBusy(false);
+  }
+  async function doRemind() {
+    if (!reminderKind || remindState === 'sending') return;
+    setRemindState('sending');
+    try {
+      const { data, error } = await getSupabase().functions.invoke('proposal-reminders', { body: { action: 'nudge', proposal_id: p.id, kind: reminderKind } });
+      let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = null; } }
+      if (!out?.ok) throw new Error(out?.error || 'error');
+      setRemindState('sent');
+    } catch { setRemindState('error'); }
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex justify-end bg-ink/70 backdrop-blur-sm" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
@@ -755,10 +800,40 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                 </span>
               } />
             )}
+            {/* Historial de recordatorios + pausa manual ("pararlo si hace falta") */}
+            {!p._demo && (reminderKind || remInfo) && (
+              <Row label="Recordatorios" value={
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="text-paper-mute">
+                    {(remInfo?.count ?? 0) === 0 ? 'ninguno todavía' : `${remInfo.count} enviado${remInfo.count === 1 ? '' : 's'}`}
+                    {remInfo?.last_sent_at ? <span className="text-paper-dim"> · último {new Date(remInfo.last_sent_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span> : null}
+                  </span>
+                  {isPaused && <StatusDot tone="zinc">parados a mano</StatusDot>}
+                  {reminderKind && (
+                    <button onClick={togglePause} disabled={pauseBusy}
+                      title={isPaused ? 'Reanudar los recordatorios automáticos' : 'Parar los recordatorios automáticos de esta propuesta'}
+                      className="rounded-full border border-line px-2.5 py-0.5 text-[11px] font-semibold text-paper-mute transition-colors hover:text-paper disabled:opacity-50">
+                      {pauseBusy ? '…' : isPaused ? 'Reanudar' : 'Parar'}
+                    </button>
+                  )}
+                </span>
+              } />
+            )}
           </div>
 
           {/* Acciones */}
           <div className="mt-4 flex flex-wrap gap-2">
+            {!p._demo && reminderKind && (
+              <button onClick={doRemind} disabled={remindState === 'sending'}
+                title={reminderKind === 'approval' ? 'Recordar a quien tiene que aprobar' : 'Recordar a la creadora que le falta responder'}
+                className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition-colors disabled:opacity-60 ${
+                  remindState === 'sent' ? 'bg-emerald-500 text-white' : remindState === 'error' ? 'border border-rose-500/40 text-rose-300' : 'btn3d'}`}>
+                {remindState === 'sent' ? <><Check size={14} /> Recordatorio enviado</>
+                  : remindState === 'sending' ? <><Bell size={14} className="animate-pulse" /> Enviando…</>
+                  : remindState === 'error' ? <><Bell size={14} /> Reintentar</>
+                  : <><Bell size={14} /> Recordar ahora</>}
+              </button>
+            )}
             {!p._demo && p._internal && p.approval?.status === 'approved' && (
               <a href={`/propuestas?edit=${encodeURIComponent(p.code)}&tocreator=1`}
                 className="btn3d inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
