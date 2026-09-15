@@ -18,7 +18,7 @@ import { PACKS } from '@/lib/packs';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import AdminPropuestas from '@/components/AdminPropuestas';
 import AdminPeticiones from '@/components/AdminPeticiones';
-import { CADENCIAS, deliveryState, cadenceLabel } from '@/lib/cadence';
+import { CADENCIAS, deliveryState } from '@/lib/cadence';
 import Logo from '@/components/Logo';
 
 // Roles: admin = dueño (todo) · supervisor = equipo interno (funciones por
@@ -38,6 +38,16 @@ const ROLE_LABEL = { ...Object.fromEntries(ROLES.map((r) => [r.v, r.l])), produc
 // of the admins are just "Admin". No DB column needed (DDL is locked); the app designates it.
 const OWNER_EMAIL = 'rusin24@gmail.com';
 const isOwnerAccount = (u) => !!u && u.email === OWNER_EMAIL;
+
+// Etiqueta corta de la última entrega (assets) — para la lista de Creadoras.
+const lastDelivLabel = (iso) => {
+  if (!iso) return null;
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (d <= 0) return 'hoy';
+  if (d === 1) return 'ayer';
+  if (d < 30) return `hace ${d} d`;
+  return new Date(iso).toLocaleDateString('es-US', { day: 'numeric', month: 'short' });
+};
 
 
 // Dynamic staff functions — assigned one by one to internal team members.
@@ -207,6 +217,15 @@ export default function AdminPage() {
   }, [router, load]);
 
   function flash(msg) { setToast(msg); setTimeout(() => setToast(''), 2500); }
+
+  // Fija/quita la cadencia de una creadora (desde Peticiones). Fuente única de
+  // verdad = profiles state, así la lista de Creadoras y la ficha quedan al día.
+  async function setCadence(creatorId, cadenceId) {
+    setProfiles((p) => p.map((u) => (u.id === creatorId ? { ...u, delivery_cadence: cadenceId } : u)));
+    const { error } = await getSupabase().from('profiles').update({ delivery_cadence: cadenceId }).eq('id', creatorId);
+    if (error) { flash('Error: ' + error.message); load(); return; }
+    flash(cadenceId ? 'Cadencia actualizada' : 'Cadencia quitada');
+  }
 
   async function changeRole(id, role) {
     setSavingId(id);
@@ -687,8 +706,8 @@ export default function AdminPage() {
 
                       <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
                       <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-                        <div className="grid min-w-[600px] grid-cols-[1.6fr_0.8fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
-                          <span>Creadora</span><span>Cadencia</span><span>Entrega</span><span></span>
+                        <div className="grid min-w-[560px] grid-cols-[1.8fr_1fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                          <span>Creadora</span><span>Última entrega</span><span></span>
                         </div>
                         {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
                         {cr.length > 0 && shown.length === 0 && <p className="px-5 py-6 text-paper-dim">Ninguna creadora coincide con el filtro.</p>}
@@ -701,7 +720,7 @@ export default function AdminPage() {
                           return (
                             <div key={u.id} role="button" tabIndex={0} onClick={() => setSelCreator(u.id)}
                               onKeyDown={(e) => { if (e.key === 'Enter') setSelCreator(u.id); }}
-                              className="grid w-full min-w-[600px] cursor-pointer grid-cols-[1.6fr_0.8fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+                              className="grid w-full min-w-[560px] cursor-pointer grid-cols-[1.8fr_1fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
                               <span className="flex min-w-0 items-center gap-2.5">
                                 <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                                 <span className="min-w-0">
@@ -709,18 +728,12 @@ export default function AdminPage() {
                                   <span className="block truncate text-[11px] text-paper-dim">{u.handle ? `@${u.handle}` : u.email}</span>
                                 </span>
                               </span>
-                              {/* CADENCIA: cada cuánto debe recibir contenido */}
-                              <span className="text-paper-mute">
-                                {cadenceLabel(u.delivery_cadence) || <span className="text-paper-dim">— sin definir</span>}
+                              {/* ÚLTIMA ENTREGA: cuándo se le entregó por última vez (assets) */}
+                              <span className="text-xs text-paper-mute">
+                                {lastDelivByCreator[u.id]
+                                  ? lastDelivLabel(lastDelivByCreator[u.id])
+                                  : <span className="text-paper-dim">sin entregas</span>}
                                 {u.is_test && <span className="ml-2 text-[11px] text-amber-300/80">prueba</span>}
-                              </span>
-                              {/* ENTREGA: semáforo (al día / atrasada / sin entregas) */}
-                              <span className="text-xs">
-                                {(() => {
-                                  const ds = deliveryState(u.delivery_cadence, lastDelivByCreator[u.id]);
-                                  if (!ds) return <span className="text-paper-dim">—</span>;
-                                  return <StatusDot tone={ds.tone}>{ds.label}</StatusDot>;
-                                })()}
                               </span>
                               {/* Acciones: «Ver como ella» siempre visible (abre su panel en otra pestaña) + menú ⋯ */}
                               <span className="flex items-center justify-end gap-1.5">
@@ -1112,10 +1125,12 @@ export default function AdminPage() {
           </div>
         ) : tab === 'propuestas' ? (
           <div className="mt-6">
-            <AdminPropuestas creators={creators} lastDeliv={lastDelivByCreator} />
+            <AdminPropuestas />
           </div>
         ) : tab === 'peticiones' ? (
-          <AdminPeticiones creators={creators} me={me} flash={flash} />
+          <AdminPeticiones creators={creators} me={me} flash={flash}
+            lastDeliv={lastDelivByCreator} onSetCadence={setCadence}
+            canSetCadence={me?.role === 'admin' || isOwnerAccount(me)} />
         ) : null}
           </div>
         </div>

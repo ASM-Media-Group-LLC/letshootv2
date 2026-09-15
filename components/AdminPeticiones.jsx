@@ -14,9 +14,10 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Inbox, Search, Check, X, Plus, AlertTriangle, Pencil, Loader2, ChevronDown } from 'lucide-react';
+import { Inbox, Search, Check, X, Plus, AlertTriangle, Pencil, Loader2, ChevronDown, Clock, SlidersHorizontal } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
+import { CADENCIAS, deliveryState, cadenceLabel } from '@/lib/cadence';
 
 const A1 = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const A2 = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -30,13 +31,35 @@ const STATUS_META = {
   rejected: { label: 'Rechazado', tone: 'bad' },
 };
 
-export default function AdminPeticiones({ creators = [], me, flash, readOnly = false }) {
+export default function AdminPeticiones({ creators = [], me, flash, readOnly = false, lastDeliv = {}, onSetCadence, canSetCadence = false }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [chip, setChip] = useState('pending');
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [preset, setPreset] = useState(null);   // creadora preseleccionada al pedir desde la cola
+  const [cadOpen, setCadOpen] = useState(false); // panel de cadencia (admin/dueño)
+
+  // Cola de trabajo: creadoras con cadencia. Las que DEBEN recibir (atrasadas o
+  // sin entregas) arriba; las que van al día se cuentan aparte.
+  const board = useMemo(() => {
+    const withCad = creators.filter((c) => c.delivery_cadence);
+    const due = [];
+    let okCount = 0;
+    withCad.forEach((c) => {
+      const ds = deliveryState(c.delivery_cadence, lastDeliv[c.id]);
+      if (ds?.due) due.push({ c, ds }); else okCount += 1;
+    });
+    due.sort((a, b) => (a.ds.tone === 'bad' ? 0 : 1) - (b.ds.tone === 'bad' ? 0 : 1));
+    return { due, okCount, total: withCad.length };
+  }, [creators, lastDeliv]);
+
+  const pedirPara = (c) => {
+    if (readOnly) return;
+    setPreset({ mode: 'existing', creatorId: c.id });
+    setFormOpen(true);
+  };
 
   const load = async () => {
     try {
@@ -115,11 +138,52 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
           Pedidos de contenido. Cualquiera del equipo pide; al <b className="text-paper">aprobar</b> se crea sola una propuesta borrador lista para armar. El pedido puede ser para una creadora que <b className="text-paper">ya está</b> o una <b className="text-paper">nueva</b>.
         </p>
         {!readOnly && (
-          <button onClick={() => setFormOpen(true)} className="btn3d inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
+          <button onClick={() => { setPreset(null); setFormOpen(true); }} className="btn3d inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
             <Plus size={15} /> Nuevo pedido
           </button>
         )}
       </div>
+
+      {/* ── Cola de trabajo: quién debe recibir contenido según su cadencia ── */}
+      {board.total > 0 ? (
+        <div className="mb-5 rounded-2xl border border-line bg-card p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-paper">
+              <Clock size={15} className="text-brand" /> Deben recibir contenido
+            </h3>
+            <span className="text-[12px] text-paper-dim">
+              {board.due.length} pendiente{board.due.length === 1 ? '' : 's'}
+              {board.okCount > 0 && <> · <span className="text-emerald-300/80">{board.okCount} al día</span></>}
+            </span>
+          </div>
+          {board.due.length === 0 ? (
+            <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3 text-sm text-emerald-200/90">Todas las creadoras con cadencia están al día. 🎉</p>
+          ) : (
+            <div className="space-y-2">
+              {board.due.map(({ c, ds }) => (
+                <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-ink-2/50 px-3.5 py-2.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-paper">{c.stage_name || c.full_name || c.email}</span>
+                    <span className="block truncate text-[11px] text-paper-dim">{c.handle ? `@${c.handle}` : c.email} · {cadenceLabel(c.delivery_cadence)}</span>
+                  </span>
+                  <StatusDot tone={ds.tone}>{ds.label}</StatusDot>
+                  {!readOnly && (
+                    <button onClick={() => pedirPara(c)} className="btn3d inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold">
+                      <Plus size={13} /> Pedir
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (canSetCadence && (
+        <div className="mb-5 rounded-2xl border border-dashed border-line bg-card/40 px-4 py-4 text-sm text-paper-mute">
+          Nadie tiene cadencia todavía. Definí <b className="text-paper">cada cuánto</b> debe recibir contenido cada creadora (abajo, «Cadencia por creadora») para armar la cola de trabajo.
+        </div>
+      ))}
+
+      <h3 className="mb-3 text-sm font-semibold text-paper">Pedidos</h3>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
@@ -187,10 +251,53 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
         })}
       </div>
 
+      {/* ── Cadencia por creadora — solo admin/dueño la fija (también en la ficha) ── */}
+      {canSetCadence && (
+        <div className="mt-6 rounded-2xl border border-line bg-card">
+          <button onClick={() => setCadOpen((v) => !v)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
+            <span className="flex items-center gap-2 text-sm font-semibold text-paper">
+              <SlidersHorizontal size={15} className="text-brand" /> Cadencia por creadora
+            </span>
+            <span className="flex items-center gap-2 text-[12px] text-paper-dim">
+              {board.total}/{creators.length} definidas
+              <ChevronDown size={16} className={`transition-transform ${cadOpen ? 'rotate-180' : ''}`} />
+            </span>
+          </button>
+          {cadOpen && (
+            <div className="border-t border-line px-4 py-3">
+              <p className="mb-3 text-[12px] text-paper-dim">El admin y el dueño ponen cada cuánto debe recibir contenido cada creadora. Toca una opción para fijarla (o de nuevo para quitarla). También se puede hacer desde la ficha de la creadora.</p>
+              <div className="space-y-2">
+                {creators.length === 0 && <p className="text-sm text-paper-dim">No hay creadoras en el roster todavía.</p>}
+                {creators.map((c) => (
+                  <div key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-ink-2/40 px-3.5 py-2.5">
+                    <span className="min-w-0 truncate text-sm">
+                      <span className="font-medium text-paper">{c.stage_name || c.full_name || c.email}</span>
+                      {c.handle ? <span className="ml-2 text-[11px] text-paper-dim">@{c.handle}</span> : null}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {CADENCIAS.map((cad) => {
+                        const on = c.delivery_cadence === cad.id;
+                        return (
+                          <button key={cad.id} onClick={() => onSetCadence?.(c.id, on ? null : cad.id)}
+                            className={`rounded-full border px-2.5 py-1 text-[12px] font-semibold transition-colors ${
+                              on ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+                            {cad.short}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {formOpen && (
-        <NuevoPedido creators={creators} me={me}
-          onClose={() => setFormOpen(false)}
-          onCreated={() => { setFormOpen(false); setChip('pending'); load(); }}
+        <NuevoPedido creators={creators} me={me} preset={preset}
+          onClose={() => { setFormOpen(false); setPreset(null); }}
+          onCreated={() => { setFormOpen(false); setPreset(null); setChip('pending'); load(); }}
           flash={flash} />
       )}
     </div>
@@ -198,9 +305,9 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
 }
 
 // ── Formulario de nuevo pedido (modal) ──────────────────────────────────────
-function NuevoPedido({ creators, me, onClose, onCreated, flash }) {
-  const [mode, setMode] = useState('existing'); // existing | new
-  const [creatorId, setCreatorId] = useState('');
+function NuevoPedido({ creators, me, onClose, onCreated, flash, preset }) {
+  const [mode, setMode] = useState(preset?.mode || 'existing'); // existing | new
+  const [creatorId, setCreatorId] = useState(preset?.creatorId || '');
   const [nn, setNn] = useState({ name: '', email: '', handle: '' });
   const [title, setTitle] = useState('');
   const [brief, setBrief] = useState('');
