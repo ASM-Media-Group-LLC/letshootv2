@@ -34,6 +34,10 @@ export const metadata = {
   description:
     'Tu fotógrafo IA. Genera fotos y videos de nivel editorial desde cualquier lugar, cuando quieras. Para creadores y agencias que nunca paran.',
   metadataBase: new URL('https://letshoot.ai'),
+  // Ícono + nombre corto al agregar a la pantalla de inicio (iOS). capable:false
+  // = abre en el navegador normal (conserva tu sesión), no en modo standalone
+  // con su propia bóveda de cookies (que te obligaría a volver a entrar).
+  appleWebApp: { capable: false, title: 'LetShoot' },
   openGraph: {
     title: 'LetShoot — Tu fotógrafo IA',
     description:
