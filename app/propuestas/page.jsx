@@ -913,27 +913,10 @@ export default function PropuestaAdmin() {
         <div className="mx-auto w-full max-w-xl space-y-4 px-4 py-10">
           <section className="card3d rounded-3xl border border-line bg-card p-6 sm:p-8">
             <h2 className="font-display text-2xl font-bold tracking-tight text-paper">{t.whoTitle}</h2>
-            <p className="mt-1.5 text-sm text-paper-mute">{t.whoSub}</p>
-            {/* Decisión principal: dos tarjetas grandes (a prueba de confusión). */}
-            <div className="mt-6 space-y-2.5">
-              <PathCard
-                active={!isInternal}
-                onClick={() => { if (recipient.kind === 'internal') setRecipient((r) => ({ ...r, kind: 'new' })); }}
-                icon={<User size={19} />}
-                title="A la creadora"
-                desc="Se la mandás directo a la modelo por su link."
-              />
-              <PathCard
-                active={isInternal}
-                onClick={() => { setRecipient((r) => ({ ...r, kind: 'internal', name: '', email: '' })); setCreatorId(''); setNeedsApproval(false); }}
-                icon={<Users size={19} />}
-                title="Interna (equipo)"
-                desc="La revisa y aprueba tu equipo antes de que le llegue a la creadora."
-              />
-            </div>
+            <p className="mt-1.5 text-sm text-paper-mute">La propuesta es para una creadora. Si necesita revisión antes, marcá «Necesita aprobación» abajo.</p>
 
-            {/* Formulario de la opción elegida — separado para que no se amontone. */}
-            <div className="mt-6 space-y-4 border-t border-line/70 pt-6">
+            {/* Un solo camino: a la creadora (nueva/activa) + opción de aprobación. */}
+            <div className="mt-6 space-y-4">
               {!isInternal ? (
                 <>
                   <Field label="¿Creadora nueva o activa?">
