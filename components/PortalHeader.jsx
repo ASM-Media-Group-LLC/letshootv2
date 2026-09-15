@@ -87,8 +87,8 @@ export default function PortalHeader({
             </button>
           )}
           {section && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand">
-              {SectionIcon && <SectionIcon size={12} />} {section}
+            <span className="hidden min-w-0 items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand sm:inline-flex">
+              {SectionIcon && <SectionIcon size={12} className="shrink-0" />} <span className="truncate">{section}</span>
             </span>
           )}
         </div>

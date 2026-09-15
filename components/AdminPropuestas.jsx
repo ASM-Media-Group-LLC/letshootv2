@@ -591,8 +591,8 @@ export default function AdminPropuestas() {
       <p className="mt-3 text-xs text-paper-dim">{shown.length} de {activeCount} · haz clic en una propuesta para ver el detalle y las respuestas.</p>
 
       {/* Lista */}
-      <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-        <div className="grid min-w-[820px] grid-cols-[1.7fr_0.95fr_1fr_0.7fr_1.05fr] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+      <div className="mt-2 overflow-hidden rounded-2xl border border-line">
+        <div className="hidden grid-cols-[1.7fr_0.95fr_1fr_0.7fr_1.05fr] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim sm:grid">
           <span>Destinatario</span><span>Creó</span><span>Estado</span><span>Fecha</span><span>Respuestas</span>
         </div>
         {shown.length === 0 && (
@@ -606,7 +606,7 @@ export default function AdminPropuestas() {
           return (
             <div key={p.id} role="button" tabIndex={0} onClick={() => setSel(p.id)}
               onKeyDown={(e) => { if (e.key === 'Enter') setSel(p.id); }}
-              className="grid min-w-[820px] cursor-pointer grid-cols-[1.7fr_0.95fr_1fr_0.7fr_1.05fr] items-center gap-3 border-b border-line px-5 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+              className="flex cursor-pointer flex-col gap-2 border-b border-line px-4 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04] sm:grid sm:grid-cols-[1.7fr_0.95fr_1fr_0.7fr_1.05fr] sm:items-center sm:gap-3 sm:px-5">
               <span className="min-w-0">
                 <span className="block truncate font-medium text-paper">{p.recipient?.name || 'Sin destinatario'}</span>
                 <span className="block truncate text-[11px] text-paper-dim">
@@ -615,23 +615,33 @@ export default function AdminPropuestas() {
                   {p.model?.name ? ` · ${p.model.name}` : ''}
                 </span>
               </span>
-              <span className="min-w-0 truncate text-paper-mute">{p.createdBy || '—'}</span>
-              <span className="flex flex-col gap-1">
-                <StatusDot tone={st.tone}>{st.label}</StatusDot>
-                {stateOf(p) !== 'borrador' && d !== null && (
-                  d < 0 ? <span className="text-[11px] text-paper-dim">venció hace {Math.abs(d)}d</span>
-                    : <span className="text-[11px] text-paper-dim">{d === 0 ? 'vence hoy' : `${d}d restantes`}</span>
-                )}
-                {p.approval && (
-                  p.approval.status === 'approved'
-                    ? <span className="text-[11px] font-medium text-emerald-300/90">✓ aprobada</span>
-                    : p.approval.status === 'rejected'
-                      ? <span className="text-[11px] font-medium text-rose-300/90">rechazada</span>
-                      : <span className="text-[11px] font-medium text-amber-300/90">pend. aprobación</span>
-                )}
+              <span className="flex min-w-0 items-center gap-2 text-paper-mute">
+                <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Creó</span>
+                <span className="truncate">{p.createdBy || '—'}</span>
               </span>
-              <span className="min-w-0 truncate tabular-nums text-paper-mute">{fmtFecha(p.createdAt) || '—'}</span>
+              <span className="flex items-start gap-2 sm:flex-col sm:gap-1">
+                <span className="w-24 shrink-0 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Estado</span>
+                <span className="flex flex-col gap-1">
+                  <StatusDot tone={st.tone}>{st.label}</StatusDot>
+                  {stateOf(p) !== 'borrador' && d !== null && (
+                    d < 0 ? <span className="text-[11px] text-paper-dim">venció hace {Math.abs(d)}d</span>
+                      : <span className="text-[11px] text-paper-dim">{d === 0 ? 'vence hoy' : `${d}d restantes`}</span>
+                  )}
+                  {p.approval && (
+                    p.approval.status === 'approved'
+                      ? <span className="text-[11px] font-medium text-emerald-300/90">✓ aprobada</span>
+                      : p.approval.status === 'rejected'
+                        ? <span className="text-[11px] font-medium text-rose-300/90">rechazada</span>
+                        : <span className="text-[11px] font-medium text-amber-300/90">pend. aprobación</span>
+                  )}
+                </span>
+              </span>
+              <span className="flex items-center gap-2 tabular-nums text-paper-mute">
+                <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Fecha</span>
+                <span className="min-w-0 truncate">{fmtFecha(p.createdAt) || '—'}</span>
+              </span>
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Respuestas</span>
                 {fs.total === 0 ? (
                   <span className="text-paper-dim">Sin respuestas</span>
                 ) : (

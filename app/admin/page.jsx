@@ -89,6 +89,7 @@ export default function AdminPage() {
   const [me, setMe] = useState(undefined);
   const [tab, setTab] = useState('registros');
   const [navOpen, setNavOpen] = useState(true); // sidebar abierto (labels) o colapsado (solo íconos)
+  const navRef = useRef(null);
   // Permite abrir /admin directo en una pestaña por URL (?tab=propuestas, etc.).
   useEffect(() => {
     try {
@@ -100,6 +101,13 @@ export default function AdminPage() {
   const [profiles, setProfiles] = useState([]);
   const [kyc, setKyc] = useState([]); // pending verifications w/ signed doc urls
   const [loading, setLoading] = useState(true);
+  // Móvil: la nav es una fila con scroll horizontal. Al cambiar de pestaña (o al
+  // montar la nav tras cargar), dejar la activa centrada para que nunca quede
+  // cortada en el borde y siempre se vea dónde estás parado.
+  useEffect(() => {
+    const el = navRef.current?.querySelector('[data-nav-active="1"]');
+    if (el && window.innerWidth < 1024) el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }, [tab, loading]);
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
   const [nu, setNu] = useState({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
@@ -525,7 +533,7 @@ export default function AdminPage() {
         {/* Navegación — barra lateral: vertical en desktop, scroll horizontal en móvil.
             Propuestas primero (lo más usado, a la mano). Activo = tinte azul plano. */}
         <div className="mt-5 flex flex-col gap-6 lg:flex-row lg:items-start">
-          <nav className={`flex gap-1 overflow-x-auto pb-1 lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:border-r lg:border-line lg:pb-0 ${navOpen ? 'lg:w-56 lg:pr-3' : 'lg:w-[3.75rem] lg:pr-0'}`}>
+          <nav ref={navRef} className={`-mx-5 flex gap-1 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-lg:[mask-image:linear-gradient(to_right,transparent,#000_1.25rem,#000_calc(100%-1.5rem),transparent)] lg:mx-0 lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:border-r lg:border-line lg:px-0 lg:pb-0 ${navOpen ? 'lg:w-56 lg:pr-3' : 'lg:w-[3.75rem] lg:pr-0'}`}>
             {/* Toggle acordeón — solo desktop (en móvil la nav es fila con scroll) */}
             <button onClick={() => setNavOpen((o) => !o)} title={navOpen ? 'Colapsar menú' : 'Expandir menú'}
               className={`mb-1 hidden h-9 items-center rounded-lg px-3 text-paper-mute transition-colors hover:bg-hair/[0.05] hover:text-paper lg:flex ${navOpen ? 'justify-end' : 'justify-center'}`}>
@@ -542,7 +550,7 @@ export default function AdminPage() {
               { id: 'metricas', label: 'Métricas', icon: BarChart3 },
               { id: 'actividad', label: 'Actividad', icon: Activity },
             ].map((tb) => (
-              <button key={tb.id} title={tb.label}
+              <button key={tb.id} title={tb.label} data-nav-active={tab === tb.id ? '1' : undefined}
                 onClick={() => (tb.href ? router.push(tb.href) : setTab(tb.id))}
                 className={`flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:w-full ${!navOpen ? 'lg:justify-center lg:px-2' : ''} ${
                   tab === tb.id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:bg-hair/[0.05] hover:text-paper'}`}>
@@ -620,15 +628,16 @@ export default function AdminPage() {
                   {/* MetricStrip — 1 sola fila densa, tipo Linear/Vercel: KPIs
                       + alerts de vencimiento en el mismo bloque, divisores
                       verticales, click filtra la lista. Cero cards separadas. */}
-                  <div className="card3d flex flex-wrap items-stretch overflow-hidden rounded-2xl border border-line bg-card">
+                  {/* gap-px + bg-line = divisores hairline en 2D: se ven bien en
+                      una sola fila (desktop) y también cuando envuelven a 2 columnas
+                      (móvil). Sin bordes por-índice que quedan colgando al envolver. */}
+                  <div className="card3d flex flex-wrap items-stretch gap-px overflow-hidden rounded-2xl border border-line bg-line">
                     {stats.map((s, i) => {
                       const active = regFilter === s.key;
                       const dotTone = s.tone === 'brand' ? 'brand' : s.tone === 'amber' ? 'warn' : s.tone === 'rose' ? 'bad' : s.tone === 'sky' ? 'brand' : 'zinc';
                       return (
                         <button key={s.key} onClick={() => { setRegFilter(s.key); setRegSub('all'); setRegQuery(''); }}
-                          className={`group relative min-w-[140px] flex-1 px-5 py-4 text-left transition-colors ${
-                            i !== 0 ? 'border-l border-line' : ''
-                          } ${active ? 'bg-brand/[0.06]' : 'hover:bg-hair/[0.04]'}`}>
+                          className={`group relative min-w-[136px] flex-1 px-4 py-4 text-left transition-colors sm:px-5 ${active ? 'bg-brand/[0.06]' : 'bg-card hover:bg-hair/[0.04]'}`}>
                           <div className={`font-display text-[28px] font-bold leading-none tabular-nums ${active ? 'text-brand' : 'text-paper'}`}>{s.value}</div>
                           <div className="mt-2"><StatusDot tone={dotTone} pulse={active}>{s.label}</StatusDot></div>
                           {active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-brand shadow-[0_0_10px_rgba(0,177,246,0.7)]" />}
@@ -638,7 +647,7 @@ export default function AdminPage() {
                     {/* Alerts embedded en la strip como items extras si hay */}
                     {overdueList.length > 0 && (
                       <button onClick={() => { setRegSub('overdue'); setRegFilter('all'); }}
-                        className={`group relative min-w-[140px] flex-1 border-l border-line px-5 py-4 text-left transition-colors ${regSub === 'overdue' ? 'bg-rose-500/[0.05]' : 'hover:bg-hair/[0.04]'}`}>
+                        className={`group relative min-w-[136px] flex-1 px-4 py-4 text-left transition-colors sm:px-5 ${regSub === 'overdue' ? 'bg-rose-500/[0.05]' : 'bg-card hover:bg-hair/[0.04]'}`}>
                         <div className="flex items-baseline gap-2">
                           <div className={`font-display text-[28px] font-bold leading-none tabular-nums ${regSub === 'overdue' ? 'text-rose-300' : 'text-paper'}`}>{overdueList.length}</div>
                           <AlertTriangle size={12} className="text-rose-300" />
@@ -649,7 +658,7 @@ export default function AdminPage() {
                     )}
                     {dueSoonList.length > 0 && (
                       <button onClick={() => { setRegSub('due_soon'); setRegFilter('all'); }}
-                        className={`group relative min-w-[140px] flex-1 border-l border-line px-5 py-4 text-left transition-colors ${regSub === 'due_soon' ? 'bg-amber-500/[0.05]' : 'hover:bg-hair/[0.04]'}`}>
+                        className={`group relative min-w-[136px] flex-1 px-4 py-4 text-left transition-colors sm:px-5 ${regSub === 'due_soon' ? 'bg-amber-500/[0.05]' : 'bg-card hover:bg-hair/[0.04]'}`}>
                         <div className="flex items-baseline gap-2">
                           <div className={`font-display text-[28px] font-bold leading-none tabular-nums ${regSub === 'due_soon' ? 'text-amber-300' : 'text-paper'}`}>{dueSoonList.length}</div>
                           <Clock size={12} className="text-amber-300" />
@@ -703,8 +712,8 @@ export default function AdminPage() {
                       </div>
 
                       <p className="mt-3 text-xs text-paper-dim">Haz clic en cualquier creadora para abrir su perfil: ves todo lo que tiene y le falta, y revisas su identidad.</p>
-                      <div className="mt-2 overflow-x-auto rounded-2xl border border-line">
-                        <div className="grid min-w-[560px] grid-cols-[1.6fr_0.9fr_0.9fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim">
+                      <div className="mt-2 overflow-hidden rounded-2xl border border-line">
+                        <div className="hidden grid-cols-[1.6fr_0.9fr_0.9fr_auto] gap-3 border-b border-line bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wider text-paper-dim sm:grid">
                           <span>Creadora</span><span>Entregable</span><span>Última entrega</span><span></span>
                         </div>
                         {cr.length === 0 && <p className="px-5 py-6 text-paper-dim">Nadie se ha registrado todavía.</p>}
@@ -718,7 +727,7 @@ export default function AdminPage() {
                           return (
                             <div key={u.id} role="button" tabIndex={0} onClick={() => setSelCreator(u.id)}
                               onKeyDown={(e) => { if (e.key === 'Enter') setSelCreator(u.id); }}
-                              className="grid w-full min-w-[560px] cursor-pointer grid-cols-[1.6fr_0.9fr_0.9fr_auto] items-center gap-3 border-b border-line px-5 py-3 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04]">
+                              className="flex w-full cursor-pointer flex-col gap-2.5 border-b border-line px-4 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04] sm:grid sm:grid-cols-[1.6fr_0.9fr_0.9fr_auto] sm:items-center sm:gap-3 sm:px-5 sm:py-3">
                               <span className="flex min-w-0 items-center gap-2.5">
                                 <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                                 <span className="min-w-0">
@@ -727,24 +736,26 @@ export default function AdminPage() {
                                 </span>
                               </span>
                               {/* ENTREGABLE: tag de cadencia (cada cuánto recibe) — para saber quién es quién de un vistazo */}
-                              <span>
+                              <span className="flex items-center gap-2">
+                                <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Entregable</span>
                                 {u.delivery_cadence
                                   ? <span className="inline-flex items-center rounded-full border border-brand/40 bg-brand/10 px-2.5 py-0.5 text-[11px] font-semibold text-brand">{cadenceLabel(u.delivery_cadence)}</span>
                                   : <span className="text-[11px] text-paper-dim">— sin definir</span>}
                               </span>
                               {/* ÚLTIMA ENTREGA: cuándo se le entregó por última vez (assets) */}
-                              <span className="text-xs text-paper-mute">
+                              <span className="flex items-center gap-2 text-xs text-paper-mute">
+                                <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Última entrega</span>
                                 {lastDelivByCreator[u.id]
                                   ? lastDelivLabel(lastDelivByCreator[u.id])
                                   : <span className="text-paper-dim">sin entregas</span>}
                                 {u.is_test && <span className="ml-2 text-[11px] text-amber-300/80">prueba</span>}
                               </span>
                               {/* Acciones: «Ver como ella» siempre visible (abre su panel en otra pestaña) + menú ⋯ */}
-                              <span className="flex items-center justify-end gap-1.5">
+                              <span className="flex items-center justify-start gap-1.5 sm:justify-end">
                                 <button onClick={(e) => { e.stopPropagation(); window.open(`/panel?as=${u.id}`, '_blank', 'noopener'); }}
                                   title="Ver el panel como ella lo ve (solo lectura, otra pestaña)"
                                   className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-[11px] font-semibold text-paper-mute transition-colors hover:border-brand/50 hover:text-brand">
-                                  <Eye size={12} /> <span className="hidden sm:inline">Ver como ella</span>
+                                  <Eye size={12} /> <span>Ver como ella</span>
                                 </button>
                                 <RowActions items={[
                                   { label: 'Abrir perfil', icon: IdCard, onClick: () => setSelCreator(u.id) },
@@ -803,11 +814,14 @@ export default function AdminPage() {
                   </div>
                   <div className="rounded-2xl border border-line bg-card p-5">
                     <h3 className="mb-4 font-display font-semibold text-paper">Registros por semana</h3>
-                    <div className="flex h-36 items-end gap-2">
+                    <div className="flex items-end gap-2">
                       {weeks.map((w, i) => (
                         <div key={i} className="flex flex-1 flex-col items-center gap-1">
                           <span className="font-mono text-[11px] text-paper-mute">{w.v}</span>
-                          <div className="w-full rounded-t-lg bg-brand/70" style={{ height: `${Math.max(4, (w.v / wmax) * 100)}%` }} />
+                          {/* track de altura fija: el % de la barra necesita un padre con altura definida */}
+                          <div className="flex h-28 w-full items-end">
+                            <div className="w-full rounded-t-lg bg-brand/70" style={{ height: `${Math.max(4, (w.v / wmax) * 100)}%` }} />
+                          </div>
                           <span className="text-[10px] text-paper-dim">{w.label}</span>
                         </div>
                       ))}
@@ -842,9 +856,9 @@ export default function AdminPage() {
             {kyc.length > 0 && <p className="text-sm text-paper-mute">{kyc.length} identidad{kyc.length === 1 ? '' : 'es'} por revisar. Abre cada una para ver sus documentos y aprobar o rechazar.</p>}
             {kyc.map((u) => (
               <button key={u.id} onClick={() => setSelCreator(u.id)}
-                className="flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.04] p-5 text-left transition-colors hover:border-amber-500/50">
-                <div className="flex items-center gap-3">
-                  <div className="flex gap-1.5">
+                className="flex w-full flex-col items-stretch gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.04] p-4 text-left transition-colors hover:border-amber-500/50 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:p-5">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex shrink-0 gap-1.5">
                     {['id_front', 'id_back', 'selfie_id'].map((k) => (
                       u.docs[k]
                         // eslint-disable-next-line @next/next/no-img-element
@@ -852,13 +866,13 @@ export default function AdminPage() {
                         : <span key={k} className="grid h-12 w-10 place-items-center rounded-md border border-dashed border-line text-[9px] text-paper-dim">falta</span>
                     ))}
                   </div>
-                  <div>
-                    <div className="font-display font-semibold text-paper">{u.legal_first_name} {u.legal_last_name}
+                  <div className="min-w-0">
+                    <div className="truncate font-display font-semibold text-paper">{u.legal_first_name} {u.legal_last_name}
                       {u.stage_name && <span className="ml-2 text-xs font-normal text-paper-dim">· "{u.stage_name}"</span>}</div>
-                    <div className="mt-0.5 text-xs text-paper-dim">{u.email} · {u.country || '—'}</div>
+                    <div className="mt-0.5 truncate text-xs text-paper-dim">{u.email} · {u.country || '—'}</div>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm">
+                <span className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-on-accent shadow-glow-sm sm:w-auto">
                   <ShieldCheck size={15} /> Revisar identidad →
                 </span>
               </button>
