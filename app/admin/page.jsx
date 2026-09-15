@@ -89,7 +89,7 @@ export default function AdminPage() {
   const [me, setMe] = useState(undefined);
   const [tab, setTab] = useState('registros');
   const [navOpen, setNavOpen] = useState(true); // sidebar abierto (labels) o colapsado (solo íconos)
-  const navRef = useRef(null);
+  const [mobNav, setMobNav] = useState(false);  // móvil: menú de secciones desplegable abierto
   // Permite abrir /admin directo en una pestaña por URL (?tab=propuestas, etc.).
   useEffect(() => {
     try {
@@ -101,13 +101,6 @@ export default function AdminPage() {
   const [profiles, setProfiles] = useState([]);
   const [kyc, setKyc] = useState([]); // pending verifications w/ signed doc urls
   const [loading, setLoading] = useState(true);
-  // Móvil: la nav es una fila con scroll horizontal. Al cambiar de pestaña (o al
-  // montar la nav tras cargar), dejar la activa centrada para que nunca quede
-  // cortada en el borde y siempre se vea dónde estás parado.
-  useEffect(() => {
-    const el = navRef.current?.querySelector('[data-nav-active="1"]');
-    if (el && window.innerWidth < 1024) el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-  }, [tab, loading]);
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
   const [nu, setNu] = useState({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
@@ -516,6 +509,21 @@ export default function AdminPage() {
 
   const creators = profiles.filter((p) => p.role === 'creator');
 
+  // Secciones del panel — una sola fuente para el sidebar (desktop) y el
+  // selector desplegable (móvil). Propuestas primero (lo más usado).
+  const NAV_TABS = [
+    { id: 'propuestas', label: 'Propuestas', icon: Send },
+    { id: 'peticiones', label: 'Peticiones', icon: Inbox },
+    { id: 'registros', label: 'Creadoras', icon: ClipboardList },
+    { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
+    { id: 'equipo', label: 'Equipo interno', icon: Users },
+    { id: 'agencias', label: 'Agencias', icon: Building2, badge: agencyLeads.length },
+    { id: 'reacciones', label: 'Reacciones', icon: Heart },
+    { id: 'metricas', label: 'Métricas', icon: BarChart3 },
+    { id: 'actividad', label: 'Actividad', icon: Activity },
+  ];
+  const activeTab = NAV_TABS.find((t) => t.id === tab) || NAV_TABS[0];
+
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
       <Header me={me} router={router} creators={creators} />
@@ -530,36 +538,57 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* Navegación — barra lateral: vertical en desktop, scroll horizontal en móvil.
-            Propuestas primero (lo más usado, a la mano). Activo = tinte azul plano. */}
-        <div className="mt-5 flex flex-col gap-6 lg:flex-row lg:items-start">
-          <nav ref={navRef} className={`-mx-5 flex gap-1 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-lg:[mask-image:linear-gradient(to_right,transparent,#000_1.25rem,#000_calc(100%-1.5rem),transparent)] lg:mx-0 lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:border-r lg:border-line lg:px-0 lg:pb-0 ${navOpen ? 'lg:w-56 lg:pr-3' : 'lg:w-[3.75rem] lg:pr-0'}`}>
-            {/* Toggle acordeón — solo desktop (en móvil la nav es fila con scroll) */}
+        {/* Navegación. Desktop: barra lateral vertical. Móvil: menú desplegable
+            (sin scroll horizontal) — un botón dice la sección y abre la lista. */}
+        <div className="mt-5 lg:flex lg:items-start lg:gap-6">
+          {/* ── Móvil: selector de sección desplegable ── */}
+          <div className="relative mb-4 lg:hidden">
+            <button onClick={() => setMobNav((o) => !o)} aria-haspopup="menu" aria-expanded={mobNav}
+              className={`flex w-full items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 text-left transition-colors ${mobNav ? 'border-brand/50' : 'border-line'}`}>
+              <span className="flex min-w-0 items-center gap-2.5 font-semibold text-paper">
+                <activeTab.icon size={18} className="shrink-0 text-brand" /> <span className="truncate">{activeTab.label}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                {activeTab.badge ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-on-accent">{activeTab.badge}</span> : null}
+                <ChevronDown size={18} className={`text-paper-dim transition-transform ${mobNav ? 'rotate-180' : ''}`} />
+              </span>
+            </button>
+            {mobNav && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setMobNav(false)} />
+                <div role="menu" className="absolute inset-x-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-2xl border border-line bg-card p-1 shadow-glow-sm">
+                  {NAV_TABS.map((tb) => (
+                    <button key={tb.id} onClick={() => { tb.href ? router.push(tb.href) : setTab(tb.id); setMobNav(false); }}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium transition-colors ${
+                        tab === tb.id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:bg-hair/[0.06] hover:text-paper'}`}>
+                      <tb.icon size={17} className="shrink-0" />
+                      <span className="flex-1">{tb.label}</span>
+                      {tb.badge ? <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[11px] font-bold text-on-accent">{tb.badge}</span>
+                        : tab === tb.id ? <Check size={16} /> : null}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ── Desktop: barra lateral vertical ── */}
+          <nav className={`hidden lg:flex lg:shrink-0 lg:flex-col lg:gap-1 lg:border-r lg:border-line ${navOpen ? 'lg:w-56 lg:pr-3' : 'lg:w-[3.75rem] lg:pr-0'}`}>
             <button onClick={() => setNavOpen((o) => !o)} title={navOpen ? 'Colapsar menú' : 'Expandir menú'}
-              className={`mb-1 hidden h-9 items-center rounded-lg px-3 text-paper-mute transition-colors hover:bg-hair/[0.05] hover:text-paper lg:flex ${navOpen ? 'justify-end' : 'justify-center'}`}>
+              className={`mb-1 flex h-9 items-center rounded-lg px-3 text-paper-mute transition-colors hover:bg-hair/[0.05] hover:text-paper ${navOpen ? 'justify-end' : 'justify-center'}`}>
               {navOpen ? <ChevronsLeft size={18} /> : <ChevronsRight size={18} />}
             </button>
-            {[
-              { id: 'propuestas', label: 'Propuestas', icon: Send },
-              { id: 'peticiones', label: 'Peticiones', icon: Inbox },
-              { id: 'registros', label: 'Creadoras', icon: ClipboardList },
-              { id: 'verificaciones', label: 'Verificaciones', icon: IdCard, badge: kyc.length },
-              { id: 'equipo', label: 'Equipo interno', icon: Users },
-              { id: 'agencias', label: 'Agencias', icon: Building2, badge: agencyLeads.length },
-              { id: 'reacciones', label: 'Reacciones', icon: Heart },
-              { id: 'metricas', label: 'Métricas', icon: BarChart3 },
-              { id: 'actividad', label: 'Actividad', icon: Activity },
-            ].map((tb) => (
-              <button key={tb.id} title={tb.label} data-nav-active={tab === tb.id ? '1' : undefined}
+            {NAV_TABS.map((tb) => (
+              <button key={tb.id} title={tb.label}
                 onClick={() => (tb.href ? router.push(tb.href) : setTab(tb.id))}
-                className={`flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors lg:w-full ${!navOpen ? 'lg:justify-center lg:px-2' : ''} ${
+                className={`flex w-full items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${!navOpen ? 'justify-center px-2' : ''} ${
                   tab === tb.id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:bg-hair/[0.05] hover:text-paper'}`}>
                 <span className="relative shrink-0">
                   <tb.icon size={16} />
-                  {tb.badge ? <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand ${navOpen ? 'hidden' : 'hidden lg:block'}`} /> : null}
+                  {tb.badge && !navOpen ? <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand" /> : null}
                 </span>
-                <span className={navOpen ? '' : 'lg:hidden'}>{tb.label}</span>
-                {tb.badge ? <span className={`ml-auto grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent ${navOpen ? '' : 'lg:hidden'}`}>{tb.badge}</span> : null}
+                <span className={navOpen ? '' : 'hidden'}>{tb.label}</span>
+                {tb.badge && navOpen ? <span className="ml-auto grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-on-accent">{tb.badge}</span> : null}
               </button>
             ))}
           </nav>
