@@ -709,8 +709,9 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [dlOpen, setDlOpen] = useState(false);       // popup de descarga de fotos
-  const [dlBusy, setDlBusy] = useState('');           // '' | 'aprobadas' | 'todas'
+  const [dlBusy, setDlBusy] = useState('');           // '' | 'aprobadas' | 'todas' (preparando)
   const [dlErr, setDlErr] = useState('');
+  const [dlReady, setDlReady] = useState(null);       // { imgFiles, zip, fname, count } tras preparar
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState('');
   const slidesRef = useRef([]);
@@ -801,32 +802,58 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
   // de inspiración ni la de modelo real. "De golpe" en un solo .zip.
   const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase();
   const photosWithResult = photos.filter((l) => l.result);
-  const downloadPhotos = async (onlyLiked) => {
+
+  // PASO 1 — Preparar: baja las fotos CREADAS (result) y arma tanto los archivos
+  // individuales (para la hoja de compartir del teléfono → van a Fotos/galería)
+  // como un ZIP (para computadora). NUNCA inspiración ni modelo real.
+  const preparePhotos = async (onlyLiked) => {
     if (dlBusy) return;
     const set = photosWithResult.filter((l) => !onlyLiked || fb(l.id).status === 'liked');
     if (!set.length) { setDlErr(onlyLiked ? (t.dlNoneLiked || 'Todavía no marcaste ninguna que te guste.') : (t.dlNone || 'No hay fotos para bajar.')); return; }
-    setDlErr(''); setDlBusy(onlyLiked ? 'aprobadas' : 'todas');
+    setDlErr(''); setDlReady(null); setDlBusy(onlyLiked ? 'aprobadas' : 'todas');
     try {
-      const files = [];
+      const base = slug(cfg.recipient?.name) || slug(cfg.name) || 'letshoot';
+      const zipItems = []; const imgFiles = [];
       for (let i = 0; i < set.length; i++) {
         const l = set[i];
         const res = await fetch(l.result, { mode: 'cors' });
         if (!res.ok) continue;
-        const buf = new Uint8Array(await res.arrayBuffer());
+        const blob = await res.blob();
+        const buf = new Uint8Array(await blob.arrayBuffer());
         const ext = ((l.result.split('?')[0].split('.').pop() || 'webp').toLowerCase().replace(/[^a-z0-9]/g, '') || 'webp').slice(0, 4);
-        files.push({ name: `${pad2(i + 1)}-${slug(l.caption) || 'foto'}.${ext}`, data: buf });
+        const name = `${base}-${pad2(i + 1)}.${ext}`;
+        zipItems.push({ name, data: buf });
+        imgFiles.push(new File([blob], name, { type: blob.type || 'image/webp' }));
       }
-      if (!files.length) throw new Error('fetch');
-      const zip = buildZip(files);
-      const base = slug(cfg.recipient?.name) || slug(cfg.name) || 'letshoot';
-      const url = URL.createObjectURL(zip);
-      const a = document.createElement('a');
-      a.href = url; a.download = `${base}-${cfg.code || 'fotos'}-${onlyLiked ? 'aprobadas' : 'todas'}.zip`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 8000);
-      setDlOpen(false);
+      if (!imgFiles.length) throw new Error('fetch');
+      const zip = buildZip(zipItems);
+      const fname = `${base}-${cfg.code || 'fotos'}-${onlyLiked ? 'aprobadas' : 'todas'}.zip`;
+      setDlReady({ imgFiles, zip, fname, count: imgFiles.length });
     } catch { setDlErr(t.dlError || 'No se pudieron bajar las fotos. Reintentá.'); }
     finally { setDlBusy(''); }
+  };
+
+  // PASO 2 — Guardar (con gesto fresco → iOS no lo bloquea): en teléfono usa la
+  // hoja de compartir con las FOTOS (se guardan en Fotos / se mandan a WhatsApp);
+  // en computadora baja el ZIP.
+  const savePhotos = async () => {
+    if (!dlReady) return;
+    const { imgFiles, zip, fname } = dlReady;
+    try {
+      if (navigator.canShare && navigator.canShare({ files: imgFiles })) {
+        await navigator.share({ files: imgFiles, title: 'Fotos LetShoot' });
+        setDlOpen(false); setDlReady(null);
+        return;
+      }
+    } catch (e) { if (e?.name === 'AbortError') return; /* si falla el share, cae al ZIP */ }
+    try {
+      const url = URL.createObjectURL(zip);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 8000);
+      setDlOpen(false); setDlReady(null);
+    } catch { setDlErr(t.dlError || 'No se pudieron guardar. Reintentá.'); }
   };
 
   return (
@@ -1168,7 +1195,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
             </button>
             {photosWithResult.length > 0 && (
               <button
-                onClick={() => { setDlErr(''); setDlOpen(true); }}
+                onClick={() => { setDlErr(''); setDlReady(null); setDlOpen(true); }}
                 className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-medium text-paper-mute hover:border-brand/40 hover:text-paper"
               >
                 <Download size={14} /> {t.downloadPhotos || 'Descargar fotos'}
@@ -1193,23 +1220,39 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-3xl border border-line bg-card p-6 text-center shadow-glow-sm">
             <div className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-brand/15 text-brand"><Download size={20} /></div>
             <h3 className="mt-3 font-display text-lg font-semibold text-paper">{t.downloadTitle || 'Descargar fotos'}</h3>
-            <p className="mt-1 text-[13px] leading-relaxed text-paper-mute">{t.downloadSub || 'Solo las fotos creadas (no la inspiración ni la de modelo real), en un ZIP ordenado, listo para compartir.'}</p>
-            <div className="mt-5 space-y-2.5">
-              <button onClick={() => downloadPhotos(true)} disabled={!!dlBusy}
-                className="btn3d flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-60">
-                {dlBusy === 'aprobadas'
-                  ? <><Clock size={15} className="animate-pulse" /> {t.dlPreparing || 'Preparando…'}</>
-                  : <><Heart size={15} fill="currentColor" /> {t.dlLiked || 'Solo las que me gustaron'} · {stats.liked}</>}
-              </button>
-              <button onClick={() => downloadPhotos(false)} disabled={!!dlBusy}
-                className="btn3d-ghost flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">
-                {dlBusy === 'todas'
-                  ? <><Clock size={15} className="animate-pulse" /> {t.dlPreparing || 'Preparando…'}</>
-                  : <><Download size={15} /> {t.dlAll || 'Todas las de la propuesta'} · {photosWithResult.length}</>}
-              </button>
-            </div>
+            {dlReady ? (
+              <>
+                <p className="mt-1 text-[13px] leading-relaxed text-paper-mute">{dlReady.count} {dlReady.count === 1 ? 'foto lista' : 'fotos listas'}. En el teléfono se guardan en <b className="text-paper">Fotos</b> (o las mandás a WhatsApp/Telegram); en la compu bajan en un ZIP.</p>
+                <div className="mt-5 space-y-2.5">
+                  <button onClick={savePhotos}
+                    className="btn3d flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-bold">
+                    <Download size={16} /> {t.dlSave || 'Guardar / Compartir'} · {dlReady.count}
+                  </button>
+                  <button onClick={() => { setDlReady(null); setDlErr(''); }}
+                    className="text-[12px] font-medium text-paper-dim hover:text-paper">{t.dlChoose || 'Elegir otras'}</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-[13px] leading-relaxed text-paper-mute">{t.downloadSub || 'Solo las fotos creadas (no la inspiración ni la de modelo real). En el teléfono se guardan en Fotos.'}</p>
+                <div className="mt-5 space-y-2.5">
+                  <button onClick={() => preparePhotos(true)} disabled={!!dlBusy}
+                    className="btn3d flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-60">
+                    {dlBusy === 'aprobadas'
+                      ? <><Clock size={15} className="animate-pulse" /> {t.dlPreparing || 'Preparando…'}</>
+                      : <><Heart size={15} fill="currentColor" /> {t.dlLiked || 'Solo las que me gustaron'} · {stats.liked}</>}
+                  </button>
+                  <button onClick={() => preparePhotos(false)} disabled={!!dlBusy}
+                    className="btn3d-ghost flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60">
+                    {dlBusy === 'todas'
+                      ? <><Clock size={15} className="animate-pulse" /> {t.dlPreparing || 'Preparando…'}</>
+                      : <><Download size={15} /> {t.dlAll || 'Todas las de la propuesta'} · {photosWithResult.length}</>}
+                  </button>
+                </div>
+              </>
+            )}
             {dlErr && <p className="mt-3 text-[12px] text-rose-300">{dlErr}</p>}
-            <button onClick={() => !dlBusy && setDlOpen(false)} className="mt-4 text-[12px] font-medium text-paper-dim hover:text-paper">{t.cancel || 'Cerrar'}</button>
+            <button onClick={() => !dlBusy && (setDlOpen(false), setDlReady(null))} className="mt-4 text-[12px] font-medium text-paper-dim hover:text-paper">{t.cancel || 'Cerrar'}</button>
           </div>
         </div>
       )}
