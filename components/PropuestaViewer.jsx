@@ -1294,15 +1294,15 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
                 </span>
               </>
             ) : stats.undecided > 0 ? (
-              // Aún faltan → el botón "Terminar y descargar" está SIEMPRE, pero
-              // APAGADO (gris). Tocarlo la lleva a la primera sin decidir. Debajo,
+              // Aún faltan → el botón "Terminar y descargar" es AZUL (como Start,
+              // que llame). Tocarlo la lleva a la primera sin decidir. Debajo,
               // cuántas faltan (en ámbar).
               <>
                 <button
                   onClick={scrollToFirstUndecided}
-                  className="inline-flex w-full items-center justify-center gap-2.5 rounded-full border border-white/12 bg-white/[0.04] px-8 py-4 text-base font-semibold text-paper-mute transition-colors hover:border-white/25 hover:text-paper"
+                  className="inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-brand px-8 py-4 text-base font-bold text-on-accent shadow-glow transition-transform hover:scale-[1.02]"
                 >
-                  <Download size={18} className="opacity-40" /> {t.finishDownload || 'Terminar y descargar'}
+                  <Download size={18} /> {t.finishDownload || 'Terminar y descargar'}
                 </button>
                 <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-200">
                   <span className="grid h-4 w-4 place-items-center rounded-full bg-amber-400/25 font-mono text-[10px] font-bold tabular-nums">{stats.undecided}</span>
