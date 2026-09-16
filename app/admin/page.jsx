@@ -1320,6 +1320,15 @@ export default function AdminPage() {
                   <label className="mb-1 block text-xs font-medium text-paper-dim">Correo <span className="text-rose-300">*</span></label>
                   <input type="email" value={newCreator.email} onChange={(e) => setNewCreator((v) => ({ ...v, email: e.target.value }))}
                     placeholder="correo@ejemplo.com" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  {/* Aviso «ya existe»: si el correo ya tiene cuenta, no se duplica. */}
+                  {(() => {
+                    const q = (newCreator.email || '').trim().toLowerCase();
+                    if (q.length < 4 || !q.includes('@')) return null;
+                    const dup = profiles.find((p) => (p.email || '').toLowerCase() === q);
+                    return dup
+                      ? <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-300"><AlertTriangle size={12} className="mt-0.5 shrink-0" /> Ya existe una cuenta con este correo{dup.full_name ? ` — ${dup.full_name}` : ''} ({dup.role === 'creator' ? 'creadora' : dup.role}). No se duplica.</p>
+                      : null;
+                  })()}
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-paper-dim">Contraseña <span className="font-normal text-paper-dim/70">(opcional)</span></label>
