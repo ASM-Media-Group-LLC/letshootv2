@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell, AlertTriangle, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell, AlertTriangle, Maximize2, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -59,6 +59,12 @@ function fmtFecha(iso) {
 
 // Inicio del día de HOY (medianoche local) en ms — para el "movimiento del día".
 function startOfToday() { const x = new Date(); x.setHours(0, 0, 0, 0); return x.getTime(); }
+// Helpers de rango para el calendario (día · semana lunes-domingo · mes).
+function startOfDayMs(ms) { const x = new Date(ms); x.setHours(0, 0, 0, 0); return x.getTime(); }
+function startOfWeekMs(ms) { const x = new Date(startOfDayMs(ms)); const wd = (x.getDay() + 6) % 7; return x.getTime() - wd * 86400000; }
+function startOfMonthMs(ms) { const x = new Date(ms); return new Date(x.getFullYear(), x.getMonth(), 1).getTime(); }
+function endOfMonthMs(ms) { const x = new Date(ms); return new Date(x.getFullYear(), x.getMonth() + 1, 1).getTime(); }
+function addMonthsMs(ms, n) { const x = new Date(ms); return new Date(x.getFullYear(), x.getMonth() + n, 1).getTime(); }
 // Hora de un ISO en 12h con AM/PM y en horario de COLOMBIA (Bogotá), para el
 // feed de actividad — así el equipo ve la misma hora sin importar su zona.
 function hhmm(iso) {
@@ -186,7 +192,9 @@ export default function AdminPropuestas() {
   const [sel, setSel] = useState(null);         // id de la propuesta abierta en el drawer
   const [empSel, setEmpSel] = useState(null);   // nombre del empleado con el expediente abierto
   const [copied, setCopied] = useState('');
-  const [selDay, setSelDay] = useState(startOfToday()); // día seleccionado en el calendario (ms 00:00 local)
+  const [selDay, setSelDay] = useState(startOfToday()); // día ancla del calendario (ms 00:00 local)
+  const [rangeMode, setRangeMode] = useState('day');    // 'day' | 'week' | 'month' — el span del movimiento/actividad
+  const [calMonth, setCalMonth] = useState(startOfMonthMs(startOfToday())); // mes visible del mini-calendario
   const [view, setView] = useState('calendario');       // 'calendario' (día a día) | 'historial' (lista completa) | 'entregas'
   const [empOpen, setEmpOpen] = useState(false);         // marcador "Por empleado": arranca colapsado
   const [calEmp, setCalEmp] = useState('');              // filtro Calendario: por empleado
@@ -324,12 +332,40 @@ export default function AdminPropuestas() {
     return { sinAprobar, atrasadas, total: sinAprobar + atrasadas };
   }, [all]);
 
-  // Movimiento del día SELECCIONADO vs el día anterior (pulso del equipo).
+  // Rango activo (día · semana · mes) a partir del ancla `selDay` + su período
+  // anterior (para el "vs"). Un solo lugar que todo lo demás consume.
+  const _today0 = startOfToday();
+  const range = useMemo(() => {
+    if (rangeMode === 'week') {
+      const rStart = startOfWeekMs(selDay);
+      return { rStart, rEnd: rStart + 7 * 86400000, pStart: rStart - 7 * 86400000, pEnd: rStart, prevLabel: 'sem. ant.' };
+    }
+    if (rangeMode === 'month') {
+      const rStart = startOfMonthMs(selDay);
+      return { rStart, rEnd: endOfMonthMs(selDay), pStart: startOfMonthMs(rStart - 1), pEnd: rStart, prevLabel: 'mes ant.' };
+    }
+    const rStart = startOfDayMs(selDay);
+    return { rStart, rEnd: rStart + 86400000, pStart: rStart - 86400000, pEnd: rStart, prevLabel: 'ayer' };
+  }, [rangeMode, selDay]);
+
+  const rangeLabel = useMemo(() => {
+    const d = new Date(selDay);
+    if (rangeMode === 'week') {
+      const s = new Date(range.rStart), e = new Date(range.rEnd - 86400000);
+      const em = e.toLocaleDateString('es-US', { month: 'short' });
+      const sm = s.toLocaleDateString('es-US', { month: 'short' });
+      return sm === em ? `${s.getDate()}–${e.getDate()} ${em}` : `${s.getDate()} ${sm} – ${e.getDate()} ${em}`;
+    }
+    if (rangeMode === 'month') return d.toLocaleDateString('es-US', { month: 'long', year: 'numeric' });
+    if (startOfDayMs(selDay) === _today0) return 'Hoy';
+    if (startOfDayMs(selDay) === _today0 - 86400000) return 'Ayer';
+    return d.toLocaleDateString('es-US', { weekday: 'short', day: 'numeric', month: 'short' });
+  }, [rangeMode, selDay, range, _today0]);
+
+  // Movimiento del RANGO seleccionado vs el período anterior (pulso del equipo).
   const dayStats = useMemo(() => {
-    const t0 = selDay;
-    const t1 = t0 + 86400000;
-    const y0 = t0 - 86400000;
-    const bucket = (ts) => { if (!ts) return null; const m = new Date(ts).getTime(); if (Number.isNaN(m)) return null; if (m >= t0 && m < t1) return 'hoy'; if (m >= y0 && m < t0) return 'ayer'; return null; };
+    const { rStart, rEnd, pStart, pEnd } = range;
+    const bucket = (ts) => { if (!ts) return null; const m = new Date(ts).getTime(); if (Number.isNaN(m)) return null; if (m >= rStart && m < rEnd) return 'hoy'; if (m >= pStart && m < pEnd) return 'ayer'; return null; };
     const z = () => ({ hoy: 0, ayer: 0 });
     const s = { creadas: z(), respondieron: z(), aprobadas: z(), abrieron: z(), entregadas: z() };
     all.forEach((p) => {
@@ -341,13 +377,13 @@ export default function AdminPropuestas() {
       const d = bucket(p.deliveredAt); if (d) s.entregadas[d] += 1;
     });
     return s;
-  }, [all, selDay, calEmp, calCreator]);
+  }, [all, range, calEmp, calCreator]);
 
   // Feed de actividad del día SELECCIONADO (armó / aprobó / respondió / abrió /
   // entregó). Cada evento abre esa propuesta.
   const activityForDay = useMemo(() => {
-    const t0 = selDay, t1 = selDay + 86400000;
-    const fresh = (ts) => { if (!ts) return false; const m = new Date(ts).getTime(); return m >= t0 && m < t1; };
+    const { rStart, rEnd } = range;
+    const fresh = (ts) => { if (!ts) return false; const m = new Date(ts).getTime(); return m >= rStart && m < rEnd; };
     const ev = [];
     all.forEach((p) => {
       if (!calMatch(p)) return;
@@ -358,8 +394,38 @@ export default function AdminPropuestas() {
       if (fresh(p.deliveredAt)) ev.push({ at: p.deliveredAt, kind: 'delivered', p });
     });
     const kindOk = (k) => !calKind || (calKind === 'decided' ? (k === 'approved' || k === 'rejected') : k === calKind);
-    return ev.filter((e) => kindOk(e.kind)).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 40);
-  }, [all, selDay, calEmp, calCreator, calKind]);
+    return ev.filter((e) => kindOk(e.kind)).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 120);
+  }, [all, range, calEmp, calCreator, calKind]);
+
+  // Actividad AGRUPADA por tipo (separadito, no revuelto) — mismo orden que
+  // Movimiento. 'approved'/'rejected' caen en "Aprobadas".
+  const activityGroups = useMemo(() => {
+    const norm = (k) => (k === 'approved' || k === 'rejected') ? 'decided' : k;
+    const order = [['created', 'Creadas', 'bg-brand'], ['responded', 'Respondieron', 'bg-amber-400'], ['decided', 'Aprobadas', 'bg-emerald-400'], ['opened', 'Abrieron', 'bg-sky-400'], ['delivered', 'Entregadas', 'bg-violet-400']];
+    const by = {};
+    activityForDay.forEach((e) => { const g = norm(e.kind); (by[g] = by[g] || []).push(e); });
+    return order.filter(([g]) => by[g]?.length).map(([g, label, dot]) => ({ g, label, dot, items: by[g] }));
+  }, [activityForDay]);
+
+  // Mini-calendario: días del mes visible CON movimiento (para el puntito) + las
+  // 42 celdas (6 semanas, lunes→domingo).
+  const calActiveDays = useMemo(() => {
+    const mStart = startOfMonthMs(calMonth), mEnd = endOfMonthMs(calMonth);
+    const set = new Set();
+    const add = (ts) => { if (!ts) return; const m = new Date(ts).getTime(); if (Number.isNaN(m) || m < mStart || m >= mEnd) return; set.add(startOfDayMs(m)); };
+    all.forEach((p) => {
+      if (!calMatch(p)) return;
+      add(p.createdAt);
+      if (p.approval && (p.approval.status === 'approved' || p.approval.status === 'rejected')) add(p.approvedAt);
+      if (feedbackSummary(p._feedback).total > 0) add(p._feedback?.updatedAt);
+      add(p.firstOpenedAt); add(p.deliveredAt);
+    });
+    return set;
+  }, [all, calMonth, calEmp, calCreator]);
+  const calCells = useMemo(() => {
+    const gridStart = startOfWeekMs(startOfMonthMs(calMonth));
+    return Array.from({ length: 42 }, (_, i) => gridStart + i * 86400000);
+  }, [calMonth]);
 
   const shown = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -405,13 +471,19 @@ export default function AdminPropuestas() {
     ? all.filter((p) => isArch(p)).length
     : all.filter((p) => !isArch(p)).length;
 
-  // Etiqueta y navegación del día seleccionado.
+  // Hoy + navegación. Mover por la unidad del rango (día/semana/mes).
   const _t0 = startOfToday();
-  const isToday = selDay === _t0;
-  const dayLabel = selDay === _t0 ? 'Hoy'
-    : selDay === _t0 - 86400000 ? 'Ayer'
-    : new Date(selDay).toLocaleDateString('es-US', { weekday: 'short', day: 'numeric', month: 'short' });
-  const prevLabel = isToday ? 'ayer' : 'día ant.';
+  const isToday = rangeMode === 'day' && startOfDayMs(selDay) === _t0;
+  const atToday = range.rStart <= _t0 && _t0 < range.rEnd;         // el rango ya incluye hoy → no avanzar
+  const goToday = () => { setRangeMode('day'); setSelDay(_t0); setCalMonth(startOfMonthMs(_t0)); };
+  const stepRange = (dir) => {
+    const nd = rangeMode === 'week' ? startOfWeekMs(selDay) + dir * 7 * 86400000
+      : rangeMode === 'month' ? addMonthsMs(selDay, dir)
+      : startOfDayMs(selDay) + dir * 86400000;
+    setSelDay(nd);
+    setCalMonth(startOfMonthMs(nd));
+  };
+  const emptyWhen = isToday ? 'todavía hoy' : rangeMode === 'day' ? 'ese día' : 'ese período';
 
   return (
     <div>
@@ -450,23 +522,31 @@ export default function AdminPropuestas() {
 
       {view === 'calendario' && (
       <>
-      {/* Navegador de día — arranca en HOY, se mueve día por día (no al futuro). */}
+      {/* Controles: span (Día/Semana/Mes) + navegación por unidad + filtros. */}
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        <button onClick={() => setSelDay((d) => d - 86400000)} aria-label="Día anterior"
+        <div className="inline-flex rounded-full border border-line bg-card p-0.5">
+          {[['day', 'Día'], ['week', 'Semana'], ['month', 'Mes']].map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setRangeMode(id)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${rangeMode === id ? 'bg-brand/15 text-brand' : 'text-paper-mute hover:text-paper'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => stepRange(-1)} aria-label="Anterior"
           className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-          <ChevronDown size={16} className="rotate-90" />
+          <ChevronLeft size={16} />
         </button>
-        <span className="min-w-[96px] text-center font-display text-lg font-semibold capitalize text-paper">{dayLabel}</span>
-        <button onClick={() => setSelDay((d) => Math.min(d + 86400000, _t0))} disabled={isToday} aria-label="Día siguiente"
+        <span className="min-w-[130px] text-center font-display text-base font-semibold capitalize text-paper">{rangeLabel}</span>
+        <button onClick={() => stepRange(1)} disabled={atToday} aria-label="Siguiente"
           className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper disabled:opacity-40">
-          <ChevronDown size={16} className="-rotate-90" />
+          <ChevronRight size={16} />
         </button>
         {!isToday && (
-          <button onClick={() => setSelDay(_t0)}
+          <button onClick={goToday}
             className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/15">Hoy</button>
         )}
 
-        {/* Filtros del día — empleado + creadora (esquina). Combinables. */}
+        {/* Filtros — empleado + creadora (esquina). Combinables. */}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <div className="relative">
             <select value={calEmp} onChange={(e) => setCalEmp(e.target.value)}
@@ -491,6 +571,47 @@ export default function AdminPropuestas() {
         </div>
       </div>
 
+      {/* MINI-CALENDARIO del mes (puntito = hubo movimiento; clic en un día lo abre). */}
+      <div className="mt-3 rounded-2xl border border-line bg-card p-3 sm:max-w-sm">
+        <div className="mb-2 flex items-center justify-between px-1">
+          <button onClick={() => setCalMonth((m) => addMonthsMs(m, -1))} aria-label="Mes anterior"
+            className="grid h-7 w-7 place-items-center rounded-full text-paper-mute transition-colors hover:bg-hair/10 hover:text-paper">
+            <ChevronLeft size={15} />
+          </button>
+          <span className="font-display text-sm font-semibold capitalize text-paper">
+            {new Date(calMonth).toLocaleDateString('es-US', { month: 'long', year: 'numeric' })}
+          </span>
+          <button onClick={() => setCalMonth((m) => addMonthsMs(m, 1))} disabled={startOfMonthMs(calMonth) >= startOfMonthMs(_t0)} aria-label="Mes siguiente"
+            className="grid h-7 w-7 place-items-center rounded-full text-paper-mute transition-colors hover:bg-hair/10 hover:text-paper disabled:opacity-30">
+            <ChevronRight size={15} />
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
+            <span key={i} className="py-1 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">{d}</span>
+          ))}
+          {calCells.map((ms) => {
+            const inMonth = startOfMonthMs(ms) === startOfMonthMs(calMonth);
+            const isFuture = ms > _t0;
+            const inRange = ms >= range.rStart && ms < range.rEnd;
+            const isTodayCell = ms === _t0;
+            const hasDot = calActiveDays.has(ms);
+            return (
+              <button key={ms} type="button" disabled={isFuture}
+                onClick={() => { setRangeMode('day'); setSelDay(ms); setCalMonth(startOfMonthMs(ms)); }}
+                className={`relative grid aspect-square place-items-center rounded-lg text-[12px] transition-colors ${
+                  inRange ? 'bg-brand font-bold text-on-accent'
+                    : isTodayCell ? 'text-paper ring-1 ring-inset ring-brand/50'
+                    : inMonth ? 'text-paper hover:bg-hair/10' : 'text-paper-dim/40'
+                } ${isFuture ? 'cursor-default opacity-40' : ''}`}>
+                {new Date(ms).getDate()}
+                {hasDot && !inRange && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-brand" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* BACKLOG — lo que se está atrasando ahorita (mismo número que el badge
           de la pestaña). Clic → salta al Historial para perseguirlas. */}
       {backlog.total > 0 && (
@@ -511,7 +632,7 @@ export default function AdminPropuestas() {
       {/* MOVIMIENTO del día seleccionado (vs el día anterior). */}
       <div className="mt-4">
         <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
-          <TrendingUp size={13} /> Movimiento · <span className="capitalize">{dayLabel}</span>
+          <TrendingUp size={13} /> Movimiento · <span className="capitalize">{rangeLabel}</span>
         </div>
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
           {[
@@ -521,7 +642,7 @@ export default function AdminPropuestas() {
             ['abrieron', 'Abrieron', 'opened'],
             ['entregadas', 'Entregadas', 'delivered'],
           ].map(([key, label, kind]) => (
-            <DayStat key={key} label={label} today={dayStats[key].hoy} yesterday={dayStats[key].ayer} prevLabel={prevLabel}
+            <DayStat key={key} label={label} today={dayStats[key].hoy} yesterday={dayStats[key].ayer} prevLabel={range.prevLabel}
               active={calKind === kind} onClick={() => setCalKind((k) => (k === kind ? '' : kind))} />
           ))}
         </div>
@@ -531,7 +652,7 @@ export default function AdminPropuestas() {
       {/* ACTIVIDAD del día — qué se hizo, a quién, quién aprobó. */}
       <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-card">
         <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
-          <span>Actividad · <span className="capitalize">{dayLabel}</span>
+          <span>Actividad · <span className="capitalize">{rangeLabel}</span>
             {calKind && <span className="text-brand"> · {({ created: 'creadas', responded: 'respondieron', decided: 'aprobadas', opened: 'abrieron', delivered: 'entregadas' })[calKind]}</span>}
             {calEmp && <span className="text-brand"> · {calEmp}</span>}
             {calCreator && <span className="text-brand"> · {calCreator}</span>}
@@ -541,26 +662,35 @@ export default function AdminPropuestas() {
               className="normal-case tracking-normal text-paper-dim transition-colors hover:text-paper">Ver todo</button>
           )}
         </div>
-        {activityForDay.length === 0 ? (
+        {activityGroups.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-paper-dim">
-            {calKind || calEmp || calCreator ? 'Nadie con ese filtro ' : 'Sin movimiento '}{isToday ? 'todavía hoy' : 'ese día'}.
+            {calKind || calEmp || calCreator ? 'Nadie con ese filtro ' : 'Sin movimiento '}{emptyWhen}.
           </p>
         ) : (
-          <ul className="max-h-[420px] divide-y divide-line overflow-y-auto">
-            {activityForDay.map((e, i) => {
-              const meta = EVENT_META[e.kind] || EVENT_META.created;
-              return (
-                <li key={`${e.p.id}-${e.kind}-${i}`}>
-                  <button type="button" onClick={() => setSel(e.p.id)}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-hair/[0.04]">
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
-                    <span className="min-w-0 flex-1 truncate text-sm text-paper-mute">{eventLine(e)}</span>
-                    <span className="shrink-0 font-mono text-[11px] text-paper-dim">{hhmm(e.at)}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="max-h-[460px] divide-y divide-line overflow-y-auto">
+            {activityGroups.map((grp) => (
+              <div key={grp.g}>
+                {/* Encabezado del grupo (separadito). Si filtró por un tipo, no lo repetimos. */}
+                {activityGroups.length > 1 && (
+                  <div className="sticky top-0 z-[1] flex items-center gap-2 border-b border-line bg-card/95 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim backdrop-blur">
+                    <span className={`h-1.5 w-1.5 rounded-full ${grp.dot}`} /> {grp.label} <span className="text-paper-mute">· {grp.items.length}</span>
+                  </div>
+                )}
+                <ul>
+                  {grp.items.map((e, i) => (
+                    <li key={`${e.p.id}-${e.kind}-${i}`}>
+                      <button type="button" onClick={() => setSel(e.p.id)}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-hair/[0.04]">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${(EVENT_META[e.kind] || EVENT_META.created).dot}`} />
+                        <span className="min-w-0 flex-1 truncate text-sm text-paper-mute">{eventLine(e)}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-paper-dim">{hhmm(e.at)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
