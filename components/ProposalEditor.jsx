@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Plus, X, ArrowUp, ArrowDown, Loader2, Eye, CheckCircle2, ArrowLeft, Save, Sparkles, GripVertical, Rocket, RotateCcw, Camera } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
+import { cleanImageToWebp } from '@/lib/cleanImage';
 import ProposalDeck from '@/components/ProposalDeck';
 
 const MAX_SLIDES = 8;
@@ -96,10 +97,16 @@ export default function ProposalEditor({ creator, onClose, flash }) {
 
   async function uploadPhoto(slideId, kind, file) {
     if (!file) return;
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const path = `${creator.id}/${slideId}-${kind}-${Date.now()}.${ext}`;
     const supabase = getSupabase();
-    const { error: upErr } = await supabase.storage.from('proposals').upload(path, file, { upsert: true, contentType: file.type });
+    // Foto: se limpia (re-encode → se cae EXIF/XMP/C2PA de Higgsfield). Si no se
+    // puede decodificar (HEIC…), sube el original tal cual.
+    let body = file;
+    let ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    let ctype = file.type;
+    const cleaned = await cleanImageToWebp(file);
+    if (cleaned?.blob) { body = cleaned.blob; ext = cleaned.ext; ctype = cleaned.type; }
+    const path = `${creator.id}/${slideId}-${kind}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('proposals').upload(path, body, { upsert: true, contentType: ctype });
     if (upErr) { flash && flash('Error al subir: ' + upErr.message); return; }
     const { data: pub } = supabase.storage.from('proposals').getPublicUrl(path);
     const url = pub?.publicUrl;

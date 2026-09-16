@@ -18,6 +18,7 @@ import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import MediaThumb from '@/components/MediaThumb';
 import { ymOf, ymLabel, shiftYm, aggregate, pct, initials } from '@/lib/portal-stats';
+import { cleanImageToWebp } from '@/lib/cleanImage';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
 import PortalHeader from '@/components/PortalHeader';
@@ -1188,9 +1189,14 @@ function NewRequest({ creatorId, agencyId, onDone }) {
     const reqId = crypto.randomUUID();
     const paths = [];
     for (const f of refFiles) {
-      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+      // Referencia: se limpia (re-encode → sin metadata). HEIC/no decodificable → original.
+      let body = f;
+      let ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+      let ctype = f.type;
+      const cleaned = await cleanImageToWebp(f);
+      if (cleaned?.blob) { body = cleaned.blob; ext = cleaned.ext; ctype = cleaned.type; }
       const path = `${agencyId}/${reqId}/${crypto.randomUUID()}.${ext}`;
-      const { error: up } = await supabase.storage.from('request-refs').upload(path, f, { contentType: f.type });
+      const { error: up } = await supabase.storage.from('request-refs').upload(path, body, { contentType: ctype });
       if (!up) paths.push(path);
     }
     const { error } = await supabase.from('requests').insert({

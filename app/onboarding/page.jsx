@@ -15,6 +15,7 @@ import { getUserProfile, signOut, homeForRole } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { usePortal } from '@/lib/portal-i18n';
 import { COUNTRIES, countryByName, splitPhone } from '@/lib/countries';
+import { cleanImageToWebp } from '@/lib/cleanImage';
 import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
 import CloneSetup from '@/components/CloneSetup';
@@ -299,9 +300,14 @@ function InfoStep({ me, onDone, t }) {
     setAvatarUploading(true);
     const supabase = getSupabase();
     try {
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      // Avatar: se limpia (re-encode → sin metadata). HEIC/no decodificable → original.
+      let body = file;
+      let ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      let ctype = file.type;
+      const cleaned = await cleanImageToWebp(file);
+      if (cleaned?.blob) { body = cleaned.blob; ext = cleaned.ext; ctype = cleaned.type; }
       const path = `${me.user.id}/avatar.${ext}`;
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type });
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, body, { upsert: true, contentType: ctype });
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
       const url = `${pub.publicUrl}?v=${Date.now()}`; // cache-bust on replace
