@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell, AlertTriangle, Maximize2, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
+import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell, AlertTriangle, Maximize2, ChevronLeft, ChevronRight, CalendarDays, RotateCcw } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -537,15 +537,17 @@ export default function AdminPropuestas() {
           className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
           <ChevronLeft size={16} />
         </button>
-        <span className="min-w-[130px] text-center font-display text-base font-semibold capitalize text-paper">{rangeLabel}</span>
+        {/* La FECHA es el botón para volver a hoy (ya no hay botón "Hoy" aparte). */}
+        <button type="button" onClick={goToday} disabled={atToday}
+          title={atToday ? undefined : 'Volver a hoy'}
+          className="inline-flex min-w-[130px] items-center justify-center gap-1.5 rounded-full px-2 py-1 font-display text-base font-semibold capitalize text-paper transition-colors enabled:hover:text-brand disabled:cursor-default">
+          {rangeLabel}
+          {!atToday && <RotateCcw size={13} className="text-paper-mute" />}
+        </button>
         <button onClick={() => stepRange(1)} disabled={atToday} aria-label="Siguiente"
           className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper disabled:opacity-40">
           <ChevronRight size={16} />
         </button>
-        {!isToday && (
-          <button onClick={goToday}
-            className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/15">Hoy</button>
-        )}
         {/* Abrir/cerrar el mini-calendario (arranca cerrado). */}
         <button type="button" onClick={() => setCalOpen((o) => !o)} aria-expanded={calOpen}
           className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${calOpen ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
