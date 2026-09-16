@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell, AlertTriangle } from 'lucide-react';
+import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell, AlertTriangle, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -733,6 +733,7 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
   // Filtro de respuestas + orden: SIEMPRE primero lo rechazado, luego lo que
   // gustó, luego lo sin decidir. Los contadores de arriba son los filtros.
   const [fResp, setFResp] = useState('all'); // all | rejected | liked | commented
+  const [lightbox, setLightbox] = useState(null); // { items, i } — foto grande del feedback
   const rank = (i) => (i.status === 'rejected' ? 0 : i.status === 'liked' ? 1 : 2);
   const sortedItems = [...items].sort((a, b) => rank(a) - rank(b));
   const matchResp = (i) =>
@@ -917,14 +918,21 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                 </p>
               ) : (
                 <div className="mt-3 space-y-2.5">
-                  {[...internalItems].sort((a, b) => (a.status === 'rejected' ? 0 : a.status === 'liked' ? 1 : 2) - (b.status === 'rejected' ? 0 : b.status === 'liked' ? 1 : 2)).map((it) => {
+                  {[...internalItems].sort((a, b) => (a.status === 'rejected' ? 0 : a.status === 'liked' ? 1 : 2) - (b.status === 'rejected' ? 0 : b.status === 'liked' ? 1 : 2)).map((it, i, arr) => {
                     const tone = it.status === 'liked' ? 'ok' : it.status === 'rejected' ? 'bad' : 'zinc';
                     const lbl = it.status === 'liked' ? 'Va' : it.status === 'rejected' ? 'Recrear' : 'Nota';
                     return (
                       <div key={`int-${it.id}`} className={`flex gap-3 rounded-xl border bg-ink-2/30 p-2.5 ${it.status === 'rejected' ? 'border-rose-500/40' : 'border-line'}`}>
-                        <div className="h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-hair/10">
-                          {it.result ? <img src={it.result} alt="" className="h-full w-full object-cover" /> : null}
-                        </div>
+                        {it.result ? (
+                          <button type="button" onClick={() => setLightbox({ items: arr, i })}
+                            className="group relative h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-hair/10 ring-1 ring-inset ring-white/5 transition hover:ring-brand/60"
+                            title="Ver grande">
+                            <img src={it.result} alt="" className="h-full w-full object-cover transition group-hover:scale-[1.06]" />
+                            <span className="absolute inset-0 grid place-items-center bg-black/0 opacity-0 transition group-hover:bg-black/35 group-hover:opacity-100"><Maximize2 size={14} className="text-white" /></span>
+                          </button>
+                        ) : (
+                          <div className="h-16 w-14 shrink-0 rounded-lg bg-hair/10" />
+                        )}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
                             <span className="truncate text-sm text-paper">{it.caption || 'Sin título'}</span>
@@ -972,14 +980,21 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
               </p>
             ) : (
               <div className="mt-3 space-y-2.5">
-                {visibleItems.map((it) => {
+                {visibleItems.map((it, i) => {
                   const tone = it.status === 'liked' ? 'ok' : it.status === 'rejected' ? 'bad' : 'zinc';
                   const lbl = it.status === 'liked' ? 'Le gustó' : it.status === 'rejected' ? 'Rechazó' : 'Sin decidir';
                   return (
                     <div key={it.id} className={`flex gap-3 rounded-xl border bg-ink-2/30 p-2.5 ${it.status === 'rejected' ? 'border-rose-500/40' : 'border-line'}`}>
-                      <div className="h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-hair/10">
-                        {it.result ? <img src={it.result} alt="" className="h-full w-full object-cover" /> : null}
-                      </div>
+                      {it.result ? (
+                        <button type="button" onClick={() => setLightbox({ items: visibleItems, i })}
+                          className="group relative h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-hair/10 ring-1 ring-inset ring-white/5 transition hover:ring-brand/60"
+                          title="Ver grande">
+                          <img src={it.result} alt="" className="h-full w-full object-cover transition group-hover:scale-[1.06]" />
+                          <span className="absolute inset-0 grid place-items-center bg-black/0 opacity-0 transition group-hover:bg-black/35 group-hover:opacity-100"><Maximize2 size={14} className="text-white" /></span>
+                        </button>
+                      ) : (
+                        <div className="h-16 w-14 shrink-0 rounded-lg bg-hair/10" />
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate text-sm text-paper">{it.caption || 'Sin título'}</span>
@@ -998,6 +1013,45 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
               </div>
             )}
           </div>
+
+          {/* Lightbox — foto grande del feedback (ver bien qué le gustó / rechazó). */}
+          {lightbox && (() => {
+            const list = lightbox.items || [];
+            const cur = list[lightbox.i];
+            if (!cur) return null;
+            const tone = cur.status === 'liked' ? 'ok' : cur.status === 'rejected' ? 'bad' : 'zinc';
+            const lbl = cur.status === 'liked' ? 'Le gustó' : cur.status === 'rejected' ? 'Rechazó' : 'Sin decidir';
+            const go = (d) => setLightbox((lb) => ({ items: lb.items, i: (lb.i + d + list.length) % list.length }));
+            return (
+              <div className="fixed inset-0 z-[90] flex flex-col bg-ink/92 backdrop-blur-sm"
+                onClick={(e) => { e.stopPropagation(); setLightbox(null); }}>
+                <div className="flex items-center justify-between gap-3 px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <StatusDot tone={tone}>{lbl}</StatusDot>
+                    <span className="truncate text-sm text-paper-mute">{cur.caption || 'Sin título'}</span>
+                    {list.length > 1 && <span className="shrink-0 text-[11px] text-paper-dim">{lightbox.i + 1}/{list.length}</span>}
+                  </span>
+                  <button onClick={() => setLightbox(null)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper"><X size={18} /></button>
+                </div>
+                <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-2">
+                  {list.length > 1 && (
+                    <button onClick={(e) => { e.stopPropagation(); go(-1); }} title="Anterior" className="absolute left-3 z-10 grid h-11 w-11 place-items-center rounded-full border border-line bg-ink/70 text-paper-mute transition-colors hover:text-paper"><ChevronLeft size={20} /></button>
+                  )}
+                  {cur.result ? <img onClick={(e) => e.stopPropagation()} src={cur.result} alt="" className="max-h-full max-w-full rounded-xl object-contain shadow-glow-sm" /> : null}
+                  {list.length > 1 && (
+                    <button onClick={(e) => { e.stopPropagation(); go(1); }} title="Siguiente" className="absolute right-3 z-10 grid h-11 w-11 place-items-center rounded-full border border-line bg-ink/70 text-paper-mute transition-colors hover:text-paper"><ChevronRight size={20} /></button>
+                  )}
+                </div>
+                {(cur.note || '').trim() ? (
+                  <div className="px-5 pb-5 pt-1" onClick={(e) => e.stopPropagation()}>
+                    <p className="mx-auto flex max-w-xl items-start gap-2 rounded-xl border border-line bg-card px-4 py-3 text-sm text-paper-mute">
+                      <MessageSquare size={14} className="mt-0.5 shrink-0 text-paper-dim" /><span className="min-w-0">{cur.note}</span>
+                    </p>
+                  </div>
+                ) : <div className="pb-4" />}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
