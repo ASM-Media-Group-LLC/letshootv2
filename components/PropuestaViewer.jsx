@@ -1361,11 +1361,17 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
                         : <><Download size={15} /> {t.dlAll || 'Todas las de la propuesta'} · {photosWithResult.length}</>}
                     </button>
                   )}
+                  {/* 3ª opción real: ya terminó (el feedback quedó guardado); solo
+                      elige NO descargar. */}
+                  <button onClick={() => { setDlOpen(false); setDlReady(null); }} disabled={!!dlBusy}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-3 text-sm font-semibold text-paper-mute transition-colors hover:border-hair hover:text-paper disabled:opacity-60">
+                    {t.finishNoDownload || 'Terminar sin descargar'}
+                  </button>
                 </div>
               </>
             )}
             {dlErr && <p className="mt-3 text-[12px] text-rose-300">{dlErr}</p>}
-            {!dlDone && <button onClick={() => !dlBusy && (setDlOpen(false), setDlReady(null))} className="mt-4 text-[12px] font-medium text-paper-dim hover:text-paper">{t.cancel || 'Cerrar'}</button>}
+            {dlReady && <button onClick={() => !dlBusy && (setDlOpen(false), setDlReady(null))} className="mt-4 text-[12px] font-medium text-paper-dim hover:text-paper">{t.finishNoDownload || 'Terminar sin descargar'}</button>}
           </div>
         </div>
       )}
