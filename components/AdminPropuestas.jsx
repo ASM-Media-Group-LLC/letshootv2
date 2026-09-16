@@ -884,7 +884,7 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                 <Send size={14} /> Enviar a la creadora
               </a>
             )}
-            <a href={link} target="_blank" rel="noopener noreferrer"
+            <a href={`${link}${link.includes('?') ? '&' : '?'}preview=1`} target="_blank" rel="noopener noreferrer"
               className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
               <ExternalLink size={14} /> Ver como cliente
             </a>

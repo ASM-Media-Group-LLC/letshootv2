@@ -348,6 +348,9 @@ export default function PropuestaAdmin() {
   // Link a COMPARTIR → siempre producción (para quien lo recibe). El preview
   // "/p/demo" del molde sí usa el origen actual (es el borrador local).
   const publicUrl = `${SHARE_ORIGIN}${pubPath}`;
+  // "Ver como cliente" del equipo: la propuesta REAL pero con ?preview=1 → el
+  // viewer la muestra sin el gate de "crea tu cuenta" y en solo-lectura.
+  const publicPreviewUrl = `${SHARE_ORIGIN}/p/${code}?lang=${lang}&preview=1`;
   const previewUrl = `${proto}//${host}/p/demo?lang=${lang}`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=4&color=EEF2F8&bgcolor=0B0F17&data=${encodeURIComponent(publicUrl)}`;
   // Link de APROBACIÓN (con token) para compartir con el/los que aprueban — no
@@ -1598,7 +1601,7 @@ export default function PropuestaAdmin() {
                       {copied ? <><Check size={13} /> {t.copied}</> : <><Copy size={13} /> {t.copy}</>}
                     </button>
                   </div>
-                  <a href={publicUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
+                  <a href={publicPreviewUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
                     className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-2 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">
                     <Eye size={14} /> {t.viewAsClient} <ExternalLink size={11} className="opacity-60" />
                   </a>
@@ -1607,7 +1610,7 @@ export default function PropuestaAdmin() {
             ) : (
               <>
                 {/* Creadora NUEVA → entra por INVITACIÓN por correo (crea contraseña). */}
-                <a href={publicUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
+                <a href={publicPreviewUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
                   className="btn3d-ghost mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold">
                   <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
                 </a>

@@ -156,6 +156,7 @@ export default function PropuestaViewer({ linkId }) {
   const [lang, setLang] = useState('es');
   const [reg, setReg] = useState(null); // { id, name, email } del registro
   const [phase, setPhase] = useState('loading'); // 'loading' | 'gate' | 'view' | 'unavailable'
+  const [isPreview, setIsPreview] = useState(false); // ?preview=1 → vista del equipo (sin gate, solo lectura)
   // Modo APROBACIÓN: si el link trae ?approve=<token>, el que decide ve la
   // propuesta completa (sin gate) con barra Aprobar/Rechazar.
   const [approveToken, setApproveToken] = useState(null);
@@ -245,6 +246,16 @@ export default function PropuestaViewer({ linkId }) {
         return;
       }
 
+      // Vista previa del EQUIPO (?preview=1, desde "Ver como cliente"): mostrar la
+      // propuesta SIN el gate de registro y en modo solo-lectura (no guarda feedback).
+      const previewParam = new URLSearchParams(window.location.search).get('preview');
+      if (previewParam) {
+        setIsPreview(true);
+        setReg({ id: null, name: mapped.recipient?.name || '', email: '' });
+        setPhase('view');
+        return;
+      }
+
       // Entrada por INVITACIÓN: el id del registro viaja en el link (?reg=…) →
       // saltamos el gate (el equipo ya la invitó). También salta si ya hay sesión
       // (usuaria con cuenta, entra directo) o si ya se registró en este dispositivo.
@@ -287,7 +298,7 @@ export default function PropuestaViewer({ linkId }) {
   return (
     <>
       {/* Audio y fotos usan EXACTAMENTE el mismo cuerpo (portada, cierre, flujo). */}
-      <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} viewer={viewer} />
+      <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} viewer={viewer} preview={isPreview} />
       {approveToken && <ApproveBar lang={lang} linkId={linkId} token={approveToken} viewer={viewer} initialStatus={cfg.approvalStatus} reviewer={cfg.approvalReviewer} />}
     </>
   );
@@ -684,7 +695,7 @@ function AudioPlayer({ src }) {
   );
 }
 
-function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
+function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) {
   // Mismo formato para fotos y audios. Para audio, los "looks" son los audios
   // (cada uno { id, label, src }); la portada, el cierre, el feedback y el flujo
   // son idénticos — solo cambia lo que se muestra en cada pantalla.
@@ -768,8 +779,9 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer }) {
       const st = fb(l.id);
       return { id: l.id, caption: l.caption || l.label || '', result: l.result || l.src || null, status: st.status ?? null, note: st.note || '' };
     });
-    // /p/demo es preview del wizard: no hay backend ni registro → confirmación local.
-    if (isDemo) { setSent(true); setSummaryOpen(false); return; }
+    // /p/demo (preview del wizard) y ?preview=1 (vista del equipo): sin backend ni
+    // registro → confirmación local, NO se guarda feedback (evita datos basura).
+    if (isDemo || preview) { setSent(true); setSummaryOpen(false); return; }
     setSending(true);
     setSendErr('');
     try {
