@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, Lock, Mail, ArrowRight, MailCheck } from 'lucide-react';
 import { signUp } from '@/lib/supabase/session';
-import { sendEmail } from '@/lib/notify';
 import { usePortal } from '@/lib/portal-i18n';
 import Logo from '@/components/Logo';
 
@@ -32,7 +31,8 @@ export default function SignupPage() {
       return;
     }
     if (res.needsConfirm) { setSent(true); return; }
-    if (res.user?.id) sendEmail('welcome', res.user.id);
+    // El welcome ya lo manda public-signup (servidor). No lo repetimos acá para
+    // no duplicar el correo.
     router.push('/onboarding');
   }
 

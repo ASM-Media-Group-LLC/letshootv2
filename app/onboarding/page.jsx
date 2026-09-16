@@ -18,7 +18,6 @@ import { COUNTRIES, countryByName, splitPhone } from '@/lib/countries';
 import { cleanImageToWebp } from '@/lib/cleanImage';
 import Logo from '@/components/Logo';
 import LangToggle from '@/components/LangToggle';
-import CloneSetup from '@/components/CloneSetup';
 import ShotArt from '@/components/ShotArt';
 import ProposalDeck from '@/components/ProposalDeck';
 import { PACKS, PERIODS, PRICING_COPY } from '@/components/Pricing';
@@ -27,7 +26,6 @@ export default function OnboardingPage() {
   const { t, lang } = usePortal();
   const router = useRouter();
   const [me, setMe] = useState(undefined);
-  const [tab, setTab] = useState('datos');
   const [loraCount, setLoraCount] = useState(0);
   const [proposal, setProposal] = useState(null); // { id, intro } si está publicada
   const [proposalSlides, setProposalSlides] = useState([]);
@@ -69,15 +67,12 @@ export default function OnboardingPage() {
   const datosDone = !!(p.legal_first_name && p.legal_last_name && p.date_of_birth && p.country);
   const idApproved = ['id_approved', 'active', 'paid', 'authorized'].includes(st);
 
-  // Datos + Identidad are ONE step now (kept every field — just merged).
   const esL = lang === 'es';
-  // Sin suscripción: la cuenta es gratis (plan Pro hasta 2027) y el equipo la
-  // activa a mano. El onboarding es solo: datos+identidad y fotos del clon.
-  const TABS = [
-    { key: 'datos', label: esL ? 'Datos e identidad' : 'Data & identity', desc: esL ? 'Tu información y verificación' : 'Your info & verification', icon: IdCard, done: datosDone && idApproved },
-    { key: 'clon', label: h.tabs.clon, desc: h.tabDesc.clon, icon: Sparkles, done: loraCount > 0 },
-  ];
-  const doneCount = TABS.filter((tb) => tb.done).length;
+  // El onboarding es SOLO dos cosas: llenar la planilla (datos) y verificar
+  // identidad + aceptar los permisos. Las fotos del clon se suben aparte,
+  // después, y NO forman parte de esta pantalla.
+  const steps = [datosDone, idApproved]; // planilla · identidad + permisos
+  const doneCount = steps.filter(Boolean).length;
 
   const done = () => refresh();
 
@@ -91,7 +86,6 @@ export default function OnboardingPage() {
     setChoosingPack(false);
     if (proposal) window.sessionStorage.setItem(`proposal-dismissed-${proposal.id}`, '1');
     setShowProposal(false);
-    setTab('pago');
     await refresh();
   }
 
@@ -144,9 +138,9 @@ export default function OnboardingPage() {
                 <circle cx="22" cy="22" r="18" fill="none" stroke="currentColor" strokeWidth="4" className="text-line" />
                 <circle cx="22" cy="22" r="18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
                   className="text-brand" strokeDasharray={2 * Math.PI * 18}
-                  strokeDashoffset={2 * Math.PI * 18 * (1 - doneCount / TABS.length)} />
+                  strokeDashoffset={2 * Math.PI * 18 * (1 - doneCount / steps.length)} />
               </svg>
-              <span className="absolute text-xs font-semibold text-paper">{doneCount}/{TABS.length}</span>
+              <span className="absolute text-xs font-semibold text-paper">{doneCount}/{steps.length}</span>
             </div>
             <div className="whitespace-pre-line text-xs leading-tight text-paper-mute">{h.stepsDone}</div>
           </div>
@@ -174,50 +168,17 @@ export default function OnboardingPage() {
           <div className="min-w-0">
             <p className="font-display text-sm font-semibold text-paper">{esL ? 'Tu cuenta es gratis por lanzamiento' : 'Your account is free (launch)'}</p>
             <p className="mt-0.5 text-xs leading-relaxed text-paper-mute">{esL
-              ? 'Sin pagos ni suscripción — quien entra antes del 31 de diciembre de 2026 queda gratis. Completa tus datos, sube tus fotos y acepta los permisos; el equipo revisa tu identidad y activa tu cuenta.'
-              : 'No payments, no subscription — anyone who joins before December 31, 2026 stays free. Complete your details, upload your photos and accept the permissions; the team reviews your identity and activates your account.'}</p>
+              ? 'Sin pagos ni suscripción — quien entra antes del 31 de diciembre de 2026 queda gratis. Completa tus datos y acepta los permisos; el equipo revisa tu identidad y activa tu cuenta.'
+              : 'No payments, no subscription — anyone who joins before December 31, 2026 stays free. Complete your details and accept the permissions; the team reviews your identity and activates your account.'}</p>
           </div>
         </div>
 
-        {/* Premium stepper tabs — same card language as the plan cards */}
-        <div className="mt-7 grid grid-cols-2 gap-3">
-          {TABS.map((tb) => {
-            const active = tab === tb.key;
-            return (
-              <button key={tb.key} onClick={() => setTab(tb.key)}
-                className={`group relative flex flex-col gap-4 rounded-2xl border p-5 text-left transition-all ${
-                  active
-                    ? 'border-brand bg-brand/[0.06] shadow-glow-sm'
-                    : 'border-line bg-card hover:border-hair hover:bg-ink-2'}`}>
-                <div className="flex items-start justify-between">
-                  <span className={`grid h-11 w-11 place-items-center rounded-xl transition-colors ${
-                    active ? 'bg-brand text-on-accent' : 'bg-hair/[0.07] text-paper-mute group-hover:text-paper'}`}>
-                    <tb.icon size={19} />
-                  </span>
-                  {tb.done
-                    ? <CheckCircle2 size={22} className="text-brand" aria-label={h.doneShort} />
-                    : <Circle size={22} className="text-paper-dim/40" aria-label={h.incomplete} />}
-                </div>
-                <div>
-                  <div className="font-display text-base font-semibold text-paper">{tb.label}</div>
-                  <div className="mt-0.5 text-xs text-paper-dim">{tb.desc}</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Panel */}
-        <div className="mt-6 space-y-6">
-          {/* Datos + Identidad merged into one step (all fields kept) */}
-          {tab === 'datos' && (
-            <>
-              <InfoStep me={me} t={t} onDone={done} />
-              <IdentityStep me={me} t={t} lang={lang} onDone={done}
-                rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} pending={st === 'id_pending'} />
-            </>
-          )}
-          {tab === 'clon' && <CloneSetup userId={me.user.id} embedded />}
+        {/* Onboarding = SOLO planilla (datos) + identidad y permisos. Las fotos
+            del clon se suben aparte, después de que el equipo activa la cuenta. */}
+        <div className="mt-7 space-y-6">
+          <InfoStep me={me} t={t} onDone={done} />
+          <IdentityStep me={me} t={t} lang={lang} onDone={done}
+            rejected={st === 'id_rejected'} reason={p.id_rejection_reason} approved={idApproved} pending={st === 'id_pending'} />
         </div>
       </main>
     </div>
@@ -496,7 +457,7 @@ const CONSENT_INIT = Object.fromEntries(CONSENT_KEYS.map((k) => [k, false]));
 
 function IdentityStep({ me, onDone, t, lang, rejected, reason, approved, pending }) {
   const [files, setFiles] = useState({});
-  const [consents, setConsents] = useState(CONSENT_INIT);
+  const [acceptedAll, setAcceptedAll] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false); // muestra el pop-up de gracias
@@ -526,7 +487,7 @@ function IdentityStep({ me, onDone, t, lang, rejected, reason, approved, pending
   async function submit() {
     setError('');
     if (KYC_SLOTS.some((k) => !files[k])) { setError(t.onboarding.id.missingDocs); return; }
-    if (CONSENT_KEYS.some((k) => !consents[k])) { setError(t.onboarding.id.missingConsent); return; }
+    if (!acceptedAll) { setError(t.onboarding.id.missingConsent); return; }
     setSaving(true);
     const supabase = getSupabase();
     try {
@@ -571,23 +532,29 @@ function IdentityStep({ me, onDone, t, lang, rejected, reason, approved, pending
       <div className="mt-6">
         <p className="text-sm font-medium text-paper">{t.onboarding.id.consentsTitle}</p>
         <p className="mb-2.5 text-[11px] text-paper-dim">{t.onboarding.id.consentsIntro}</p>
-        <div className="space-y-2.5">
+        {/* Los permisos se muestran completos (lista de solo lectura) y se aceptan
+            todos con UNA sola casilla — antes eran 6 clics. */}
+        <ul className="space-y-1.5 rounded-xl border border-line bg-ink-2 px-4 py-3">
           {CONSENT_KEYS.map((k) => (
-            <label key={k} className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-ink-2 px-4 py-3 transition-colors hover:border-brand/30">
-              <input type="checkbox" checked={consents[k]} onChange={(e) => setConsents((v) => ({ ...v, [k]: e.target.checked }))} className="peer sr-only" />
-              <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${consents[k] ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
-                {consents[k] && <Check size={13} />}
-              </span>
-              <span className="text-sm leading-relaxed text-paper-mute">{t.onboarding.id.consents[k]}</span>
-            </label>
+            <li key={k} className="flex items-start gap-2 text-[12px] leading-relaxed text-paper-dim">
+              <Check size={13} className="mt-0.5 shrink-0 text-brand/70" />
+              <span>{t.onboarding.id.consents[k]}</span>
+            </li>
           ))}
-        </div>
-        <p className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-paper-dim">
+        </ul>
+        <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-paper-dim">
           <a href="/likeness-consent" target="_blank" className="underline hover:text-brand">{lang === 'es' ? 'Licencia de imagen IA' : 'AI Likeness License'}</a>
           <a href="/biometric-policy" target="_blank" className="underline hover:text-brand">{lang === 'es' ? 'Política biométrica' : 'Biometric Policy'}</a>
           <a href="/terms" target="_blank" className="underline hover:text-brand">{lang === 'es' ? 'Términos' : 'Terms'}</a>
           <a href="/privacy" target="_blank" className="underline hover:text-brand">{lang === 'es' ? 'Privacidad' : 'Privacy'}</a>
         </p>
+        <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-ink-2 px-4 py-3.5 transition-colors hover:border-brand/30">
+          <input type="checkbox" checked={acceptedAll} onChange={(e) => setAcceptedAll(e.target.checked)} className="peer sr-only" />
+          <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${acceptedAll ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
+            {acceptedAll && <Check size={13} />}
+          </span>
+          <span className="text-sm font-medium leading-relaxed text-paper">{t.onboarding.id.acceptAll}</span>
+        </label>
       </div>
       {error && <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</p>}
       <button onClick={submit} disabled={saving}
