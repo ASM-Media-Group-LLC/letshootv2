@@ -746,9 +746,21 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
       liked: v.filter((x) => x.status === 'liked').length,
       rejected: v.filter((x) => x.status === 'rejected').length,
       commented: v.filter((x) => x.note?.trim()).length,
+      // Sin decidir = ni me gusta ni paso. Hay que decidir TODAS para terminar.
+      undecided: v.filter((x) => x.status !== 'liked' && x.status !== 'rejected').length,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, looks]);
+
+  // Lleva a la primera foto/audio sin decidir (para poder terminar).
+  const scrollToFirstUndecided = () => {
+    const idx = looks.findIndex((l) => { const s = fb(l.id).status; return s !== 'liked' && s !== 'rejected'; });
+    if (idx < 0) return;
+    scrollTo(idx < photos.length ? idx : audioIdx);
+  };
+  // Revisar de nuevo = volver al inicio para cambiar lo que se confundió (guarda
+  // las marcas). Si ya había enviado, reabre para poder terminar otra vez.
+  const reviewAgain = () => { setSent(false); scrollTo(-1); };
 
   useEffect(() => {
     const block = (e) => { if (e.target?.tagName === 'IMG') e.preventDefault(); };
@@ -1180,7 +1192,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
             {t.thanks}
           </h2>
           <p className="mx-auto mt-3 max-w-lg text-sm text-paper-mute sm:text-base">
-            {t.thanksSub}
+            {sent ? t.thanksSub : (t.finishPrompt || 'Dale me gusta o paso a cada foto para terminar. Comentar es opcional.')}
           </p>
 
           <div className="mx-auto mt-10 grid max-w-md grid-cols-3 gap-3">
@@ -1191,35 +1203,46 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
 
           <div className="mt-12 flex flex-col items-center justify-center gap-3 sm:flex-row">
             {sent ? (
+              // Ya terminó → descargar sus favoritas (protagonista) + confirmación.
+              <>
+                {photosWithResult.length > 0 && (
+                  <button
+                    onClick={() => { setDlErr(''); setDlReady(null); setDlDone(''); setDlOpen(true); }}
+                    className="inline-flex items-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02]"
+                  >
+                    <Download size={14} /> {t.downloadLiked || 'Descargar mis favoritas'}{stats.liked ? ` · ${stats.liked}` : ''}
+                  </button>
+                )}
+                <span className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-semibold text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                  {t.feedbackSent}
+                </span>
+              </>
+            ) : stats.undecided > 0 ? (
+              // Faltan por decidir → botón las lleva a la primera sin marcar.
               <button
-                onClick={() => setSummaryOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-semibold text-paper hover:border-brand/40"
+                onClick={scrollToFirstUndecided}
+                className="inline-flex items-center gap-2 rounded-full border border-amber-400/50 bg-amber-400/10 px-6 py-3 text-sm font-semibold text-amber-100 transition-transform hover:scale-[1.02]"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                {t.feedbackSent}
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-amber-400/25 font-mono text-[11px] font-bold tabular-nums">{stats.undecided}</span>
+                {t.leftToDecide || 'por decidir'}
               </button>
             ) : (
+              // Todas decididas → terminar (envía el feedback).
               <button
-                onClick={() => setSummaryOpen(true)}
-                className="inline-flex items-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02]"
+                onClick={sendFeedback}
+                disabled={sending}
+                className="inline-flex items-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:opacity-60"
               >
-                <Send size={14} /> {t.sendFeedback}
+                <Send size={14} /> {sending ? (t.regSending || 'Enviando…') : (t.finishReview || 'Terminar revisión')}
               </button>
             )}
             <button
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              onClick={reviewAgain}
               className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-medium text-paper-mute hover:border-brand/40 hover:text-paper"
             >
               {t.reviewAgain}
             </button>
-            {photosWithResult.length > 0 && (
-              <button
-                onClick={() => { setDlErr(''); setDlReady(null); setDlDone(''); setDlOpen(true); }}
-                className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-medium text-paper-mute hover:border-brand/40 hover:text-paper"
-              >
-                <Download size={14} /> {t.downloadPhotos || 'Descargar fotos'}
-              </button>
-            )}
           </div>
 
           {/* Logos de plataformas elegidos — al final. */}
