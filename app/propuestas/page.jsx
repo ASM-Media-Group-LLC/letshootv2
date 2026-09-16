@@ -792,8 +792,15 @@ export default function PropuestaAdmin() {
     if (inviteState === 'sending' || !code) return;
     setInviteState('sending'); setInviteMsg('');
     try {
+      // Creadora activa: el correo no viene en el dropdown → lo buscamos por su id.
+      let email = recipient.email.trim();
+      if (!email && creatorId) {
+        const { data: cp } = await getSupabase().from('profiles').select('email').eq('id', creatorId).maybeSingle();
+        email = (cp?.email || '').trim();
+      }
+      if (!email) throw new Error('Esta creadora no tiene correo en su ficha.');
       const { data, error } = await getSupabase().functions.invoke('proposal-invite', {
-        body: { link_id: code, email: recipient.email.trim(), full_name: recipient.name.trim(), lang },
+        body: { link_id: code, email, full_name: recipient.name.trim(), lang },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'No se pudo enviar la invitación.');
@@ -1566,29 +1573,36 @@ export default function PropuestaAdmin() {
               </>
             ) : recipient.kind === 'active' ? (
               <>
-                {/* Creadora ACTIVA → compartir link / QR (WhatsApp). Ella inicia sesión y la ve en su cuenta. */}
-                <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
-                  <LinkIcon size={13} className="shrink-0 text-paper-dim" />
-                  <input readOnly value={publicUrl} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-paper outline-none" />
-                  <button type="button" onClick={copyLink}
-                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-brand text-on-accent hover:scale-105'}`}>
-                    {copied ? <><Check size={13} /> {t.copied}</> : <><Copy size={13} /> {t.copy}</>}
-                  </button>
-                </div>
-                <div className="mb-4 rounded-2xl border border-line bg-ink p-4">
-                  <div className="mb-3 inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">
-                    <Smartphone size={11} /> {t.scanPhone}
+                {/* Email-first: se le manda por correo. El link/QR queda como opción secundaria. */}
+                <button type="button" onClick={sendInvite} disabled={inviteState === 'sending' || inviteState === 'sent'}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all disabled:opacity-70 ${inviteState === 'sent' ? 'bg-emerald-500 text-white' : 'btn3d'}`}>
+                  {inviteState === 'sent'
+                    ? <><Check size={15} /> Enviada por correo</>
+                    : inviteState === 'sending'
+                      ? <>Enviando…</>
+                      : <><Mail size={15} /> Enviar por correo{recipient.name ? ` a ${recipient.name}` : ''}</>}
+                </button>
+                <p className="mt-2 text-center text-[11px] text-paper-dim">
+                  {inviteState === 'error'
+                    ? <span className="text-rose-300">{inviteMsg}</span>
+                    : <>Le llega un correo con su propuesta. Entra y la ve en su cuenta.</>}
+                </p>
+                {/* Secundario: compartir el link a mano (WhatsApp) si lo prefieres. */}
+                <details className="mt-4 rounded-xl border border-line bg-ink-2/40 px-3.5 py-2.5">
+                  <summary className="cursor-pointer select-none text-[12px] font-medium text-paper-mute">O compartir el link a mano</summary>
+                  <div className="mt-3 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
+                    <LinkIcon size={13} className="shrink-0 text-paper-dim" />
+                    <input readOnly value={publicUrl} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-paper outline-none" />
+                    <button type="button" onClick={copyLink}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-brand text-on-accent hover:scale-105'}`}>
+                      {copied ? <><Check size={13} /> {t.copied}</> : <><Copy size={13} /> {t.copy}</>}
+                    </button>
                   </div>
-                  <div className="grid place-items-center">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={qrUrl} alt="QR" className="h-40 w-40 rounded-lg" />
-                  </div>
-                </div>
-                <a href={publicUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
-                  className="btn3d mb-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold">
-                  <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
-                </a>
-                <p className="mt-1 text-center text-[11px] text-paper-dim">Mandáselo por WhatsApp o link. Ella inicia sesión y la propuesta le aparece en su cuenta.</p>
+                  <a href={publicUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
+                    className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-2 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">
+                    <Eye size={14} /> {t.viewAsClient} <ExternalLink size={11} className="opacity-60" />
+                  </a>
+                </details>
               </>
             ) : (
               <>
