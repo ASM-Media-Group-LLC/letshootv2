@@ -799,7 +799,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
     });
     // /p/demo (preview del wizard) y ?preview=1 (vista del equipo): sin backend ni
     // registro → confirmación local, NO se guarda feedback (evita datos basura).
-    if (isDemo || preview) { setSent(true); setSummaryOpen(false); return; }
+    if (isDemo || preview) { setSent(true); setSummaryOpen(false); return true; }
     setSending(true);
     setSendErr('');
     try {
@@ -821,10 +821,23 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
       if (!isStaff) {
         try { getSupabase().functions.invoke('proposal-notify', { body: { link_id: linkId } }); } catch {}
       }
+      return true;
     } catch (e) {
       setSendErr(e?.message || t.regError);
+      return false;
     } finally {
       setSending(false);
+    }
+  };
+
+  // Terminar Y descargar en un solo botón: guarda el feedback y, si le gustó
+  // alguna, abre de una la descarga de sus favoritas. Si no le gustó ninguna,
+  // solo termina (no hay nada que bajar).
+  const finishAndDownload = async () => {
+    if (sending) return;
+    const ok = await sendFeedback();
+    if (ok && stats.liked > 0 && photosWithResult.length > 0) {
+      setDlErr(''); setDlReady(null); setDlDone(''); setDlOpen(true);
     }
   };
 
@@ -1201,19 +1214,21 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
             <FinalStat value={stats.commented} label={t.comments} icon={<MessageSquare size={14} />} />
           </div>
 
-          <div className="mt-12 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          {/* Un solo CTA protagonista (grande, centrado) + "Revisar de nuevo"
+              como link discreto debajo. */}
+          <div className="mx-auto mt-12 flex w-full max-w-sm flex-col items-center gap-4">
             {sent ? (
               // Ya terminó → descargar sus favoritas (protagonista) + confirmación.
               <>
-                {photosWithResult.length > 0 && (
+                {photosWithResult.length > 0 ? (
                   <button
                     onClick={() => { setDlErr(''); setDlReady(null); setDlDone(''); setDlOpen(true); }}
-                    className="inline-flex items-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02]"
+                    className="inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-brand px-8 py-4 text-base font-bold text-on-accent shadow-glow transition-transform hover:scale-[1.02]"
                   >
-                    <Download size={14} /> {t.downloadLiked || 'Descargar mis favoritas'}{stats.liked ? ` · ${stats.liked}` : ''}
+                    <Download size={18} /> {t.downloadLiked || 'Descargar mis favoritas'}{stats.liked ? ` · ${stats.liked}` : ''}
                   </button>
-                )}
-                <span className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-semibold text-emerald-300">
+                ) : null}
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-300">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
                   {t.feedbackSent}
                 </span>
@@ -1222,24 +1237,28 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
               // Faltan por decidir → botón las lleva a la primera sin marcar.
               <button
                 onClick={scrollToFirstUndecided}
-                className="inline-flex items-center gap-2 rounded-full border border-amber-400/50 bg-amber-400/10 px-6 py-3 text-sm font-semibold text-amber-100 transition-transform hover:scale-[1.02]"
+                className="inline-flex w-full items-center justify-center gap-2.5 rounded-full border border-amber-400/50 bg-amber-400/10 px-8 py-4 text-base font-semibold text-amber-100 transition-transform hover:scale-[1.02]"
               >
                 <span className="grid h-5 w-5 place-items-center rounded-full bg-amber-400/25 font-mono text-[11px] font-bold tabular-nums">{stats.undecided}</span>
                 {t.leftToDecide || 'por decidir'}
               </button>
             ) : (
-              // Todas decididas → terminar (envía el feedback).
+              // Todas decididas → TERMINAR Y DESCARGAR en un solo botón.
               <button
-                onClick={sendFeedback}
+                onClick={finishAndDownload}
                 disabled={sending}
-                className="inline-flex items-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2.5 rounded-full bg-brand px-8 py-4 text-base font-bold text-on-accent shadow-glow transition-transform hover:scale-[1.02] disabled:opacity-60"
               >
-                <Send size={14} /> {sending ? (t.regSending || 'Enviando…') : (t.finishReview || 'Terminar revisión')}
+                {stats.liked > 0 ? <Download size={18} /> : <Send size={16} />}
+                {sending
+                  ? (t.regSending || 'Enviando…')
+                  : (stats.liked > 0 ? (t.finishDownload || 'Terminar y descargar') : (t.finishReview || 'Terminar revisión'))}
               </button>
             )}
+            {sendErr && <p className="text-[13px] text-rose-300">{sendErr}</p>}
             <button
               onClick={reviewAgain}
-              className="inline-flex items-center gap-2 rounded-full border border-line px-6 py-3 text-sm font-medium text-paper-mute hover:border-brand/40 hover:text-paper"
+              className="text-sm font-medium text-paper-mute underline-offset-4 transition-colors hover:text-paper hover:underline"
             >
               {t.reviewAgain}
             </button>
