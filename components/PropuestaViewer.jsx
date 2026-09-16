@@ -319,6 +319,9 @@ function ApproveBar({ lang, linkId, token, viewer, initialStatus, reviewer }) {
   const [reason, setReason] = useState('');
   const [who, setWho] = useState('');           // quién decide — queda como "quién aprobó"
   const [err, setErr] = useState('');
+  // ¿La aprobación disparó el envío a la creadora? Con candado sí; un manager
+  // "decide" de una copia NO (ella ya la tiene) — cambia el mensaje de éxito.
+  const [sentToCreator, setSentToCreator] = useState(true);
 
   // Prellenar con el nombre del que mira si está logueado (equipo). Igual se
   // puede editar; si nadie está logueado, lo tiene que escribir.
@@ -337,6 +340,7 @@ function ApproveBar({ lang, linkId, token, viewer, initialStatus, reviewer }) {
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || (es ? 'No se pudo procesar.' : 'Could not process.'));
+      if (decision === 'approved') setSentToCreator(!!data?.invited);
       setState(decision === 'approved' ? 'approved' : 'rejected');
     } catch (e) {
       setState('error'); setErr(e?.message || (es ? 'No se pudo procesar.' : 'Could not process.'));
@@ -348,7 +352,9 @@ function ApproveBar({ lang, linkId, token, viewer, initialStatus, reviewer }) {
     return (
       <div className={wrap}>
         <div className="mx-auto flex max-w-lg items-center justify-center gap-2 text-sm font-semibold text-emerald-300">
-          <Check size={16} /> {es ? 'Aprobada — se le envió a la creadora.' : 'Approved — sent to the creator.'}{reviewer ? (es ? ` · por ${reviewer}` : ` · by ${reviewer}`) : ''}
+          <Check size={16} /> {sentToCreator
+            ? (es ? 'Aprobada — se le envió a la creadora.' : 'Approved — sent to the creator.')
+            : (es ? 'Aprobada — quedó registrada para el equipo.' : 'Approved — recorded for the team.')}{reviewer ? (es ? ` · por ${reviewer}` : ` · by ${reviewer}`) : ''}
         </div>
       </div>
     );

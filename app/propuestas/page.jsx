@@ -177,6 +177,24 @@ export default function PropuestaAdmin() {
   const removeApprover = (e) => setApproverEmails((s) => s.filter((x) => x !== e));
   const [approvalState, setApprovalState] = useState(''); // '' | 'sending' | 'sent' | 'error'
   const [approvalMsg, setApprovalMsg] = useState('');
+  // COPIAS a managers (SIN retener el envío a la creadora): [{email, role}] con
+  // role 'viewer' (solo mira → link ?preview=1) o 'decide' (puede aprobar/
+  // rechazar por su link con token — queda registrado, no frena nada).
+  const [ccList, setCcList] = useState([]);
+  const [ccInput, setCcInput] = useState('');
+  const addCc = (raw) => {
+    const parts = String(raw || '').split(/[,;\s]+/).map((s) => s.trim().toLowerCase())
+      .filter((e) => EMAIL_RE.test(e));
+    if (!parts.length) return;
+    setCcList((s) => {
+      const have = new Set(s.map((r) => r.email));
+      return [...s, ...parts.filter((e) => !have.has(e)).map((e) => ({ email: e, role: 'viewer' }))];
+    });
+    setCcInput('');
+  };
+  const removeCc = (email) => setCcList((s) => s.filter((r) => r.email !== email));
+  const toggleCcRole = (email) => setCcList((s) => s.map((r) => (r.email === email ? { ...r, role: r.role === 'decide' ? 'viewer' : 'decide' } : r)));
+  const [ccState, setCcState] = useState(''); // '' | 'sending' | 'sent' | 'error'
   const [feedback, setFeedback] = useState(null);
   const [template] = useState('redes'); // hoy: un solo tipo (contenido de redes)
   const [coverUrl, setCoverUrl] = useState(DEMO_COVER);
@@ -322,6 +340,7 @@ export default function PropuestaAdmin() {
           }
           setNeedsApproval(!!data.approval_required && data.recipient_kind !== 'internal');
           if (typeof data.approver_email === 'string') setApproverEmails(data.approver_email.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean));
+          if (Array.isArray(data.cc_recipients)) setCcList(data.cc_recipients.filter((r) => r?.email).map((r) => ({ email: String(r.email).toLowerCase(), role: r.role === 'decide' ? 'decide' : 'viewer' })));
         }
         if (Array.isArray(data.looks) && data.looks.length > 0) {
           const seeded = data.looks.map((l) => ({
@@ -673,6 +692,8 @@ export default function PropuestaAdmin() {
       approval_required: needsApproval || recipient.kind === 'internal',
       approver_email: (needsApproval && recipient.kind !== 'internal') ? approverEmails.join(', ') : null,
       approval_status: (needsApproval || recipient.kind === 'internal') ? 'pending' : null,
+      // Copias a managers (viewer/decide) — no aplican a las internas.
+      cc_recipients: recipient.kind === 'internal' ? [] : ccList,
       status: 'published',
       expires_at: new Date(Date.now() + days * 86400000).toISOString(),
     };
@@ -808,6 +829,17 @@ export default function PropuestaAdmin() {
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'No se pudo enviar la invitación.');
       setInviteState('sent');
+      // Copias a managers (si hay): mismo clic. La creadora ya recibió lo suyo;
+      // esto no frena nada — 'viewer' link solo-lectura, 'decide' link con token.
+      if (ccList.length) {
+        setCcState('sending');
+        try {
+          const { data: cd, error: ce } = await getSupabase().functions.invoke('proposal-approval', {
+            body: { action: 'copy', link_id: code, recipients: ccList },
+          });
+          setCcState(!ce && cd?.ok ? 'sent' : 'error');
+        } catch { setCcState('error'); }
+      }
     } catch (e) {
       setInviteState('error'); setInviteMsg(e?.message || 'No se pudo enviar la invitación.');
     }
@@ -996,6 +1028,39 @@ export default function PropuestaAdmin() {
                       />
                     </Field>
                   )}
+
+                  {/* COPIAS a managers (opcional): cada correo con su rol.
+                      «Mira» = solo lectura (?preview=1) · «Decide» = puede aprobar/
+                      rechazar con su link (queda registrado). NO retiene el envío:
+                      la creadora la recibe igual (decisión del dueño 2026-09-16). */}
+                  <div className="rounded-xl border border-line bg-ink-2/40 p-3.5">
+                    <span className="block text-sm font-semibold text-paper">Copia para managers <span className="font-normal text-paper-dim">(opcional)</span></span>
+                    <span className="mt-0.5 block text-[11px] leading-relaxed text-paper-mute">Les llega su copia por correo. La creadora la recibe igual, sin esperar a nadie.</span>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-ink-2 px-2.5 py-2 focus-within:border-brand/60">
+                      {ccList.map((r) => (
+                        <span key={r.email} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-paper">
+                          {r.email}
+                          <button type="button" onClick={() => toggleCcRole(r.email)} title="Toca para cambiar el rol"
+                            className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide transition-colors ${r.role === 'decide' ? 'bg-brand text-on-accent' : 'bg-ink text-paper-mute'}`}>
+                            {r.role === 'decide' ? 'Decide' : 'Mira'}
+                          </button>
+                          <button type="button" onClick={() => removeCc(r.email)} className="text-paper-mute transition-colors hover:text-rose-300"><X size={12} /></button>
+                        </span>
+                      ))}
+                      <input
+                        type="email"
+                        value={ccInput}
+                        onChange={(e) => setCcInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addCc(ccInput); } }}
+                        onBlur={() => addCc(ccInput)}
+                        placeholder={ccList.length ? 'Agregar otro…' : 'manager@correo.com'}
+                        className="min-w-[150px] flex-1 bg-transparent px-1 py-1 text-sm text-paper placeholder:text-paper-dim outline-none"
+                      />
+                    </div>
+                    {ccList.length > 0 && (
+                      <p className="mt-1.5 text-[11px] text-paper-dim">Toca el rol para cambiarlo: <span className="text-paper-mute">Mira</span> = solo ve · <span className="text-paper-mute">Decide</span> = puede aprobar/rechazar (queda registrado).</p>
+                    )}
+                  </div>
 
                   {/* Aprobación OCULTA por ahora — la propuesta se manda directo a
                       la creadora (decisión del dueño). El código queda por si vuelve. */}
@@ -1583,7 +1648,13 @@ export default function PropuestaAdmin() {
                 <p className="mt-2 text-center text-[11px] text-paper-dim">
                   {inviteState === 'error'
                     ? <span className="text-rose-300">{inviteMsg}</span>
-                    : <>Le llega un correo con su propuesta. Entra y la ve en su cuenta.</>}
+                    : inviteState === 'sent' && ccList.length
+                      ? (ccState === 'sent'
+                        ? <>Enviada — con copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}. ✓</>
+                        : ccState === 'error'
+                          ? <span className="text-amber-300">Enviada a ella, pero la copia a managers no salió. Reintentá.</span>
+                          : <>Enviada. Mandando copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}…</>)
+                      : <>Le llega un correo con su propuesta. Entra y la ve en su cuenta.{ccList.length ? ` También va copia a ${ccList.length} manager${ccList.length === 1 ? '' : 's'}.` : ''}</>}
                 </p>
                 {/* Secundario: compartir el link a mano (WhatsApp) si lo prefieres. */}
                 <details className="mt-4 rounded-xl border border-line bg-ink-2/40 px-3.5 py-2.5">
@@ -1620,7 +1691,13 @@ export default function PropuestaAdmin() {
                 <p className="mt-2 text-center text-[11px] text-paper-dim">
                   {inviteState === 'error'
                     ? <span className="text-rose-300">{inviteMsg}</span>
-                    : <>Se env&iacute;a a <span className="text-paper-mute">{recipient.email || 'su correo'}</span>. Crea su contrase&ntilde;a y la propuesta queda en su cuenta.</>}
+                    : inviteState === 'sent' && ccList.length
+                      ? (ccState === 'sent'
+                        ? <>Enviada — con copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}. ✓</>
+                        : ccState === 'error'
+                          ? <span className="text-amber-300">Enviada a ella, pero la copia a managers no salió. Reintentá.</span>
+                          : <>Enviada. Mandando copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}…</>)
+                      : <>Se env&iacute;a a <span className="text-paper-mute">{recipient.email || 'su correo'}</span>. Crea su contrase&ntilde;a y la propuesta queda en su cuenta.{ccList.length ? ` También va copia a ${ccList.length} manager${ccList.length === 1 ? '' : 's'}.` : ''}</>}
                 </p>
               </>
             )}

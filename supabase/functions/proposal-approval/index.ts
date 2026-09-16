@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
     if (!link) return reply({ ok: false, error: 'Propuesta inválida.' });
 
     const { data: prop } = await svc.from('photo_proposals')
-      .select('id, status, expires_at, name, lang, recipient_name, recipient_email, recipient_kind, model_name, approval_required, approver_email, approval_token, approval_status, created_by, created_by_name')
+      .select('id, status, expires_at, name, lang, recipient_name, recipient_email, recipient_kind, model_name, approval_required, approver_email, approval_token, approval_status, created_by, created_by_name, cc_recipients')
       .eq('link_id', link).maybeSingle();
     if (!prop) return reply({ ok: false, error: 'Esta propuesta no existe.' });
     const lang = prop.lang === 'en' ? 'en' : 'es';
@@ -124,13 +124,66 @@ Deno.serve(async (req) => {
       return reply({ ok: true, sent_to: approvers, count: sentCount, skipped });
     }
 
+    // ── action: COPY (copias a managers — SIN retener el envío a la creadora) ──
+    // Cada destinatario tiene un rol: 'viewer' (solo mira → link ?preview=1) o
+    // 'decide' (recibe el link ?approve=<token>; su decisión queda registrada,
+    // pero como approval_required=false NO frena ni re-manda nada a la creadora).
+    if (action === 'copy') {
+      const raw = Array.isArray(body.recipients) && body.recipients.length
+        ? body.recipients
+        : (Array.isArray(prop.cc_recipients) ? prop.cc_recipients : []);
+      const recips = raw
+        .map((r: { email?: string; role?: string }) => ({
+          email: String(r?.email || '').trim().toLowerCase(),
+          role: r?.role === 'decide' ? 'decide' : 'viewer',
+        }))
+        .filter((r: { email: string }) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email));
+      if (!recips.length) return reply({ ok: false, error: 'No hay correos de managers para la copia.' });
+      if (prop.status !== 'published' || (prop.expires_at && new Date(prop.expires_at) < new Date())) {
+        return reply({ ok: false, error: 'Esta propuesta ya no está disponible.' });
+      }
+      const es = lang === 'es';
+      const forName = prop.recipient_name || (es ? 'una creadora' : 'a creator');
+      let sentCount = 0; let lastErr: string | null = null; let skipped: string | null = null;
+      for (const r of recips) {
+        const canDecide = r.role === 'decide' && prop.approval_token;
+        const theUrl = canDecide
+          ? `${APP}/p/${encodeURIComponent(link)}?approve=${encodeURIComponent(prop.approval_token)}&lang=${lang}`
+          : `${APP}/p/${encodeURIComponent(link)}?preview=1&lang=${lang}`;
+        const html = brandedLayout({
+          eyebrow: es ? 'Copia · Propuesta' : 'Copy · Proposal',
+          title: es ? `Propuesta para ${forName}` : `Proposal for ${forName}`,
+          body: canDecide
+            ? (es
+              ? `Te compartimos la propuesta que se le envió a ${forName}. Podés verla y dejar tu visto bueno o rechazo con motivo — queda registrado para el equipo (a ella ya le llegó).`
+              : `Here's the proposal that was sent to ${forName}. You can review it and leave your approval or rejection with a reason — it's recorded for the team (she already received it).`)
+            : (es
+              ? `Te compartimos una copia de la propuesta que se le envió a ${forName}. Es solo para ver — no hace falta que hagas nada.`
+              : `Here's a copy of the proposal that was sent to ${forName}. It's view-only — nothing to do on your end.`),
+          cta: canDecide ? (es ? 'Ver y dar mi visto' : 'Review & weigh in') : (es ? 'Ver la propuesta' : 'View the proposal'),
+          url: theUrl,
+          pre: es ? `Copia de la propuesta para ${forName}.` : `Copy of the proposal for ${forName}.`,
+        });
+        const subject = es ? `Copia: propuesta para ${forName}` : `Copy: proposal for ${forName}`;
+        const out = await sendResend(r.email, subject, html);
+        if (out.ok) { sentCount++; if (out.skipped) skipped = out.skipped; }
+        else lastErr = out.error || 'Resend error';
+        await svc.from('email_log').insert({ template: r.role === 'decide' ? 'proposal_copy_decide' : 'proposal_copy_viewer', recipient: r.email, subject, resend_id: out.id || null, lang }).then(() => {}, () => {});
+      }
+      if (sentCount === 0) return reply({ ok: false, error: lastErr || 'Resend error' });
+      return reply({ ok: true, count: sentCount, skipped });
+    }
+
     // ── action: DECIDE (aprobar / rechazar) ──
     if (action === 'decide') {
       const token = String(body.token || '').trim();
       const decision = body.decision === 'approved' ? 'approved' : body.decision === 'rejected' ? 'rejected' : '';
       const reason = String(body.reason || '').trim().slice(0, 800);
       const reviewer = String(body.reviewer_name || '').trim().slice(0, 120) || null;
-      if (!prop.approval_required || !prop.approval_token) return reply({ ok: false, error: 'Esta propuesta no requiere aprobación.' });
+      // La autorización real es el TOKEN. approval_required=true = flujo con
+      // candado (la creadora espera); false = manager "decide" de una copia
+      // (informativo: a ella ya le llegó, su decisión solo queda registrada).
+      if (!prop.approval_token) return reply({ ok: false, error: 'Esta propuesta no tiene revisión configurada.' });
       if (!token || token !== String(prop.approval_token)) return reply({ ok: false, error: 'Link de aprobación inválido.' }, 403);
       if (!decision) return reply({ ok: false, error: 'Decisión inválida.' });
       if (prop.approval_status === 'approved') return reply({ ok: true, already: true, status: 'approved' });
@@ -149,17 +202,24 @@ Deno.serve(async (req) => {
             const es = lang === 'es';
             const forName = prop.recipient_name || (es ? 'una creadora' : 'a creator');
             const who = reviewer || (es ? 'Alguien del equipo' : 'A reviewer');
+            const gated = !!prop.approval_required;
             const html = brandedLayout({
-              eyebrow: es ? 'Revisión · Rechazada' : 'Review · Rejected',
+              eyebrow: gated ? (es ? 'Revisión · Rechazada' : 'Review · Rejected') : (es ? 'Manager · Rechazo' : 'Manager · Rejected'),
               title: es ? `Rechazaron la propuesta para ${forName}` : `The proposal for ${forName} was rejected`,
-              body: es
-                ? `${who} rechazó en revisión la propuesta “${prop.name || ''}”. NO se le envió a la creadora.${reason ? ` Motivo: “${reason}”.` : ''} Ábrela en el admin para ajustarla y volver a enviarla a revisión.`
-                : `${who} rejected the proposal “${prop.name || ''}” in review. It was NOT sent to the creator.${reason ? ` Reason: “${reason}”.` : ''} Open it in the admin to adjust and send it back for review.`,
+              body: gated
+                ? (es
+                  ? `${who} rechazó en revisión la propuesta “${prop.name || ''}”. NO se le envió a la creadora.${reason ? ` Motivo: “${reason}”.` : ''} Ábrela en el admin para ajustarla y volver a enviarla a revisión.`
+                  : `${who} rejected the proposal “${prop.name || ''}” in review. It was NOT sent to the creator.${reason ? ` Reason: “${reason}”.` : ''} Open it in the admin to adjust and send it back for review.`)
+                : (es
+                  ? `${who} (manager con copia) rechazó la propuesta “${prop.name || ''}”.${reason ? ` Motivo: “${reason}”.` : ''} Ojo: la creadora YA la tiene — esto es su opinión, queda registrada para el equipo.`
+                  : `${who} (manager on copy) rejected the proposal “${prop.name || ''}”.${reason ? ` Reason: “${reason}”.` : ''} Note: the creator already has it — this is their opinion, recorded for the team.`),
               cta: es ? 'Ver en el admin' : 'Open in admin',
               url: `${APP}/admin?tab=propuestas`,
               pre: es ? 'Una propuesta fue rechazada en revisión.' : 'A proposal was rejected in review.',
             });
-            const subject = es ? `Rechazada en revisión: ${prop.name || 'propuesta'}` : `Rejected in review: ${prop.name || 'proposal'}`;
+            const subject = gated
+              ? (es ? `Rechazada en revisión: ${prop.name || 'propuesta'}` : `Rejected in review: ${prop.name || 'proposal'}`)
+              : (es ? `El manager rechazó: ${prop.name || 'propuesta'}` : `Manager rejected: ${prop.name || 'proposal'}`);
             const r = await sendResend(teamEmail, subject, html);
             await svc.from('email_log').insert({ template: 'proposal_approval_rejected', recipient: teamEmail, subject, resend_id: r.id || null, lang }).then(() => {}, () => {});
           }
@@ -167,11 +227,42 @@ Deno.serve(async (req) => {
         return reply({ ok: true, status: 'rejected' });
       }
 
-      // approved → marcar y disparar invitación a la creadora (si hay correo; las
-      // INTERNAS no tienen correo → no se manda sola, se reenvía desde el admin).
+      // approved → marcar. Con CANDADO (approval_required) dispara la invitación
+      // a la creadora (si hay correo; las INTERNAS no tienen correo → se reenvía
+      // desde el admin). SIN candado (manager de una copia) NO se re-manda nada:
+      // ella ya la tiene — solo avisamos al equipo del visto bueno.
       await svc.from('photo_proposals').update({ approval_status: 'approved', approved_at: new Date().toISOString(), approval_reason: reason || null, approval_reviewer_name: reviewer }).eq('id', prop.id);
       let invited = false, inviteError: string | null = null;
       const creatorEmail = String(prop.recipient_email || '').trim();
+      if (!prop.approval_required) {
+        // Aviso al equipo (fire-and-forget): el manager dio su visto bueno.
+        try {
+          let teamEmail = '';
+          if (prop.created_by) {
+            const { data: u } = await svc.auth.admin.getUserById(prop.created_by);
+            teamEmail = String(u?.user?.email || '').trim();
+          }
+          if (teamEmail && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(teamEmail)) {
+            const es2 = lang === 'es';
+            const forName = prop.recipient_name || (es2 ? 'una creadora' : 'a creator');
+            const who = reviewer || (es2 ? 'El manager' : 'The manager');
+            const html = brandedLayout({
+              eyebrow: es2 ? 'Manager · Visto bueno' : 'Manager · Approved',
+              title: es2 ? `${who} aprobó la propuesta para ${forName}` : `${who} approved the proposal for ${forName}`,
+              body: es2
+                ? `${who} dio su visto bueno a “${prop.name || ''}”. Queda registrado. La creadora ya la tenía — no se re-envió nada.`
+                : `${who} approved “${prop.name || ''}”. It's on record. The creator already had it — nothing was re-sent.`,
+              cta: es2 ? 'Ver en el admin' : 'Open in admin',
+              url: `${APP}/admin?tab=propuestas`,
+              pre: es2 ? 'El manager dio su visto bueno.' : 'The manager gave their approval.',
+            });
+            const subject = es2 ? `Visto bueno del manager: ${prop.name || 'propuesta'}` : `Manager approved: ${prop.name || 'proposal'}`;
+            const r = await sendResend(teamEmail, subject, html);
+            await svc.from('email_log').insert({ template: 'proposal_copy_approved', recipient: teamEmail, subject, resend_id: r.id || null, lang }).then(() => {}, () => {});
+          }
+        } catch { /* el aviso no debe romper la decisión */ }
+        return reply({ ok: true, status: 'approved', invited: false, informational: true });
+      }
       if (creatorEmail) {
         try {
           const r = await fetch(`${url}/functions/v1/proposal-invite`, {
