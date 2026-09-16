@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, Sparkles, Loader2, Check } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
+import { cleanImageToWebp } from '@/lib/cleanImage';
 import { usePortal } from '@/lib/portal-i18n';
 
 const LORA_TARGET = 80; // Higgsfield clone-set goal
@@ -40,9 +41,15 @@ export default function LoraUploader({ userId, compact = false }) {
       for (let i = 0; i < files.length; i++) {
         setProgress(`${i + 1}/${files.length}`);
         const file = files[i];
-        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        // LoRA: limpiar metadata (privacidad: bota GPS/EXIF de sus fotos reales)
+        // pero dejar JPEG alta calidad (formato universal para entrenar).
+        let body = file;
+        let ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        let ctype = file.type;
+        const cleaned = await cleanImageToWebp(file, { preferJpeg: true });
+        if (cleaned?.blob) { body = cleaned.blob; ext = cleaned.ext; ctype = cleaned.type; }
         const path = `${userId}/${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('lora').upload(path, file, { contentType: file.type });
+        const { error: upErr } = await supabase.storage.from('lora').upload(path, body, { contentType: ctype });
         if (upErr) throw upErr;
         const { error: dbErr } = await supabase.from('lora_photos').insert({ user_id: userId, storage_path: path });
         if (dbErr) throw dbErr;

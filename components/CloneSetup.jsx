@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, Loader2, Check, Lightbulb, Lock, X, Expand, ChevronDown, Images, Trash2, CheckSquare, Square } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
+import { cleanImageToWebp } from '@/lib/cleanImage';
 import { usePortal } from '@/lib/portal-i18n';
 import { CLONE_EXAMPLES, CLONE_RECS, CLONE_POS, FULLBODY_CATS, MARKS_CATEGORY, MARKS_EXAMPLES, MARKS_REC, NUDE_CATEGORY, LORA_MIN, LORA_MAX } from '@/lib/clone-shots';
 
