@@ -147,7 +147,7 @@ export default function PropuestaAdmin() {
   const [step, setStep] = useState(1);
   // Destinatario VACÍO al crear una nueva (nada de datos demo pre-llenados).
   // kind: 'new' (creadora nueva, se escribe a mano) | 'active' (ya activa, se elige).
-  const [recipient, setRecipient] = useState({ name: '', email: '', kind: 'new' });
+  const [recipient, setRecipient] = useState({ name: '', email: '', kind: 'active' });
   const [creatorId, setCreatorId] = useState(''); // creadora activa elegida del dropdown
   const [activeCreators, setActiveCreators] = useState([]);
   // Propuesta INTERNA: se le manda a un integrante del equipo (revisor logueado)
@@ -934,7 +934,7 @@ export default function PropuestaAdmin() {
             <div className="mt-6 space-y-2.5">
               <PathCard
                 active={!isInternal}
-                onClick={() => { if (recipient.kind === 'internal') setRecipient((r) => ({ ...r, kind: 'new' })); }}
+                onClick={() => { if (recipient.kind === 'internal') setRecipient((r) => ({ ...r, kind: 'active', name: '' })); }}
                 icon={<User size={19} />}
                 title="A la creadora"
                 desc="Se la mandás directo a la modelo por su link."
@@ -952,19 +952,11 @@ export default function PropuestaAdmin() {
             <div className="mt-6 space-y-4 border-t border-line/70 pt-6">
               {!isInternal ? (
                 <>
-                  <Field label="¿Creadora nueva o activa?">
-                    <Seg
-                      value={recipient.kind === 'active' ? 'active' : 'new'}
-                      onChange={(v) => {
-                        if (v === 'new') { setRecipient((r) => ({ ...r, kind: 'new' })); setCreatorId(''); }
-                        else setRecipient((r) => ({ ...r, kind: 'active' }));
-                      }}
-                      options={[{ value: 'new', label: 'Creadora nueva' }, { value: 'active', label: 'Creadora activa' }]}
-                    />
-                  </Field>
-
+                  {/* Las propuestas van SOLO a creadoras que ya están (se eligen de
+                      la lista). Para una nueva, primero se da de alta (le llega
+                      invitación). Se quitó el toggle "creadora nueva". */}
                   {recipient.kind === 'active' && (
-                    <Field label="Elegí la creadora activa">
+                    <Field label="Elegí la creadora">
                       <div className="relative">
                         <select
                           value={creatorId}
@@ -1005,7 +997,9 @@ export default function PropuestaAdmin() {
                     </Field>
                   )}
 
-                  {/* Chulito de aprobación externa. */}
+                  {/* Aprobación OCULTA por ahora — la propuesta se manda directo a
+                      la creadora (decisión del dueño). El código queda por si vuelve. */}
+                  {false && (
                   <div className="rounded-xl border border-line bg-ink-2/40 p-3.5">
                     <button type="button" onClick={() => setNeedsApproval((v) => !v)} className="flex w-full items-start gap-3 text-left">
                       <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${needsApproval ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
@@ -1041,6 +1035,7 @@ export default function PropuestaAdmin() {
                       </div>
                     )}
                   </div>
+                  )}
                 </>
               ) : (
                 <>
