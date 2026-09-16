@@ -845,6 +845,17 @@ export default function PropuestaAdmin() {
     }
   };
 
+  // EMAIL-FIRST: al llegar al paso 4 (ya publicada), la propuesta se ENVÍA SOLA —
+  // no hay que tocar otro botón. Solo el envío directo (no interna, no aprobación).
+  const autoSentRef = useRef('');
+  useEffect(() => {
+    if (step === 4 && code && !isInternal && !needsApproval && autoSentRef.current !== code) {
+      autoSentRef.current = code;   // una vez por code (aunque se creen varias en la sesión)
+      sendInvite();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, code]);
+
   // Enviar a APROBACIÓN: la propuesta va al que decide (approverEmail) con un link
   // de revisión; cuando aprueba, la edge function invita sola a la creadora.
   const sendApproval = async () => {
@@ -1007,6 +1018,9 @@ export default function PropuestaAdmin() {
                     </Field>
                   )}
 
+                  {/* NOMBRE: solo para creadora NUEVA (se escribe a mano). La activa
+                      ya está elegida arriba → su nombre viene de su ficha, no se pide. */}
+                  {recipient.kind === 'new' && (
                   <Field label={t.recipName}>
                     <input
                       value={recipient.name}
@@ -1015,6 +1029,7 @@ export default function PropuestaAdmin() {
                       className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
                     />
                   </Field>
+                  )}
 
                   {/* El correo SOLO para creadora nueva (la activa ya tiene cuenta → va por link). */}
                   {recipient.kind === 'new' && (
@@ -1549,18 +1564,22 @@ export default function PropuestaAdmin() {
         </div>
       )}
 
-      {step === 4 && (
+      {step === 4 && (() => { const directSend = !isInternal && !needsApproval; return (
         <div className="mx-auto w-full max-w-lg space-y-4 px-4 py-10">
           <div className="text-center">
             <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-line bg-ink-2/60 px-3.5 py-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]" />
+              <span className={`h-1.5 w-1.5 rounded-full ${directSend && inviteState !== 'sent' && inviteState !== 'error' ? 'animate-pulse bg-amber-400' : inviteState === 'error' ? 'bg-rose-400' : 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]'}`} />
               <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-paper-mute">
-                {isInternal ? 'Revisión interna' : 'Link listo'}
+                {isInternal ? 'Revisión interna' : needsApproval ? 'A aprobación' : inviteState === 'sent' ? 'Enviada' : inviteState === 'error' ? 'No salió' : 'Enviando'}
               </span>
             </div>
-            <h2 className="mt-4 font-display text-2xl font-bold tracking-tight text-paper">{t.linkTitle}</h2>
+            <h2 className="mt-4 font-display text-2xl font-bold tracking-tight text-paper">
+              {directSend ? (inviteState === 'sent' ? 'Propuesta enviada' : inviteState === 'error' ? 'No se pudo enviar' : 'Enviando la propuesta…') : t.linkTitle}
+            </h2>
             <p className="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed text-paper-mute">
-              {isInternal ? 'Compartilo con quien revisa. Vos ves todo su feedback.' : t.linkSub}
+              {isInternal ? 'Compartilo con quien revisa. Vos ves todo su feedback.'
+                : directSend ? 'Le llegó por correo. Acá abajo ves su resumen y sus respuestas cuando llegue.'
+                : t.linkSub}
             </p>
             {recipient.name && (
               <p className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-dim">
@@ -1636,29 +1655,33 @@ export default function PropuestaAdmin() {
               </>
             ) : recipient.kind === 'active' ? (
               <>
-                {/* Email-first: se le manda por correo. El link/QR queda como opción secundaria. */}
-                <button type="button" onClick={sendInvite} disabled={inviteState === 'sending' || inviteState === 'sent'}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-bold transition-all disabled:opacity-70 ${inviteState === 'sent' ? 'bg-emerald-500 text-white' : 'btn3d'}`}>
-                  {inviteState === 'sent'
-                    ? <><Check size={15} /> Enviada por correo</>
-                    : inviteState === 'sending'
-                      ? <>Enviando…</>
-                      : <><Mail size={15} /> Enviar por correo{recipient.name ? ` a ${recipient.name}` : ''}</>}
-                </button>
+                {/* YA se envió sola al publicar (email-first). Esto es la confirmación. */}
+                <div className={`flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-bold ${
+                  inviteState === 'sent' ? 'bg-emerald-500/15 text-emerald-100 ring-1 ring-inset ring-emerald-400/40'
+                    : inviteState === 'error' ? 'bg-rose-500/10 text-rose-100 ring-1 ring-inset ring-rose-400/40'
+                    : 'bg-ink-2 text-paper-mute'}`}>
+                  {inviteState === 'sent' ? <><Check size={16} /> Enviada a {recipient.name || 'la creadora'}</>
+                    : inviteState === 'error' ? <><X size={16} /> No se pudo enviar</>
+                    : <><Mail size={15} className="animate-pulse" /> Enviando…</>}
+                </div>
                 <p className="mt-2 text-center text-[11px] text-paper-dim">
                   {inviteState === 'error'
-                    ? <span className="text-rose-300">{inviteMsg}</span>
-                    : inviteState === 'sent' && ccList.length
-                      ? (ccState === 'sent'
-                        ? <>Enviada — con copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}. ✓</>
-                        : ccState === 'error'
-                          ? <span className="text-amber-300">Enviada a ella, pero la copia a managers no salió. Reintentá.</span>
-                          : <>Enviada. Mandando copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}…</>)
-                      : <>Le llega un correo con su propuesta. Entra y la ve en su cuenta.{ccList.length ? ` También va copia a ${ccList.length} manager${ccList.length === 1 ? '' : 's'}.` : ''}</>}
+                    ? <span className="text-rose-300">{inviteMsg} · <button type="button" onClick={sendInvite} className="underline hover:text-paper">Reintentar</button></span>
+                    : inviteState === 'sent'
+                      ? (ccList.length
+                        ? (ccState === 'sent' ? <>Le llegó su propuesta a su cuenta · copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'} ✓</>
+                          : ccState === 'error' ? <span className="text-amber-300">Le llegó a ella, pero la copia a managers no salió.</span>
+                          : <>Le llegó su propuesta · mandando copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}…</>)
+                        : <>Le llegó un correo con su propuesta. Entra y la ve en su cuenta.</>)
+                      : <>Se está enviando a su correo…</>}
                 </p>
-                {/* Secundario: compartir el link a mano (WhatsApp) si lo prefieres. */}
+                {/* Secundario: reenviar / compartir el link a mano (WhatsApp) si lo prefieres. */}
                 <details className="mt-4 rounded-xl border border-line bg-ink-2/40 px-3.5 py-2.5">
-                  <summary className="cursor-pointer select-none text-[12px] font-medium text-paper-mute">O compartir el link a mano</summary>
+                  <summary className="cursor-pointer select-none text-[12px] font-medium text-paper-mute">Reenviar o compartir el link a mano</summary>
+                  <button type="button" onClick={sendInvite} disabled={inviteState === 'sending'}
+                    className="mb-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-2 text-xs font-semibold text-paper-mute transition-colors hover:text-paper disabled:opacity-60">
+                    <Mail size={13} /> Reenviar por correo
+                  </button>
                   <div className="mt-3 flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
                     <LinkIcon size={13} className="shrink-0 text-paper-dim" />
                     <input readOnly value={publicUrl} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-paper outline-none" />
@@ -1675,30 +1698,38 @@ export default function PropuestaAdmin() {
               </>
             ) : (
               <>
-                {/* Creadora NUEVA → entra por INVITACIÓN por correo (crea contraseña). */}
-                <a href={publicPreviewUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
-                  className="btn3d-ghost mb-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold">
-                  <Eye size={15} /> {t.viewAsClient} <ExternalLink size={12} className="opacity-60" />
-                </a>
-                <button type="button" onClick={sendInvite} disabled={inviteState === 'sending' || inviteState === 'sent'}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition-all disabled:opacity-70 ${inviteState === 'sent' ? 'bg-emerald-500 text-white' : 'btn3d'}`}>
-                  {inviteState === 'sent'
-                    ? <><Check size={15} /> Invitación enviada</>
-                    : inviteState === 'sending'
-                      ? <>Enviando…</>
-                      : <><Mail size={15} /> Enviar invitación por email</>}
-                </button>
+                {/* Creadora NUEVA → entra por INVITACIÓN por correo (crea contraseña).
+                    Ya se envió sola al publicar; esto es la confirmación. */}
+                <div className={`flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-bold ${
+                  inviteState === 'sent' ? 'bg-emerald-500/15 text-emerald-100 ring-1 ring-inset ring-emerald-400/40'
+                    : inviteState === 'error' ? 'bg-rose-500/10 text-rose-100 ring-1 ring-inset ring-rose-400/40'
+                    : 'bg-ink-2 text-paper-mute'}`}>
+                  {inviteState === 'sent' ? <><Check size={16} /> Invitación enviada</>
+                    : inviteState === 'error' ? <><X size={16} /> No se pudo enviar</>
+                    : <><Mail size={15} className="animate-pulse" /> Enviando…</>}
+                </div>
                 <p className="mt-2 text-center text-[11px] text-paper-dim">
                   {inviteState === 'error'
-                    ? <span className="text-rose-300">{inviteMsg}</span>
-                    : inviteState === 'sent' && ccList.length
-                      ? (ccState === 'sent'
-                        ? <>Enviada — con copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}. ✓</>
-                        : ccState === 'error'
-                          ? <span className="text-amber-300">Enviada a ella, pero la copia a managers no salió. Reintentá.</span>
-                          : <>Enviada. Mandando copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}…</>)
-                      : <>Se env&iacute;a a <span className="text-paper-mute">{recipient.email || 'su correo'}</span>. Crea su contrase&ntilde;a y la propuesta queda en su cuenta.{ccList.length ? ` También va copia a ${ccList.length} manager${ccList.length === 1 ? '' : 's'}.` : ''}</>}
+                    ? <span className="text-rose-300">{inviteMsg} · <button type="button" onClick={sendInvite} className="underline hover:text-paper">Reintentar</button></span>
+                    : inviteState === 'sent'
+                      ? (ccList.length
+                        ? (ccState === 'sent' ? <>Le llegó a <span className="text-paper-mute">{recipient.email}</span> · copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'} ✓</>
+                          : ccState === 'error' ? <span className="text-amber-300">Le llegó a ella, pero la copia a managers no salió.</span>
+                          : <>Le llegó · mandando copia a {ccList.length} manager{ccList.length === 1 ? '' : 's'}…</>)
+                        : <>Le llegó a <span className="text-paper-mute">{recipient.email}</span>. Crea su contraseña y la propuesta queda en su cuenta.</>)
+                      : <>Se está enviando a <span className="text-paper-mute">{recipient.email || 'su correo'}</span>…</>}
                 </p>
+                <details className="mt-4 rounded-xl border border-line bg-ink-2/40 px-3.5 py-2.5">
+                  <summary className="cursor-pointer select-none text-[12px] font-medium text-paper-mute">Reenviar o ver como cliente</summary>
+                  <button type="button" onClick={sendInvite} disabled={inviteState === 'sending'}
+                    className="mb-2 mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-2 text-xs font-semibold text-paper-mute transition-colors hover:text-paper disabled:opacity-60">
+                    <Mail size={13} /> Reenviar invitación
+                  </button>
+                  <a href={publicPreviewUrl} target="_blank" rel="noreferrer" onClick={saveDraft}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-2 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">
+                    <Eye size={14} /> {t.viewAsClient} <ExternalLink size={11} className="opacity-60" />
+                  </a>
+                </details>
               </>
             )}
           </section>
@@ -1767,7 +1798,7 @@ export default function PropuestaAdmin() {
             </div>
           </section>
         </div>
-      )}
+      ); })()}
 
       <div className="sticky bottom-0 z-30 border-t border-line bg-ink/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-3 lg:px-8">
