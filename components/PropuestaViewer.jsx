@@ -1261,21 +1261,6 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
           </div>
         )}
         <div className="relative z-10 mx-auto w-full max-w-2xl text-center">
-          {/* Firma de cierre: KASH + LetShoot (mismo lockup que la portada). */}
-          <div className="mb-8 flex items-center justify-center gap-4">
-            {cfg.agencyLogoUrl && (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={cfg.agencyLogoUrl} alt="" className="h-11 w-auto max-w-[180px] object-contain" draggable={false} style={{ WebkitUserDrag: 'none' }} />
-                <span className="text-3xl font-light leading-none text-white/45">+</span>
-              </>
-            )}
-            <Logo size="lg" forceDark />
-          </div>
-          <div className="mb-6 inline-flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" />
-            {t.endTag}
-          </div>
           <h2 className="font-display text-[clamp(2rem,4.5vw,3rem)] font-bold leading-tight tracking-[-0.03em]">
             {t.thanks}
           </h2>
@@ -1338,16 +1323,7 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
               </button>
             )}
             {sendErr && <p className="text-[13px] text-rose-300">{sendErr}</p>}
-            <button
-              onClick={reviewAgain}
-              className="text-sm font-medium text-paper-mute underline-offset-4 transition-colors hover:text-paper hover:underline"
-            >
-              {t.reviewAgain}
-            </button>
           </div>
-
-          {/* Logos de plataformas elegidos — al final. */}
-          <ProposalLogos logos={cfg.logos} />
 
           <div className="mt-16 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-dim">
             <Link href="/" className="hover:text-paper">LetShoot{cfg.model?.agency ? ` · ${cfg.model.agency}` : ''}</Link>
