@@ -937,6 +937,30 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
       </div>
       )}
 
+      {/* BARRA DE PROGRESO pegada arriba — SIEMPRE visible: cuántas decididas de
+          todas (se llena). Clic → salta a la primera sin decidir (o al cierre si
+          ya están todas). Es lo que la empuja a marcar cada una. */}
+      {total > 0 && (
+      <button
+        type="button"
+        onClick={() => (stats.undecided > 0 ? scrollToFirstUndecided() : closingRef.current?.scrollIntoView({ behavior: 'smooth' }))}
+        className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+0.7rem)] z-[45] flex -translate-x-1/2 items-center gap-2.5 rounded-full border border-white/15 bg-black/65 px-3.5 py-2 backdrop-blur-md transition-colors hover:bg-black/80 sm:top-5"
+        title={stats.undecided > 0 ? `${stats.undecided} ${t.leftToDecide || 'por decidir'}` : (t.feedbackSent || '')}
+      >
+        <span className="h-1.5 w-16 overflow-hidden rounded-full bg-white/20 sm:w-24">
+          <span
+            className={`block h-full rounded-full transition-all duration-300 ${stats.undecided === 0 ? 'bg-emerald-400' : 'bg-brand'}`}
+            style={{ width: `${Math.round(((total - stats.undecided) / total) * 100)}%` }}
+          />
+        </span>
+        <span className="whitespace-nowrap font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-white/90 tabular-nums">
+          {stats.undecided === 0
+            ? <span className="inline-flex items-center gap-1 text-emerald-300"><Check size={11} /> {total}/{total}</span>
+            : <>{total - stats.undecided}/{total} <span className="text-white/50">{t.decided || 'decididas'}</span></>}
+        </span>
+      </button>
+      )}
+
       {/* Contador flotante bottom-left — solo en fotos. */}
       {!isAudio && (
       <div className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] left-3 z-40 flex items-center gap-2 rounded-full border border-white/15 bg-black/60 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:bottom-6 sm:left-6">
@@ -1234,14 +1258,21 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
                 </span>
               </>
             ) : stats.undecided > 0 ? (
-              // Faltan por decidir → botón las lleva a la primera sin marcar.
-              <button
-                onClick={scrollToFirstUndecided}
-                className="inline-flex w-full items-center justify-center gap-2.5 rounded-full border border-amber-400/50 bg-amber-400/10 px-8 py-4 text-base font-semibold text-amber-100 transition-transform hover:scale-[1.02]"
-              >
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-amber-400/25 font-mono text-[11px] font-bold tabular-nums">{stats.undecided}</span>
-                {t.leftToDecide || 'por decidir'}
-              </button>
+              // Aún faltan → el botón "Terminar y descargar" está SIEMPRE, pero
+              // APAGADO (gris). Tocarlo la lleva a la primera sin decidir. Debajo,
+              // cuántas faltan (en ámbar).
+              <>
+                <button
+                  onClick={scrollToFirstUndecided}
+                  className="inline-flex w-full items-center justify-center gap-2.5 rounded-full border border-white/12 bg-white/[0.04] px-8 py-4 text-base font-semibold text-paper-mute transition-colors hover:border-white/25 hover:text-paper"
+                >
+                  <Download size={18} className="opacity-40" /> {t.finishDownload || 'Terminar y descargar'}
+                </button>
+                <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-200">
+                  <span className="grid h-4 w-4 place-items-center rounded-full bg-amber-400/25 font-mono text-[10px] font-bold tabular-nums">{stats.undecided}</span>
+                  {t.leftToDecide || 'por decidir'}
+                </span>
+              </>
             ) : (
               // Todas decididas → TERMINAR Y DESCARGAR en un solo botón.
               <button
