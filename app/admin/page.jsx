@@ -777,6 +777,17 @@ export default function AdminPage() {
                         {cr.length > 0 && shown.length === 0 && <p className="px-5 py-6 text-paper-dim">Ninguna creadora coincide con el filtro.</p>}
                         {shown.map((u) => {
                           const st = OB[u.onboarding_status] || OB.registered;
+                          // Estado del recorrido, en palabras claras (de un vistazo).
+                          const flow = ({
+                            registered:  { txt: 'Invitada',           cls: 'text-paper-dim' },
+                            info:        { txt: 'Llenando datos',      cls: 'text-sky-300' },
+                            id_rejected: { txt: 'ID rechazado',        cls: 'text-rose-300' },
+                            id_pending:  { txt: 'Verificando ID',      cls: 'text-amber-300' },
+                            id_approved: { txt: 'Lista para activar',  cls: 'text-sky-300' },
+                            authorized:  { txt: 'Lista para activar',  cls: 'text-sky-300' },
+                            active:      { txt: 'Activa',              cls: 'text-emerald-300' },
+                            paid:        { txt: 'Activa',              cls: 'text-emerald-300' },
+                          })[u.onboarding_status] || { txt: 'Invitada', cls: 'text-paper-dim' };
                           const nFotos = photoCount[u.id] || 0;
                           const joined = u.created_at ? new Date(u.created_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' }) : '—';
                           const planLabel = u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : null;
@@ -790,6 +801,9 @@ export default function AdminPage() {
                                 <span className="min-w-0">
                                   <span className="block truncate font-medium text-paper">{u.full_name || 'Sin nombre aún'}</span>
                                   <span className="block truncate text-[11px] text-paper-dim">{u.handle ? `@${u.handle}` : u.email}</span>
+                                  <span className={`mt-0.5 inline-flex items-center gap-1 text-[10.5px] font-medium ${flow.cls}`}>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" /> {flow.txt}
+                                  </span>
                                 </span>
                               </span>
                               {/* ENTREGABLE: tag de cadencia (cada cuánto recibe) — para saber quién es quién de un vistazo */}
