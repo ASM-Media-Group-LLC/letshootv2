@@ -170,7 +170,7 @@ function mapProposal(row, fb, reg, fbInt) {
         }
       : null,
     model: { name: row.model_name || '', agency: row.model_agency || '' },
-    recipient: { name: row.recipient_name || '', email: row.recipient_email || '', kind: row.recipient_kind || '', instagram: row.recipient_instagram || '' },
+    recipient: { name: row.recipient_name || '', email: row.recipient_email || '', kind: row.recipient_kind || '', instagram: row.recipient_instagram || '', userId: row.recipient_user_id || null },
     looks: Array.isArray(row.looks) ? row.looks : [],
     _feedback: fb ? { items: Array.isArray(fb.items) ? fb.items : [], recipientName: fb.recipient_name || '', updatedAt: fb.updated_at || null } : null,
     _internalFeedback: fbInt ? { items: Array.isArray(fbInt.items) ? fbInt.items : [], recipientName: fbInt.recipient_name || '', updatedAt: fbInt.updated_at || null } : null,
@@ -734,6 +734,32 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
   // gustó, luego lo sin decidir. Los contadores de arriba son los filtros.
   const [fResp, setFResp] = useState('all'); // all | rejected | liked | commented
   const [lightbox, setLightbox] = useState(null); // { items, i } — foto grande del feedback
+  const [resendState, setResendState] = useState(''); // '' | sending | sent | error
+  const [resendMsg, setResendMsg] = useState('');
+
+  // Reenviar la propuesta por correo con 1 clic (proposal-invite: a una cuenta
+  // existente le manda su propuesta; a una nueva, la invitación). Resuelve el
+  // correo por su id si la propuesta no lo trae (creadora activa).
+  const resend = async () => {
+    if (resendState === 'sending' || !p.code) return;
+    setResendState('sending'); setResendMsg('');
+    try {
+      let email = (p.recipient?.email || '').trim();
+      if (!email && p.recipient?.userId) {
+        const { data: cp } = await getSupabase().from('profiles').select('email').eq('id', p.recipient.userId).maybeSingle();
+        email = (cp?.email || '').trim();
+      }
+      if (!email) throw new Error('Sin correo en su ficha — usa «Copiar link».');
+      const { data, error } = await getSupabase().functions.invoke('proposal-invite', {
+        body: { link_id: p.code, email, full_name: p.recipient?.name || '', lang: 'es' },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'No se pudo reenviar.');
+      setResendState('sent');
+    } catch (e) {
+      setResendState('error'); setResendMsg(e?.message || 'No se pudo reenviar.');
+    }
+  };
   const rank = (i) => (i.status === 'rejected' ? 0 : i.status === 'liked' ? 1 : 2);
   const sortedItems = [...items].sort((a, b) => rank(a) - rank(b));
   const matchResp = (i) =>
@@ -898,15 +924,22 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
               className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">
               {copied ? <><Check size={14} className="text-emerald-400" /> Copiado</> : <><Copy size={14} /> Copiar link</>}
             </button>
-            <a href={mailHref}
-              className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">
-              <Mail size={14} /> Reenviar por correo
-            </a>
+            {!p._demo && !p._internal && (
+              <button onClick={resend} disabled={resendState === 'sending' || resendState === 'sent'}
+                className={`btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors disabled:opacity-70 ${resendState === 'sent' ? 'text-emerald-300' : resendState === 'error' ? 'text-rose-300' : ''}`}>
+                {resendState === 'sent' ? <><Check size={14} /> Reenviada</>
+                  : resendState === 'sending' ? <><Mail size={14} className="animate-pulse" /> Enviando…</>
+                  : resendState === 'error' ? <><Mail size={14} /> Reintentar</>
+                  : <><Mail size={14} /> Reenviar por correo</>}
+              </button>
+            )}
             <button onClick={onArchive}
               className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">
               <Archive size={14} /> {archived ? 'Desarchivar' : 'Archivar'}
             </button>
           </div>
+          {resendState === 'sent' && <p className="mt-2 text-[12px] text-emerald-300/90">Reenviada por correo a {p.recipient?.name || 'la creadora'}.</p>}
+          {resendState === 'error' && resendMsg && <p className="mt-2 text-[12px] text-rose-300">{resendMsg}</p>}
 
           {/* Feedback del EQUIPO (interno) — separado del de la creadora. */}
           {(p._internal || internalItems.length > 0) && (
