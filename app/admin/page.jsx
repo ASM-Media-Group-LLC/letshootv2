@@ -171,7 +171,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: auditRows }, { data: lastDeliv }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test, delivery_cadence').order('role'),
+      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test, delivery_cadence, manager_emails').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -2383,6 +2383,22 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
   const [form, setForm] = useState(null);              // borrador de datos al editar
   const [tab, setTab] = useState('datos');             // entregable | datos | identidad | suscripcion | clon | propuesta
   const [cadDraft, setCadDraft] = useState(creator?.delivery_cadence || null); // borrador del entregable (elegir → Guardar)
+  // Managers de la creadora (copia de propuestas) — se autocompletan en el wizard.
+  const normMgrs = (arr) => Array.isArray(arr) ? arr.filter((m) => m?.email).map((m) => ({ email: String(m.email).toLowerCase(), role: m.role === 'decide' ? 'decide' : 'viewer' })) : [];
+  const [mgrList, setMgrList] = useState(() => normMgrs(creator?.manager_emails));
+  const [mgrInput, setMgrInput] = useState('');
+  const [mgrDirty, setMgrDirty] = useState(false);
+  const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  const addMgr = (raw) => {
+    const parts = String(raw || '').split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter((e) => EMAIL_RE.test(e));
+    if (!parts.length) return;
+    setMgrList((s) => { const have = new Set(s.map((r) => r.email)); return [...s, ...parts.filter((e) => !have.has(e)).map((e) => ({ email: e, role: 'viewer' }))]; });
+    setMgrInput(''); setMgrDirty(true);
+  };
+  const removeMgr = (email) => { setMgrList((s) => s.filter((r) => r.email !== email)); setMgrDirty(true); };
+  const toggleMgrRole = (email) => { setMgrList((s) => s.map((r) => (r.email === email ? { ...r, role: r.role === 'decide' ? 'viewer' : 'decide' } : r))); setMgrDirty(true); };
+  const saveMgrs = async () => { const ok = await patch({ manager_emails: mgrList }, 'Managers guardados'); if (ok) setMgrDirty(false); };
+  useEffect(() => { setMgrList(normMgrs(creator?.manager_emails)); setMgrDirty(false); /* eslint-disable-next-line */ }, [creator?.id]);
   // Danger zone — hard delete (fully removes the account so the email frees up).
   const [delOpen, setDelOpen] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
@@ -2644,6 +2660,34 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
             </div>
           </div>
 
+          {/* Managers (copia de propuestas) — se autocompletan en el wizard al elegirla. */}
+          <div className="rounded-2xl border border-line bg-ink-2 p-4">
+            <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-paper"><Mail size={15} className="text-brand" /> Managers <span className="text-[11px] font-normal text-paper-dim">(copia de propuestas)</span></h4>
+            <p className="mb-3 text-[11px] text-paper-dim">Cuando le armes una propuesta, estos correos se ponen solos como copia. Tocá el rol: <span className="text-paper-mute">Mira</span> = solo ve · <span className="text-paper-mute">Decide</span> = puede aprobar/rechazar.</p>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-ink px-2.5 py-2 focus-within:border-brand/60">
+              {mgrList.map((r) => (
+                <span key={r.email} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-paper">
+                  {r.email}
+                  <button type="button" onClick={() => toggleMgrRole(r.email)} title="Cambiar rol"
+                    className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide transition-colors ${r.role === 'decide' ? 'bg-brand text-on-accent' : 'bg-ink-2 text-paper-mute'}`}>
+                    {r.role === 'decide' ? 'Decide' : 'Mira'}
+                  </button>
+                  <button type="button" onClick={() => removeMgr(r.email)} className="text-paper-mute transition-colors hover:text-rose-300"><X size={12} /></button>
+                </span>
+              ))}
+              <input type="email" value={mgrInput} onChange={(e) => setMgrInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addMgr(mgrInput); } }}
+                onBlur={() => addMgr(mgrInput)}
+                placeholder={mgrList.length ? 'Agregar otro…' : 'manager@correo.com'}
+                className="min-w-[150px] flex-1 bg-transparent px-1 py-1 text-sm text-paper placeholder:text-paper-dim outline-none" />
+            </div>
+            {mgrDirty && (
+              <button onClick={saveMgrs} disabled={saving}
+                className="btn3d mt-2.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-60">
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Guardar managers
+              </button>
+            )}
+          </div>
 
           {/* Modelo de prueba — no cuenta en contabilidad (solo el dueño) */}
           <div className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.04] p-4">

@@ -1003,10 +1003,21 @@ export default function PropuestaAdmin() {
                       <div className="relative">
                         <select
                           value={creatorId}
-                          onChange={(e) => {
-                            const c = activeCreators.find((x) => x.id === e.target.value);
-                            setCreatorId(e.target.value);
+                          onChange={async (e) => {
+                            const id = e.target.value;
+                            const c = activeCreators.find((x) => x.id === id);
+                            setCreatorId(id);
                             if (c) setRecipient((r) => ({ ...r, name: c.full_name || '' }));
+                            // Autocompletar los managers guardados en su ficha (copia).
+                            if (id) {
+                              try {
+                                const { data } = await getSupabase().from('profiles').select('manager_emails').eq('id', id).maybeSingle();
+                                const mgrs = Array.isArray(data?.manager_emails)
+                                  ? data.manager_emails.filter((m) => m?.email).map((m) => ({ email: String(m.email).toLowerCase(), role: m.role === 'decide' ? 'decide' : 'viewer' }))
+                                  : [];
+                                setCcList(mgrs);
+                              } catch {}
+                            } else { setCcList([]); }
                           }}
                           className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60"
                         >
