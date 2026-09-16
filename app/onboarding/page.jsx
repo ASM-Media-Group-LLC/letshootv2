@@ -171,10 +171,10 @@ export default function OnboardingPage() {
         <div className="mt-6 flex items-start gap-3 rounded-2xl border border-brand/30 bg-brand/[0.05] p-4">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand"><Sparkles size={18} /></span>
           <div className="min-w-0">
-            <p className="font-display text-sm font-semibold text-paper">{esL ? 'Tu cuenta es gratis — plan Pro hasta 2027' : 'Your account is free — Pro plan until 2027'}</p>
+            <p className="font-display text-sm font-semibold text-paper">{esL ? 'Tu cuenta es gratis por lanzamiento' : 'Your account is free (launch)'}</p>
             <p className="mt-0.5 text-xs leading-relaxed text-paper-mute">{esL
-              ? 'Sin pagos ni suscripción. Completa tus datos, sube tus fotos y acepta los permisos; el equipo revisa tu identidad y activa tu cuenta.'
-              : 'No payments, no subscription. Complete your details, upload your photos and accept the permissions; the team reviews your identity and activates your account.'}</p>
+              ? 'Sin pagos ni suscripción — quien entra antes del 31 de diciembre de 2026 queda gratis. Completa tus datos, sube tus fotos y acepta los permisos; el equipo revisa tu identidad y activa tu cuenta.'
+              : 'No payments, no subscription — anyone who joins before December 31, 2026 stays free. Complete your details, upload your photos and accept the permissions; the team reviews your identity and activates your account.'}</p>
           </div>
         </div>
 
