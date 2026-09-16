@@ -324,12 +324,15 @@ export default function AdminPage() {
     e.preventDefault();
     setNcErr('');
     const f = newCreator || {};
-    if (!f.full_name?.trim() || !f.email?.trim() || !f.password) { setNcErr('Completa nombre, correo y contraseña.'); return; }
-    if (f.password.length < 8) { setNcErr('La contraseña debe tener al menos 8 caracteres.'); return; }
+    if (!f.full_name?.trim() || !f.email?.trim()) { setNcErr('Completa nombre y correo.'); return; }
+    if (f.password && f.password.length < 8) { setNcErr('Si pones contraseña, mínimo 8 caracteres.'); return; }
     setNcBusy(true);
     const nombre = f.full_name.trim();
     const apellido = (f.last_name || '').trim();
     const fullName = [nombre, apellido].filter(Boolean).join(' ');
+    // Sin contraseña escrita → una aleatoria; a ella igual le llega la invitación
+    // por correo (create-user) para poner la SUYA. El equipo no maneja su clave.
+    const pw = f.password?.trim() || `LS-${Math.random().toString(36).slice(2, 10)}${Math.floor(10 + Math.random() * 89)}`;
     // @usuario AUTOMÁTICO a partir del nombre (sin acentos, único vs los existentes).
     const base = fullName.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
       .replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 22) || 'creadora';
@@ -338,7 +341,7 @@ export default function AdminPage() {
     while (takenHandles.has(handle)) handle = `${base}${hi++}`;
     // 1) Crear cuenta auth + perfil base vía la edge function (role creator).
     const { data, error } = await getSupabase().functions.invoke('create-user', {
-      body: { full_name: fullName, email: f.email.trim().toLowerCase(), password: f.password, role: 'creator' },
+      body: { full_name: fullName, email: f.email.trim().toLowerCase(), password: pw, role: 'creator' },
     });
     let out = data;
     if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
@@ -369,7 +372,9 @@ export default function AdminPage() {
     }
     setNcBusy(false);
     setNewCreator(null);
-    flash('Creadora dada de alta y ACTIVA — lista para trabajar');
+    flash(out.invited
+      ? `Creadora dada de alta — le mandamos invitación a ${f.email.trim().toLowerCase()} para que ponga su contraseña`
+      : 'Creadora dada de alta y ACTIVA — lista para trabajar');
     await load();
   }
 
@@ -1303,11 +1308,12 @@ export default function AdminPage() {
                     placeholder="correo@ejemplo.com" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-paper-dim">Contraseña temporal <span className="text-rose-300">*</span></label>
+                  <label className="mb-1 block text-xs font-medium text-paper-dim">Contraseña <span className="font-normal text-paper-dim/70">(opcional)</span></label>
                   <input value={newCreator.password} onChange={(e) => setNewCreator((v) => ({ ...v, password: e.target.value }))}
-                    placeholder="Mínimo 8 caracteres" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                    placeholder="Déjalo vacío — ella la pone" className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 </div>
               </div>
+              <p className="text-[11px] text-paper-dim">Con solo el correo le llega una <b className="text-paper-mute">invitación</b> para que ponga su propia contraseña. No manejas su clave. (Si escribes una, nace con esa temporal.)</p>
             </div>
 
             {/* País — selector con banderita (opcional). Su @usuario se genera solo. */}
