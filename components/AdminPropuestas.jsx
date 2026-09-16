@@ -195,6 +195,7 @@ export default function AdminPropuestas() {
   const [selDay, setSelDay] = useState(startOfToday()); // día ancla del calendario (ms 00:00 local)
   const [rangeMode, setRangeMode] = useState('day');    // 'day' | 'week' | 'month' — el span del movimiento/actividad
   const [calMonth, setCalMonth] = useState(startOfMonthMs(startOfToday())); // mes visible del mini-calendario
+  const [calOpen, setCalOpen] = useState(false);        // el mini-calendario arranca CERRADO (se abre con el botón)
   const [view, setView] = useState('calendario');       // 'calendario' (día a día) | 'historial' (lista completa) | 'entregas'
   const [empOpen, setEmpOpen] = useState(false);         // marcador "Por empleado": arranca colapsado
   const [calEmp, setCalEmp] = useState('');              // filtro Calendario: por empleado
@@ -545,6 +546,12 @@ export default function AdminPropuestas() {
           <button onClick={goToday}
             className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/15">Hoy</button>
         )}
+        {/* Abrir/cerrar el mini-calendario (arranca cerrado). */}
+        <button type="button" onClick={() => setCalOpen((o) => !o)} aria-expanded={calOpen}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${calOpen ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
+          <CalendarDays size={14} /> Calendario
+          <ChevronDown size={13} className={`transition-transform ${calOpen ? '' : '-rotate-90'}`} />
+        </button>
 
         {/* Filtros — empleado + creadora (esquina). Combinables. */}
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -571,7 +578,8 @@ export default function AdminPropuestas() {
         </div>
       </div>
 
-      {/* MINI-CALENDARIO del mes (puntito = hubo movimiento; clic en un día lo abre). */}
+      {/* MINI-CALENDARIO del mes — colapsable (arranca cerrado; puntito = hubo movimiento). */}
+      {calOpen && (
       <div className="mt-3 rounded-2xl border border-line bg-card p-3 sm:max-w-sm">
         <div className="mb-2 flex items-center justify-between px-1">
           <button onClick={() => setCalMonth((m) => addMonthsMs(m, -1))} aria-label="Mes anterior"
@@ -598,7 +606,7 @@ export default function AdminPropuestas() {
             const hasDot = calActiveDays.has(ms);
             return (
               <button key={ms} type="button" disabled={isFuture}
-                onClick={() => { setRangeMode('day'); setSelDay(ms); setCalMonth(startOfMonthMs(ms)); }}
+                onClick={() => { setRangeMode('day'); setSelDay(ms); setCalMonth(startOfMonthMs(ms)); setCalOpen(false); }}
                 className={`relative grid aspect-square place-items-center rounded-lg text-[12px] transition-colors ${
                   inRange ? 'bg-brand font-bold text-on-accent'
                     : isTodayCell ? 'text-paper ring-1 ring-inset ring-brand/50'
@@ -611,6 +619,7 @@ export default function AdminPropuestas() {
           })}
         </div>
       </div>
+      )}
 
       {/* BACKLOG — lo que se está atrasando ahorita (mismo número que el badge
           de la pestaña). Clic → salta al Historial para perseguirlas. */}
