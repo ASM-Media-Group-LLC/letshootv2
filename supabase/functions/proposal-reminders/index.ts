@@ -121,20 +121,37 @@ Deno.serve(async (req) => {
         if (!emails.length) continue;
         cands.push({ pid: p.id, kind: 'approval', link: p.link_id, lang: p.lang || 'es', name: p.recipient_name || '', token: p.approval_token || null, t0: new Date(p.approval_sent_at || p.created_at).getTime(), emails });
       }
-      // Respuesta de la creadora pendiente
+      // Respuesta de la creadora pendiente. OJO: la creadora ACTIVA no guarda el
+      // correo en la fila (recipient_email vacío) — se resuelve por su cuenta
+      // (recipient_user_id → profiles.email), igual que el envío. Sin esto, las
+      // activas (el flujo principal) nunca recibían recordatorio.
       const { data: resp } = await svc.from('photo_proposals')
-        .select('id, link_id, lang, recipient_name, recipient_email, recipient_kind, approval_required, approval_status, approved_at, created_at, expires_at, link_killed')
+        .select('id, link_id, lang, recipient_name, recipient_email, recipient_user_id, recipient_kind, approval_required, approval_status, approved_at, created_at, expires_at, link_killed')
         .eq('status', 'published').neq('recipient_kind', 'internal');
       const respPending = (resp || []).filter((p: any) =>
         !p.link_killed && (!p.expires_at || new Date(p.expires_at).getTime() >= now) &&
-        (p.approval_required !== true || p.approval_status === 'approved') && isEmail(String(p.recipient_email || '')));
+        (p.approval_required !== true || p.approval_status === 'approved') &&
+        (isEmail(String(p.recipient_email || '')) || p.recipient_user_id));  // correo en fila O resoluble por cuenta
       if (respPending.length) {
         const ids = respPending.map((p: any) => p.id);
         const { data: fb } = await svc.from('photo_proposal_feedback').select('proposal_id').eq('reviewer_kind', 'creator').in('proposal_id', ids);
         const responded = new Set((fb || []).map((f: any) => f.proposal_id));
+        // Resolver de una los correos de las activas (por recipient_user_id).
+        const needIds = Array.from(new Set(respPending
+          .filter((p: any) => !isEmail(String(p.recipient_email || '')) && p.recipient_user_id)
+          .map((p: any) => p.recipient_user_id)));
+        const emailById = new Map<string, string>();
+        if (needIds.length) {
+          const { data: profs } = await svc.from('profiles').select('id, email').in('id', needIds as string[]);
+          for (const pr of profs || []) if (pr.email && isEmail(pr.email)) emailById.set(pr.id, String(pr.email).toLowerCase());
+        }
         for (const p of respPending) {
           if (responded.has(p.id)) continue;
-          cands.push({ pid: p.id, kind: 'response', link: p.link_id, lang: p.lang || 'es', name: p.recipient_name || '', token: null, t0: new Date(p.approved_at || p.created_at).getTime(), emails: [String(p.recipient_email).toLowerCase()] });
+          const email = isEmail(String(p.recipient_email || ''))
+            ? String(p.recipient_email).toLowerCase()
+            : emailById.get(p.recipient_user_id);
+          if (!email) continue;
+          cands.push({ pid: p.id, kind: 'response', link: p.link_id, lang: p.lang || 'es', name: p.recipient_name || '', token: null, t0: new Date(p.approved_at || p.created_at).getTime(), emails: [email] });
         }
       }
       return cands;
