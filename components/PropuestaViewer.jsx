@@ -762,6 +762,57 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
   // las marcas). Si ya había enviado, reabre para poder terminar otra vez.
   const reviewAgain = () => { setSent(false); scrollTo(-1); };
 
+  // ── RETOMAR: progreso PARCIAL (borrador) ──────────────────────────────────
+  // Si cierra a medias, retoma donde quedó. Se guarda en las DOS: localStorage
+  // (mismo aparato, instantáneo) y la cuenta (DB, cross-device por el link). NO
+  // en preview/demo. Al TERMINAR ya no hace falta (queda el feedback real).
+  const skipProgress = isDemo || preview;
+  const progressKind = viewer?.staff ? 'internal' : 'creator';
+  const PROG_KEY = `ls_prop_prog_${linkId}_${progressKind}`;
+  // Guardamos POR kind (no un solo booleano): la sesión del equipo puede resolver
+  // tarde y cambiar 'creator'→'internal'; hay que recargar con el kind correcto.
+  const loadedKindRef = useRef('');
+  const scoreItems = (arr) => (Array.isArray(arr) ? arr.filter((x) => x?.status === 'liked' || x?.status === 'rejected').length : -1);
+
+  // Cargar el borrador para RETOMAR (elige el más avanzado entre aparato y
+  // cuenta). Se re-evalúa si cambia el kind; solo aplica si aún no marcó nada.
+  useEffect(() => {
+    if (skipProgress || !linkId || total === 0 || loadedKindRef.current === progressKind) return;
+    loadedKindRef.current = progressKind;
+    (async () => {
+      let local = null;
+      try { const raw = localStorage.getItem(PROG_KEY); if (raw) local = JSON.parse(raw); } catch {}
+      let remote = null;
+      try {
+        const { data } = await getSupabase().rpc('get_proposal_progress', { p_link: linkId, p_kind: progressKind });
+        if (Array.isArray(data)) remote = data;
+      } catch {}
+      // Elegimos el borrador más avanzado (aparato vs cuenta). NO se aborta en el
+      // cleanup: el componente puede remontar y setState en el viejo es no-op; el
+      // que quede montado restaura. Solo aplica si aún no marcó nada.
+      const pick = scoreItems(remote) >= scoreItems(local) ? remote : local;
+      if (pick && pick.length && scoreItems(pick) > 0) {
+        const st = {};
+        for (const it of pick) if (it?.id) st[it.id] = { status: (it.status === 'liked' || it.status === 'rejected') ? it.status : null, note: it.note || '' };
+        setState((cur) => (Object.keys(cur).length ? cur : st));
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skipProgress, linkId, total, progressKind]);
+
+  // Autoguardar (debounced) apenas marca algo — a las dos (aparato + cuenta).
+  useEffect(() => {
+    if (skipProgress || sent || loadedKindRef.current !== progressKind) return;
+    const items = looks.map((l) => { const s = fb(l.id); return { id: l.id, status: s.status ?? null, note: s.note || '' }; });
+    if (!items.some((i) => i.status || (i.note || '').trim())) return;
+    const to = setTimeout(() => {
+      try { localStorage.setItem(PROG_KEY, JSON.stringify(items)); } catch {}
+      getSupabase().rpc('save_proposal_progress', { p_link: linkId, p_items: items, p_kind: progressKind }).then(() => {}, () => {});
+    }, 700);
+    return () => clearTimeout(to);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, sent, skipProgress, progressKind]);
+
   useEffect(() => {
     const block = (e) => { if (e.target?.tagName === 'IMG') e.preventDefault(); };
     document.addEventListener('contextmenu', block);

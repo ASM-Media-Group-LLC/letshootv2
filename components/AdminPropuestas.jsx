@@ -206,12 +206,13 @@ export default function AdminPropuestas() {
     (async () => {
       const sb = getSupabase();
       try {
-        const [propsRes, fbRes, regRes, contentRes, remRes] = await Promise.all([
+        const [propsRes, fbRes, regRes, contentRes, remRes, progRes] = await Promise.all([
           sb.from('photo_proposals').select('*').order('created_at', { ascending: false }),
           sb.from('photo_proposal_feedback').select('proposal_id, items, recipient_name, updated_at, reviewer_kind').order('updated_at', { ascending: false }),
           sb.from('photo_proposal_registrations').select('proposal_id, name, email, phone, created_at').order('created_at', { ascending: false }),
           sb.from('proposal_content').select('proposal_id, item_id, kind, label, src, decision, prod_state').order('created_at', { ascending: true }),
           sb.from('proposal_reminders').select('proposal_id, kind, count, last_sent_at, paused'),
+          sb.from('proposal_progress').select('proposal_id, decided, liked, total, updated_at, reviewer_kind'),
         ]);
         if (cancelled) return;
         const props = Array.isArray(propsRes.data) ? propsRes.data : [];
@@ -238,6 +239,12 @@ export default function AdminPropuestas() {
           if (r?.proposal_id && !regMap[r.proposal_id]) regMap[r.proposal_id] = r;
         });
 
+        // Progreso PARCIAL (borrador) de la creadora — "abrió · N/total" sin terminar.
+        const progMap = {};
+        (Array.isArray(progRes.data) ? progRes.data : []).forEach((pr) => {
+          if (pr?.proposal_id && pr.reviewer_kind !== 'internal' && !progMap[pr.proposal_id]) progMap[pr.proposal_id] = pr;
+        });
+
         if (props.length > 0) {
           // Recordatorios por propuesta: { approval: fila, response: fila }.
           const remMap = {};
@@ -246,7 +253,7 @@ export default function AdminPropuestas() {
             (remMap[r.proposal_id] = remMap[r.proposal_id] || {})[r.kind] = r;
           });
 
-          setRows(props.map((p) => ({ ...mapProposal(p, fbCreator[p.id], regMap[p.id], fbInternal[p.id]), _reminders: remMap[p.id] || null })));
+          setRows(props.map((p) => ({ ...mapProposal(p, fbCreator[p.id], regMap[p.id], fbInternal[p.id]), _reminders: remMap[p.id] || null, _progress: progMap[p.id] || null })));
           setUsingDemo(false);
         } else {
           // Sin reales: sembramos ejemplos en memoria para no verse vacío.
@@ -676,7 +683,13 @@ export default function AdminPropuestas() {
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
                 <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Respuestas</span>
                 {fs.total === 0 ? (
-                  <span className="text-paper-dim">Sin respuestas</span>
+                  p._progress && p._progress.decided > 0 ? (
+                    <span className="inline-flex items-center gap-1.5 font-medium text-amber-300/90">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> va {p._progress.decided}/{p._progress.total}
+                    </span>
+                  ) : (
+                    <span className="text-paper-dim">Sin respuestas</span>
+                  )
                 ) : (
                   <>
                     {fs.liked > 0 && <span className="inline-flex items-center gap-1 text-paper-mute"><Heart size={12} className="text-emerald-400" /> {fs.liked}</span>}
@@ -684,7 +697,7 @@ export default function AdminPropuestas() {
                     {fs.comments > 0 && <span className="inline-flex items-center gap-1 text-paper-mute"><MessageSquare size={12} className="text-paper-dim" /> {fs.comments}</span>}
                   </>
                 )}
-                {opened && <StatusDot tone="ok">abrió</StatusDot>}
+                {(opened || (p._progress && p._progress.decided > 0)) && <StatusDot tone="ok">abrió</StatusDot>}
               </span>
             </div>
           );
@@ -1254,13 +1267,17 @@ function EmpleadoExpediente({ name, props, origin, onOpenProp, onClose }) {
                             ? <span className="text-[11px] font-medium text-rose-300/90">rechazada{who ? ` · ${who}` : ''}</span>
                             : <span className="text-[11px] font-medium text-amber-300/90">pend. aprob.{who ? ` · ${who}` : ''}</span>
                       )}
-                      {fs.total > 0 && (
+                      {fs.total > 0 ? (
                         <span className="flex items-center gap-2 text-[11px] text-paper-mute">
                           {fs.liked > 0 && <span className="inline-flex items-center gap-0.5"><Heart size={11} className="text-emerald-400" />{fs.liked}</span>}
                           {fs.rejected > 0 && <span className="inline-flex items-center gap-0.5"><ThumbsDown size={11} className="text-rose-400" />{fs.rejected}</span>}
                           {p._reg && <StatusDot tone="ok">abrió</StatusDot>}
                         </span>
-                      )}
+                      ) : p._progress && p._progress.decided > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-300/90">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> va {p._progress.decided}/{p._progress.total}
+                        </span>
+                      ) : null}
                     </span>
                   </button>
                 );
