@@ -536,7 +536,9 @@ export default function AdminPropuestas() {
 
       {view === 'calendario' && (
       <>
-      {/* Controles: span (Día/Semana/Mes) + navegación por unidad + filtros. */}
+      {/* Controles: span (Día/Semana/Mes) + navegación por unidad + filtros.
+          En móvil se apilan en filas limpias; la navegación (‹ fecha ›) va SIEMPRE
+          agrupada para que no se parta. */}
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <div className="inline-flex rounded-full border border-line bg-card p-0.5">
           {[['day', 'Día'], ['week', 'Semana'], ['month', 'Mes']].map(([id, label]) => (
@@ -546,41 +548,45 @@ export default function AdminPropuestas() {
             </button>
           ))}
         </div>
-        <button onClick={() => stepRange(-1)} aria-label="Anterior"
-          className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-          <ChevronLeft size={16} />
-        </button>
-        {/* La FECHA es el botón para volver a hoy (ya no hay botón "Hoy" aparte). */}
-        <button type="button" onClick={goToday} disabled={atToday}
-          title={atToday ? undefined : 'Volver a hoy'}
-          className="inline-flex min-w-[130px] items-center justify-center gap-1.5 rounded-full px-2 py-1 font-display text-base font-semibold capitalize text-paper transition-colors enabled:hover:text-brand disabled:cursor-default">
-          {rangeLabel}
-          {!atToday && <RotateCcw size={13} className="text-paper-mute" />}
-        </button>
-        <button onClick={() => stepRange(1)} disabled={atToday} aria-label="Siguiente"
-          className="grid h-9 w-9 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper disabled:opacity-40">
-          <ChevronRight size={16} />
-        </button>
+        {/* Navegación por fecha — AGRUPADA (‹ fecha ›), nunca se separa al envolver. */}
+        <div className="inline-flex shrink-0 items-center gap-1.5">
+          <button onClick={() => stepRange(-1)} aria-label="Anterior"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
+            <ChevronLeft size={16} />
+          </button>
+          {/* La FECHA es el botón para volver a hoy (ya no hay botón "Hoy" aparte). */}
+          <button type="button" onClick={goToday} disabled={atToday}
+            title={atToday ? undefined : 'Volver a hoy'}
+            className="inline-flex min-w-[110px] items-center justify-center gap-1.5 rounded-full px-2 py-1 font-display text-base font-semibold capitalize text-paper transition-colors enabled:hover:text-brand disabled:cursor-default">
+            {rangeLabel}
+            {!atToday && <RotateCcw size={13} className="text-paper-mute" />}
+          </button>
+          <button onClick={() => stepRange(1)} disabled={atToday} aria-label="Siguiente"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper disabled:opacity-40">
+            <ChevronRight size={16} />
+          </button>
+        </div>
         {/* Abrir/cerrar el mini-calendario (arranca cerrado). */}
         <button type="button" onClick={() => setCalOpen((o) => !o)} aria-expanded={calOpen}
-          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${calOpen ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${calOpen ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-mute hover:border-brand/40 hover:text-paper'}`}>
           <CalendarDays size={14} /> Calendario
           <ChevronDown size={13} className={`transition-transform ${calOpen ? '' : '-rotate-90'}`} />
         </button>
 
-        {/* Filtros — empleado + creadora (esquina). Combinables. */}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div className="relative">
+        {/* Filtros — empleado + creadora. Full-width en móvil (cada uno la mitad),
+            a la derecha en desktop. */}
+        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
+          <div className="relative min-w-0 flex-1 sm:flex-none">
             <select value={calEmp} onChange={(e) => setCalEmp(e.target.value)}
-              className={`appearance-none rounded-full border bg-card py-1.5 pl-3 pr-7 text-xs font-semibold outline-none focus:border-brand/60 ${calEmp ? 'border-brand/50 text-brand' : 'border-line text-paper-mute'}`}>
+              className={`w-full appearance-none truncate rounded-full border bg-card py-1.5 pl-3 pr-7 text-xs font-semibold outline-none focus:border-brand/60 sm:w-auto ${calEmp ? 'border-brand/50 text-brand' : 'border-line text-paper-mute'}`}>
               <option value="">Todo el equipo</option>
               {empleados.map((n) => <option key={n} value={n} className="bg-ink text-paper">{n}</option>)}
             </select>
             <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
           </div>
-          <div className="relative">
+          <div className="relative min-w-0 flex-1 sm:flex-none">
             <select value={calCreator} onChange={(e) => setCalCreator(e.target.value)}
-              className={`max-w-[170px] appearance-none truncate rounded-full border bg-card py-1.5 pl-3 pr-7 text-xs font-semibold outline-none focus:border-brand/60 ${calCreator ? 'border-brand/50 text-brand' : 'border-line text-paper-mute'}`}>
+              className={`w-full appearance-none truncate rounded-full border bg-card py-1.5 pl-3 pr-7 text-xs font-semibold outline-none focus:border-brand/60 sm:w-auto sm:max-w-[170px] ${calCreator ? 'border-brand/50 text-brand' : 'border-line text-paper-mute'}`}>
               <option value="">Todas las creadoras</option>
               {creadorasCal.map((n) => <option key={n} value={n} className="bg-ink text-paper">{n}</option>)}
             </select>
@@ -588,7 +594,7 @@ export default function AdminPropuestas() {
           </div>
           {(calEmp || calCreator) && (
             <button onClick={() => { setCalEmp(''); setCalCreator(''); }}
-              className="text-xs font-medium text-paper-dim hover:text-paper">Limpiar</button>
+              className="shrink-0 text-xs font-medium text-paper-dim hover:text-paper">Limpiar</button>
           )}
         </div>
       </div>
