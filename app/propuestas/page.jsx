@@ -156,8 +156,17 @@ export default function PropuestaAdmin() {
   const [staff, setStaff] = useState([]);
   const [internalReviewerId, setInternalReviewerId] = useState('');
   const [internalReviewerName, setInternalReviewerName] = useState('');
-  // Interna: PARA QUÉ modelo es. Nueva (con Instagram obligatorio) o activa (de la lista).
-  const [subjectKind, setSubjectKind] = useState('new'); // 'new' | 'active'
+  // Interna: VARIOS revisores del equipo (opinan; no aprueban). [{id, name}].
+  const [reviewerList, setReviewerList] = useState([]);
+  const addReviewer = (id) => {
+    const s = staff.find((x) => x.id === id);
+    if (!s) return;
+    setReviewerList((r) => (r.some((x) => x.id === id) ? r : [...r, { id: s.id, name: s.full_name || '' }]));
+  };
+  const removeReviewer = (id) => setReviewerList((r) => r.filter((x) => x.id !== id));
+  // Interna: PARA QUÉ modelo es. Solo creadora ACTIVA (ya registrada) — la modelo
+  // tuvo que registrarse para poder hacerle una propuesta; ya no hay "nueva" acá.
+  const [subjectKind, setSubjectKind] = useState('active'); // siempre 'active' en interna
   const [subjectName, setSubjectName] = useState('');
   const [subjectInstagram, setSubjectInstagram] = useState('');
   const [subjectCreatorId, setSubjectCreatorId] = useState('');
@@ -332,11 +341,17 @@ export default function PropuestaAdmin() {
           if (data.recipient_user_id) setCreatorId(data.recipient_user_id);
           if (data.internal_reviewer_id) setInternalReviewerId(data.internal_reviewer_id);
           if (typeof data.internal_reviewer_name === 'string') setInternalReviewerName(data.internal_reviewer_name || '');
-          // Interna: para qué modelo es (nueva con Instagram o activa por id).
+          // Varios revisores (nuevo). Compat: si no hay lista pero sí el viejo id, lo usamos.
+          if (Array.isArray(data.internal_reviewers) && data.internal_reviewers.length) {
+            setReviewerList(data.internal_reviewers.filter((x) => x?.id).map((x) => ({ id: x.id, name: x.name || '' })));
+          } else if (data.internal_reviewer_id) {
+            setReviewerList([{ id: data.internal_reviewer_id, name: data.internal_reviewer_name || '' }]);
+          }
+          // Interna: SIEMPRE creadora activa (ya registrada).
           if (data.recipient_kind === 'internal') {
             setSubjectName(data.recipient_name || '');
-            if (data.recipient_user_id) { setSubjectKind('active'); setSubjectCreatorId(data.recipient_user_id); }
-            else if (data.recipient_instagram) { setSubjectKind('new'); setSubjectInstagram(data.recipient_instagram || ''); }
+            setSubjectKind('active');
+            if (data.recipient_user_id) setSubjectCreatorId(data.recipient_user_id);
           }
           setNeedsApproval(!!data.approval_required && data.recipient_kind !== 'internal');
           if (typeof data.approver_email === 'string') setApproverEmails(data.approver_email.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean));
@@ -678,16 +693,18 @@ export default function PropuestaAdmin() {
       recipient_name: recipient.kind === 'internal' ? subjectName.trim() : recipient.name.trim(),
       recipient_email: recipient.email.trim(),
       recipient_kind: recipient.kind,
-      recipient_instagram: (recipient.kind === 'internal' && subjectKind === 'new') ? (subjectInstagram.trim() || null) : null,
+      recipient_instagram: null, // la interna ahora es SIEMPRE sobre creadora activa (sin instagram a mano)
       // Creadora activa → sellamos su id para que la propuesta le aparezca en su
-      // cuenta ("Mis propuestas") apenas se publica. Interna sobre creadora activa
-      // también la liga a su id.
+      // cuenta ("Mis propuestas") apenas se publica. La interna es SIEMPRE sobre
+      // una creadora activa → la liga a su id también.
       recipient_user_id: recipient.kind === 'active'
         ? (creatorId || null)
-        : (recipient.kind === 'internal' && subjectKind === 'active') ? (subjectCreatorId || null) : null,
-      // Propuesta interna → revisor del equipo (logueado); no lleva creadora todavía.
-      internal_reviewer_id: recipient.kind === 'internal' ? (internalReviewerId || null) : null,
-      internal_reviewer_name: recipient.kind === 'internal' ? (internalReviewerName || null) : null,
+        : recipient.kind === 'internal' ? (subjectCreatorId || null) : null,
+      // Propuesta interna → VARIOS revisores del equipo (opinan, no aprueban). El
+      // id/nombre viejo = el primero, por compatibilidad.
+      internal_reviewers: recipient.kind === 'internal' ? reviewerList : [],
+      internal_reviewer_id: recipient.kind === 'internal' ? (reviewerList[0]?.id || null) : null,
+      internal_reviewer_name: recipient.kind === 'internal' ? (reviewerList[0]?.name || null) : null,
       // Aprobación: con chulito (externa) O si es interna (siempre pasa por revisión).
       approval_required: needsApproval || recipient.kind === 'internal',
       approver_email: (needsApproval && recipient.kind !== 'internal') ? approverEmails.join(', ') : null,
@@ -768,9 +785,7 @@ export default function PropuestaAdmin() {
   const isInternal = recipient.kind === 'internal';
   const canNext = step === 1
     ? (isInternal
-        ? (!!internalReviewerId && (subjectKind === 'active'          // interna: revisor + para qué modelo
-            ? !!subjectCreatorId
-            : (subjectName.trim().length > 0 && subjectInstagram.trim().length > 0)))
+        ? (reviewerList.length > 0 && !!subjectCreatorId)            // interna: ≥1 revisor del equipo + creadora ACTIVA
         : ((recipient.kind === 'active'
             ? !!creatorId && recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim()) // activa: creadora + correo OBLIGATORIO
             : recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())) // nueva: nombre + correo
@@ -1138,62 +1153,50 @@ export default function PropuestaAdmin() {
                 </>
               ) : (
                 <>
-                  <Field label="Elegí a quién revisa (equipo)">
+                  {/* VARIOS revisores del equipo — opinan; la aprobación la das vos/admin. */}
+                  <Field label="Elegí a quién revisa (equipo) — podés poner varios">
+                    <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-ink-2 px-2.5 py-2 focus-within:border-brand/60">
+                      {reviewerList.map((r) => (
+                        <span key={r.id} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-paper">
+                          {r.name || 'Revisor'}
+                          <button type="button" onClick={() => removeReviewer(r.id)} className="text-paper-mute transition-colors hover:text-rose-300"><X size={12} /></button>
+                        </span>
+                      ))}
+                      <div className="relative min-w-[150px] flex-1">
+                        <select
+                          value=""
+                          onChange={(e) => { if (e.target.value) addReviewer(e.target.value); }}
+                          className="w-full appearance-none bg-transparent px-1 py-1 pr-6 text-sm text-paper outline-none"
+                        >
+                          <option value="">{staff.length ? (reviewerList.length ? '+ Agregar otro revisor…' : '— Elegí a quién revisa —') : 'Cargando equipo…'}</option>
+                          {staff.filter((s) => !reviewerList.some((x) => x.id === s.id)).map((s) => (
+                            <option key={s.id} value={s.id}>{s.full_name}{s.job_title ? ` · ${s.job_title}` : ''}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={15} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                      </div>
+                    </div>
+                  </Field>
+
+                  {/* La interna es SIEMPRE sobre una creadora ACTIVA (ya registrada) —
+                      para hacerle una propuesta ya tuvo que registrarse. */}
+                  <Field label="¿Para qué creadora activa es?">
                     <div className="relative">
                       <select
-                        value={internalReviewerId}
-                        onChange={(e) => {
-                          const s = staff.find((x) => x.id === e.target.value);
-                          setInternalReviewerId(e.target.value);
-                          setInternalReviewerName(s?.full_name || '');
-                        }}
+                        value={subjectCreatorId}
+                        onChange={(e) => { const c = activeCreators.find((x) => x.id === e.target.value); setSubjectCreatorId(e.target.value); setSubjectName(c?.full_name || ''); }}
                         className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60"
                       >
-                        <option value="">{staff.length ? '— Elegí a quién revisa —' : 'Cargando equipo…'}</option>
-                        {staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}{s.job_title ? ` · ${s.job_title}` : ''}</option>)}
+                        <option value="">{activeCreators.length ? '— Elegí una creadora activa —' : 'No hay creadoras activas todavía'}</option>
+                        {activeCreators.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
                       </select>
                       <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
                     </div>
                   </Field>
 
-                  {/* Para QUÉ modelo es la propuesta interna. */}
-                  <Field label="¿Para qué modelo es?">
-                    <Seg
-                      value={subjectKind}
-                      onChange={(v) => { if (v === 'new') { setSubjectKind('new'); setSubjectCreatorId(''); } else setSubjectKind('active'); }}
-                      options={[{ value: 'new', label: 'Creadora nueva' }, { value: 'active', label: 'Creadora activa' }]}
-                    />
-                  </Field>
-                  {subjectKind === 'active' ? (
-                    <Field label="Elegí la creadora activa">
-                      <div className="relative">
-                        <select
-                          value={subjectCreatorId}
-                          onChange={(e) => { const c = activeCreators.find((x) => x.id === e.target.value); setSubjectCreatorId(e.target.value); setSubjectName(c?.full_name || ''); }}
-                          className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60"
-                        >
-                          <option value="">{activeCreators.length ? '— Elegí una creadora activa —' : 'No hay creadoras activas todavía'}</option>
-                          {activeCreators.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                        </select>
-                        <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
-                      </div>
-                    </Field>
-                  ) : (
-                    <>
-                      <Field label="Nombre de la modelo">
-                        <input value={subjectName} onChange={(e) => setSubjectName(e.target.value)} placeholder="Ej: Valentina Ríos"
-                          className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-                      </Field>
-                      <Field label="Instagram de la modelo (obligatorio)">
-                        <input value={subjectInstagram} onChange={(e) => setSubjectInstagram(e.target.value)} placeholder="instagram.com/usuaria  ·  @usuaria"
-                          className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-                      </Field>
-                    </>
-                  )}
-
                   <div className="flex items-start gap-2 rounded-xl border border-line bg-ink-2/40 px-3.5 py-3 text-[12px] leading-relaxed text-paper-mute">
                     <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
-                    Propuesta interna: la revisa y aprueba tu equipo (con su feedback aparte). Cuando esté aprobada, desde el admin la mandás a la creadora.
+                    Propuesta interna: el equipo la revisa y deja su opinión (feedback aparte). La aprobás vos o un admin desde el panel; recién ahí se la mandás a la creadora.
                   </div>
                 </>
               )}
@@ -1622,7 +1625,7 @@ export default function PropuestaAdmin() {
                   </div>
                   <p className="mt-2 text-[12.5px] leading-relaxed text-amber-100/80">
                     {isInternal
-                      ? <>Compartí este link con <span className="font-semibold text-amber-50">{internalReviewerName || 'tu equipo'}</span>. Cuando lo apruebe, la mandás a la creadora desde el admin.</>
+                      ? <>Compartí este link con <span className="font-semibold text-amber-50">{reviewerList.map((r) => r.name).filter(Boolean).join(', ') || 'tu equipo'}</span>. Dejan su opinión; después vos o un admin la aprueban y la mandás a la creadora desde el admin.</>
                       : <>Compartí este link con quien decide. Cuando apruebe, se le manda sola a la creadora.</>}
                   </p>
                 </div>

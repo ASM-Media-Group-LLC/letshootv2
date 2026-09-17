@@ -155,6 +155,7 @@ function mapProposal(row, fb, reg, fbInt) {
     _demo: false,
     id: row.id,
     code: row.link_id,
+    reviewers: Array.isArray(row.internal_reviewers) ? row.internal_reviewers.filter((x) => x?.name || x?.id) : [],
     lang: row.lang || 'es',
     template: row.template || null,
     name: row.name || '',
@@ -477,6 +478,29 @@ export default function AdminPropuestas() {
       try { await getSupabase().from('photo_proposals').update({ status: next }).eq('id', p.id); } catch {}
     }
     setRows((prev) => prev.map((r) => (r.id === p.id ? { ...r, _status: next } : r)));
+  };
+
+  // Aprobar una propuesta INTERNA: la decide el DUEÑO/ADMIN (los revisores solo
+  // opinan). Sella approved + fecha + quién aprobó, y habilita "Enviar a la creadora".
+  const approveInternal = async (p) => {
+    if (p._demo) return;
+    let reviewer = '';
+    try {
+      const { data: au } = await getSupabase().auth.getUser();
+      if (au?.user) {
+        const { data: pr } = await getSupabase().from('profiles').select('full_name').eq('id', au.user.id).maybeSingle();
+        reviewer = pr?.full_name || '';
+      }
+    } catch {}
+    const nowIso = new Date().toISOString();
+    try {
+      await getSupabase().from('photo_proposals')
+        .update({ approval_status: 'approved', approved_at: nowIso, approval_reviewer_name: reviewer || null })
+        .eq('id', p.id);
+    } catch {}
+    setRows((prev) => prev.map((r) => (r.id === p.id
+      ? { ...r, approvedAt: nowIso, approval: { ...(r.approval || {}), required: true, status: 'approved', reviewer } }
+      : r)));
   };
 
   const selProp = shown.find((p) => p.id === sel) || all.find((p) => p.id === sel) || null;
@@ -886,6 +910,7 @@ export default function AdminPropuestas() {
           onCopy={() => copyLink(selProp)}
           mailHref={mailHref(selProp)}
           onArchive={() => toggleArchive(selProp)}
+          onApprove={() => approveInternal(selProp)}
           onClose={() => setSel(null)}
         />
       )}
@@ -894,7 +919,8 @@ export default function AdminPropuestas() {
 }
 
 // ── Detalle en drawer lateral ──────────────────────────────────────────────
-function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, onClose }) {
+function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, onApprove, onClose }) {
+  const [approving, setApproving] = useState(false);
   const st = STATE_META[stateOf(p)];
   const d = daysLeft(p);
   const items = Array.isArray(p._feedback?.items) ? p._feedback.items : [];
@@ -1049,6 +1075,15 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                 </span>
               } />
             )}
+            {p._internal && p.reviewers?.length > 0 && (
+              <Row label="Revisan (equipo)" value={
+                <span className="flex flex-wrap gap-1.5">
+                  {p.reviewers.map((r, i) => (
+                    <span key={r.id || i} className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-semibold text-brand">{r.name || 'Revisor'}</span>
+                  ))}
+                </span>
+              } />
+            )}
             {/* Historial de recordatorios + pausa manual ("pararlo si hace falta") */}
             {!p._demo && (reminderKind || remInfo) && (
               <Row label="Recordatorios" value={
@@ -1082,6 +1117,13 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                   : remindState === 'sending' ? <><Bell size={14} className="animate-pulse" /> Enviando…</>
                   : remindState === 'error' ? <><Bell size={14} /> Reintentar</>
                   : <><Bell size={14} /> Recordar ahora</>}
+              </button>
+            )}
+            {!p._demo && p._internal && p.approval?.status === 'pending' && (
+              <button onClick={async () => { setApproving(true); try { await onApprove?.(); } finally { setApproving(false); } }} disabled={approving}
+                title="Aprobar esta propuesta interna (la decide el dueño/admin) y habilitar el envío a la creadora"
+                className="btn3d inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold disabled:opacity-60">
+                {approving ? 'Aprobando…' : <><Check size={14} /> Aprobar (equipo)</>}
               </button>
             )}
             {!p._demo && p._internal && p.approval?.status === 'approved' && (
