@@ -184,6 +184,19 @@ function mapProposal(row, fb, reg, fbInt) {
   };
 }
 
+// "Abrió" = el receptor entró al link. El backend dejó de sellar first_opened_at
+// (una migración reescribió get_proposal_by_link y perdió ese update), así que lo
+// deducimos de cualquier señal real: sello del backend, registro o progreso parcial.
+function openSignalAt(p) {
+  return p?.firstOpenedAt || p?._reg?.at || p?._progress?.updated_at || null;
+}
+// Para el CONTEO de "abrieron": cualquiera de las anteriores O que ya respondió
+// (responder implica haber abierto) — así "abrieron" nunca queda por debajo de
+// "respondieron", que era justo el número imposible (0 abrieron / 3 respondieron).
+function openedAt(p) {
+  return openSignalAt(p) || p?._feedback?.updatedAt || null;
+}
+
 export default function AdminPropuestas() {
   const [rows, setRows] = useState([]);         // lista normalizada (reales o, si no hay, demos)
   const [loading, setLoading] = useState(true);
@@ -374,7 +387,7 @@ export default function AdminPropuestas() {
       const c = bucket(p.createdAt); if (c) s.creadas[c] += 1;
       if (p.approval && (p.approval.status === 'approved' || p.approval.status === 'rejected')) { const a = bucket(p.approvedAt); if (a) s.aprobadas[a] += 1; }
       if (feedbackSummary(p._feedback).total > 0) { const r = bucket(p._feedback?.updatedAt); if (r) s.respondieron[r] += 1; }
-      const o = bucket(p.firstOpenedAt); if (o) s.abrieron[o] += 1;
+      const o = bucket(openedAt(p)); if (o) s.abrieron[o] += 1;
       const d = bucket(p.deliveredAt); if (d) s.entregadas[d] += 1;
     });
     return s;
@@ -391,7 +404,7 @@ export default function AdminPropuestas() {
       if (fresh(p.createdAt)) ev.push({ at: p.createdAt, kind: 'created', p });
       if (p.approval && fresh(p.approvedAt) && (p.approval.status === 'approved' || p.approval.status === 'rejected')) ev.push({ at: p.approvedAt, kind: p.approval.status, p });
       if (fresh(p._feedback?.updatedAt) && feedbackSummary(p._feedback).total > 0) ev.push({ at: p._feedback.updatedAt, kind: 'responded', p });
-      if (fresh(p.firstOpenedAt)) ev.push({ at: p.firstOpenedAt, kind: 'opened', p });
+      { const oa = openSignalAt(p); if (fresh(oa)) ev.push({ at: oa, kind: 'opened', p }); }
       if (fresh(p.deliveredAt)) ev.push({ at: p.deliveredAt, kind: 'delivered', p });
     });
     const kindOk = (k) => !calKind || (calKind === 'decided' ? (k === 'approved' || k === 'rejected') : k === calKind);
@@ -419,7 +432,7 @@ export default function AdminPropuestas() {
       add(p.createdAt);
       if (p.approval && (p.approval.status === 'approved' || p.approval.status === 'rejected')) add(p.approvedAt);
       if (feedbackSummary(p._feedback).total > 0) add(p._feedback?.updatedAt);
-      add(p.firstOpenedAt); add(p.deliveredAt);
+      add(openedAt(p)); add(p.deliveredAt);
     });
     return set;
   }, [all, calMonth, calEmp, calCreator]);
@@ -934,6 +947,12 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
   // Historial de recordatorios (cuántos se enviaron, cuándo) + pausa manual.
   const remInfo = (reminderKind && p._reminders?.[reminderKind])
     || p._reminders?.response || p._reminders?.approval || null;
+  // A QUIÉN se le manda el recordatorio: aprobación → quien aprueba; respuesta →
+  // la creadora (correo del receptor). Para "llevar el control de los contactos".
+  const remIsApproval = !!(remInfo && p._reminders?.approval && remInfo === p._reminders.approval);
+  const remContact = remInfo
+    ? (remIsApproval ? (p.approval?.approver || '') : (p.recipient?.email || p.recipient?.name || ''))
+    : '';
   const [pausedLocal, setPausedLocal] = useState(null); // null = lo que diga la DB
   const isPaused = pausedLocal ?? !!remInfo?.paused;
   const [pauseBusy, setPauseBusy] = useState(false);
@@ -1031,6 +1050,7 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
                   <span className="text-paper-mute">
                     {(remInfo?.count ?? 0) === 0 ? 'ninguno todavía' : `${remInfo.count} enviado${remInfo.count === 1 ? '' : 's'}`}
                     {remInfo?.last_sent_at ? <span className="text-paper-dim"> · último {new Date(remInfo.last_sent_at).toLocaleDateString('es-US', { day: 'numeric', month: 'short' })}</span> : null}
+                    {remContact && (remInfo?.count ?? 0) > 0 ? <span className="text-paper-dim"> · a {remContact}</span> : null}
                   </span>
                   {isPaused && <StatusDot tone="zinc">parados a mano</StatusDot>}
                   {reminderKind && (
