@@ -78,9 +78,13 @@ Deno.serve(async (req) => {
     if (!link) return reply({ ok: false, error: 'Propuesta inválida.' });
 
     const { data: prop } = await svc.from('photo_proposals')
-      .select('created_by, created_by_name, recipient_name, name, lang')
+      .select('created_by, created_by_name, recipient_name, name, lang, recipient_kind')
       .eq('link_id', link).maybeSingle();
     if (!prop) return reply({ ok: true, skipped: 'propuesta no encontrada' });
+    // Propuesta INTERNA (borrador de equipo): no es un envío real a la creadora,
+    // así que NO mandamos el aviso "respondió". (El feedback igual cae al bucket
+    // interno vía save_proposal_feedback.)
+    if (prop.recipient_kind === 'internal') return reply({ ok: true, skipped: 'propuesta interna — sin aviso' });
 
     // Correo del empleado que la armó (puede faltar). El DUEÑO (rusin24) recibe
     // copia SIEMPRE, tenga o no correo el que la armó.
