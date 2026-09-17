@@ -88,7 +88,7 @@ const TONE = {
 export default function AdminPage() {
   const router = useRouter();
   const [me, setMe] = useState(undefined);
-  const [tab, setTab] = useState('registros');
+  const [tab, setTab] = useState('propuestas'); // el admin abre SIEMPRE en Propuestas (deep-link ?tab= lo cambia)
   const [navOpen, setNavOpen] = useState(true); // sidebar abierto (labels) o colapsado (solo íconos)
   const [mobNav, setMobNav] = useState(false);  // móvil: menú de secciones desplegable abierto
   const [propCounts, setPropCounts] = useState({ backlog: 0 }); // backlog de propuestas (lo reporta AdminPropuestas)
