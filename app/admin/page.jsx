@@ -2312,37 +2312,41 @@ function ResetPasswordBox({ userId, email = '', allowEmail = true }) {
   }
   return (
     <div className="rounded-2xl border border-line bg-ink-2 p-4">
-      <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-paper"><KeyRound size={15} className="text-brand" /> Contraseña</h4>
+      <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-paper"><KeyRound size={15} className="text-brand" /> Acceso y contraseña</h4>
       <p className="mb-3 text-[11px] text-paper-dim">
         {canEmail
-          ? 'Le llega un correo para que ponga su propia contraseña. No manejas su clave.'
-          : 'Esta cuenta no tiene un correo real, así que ponle una contraseña temporal y compártesela.'}
+          ? 'Mandale un correo para que entre y ponga su propia clave (no manejás su clave), o ponele una vos directo y compartísela.'
+          : 'Esta cuenta no tiene un correo real, así que ponle una contraseña vos y compartísela.'}
       </p>
       <div className="flex flex-wrap gap-2">
-        {canEmail ? (
-          // Cuenta con correo real: una sola acción, limpio. La persona pone su propia clave.
+        {canEmail && (
+          // Cuenta con correo real: le llega el correo para entrar y poner su clave.
           <button onClick={sendResetEmail} disabled={emailBusy}
             className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-2 text-xs font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.03] disabled:opacity-60">
             {emailBusy ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />} Enviar correo para que ponga su clave
           </button>
-        ) : (!open && (
-          // Sin correo real (login de empresa): la única vía es una temporal.
+        )}
+        {!open && (
+          // Poner una contraseña a mano — disponible SIEMPRE (con o sin correo).
           <button onClick={() => { setOpen(true); setMsg(''); setOkMsg(''); }}
             className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-            <KeyRound size={13} /> Poner contraseña temporal
+            <KeyRound size={13} /> {canEmail ? 'O ponerle una yo' : 'Poner contraseña'}
           </button>
-        ))}
+        )}
       </div>
-      {!canEmail && open && (
+      {open && (
         <div className="mt-2 space-y-2">
-          <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Nueva contraseña temporal (mín. 8)"
+          <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Nueva contraseña (mín. 8)"
             className="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-          <div className="flex justify-end gap-2">
-            <button onClick={() => { setOpen(false); setPw(''); setMsg(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
-            <button onClick={reset} disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-60">
-              {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Guardar contraseña
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] text-paper-dim">Queda activa al instante — se la das vos.</span>
+            <div className="flex gap-2">
+              <button onClick={() => { setOpen(false); setPw(''); setMsg(''); }} className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+              <button onClick={reset} disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-1.5 text-xs font-semibold text-on-accent disabled:opacity-60">
+                {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Guardar contraseña
+              </button>
+            </div>
           </div>
         </div>
       )}
