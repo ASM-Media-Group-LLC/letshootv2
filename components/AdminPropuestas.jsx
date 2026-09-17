@@ -703,9 +703,9 @@ export default function AdminPropuestas() {
         <p className="mt-1.5 text-[11px] text-paper-dim">Tocá un número para ver <b className="text-paper-mute">quiénes</b> abajo.</p>
       </div>
 
-      {/* ACTIVIDAD del día — qué se hizo, a quién, quién aprobó. */}
-      <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-card">
-        <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
+      {/* ACTIVIDAD del día — CADA tipo en su PROPIA caja, bien separadito. */}
+      <div className="mt-4">
+        <div className="mb-2.5 flex items-center justify-between gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
           <span>Actividad · <span className="capitalize">{rangeLabel}</span>
             {calKind && <span className="text-brand"> · {({ created: 'creadas', responded: 'respondieron', decided: 'aprobadas', opened: 'abrieron', delivered: 'entregadas' })[calKind]}</span>}
             {calEmp && <span className="text-brand"> · {calEmp}</span>}
@@ -717,20 +717,17 @@ export default function AdminPropuestas() {
           )}
         </div>
         {activityGroups.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-paper-dim">
+          <p className="rounded-2xl border border-line bg-card px-4 py-6 text-center text-sm text-paper-dim">
             {calKind || calEmp || calCreator ? 'Nadie con ese filtro ' : 'Sin movimiento '}{emptyWhen}.
           </p>
         ) : (
-          <div className="max-h-[460px] divide-y divide-line overflow-y-auto">
+          <div className="space-y-3">
             {activityGroups.map((grp) => (
-              <div key={grp.g}>
-                {/* Encabezado del grupo (separadito). Si filtró por un tipo, no lo repetimos. */}
-                {activityGroups.length > 1 && (
-                  <div className="sticky top-0 z-[1] flex items-center gap-2 border-b border-line bg-card/95 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim backdrop-blur">
-                    <span className={`h-1.5 w-1.5 rounded-full ${grp.dot}`} /> {grp.label} <span className="text-paper-mute">· {grp.items.length}</span>
-                  </div>
-                )}
-                <ul>
+              <div key={grp.g} className="overflow-hidden rounded-2xl border border-line bg-card">
+                <div className="flex items-center gap-2 border-b border-line bg-hair/[0.03] px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-paper-dim">
+                  <span className={`h-1.5 w-1.5 rounded-full ${grp.dot}`} /> {grp.label} <span className="text-paper-mute">· {grp.items.length}</span>
+                </div>
+                <ul className="max-h-[300px] divide-y divide-line/50 overflow-y-auto">
                   {grp.items.map((e, i) => (
                     <li key={`${e.p.id}-${e.kind}-${i}`}>
                       <button type="button" onClick={() => setSel(e.p.id)}
