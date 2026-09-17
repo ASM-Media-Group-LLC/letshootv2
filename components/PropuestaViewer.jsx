@@ -954,6 +954,15 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
   return (
     <div className="bg-ink text-paper" style={{ WebkitUserSelect: 'none', userSelect: 'none' }}>
 
+      {/* Vista de equipo (?preview=1 / "Ver como cliente"): SOLO LECTURA. Aviso
+          claro y fijo de que lo que se marque acá NO se guarda — así el equipo
+          revisa la propuesta sin confundirse ni ensuciar los números reales. */}
+      {preview && !isDemo && (
+        <div className="fixed inset-x-0 top-0 z-[75] flex items-center justify-center gap-2 bg-amber-400 px-4 py-2 text-center text-[12px] font-bold text-black">
+          <Eye size={13} /> Vista de equipo · solo lectura — lo que marques aquí NO se guarda
+        </div>
+      )}
+
       {/* Preview del editor (/p/demo): botón para VOLVER al editor. Cierra esta
           pestaña (se abrió con window.open); si no puede, va atrás en el historial. */}
       {isDemo && (
