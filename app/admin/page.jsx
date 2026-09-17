@@ -2435,6 +2435,18 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
     return true;
   }
   async function saveData() {
+    // El correo cambia el LOGIN (auth) + la ficha → va por la edge function
+    // update-user (con service role). El resto son columnas normales del perfil.
+    const newEmail = (form.email || '').trim().toLowerCase();
+    const curEmail = (creator.email || '').toLowerCase();
+    const emailChanged = !!newEmail && newEmail !== curEmail;
+    if (newEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newEmail)) { flash('Correo no válido.'); return; }
+    if (emailChanged) {
+      setSaving(true);
+      const { data, error } = await getSupabase().functions.invoke('update-user', { body: { user_id: creator.id, email: newEmail } });
+      setSaving(false);
+      if (error || data?.ok === false) { flash('No se pudo cambiar el correo: ' + (data?.error || error?.message || 'error')); return; }
+    }
     const ok = await patch({
       full_name: form.full_name?.trim() || null,
       stage_name: form.stage_name?.trim() || null,
@@ -2444,7 +2456,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
       date_of_birth: form.date_of_birth || null,
       country: form.country?.trim() || null,
       phone: form.phone?.trim() || null,
-    }, 'Datos guardados');
+    }, emailChanged ? 'Datos y correo guardados' : 'Datos guardados');
     if (ok) setEditing(false);
   }
 
@@ -2613,6 +2625,12 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
           <Row done={datosDone} icon={Users} title="Datos personales">
             {editing ? (
               <div className="space-y-2.5">
+                <label className="block">
+                  <span className="mb-1 block text-[10px] uppercase tracking-wide text-paper-dim">Correo <span className="text-paper-dim/70">· login + contacto (por aquí le llega la propuesta)</span></span>
+                  <input type="email" value={form?.email || ''} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                    placeholder="correo@modelo.com"
+                    className="w-full rounded-lg border border-line bg-ink-2 px-2.5 py-2 text-sm text-paper outline-none focus:border-brand/60" />
+                </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   {[
                     ['full_name', 'Nombre', 'text'], ['stage_name', 'Nombre artístico', 'text'],
@@ -2650,6 +2668,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                   <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Teléfono</dt><dd className="text-paper">{creator.phone || '—'}</dd></div>
                 </dl>
                 <button onClick={() => { setForm({
+                  email: creator.email || '',
                   full_name: creator.full_name || '', stage_name: creator.stage_name || '', handle: creator.handle || '',
                   phone: creator.phone || '', legal_first_name: creator.legal_first_name || '', legal_last_name: creator.legal_last_name || '',
                   date_of_birth: creator.date_of_birth || '', country: creator.country || '',
