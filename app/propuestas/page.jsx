@@ -280,6 +280,7 @@ export default function PropuestaAdmin() {
   const [vaultCreatorQ, setVaultCreatorQ] = useState('');
   const [vaultRows, setVaultRows] = useState([]);
   const [vaultLoading, setVaultLoading] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // foto del baúl a borrar (2 pasos)
   const vaultCacheRef = useRef({}); // creatorId -> filas (evita re-descargar al volver)
   const [copied, setCopied] = useState(false);
   // Qué textos tocó el dueño a mano (por campo). Los NO tocados se re-traducen
@@ -456,6 +457,7 @@ export default function PropuestaAdmin() {
 
   // Cargar el baúl de la creadora elegida (cacheado por creadora).
   useEffect(() => {
+    setConfirmDeleteId(null);
     if (!picker || !vaultCreatorId) { setVaultRows([]); return; }
     const cached = vaultCacheRef.current[vaultCreatorId];
     if (cached) { setVaultRows(cached); return; }
@@ -728,23 +730,54 @@ export default function PropuestaAdmin() {
       : <span className="grid shrink-0 place-items-center rounded-full bg-brand/20 font-bold text-brand" style={{ width: px, height: px, fontSize: Math.round(px * 0.36) }}>{initials}</span>;
   };
 
+  // Borrar una foto del baúl (2 pasos: pide confirmación en la misma tarjeta).
+  const deleteVaultPhoto = async (id) => {
+    const cid = vaultCreatorId;
+    setConfirmDeleteId(null);
+    setVaultRows((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      if (cid) vaultCacheRef.current[cid] = next;
+      return next;
+    });
+    try { await getSupabase().from('creator_vault').delete().eq('id', id); } catch {}
+  };
+
   const renderVaultGrid = (items) => (
     <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
       {items.map((p) => (
-        <button
+        <div
           key={p.id}
-          type="button"
-          onClick={() => assign(p.src)}
           className="group relative overflow-hidden rounded-xl border border-line bg-ink-2 transition-colors hover:border-brand/60"
         >
-          <img src={p.src} alt="" className="aspect-[4/5] w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-1.5">
-            <div className="flex items-center gap-1">
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${KIND_DOT[p.kind] || 'bg-white/40'}`} />
-              <span className="line-clamp-1 text-left text-[9px] font-medium text-white/85">{p.caption}</span>
+          <button type="button" onClick={() => assign(p.src)} className="block w-full">
+            <img src={p.src} alt="" className="aspect-[4/5] w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-1.5">
+              <div className="flex items-center gap-1">
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${KIND_DOT[p.kind] || 'bg-white/40'}`} />
+                <span className="line-clamp-1 text-left text-[9px] font-medium text-white/85">{p.caption}</span>
+              </div>
             </div>
-          </div>
-        </button>
+          </button>
+          {/* Botón borrar (aparece al pasar el mouse). */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(p.id); }}
+            className="absolute right-1 top-1 z-10 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white/80 opacity-0 backdrop-blur transition-opacity hover:bg-rose-600 hover:text-white group-hover:opacity-100"
+            title="Borrar del baúl"
+          >
+            <Trash2 size={12} />
+          </button>
+          {/* Confirmación de borrado (tapa la tarjeta para no asignar sin querer). */}
+          {confirmDeleteId === p.id && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-1.5 bg-black/85 p-2 text-center">
+              <span className="text-[10px] font-medium text-white">¿Borrar esta foto?</span>
+              <div className="flex gap-1.5">
+                <button type="button" onClick={(e) => { e.stopPropagation(); deleteVaultPhoto(p.id); }} className="rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold text-white transition-colors hover:bg-rose-500">Sí, borrar</button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }} className="rounded-full border border-line px-2.5 py-1 text-[10px] font-semibold text-paper-mute transition-colors hover:text-paper">No</button>
+              </div>
+            </div>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -2093,7 +2126,7 @@ export default function PropuestaAdmin() {
                 className="btn3d inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
                 title={vaultCreatorId ? `Se guarda en “${uploadKindLabel}” de ${vaultCreator?.full_name || 'la creadora'}` : 'Subir foto'}
               >
-                <ImagePlus size={13} /> {uploadBusy ? 'Subiendo…' : `Subir a ${uploadKindLabel}`}
+                <ImagePlus size={13} /> {uploadBusy ? 'Subiendo…' : 'Subir'}
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFilesPicked} />
             </div>
@@ -2111,7 +2144,7 @@ export default function PropuestaAdmin() {
               ) : pickerItems.length === 0 ? (
                 <div className="grid place-items-center gap-1 py-16 text-center text-sm text-paper-mute">
                   <p>Todavía no hay fotos {pickerKind !== 'all' ? `en “${uploadKindLabel}”` : ''} para {vaultCreator?.full_name || 'esta creadora'}.</p>
-                  <p className="text-[11px] text-paper-dim">Usá “Subir a {uploadKindLabel}” para agregarlas — quedan guardadas.</p>
+                  <p className="text-[11px] text-paper-dim">Usá el botón “Subir” para agregarlas — quedan guardadas.</p>
                 </div>
               ) : pickerKind === 'all' ? (
                 VAULT_KINDS.map((v) => {
