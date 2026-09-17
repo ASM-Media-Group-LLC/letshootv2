@@ -382,13 +382,16 @@ export default function AdminPropuestas() {
     const { rStart, rEnd, pStart, pEnd } = range;
     const bucket = (ts) => { if (!ts) return null; const m = new Date(ts).getTime(); if (Number.isNaN(m)) return null; if (m >= rStart && m < rEnd) return 'hoy'; if (m >= pStart && m < pEnd) return 'ayer'; return null; };
     const z = () => ({ hoy: 0, ayer: 0 });
-    const s = { creadas: z(), respondieron: z(), aprobadas: z(), abrieron: z(), entregadas: z() };
+    const s = { creadas: z(), respondieron: z(), aprobadas: z(), abrieron: z(), sinterminar: z(), entregadas: z() };
     all.forEach((p) => {
       if (!calMatch(p)) return;
       const c = bucket(p.createdAt); if (c) s.creadas[c] += 1;
       if (p.approval && (p.approval.status === 'approved' || p.approval.status === 'rejected')) { const a = bucket(p.approvedAt); if (a) s.aprobadas[a] += 1; }
       if (feedbackSummary(p._feedback).total > 0) { const r = bucket(p._feedback?.updatedAt); if (r) s.respondieron[r] += 1; }
       const o = bucket(openedAt(p)); if (o) s.abrieron[o] += 1;
+      // SIN TERMINAR: abrió el link pero NO completó su respuesta (solo propuestas
+      // a la creadora, no internas). Se cuenta por la fecha en que abrió.
+      if (!p._internal && feedbackSummary(p._feedback).total === 0) { const u = bucket(openSignalAt(p)); if (u) s.sinterminar[u] += 1; }
       const d = bucket(p.deliveredAt); if (d) s.entregadas[d] += 1;
     });
     return s;
@@ -405,7 +408,12 @@ export default function AdminPropuestas() {
       if (fresh(p.createdAt)) ev.push({ at: p.createdAt, kind: 'created', p });
       if (p.approval && fresh(p.approvedAt) && (p.approval.status === 'approved' || p.approval.status === 'rejected')) ev.push({ at: p.approvedAt, kind: p.approval.status, p });
       if (fresh(p._feedback?.updatedAt) && feedbackSummary(p._feedback).total > 0) ev.push({ at: p._feedback.updatedAt, kind: 'responded', p });
-      { const oa = openSignalAt(p); if (fresh(oa)) ev.push({ at: oa, kind: 'opened', p }); }
+      { const oa = openSignalAt(p);
+        if (fresh(oa)) {
+          ev.push({ at: oa, kind: 'opened', p });
+          // Si abrió pero NO completó, también entra a "Sin terminar".
+          if (!p._internal && feedbackSummary(p._feedback).total === 0) ev.push({ at: oa, kind: 'unfinished', p });
+        } }
       if (fresh(p.deliveredAt)) ev.push({ at: p.deliveredAt, kind: 'delivered', p });
     });
     const kindOk = (k) => !calKind || (calKind === 'decided' ? (k === 'approved' || k === 'rejected') : k === calKind);
@@ -416,7 +424,7 @@ export default function AdminPropuestas() {
   // Movimiento. 'approved'/'rejected' caen en "Aprobadas".
   const activityGroups = useMemo(() => {
     const norm = (k) => (k === 'approved' || k === 'rejected') ? 'decided' : k;
-    const order = [['created', 'Creadas', 'bg-brand'], ['responded', 'Respondieron', 'bg-amber-400'], ['decided', 'Aprobadas', 'bg-emerald-400'], ['opened', 'Abrieron', 'bg-sky-400'], ['delivered', 'Entregadas', 'bg-violet-400']];
+    const order = [['created', 'Creadas', 'bg-brand'], ['responded', 'Respondieron', 'bg-amber-400'], ['decided', 'Aprobadas (equipo)', 'bg-emerald-400'], ['opened', 'Abrieron', 'bg-sky-400'], ['unfinished', 'Sin terminar', 'bg-rose-400'], ['delivered', 'Entregadas', 'bg-violet-400']];
     const by = {};
     activityForDay.forEach((e) => { const g = norm(e.kind); (by[g] = by[g] || []).push(e); });
     return order.filter(([g]) => by[g]?.length).map(([g, label, dot]) => ({ g, label, dot, items: by[g] }));
@@ -688,15 +696,16 @@ export default function AdminPropuestas() {
         <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
           <TrendingUp size={13} /> Movimiento · <span className="capitalize">{rangeLabel}</span>
         </div>
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
           {[
             ['creadas', 'Creadas', 'created'],
             ['respondieron', 'Respondieron', 'responded'],
-            ['aprobadas', 'Aprobadas', 'decided'],
+            ['aprobadas', 'Aprobadas (equipo)', 'decided', 'Propuestas que pasaron el paso de APROBACIÓN del equipo (internas o con aprobador). No cuenta fotos — para propuestas directas a la creadora no aplica, por eso suele ser 0.'],
             ['abrieron', 'Abrieron', 'opened'],
+            ['sinterminar', 'Sin terminar', 'unfinished', 'Abrió el link pero NO completó su respuesta. Tocá para verlos abajo y mandarles «Recordar ahora».'],
             ['entregadas', 'Entregadas', 'delivered'],
-          ].map(([key, label, kind]) => (
-            <DayStat key={key} label={label} today={dayStats[key].hoy} yesterday={dayStats[key].ayer} prevLabel={range.prevLabel}
+          ].map(([key, label, kind, hint]) => (
+            <DayStat key={key} label={label} hint={hint} today={dayStats[key].hoy} yesterday={dayStats[key].ayer} prevLabel={range.prevLabel}
               active={calKind === kind} onClick={() => setCalKind((k) => (k === kind ? '' : kind))} />
           ))}
         </div>
@@ -707,7 +716,7 @@ export default function AdminPropuestas() {
       <div className="mt-4">
         <div className="mb-2.5 flex items-center justify-between gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">
           <span>Actividad · <span className="capitalize">{rangeLabel}</span>
-            {calKind && <span className="text-brand"> · {({ created: 'creadas', responded: 'respondieron', decided: 'aprobadas', opened: 'abrieron', delivered: 'entregadas' })[calKind]}</span>}
+            {calKind && <span className="text-brand"> · {({ created: 'creadas', responded: 'respondieron', decided: 'aprobadas', opened: 'abrieron', unfinished: 'sin terminar', delivered: 'entregadas' })[calKind]}</span>}
             {calEmp && <span className="text-brand"> · {calEmp}</span>}
             {calCreator && <span className="text-brand"> · {calCreator}</span>}
           </span>
@@ -1326,6 +1335,7 @@ const EVENT_META = {
   approved:  { dot: 'bg-emerald-400' },
   rejected:  { dot: 'bg-rose-400' },
   opened:    { dot: 'bg-sky-400' },
+  unfinished:{ dot: 'bg-rose-400' },
   responded: { dot: 'bg-amber-400' },
   delivered: { dot: 'bg-emerald-300' },
 };
@@ -1340,17 +1350,18 @@ function eventLine(e) {
   if (e.kind === 'rejected') return <><b className="font-medium text-paper">{rev || 'Alguien'}</b> rechazó · {to}</>;
   if (e.kind === 'responded') { const f = feedbackSummary(e.p._feedback); return <><b className="font-medium text-paper">{to}</b> respondió · {f.liked} ♥ · {f.rejected} ✕</>; }
   if (e.kind === 'opened') return <><b className="font-medium text-paper">{to}</b> abrió el link</>;
+  if (e.kind === 'unfinished') { const pr = e.p._progress; const va = pr && pr.total ? ` · va ${pr.decided}/${pr.total}` : ''; return <><b className="font-medium text-paper">{to}</b> abrió · <span className="text-rose-300">no terminó</span>{va}</>; }
   if (e.kind === 'delivered') return <>Entregada a <b className="font-medium text-paper">{to}</b></>;
   return null;
 }
 
 // Tarjeta de una métrica del día (número grande + tendencia vs ayer). Clicable:
 // filtra la actividad de abajo por ese tipo (quiénes lo hicieron).
-function DayStat({ label, today, yesterday, prevLabel = 'ayer', onClick, active }) {
+function DayStat({ label, hint, today, yesterday, prevLabel = 'ayer', onClick, active }) {
   const delta = today - yesterday;
   const up = delta > 0, down = delta < 0;
   return (
-    <button type="button" onClick={onClick}
+    <button type="button" onClick={onClick} title={hint || undefined}
       className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
         active ? 'border-brand/60 bg-brand/10' : 'border-line bg-card hover:border-brand/40'}`}>
       <div className="flex items-baseline gap-2">
