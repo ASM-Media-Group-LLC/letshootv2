@@ -2445,11 +2445,15 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
     const curEmail = (creator.email || '').toLowerCase();
     const emailChanged = !!newEmail && newEmail !== curEmail;
     if (newEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newEmail)) { flash('Correo no válido.'); return; }
+    let inviteSent = false;
     if (emailChanged) {
       setSaving(true);
       const { data, error } = await getSupabase().functions.invoke('update-user', { body: { user_id: creator.id, email: newEmail } });
+      if (error || data?.ok === false) { setSaving(false); flash('No se pudo cambiar el correo: ' + (data?.error || error?.message || 'error')); return; }
+      // Al NUEVO correo le mandamos la invitación para que entre y ponga su clave.
+      const inv = await getSupabase().functions.invoke('reset-password', { body: { user_id: creator.id, send_email: true } }).catch(() => ({}));
+      inviteSent = !!inv?.data?.ok;
       setSaving(false);
-      if (error || data?.ok === false) { flash('No se pudo cambiar el correo: ' + (data?.error || error?.message || 'error')); return; }
     }
     const ok = await patch({
       full_name: form.full_name?.trim() || null,
@@ -2460,7 +2464,11 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
       date_of_birth: form.date_of_birth || null,
       country: form.country?.trim() || null,
       phone: form.phone?.trim() || null,
-    }, emailChanged ? 'Datos y correo guardados' : 'Datos guardados');
+    }, emailChanged
+        ? (inviteSent
+            ? `Correo cambiado a ${newEmail} · le mandamos la invitación para que entre y ponga su clave`
+            : `Correo cambiado a ${newEmail} · no salió la invitación, usá «Enviar correo para que ponga su clave»`)
+        : 'Datos guardados');
     if (ok) setEditing(false);
   }
   // Abre el editor de datos con todo prellenado (usado por "Cambiar" del correo
