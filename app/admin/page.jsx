@@ -2704,6 +2704,10 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
             )}
           </Row>
 
+          {/* Acceso y contraseña — JUNTO al correo, arriba de todo: mandar correo
+              para que ponga su clave, o ponerle una a mano. */}
+          <ResetPasswordBox userId={creator.id} email={creator.email} />
+
           {/* Estado de la cuenta — el admin la mueve por los pasos manualmente */}
           <div className="rounded-2xl border border-line bg-ink-2 p-4">
             <h4 className="mb-1 flex items-center gap-2 font-display font-semibold text-paper"><Clock size={15} className="text-brand" /> Paso de la cuenta</h4>
@@ -2764,8 +2768,6 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
             </div>
           </div>
 
-          {/* Contraseña — resetear */}
-          <ResetPasswordBox userId={creator.id} email={creator.email} />
           </div>
           )}
 
