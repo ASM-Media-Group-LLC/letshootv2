@@ -2459,6 +2459,17 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
     }, emailChanged ? 'Datos y correo guardados' : 'Datos guardados');
     if (ok) setEditing(false);
   }
+  // Abre el editor de datos con todo prellenado (usado por "Cambiar" del correo
+  // y por "Editar / llenar datos").
+  function openEditor() {
+    setForm({
+      email: creator.email || '',
+      full_name: creator.full_name || '', stage_name: creator.stage_name || '', handle: creator.handle || '',
+      phone: creator.phone || '', legal_first_name: creator.legal_first_name || '', legal_last_name: creator.legal_last_name || '',
+      date_of_birth: creator.date_of_birth || '', country: creator.country || '',
+    });
+    setEditing(true);
+  }
 
   // Sincroniza el borrador del entregable con lo guardado (al abrir o tras Guardar).
   useEffect(() => { setCadDraft(creator?.delivery_cadence || null); }, [creator?.delivery_cadence]);
@@ -2655,24 +2666,33 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
               </div>
             ) : (
               <>
+                {/* CORREO DE LA MODELO — caja destacada arriba de todo, imposible de
+                    no ver, con "Cambiar" al lado. Es el correo principal por donde
+                    le llega la propuesta. Rojo si falta. */}
+                {(() => {
+                  const noEmail = !creator.email || /@equipo\.letshoot\.ai$/i.test(creator.email);
+                  return (
+                    <div className={`mb-3 flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 ${noEmail ? 'border-rose-500/50 bg-rose-500/[0.07]' : 'border-brand/40 bg-brand/[0.07]'}`}>
+                      <div className="min-w-0">
+                        <p className={`text-[10px] font-bold uppercase tracking-wide ${noEmail ? 'text-rose-300' : 'text-brand'}`}>Correo de la modelo · por aquí le llega la propuesta</p>
+                        {noEmail
+                          ? <p className="mt-1 inline-flex items-center gap-1.5 text-sm font-bold text-rose-300"><AlertTriangle size={14} /> SIN CORREO — agrégalo</p>
+                          : <p className="mt-1 break-all text-base font-bold text-paper">{creator.email}</p>}
+                      </div>
+                      <button onClick={openEditor}
+                        className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:border-brand/50 hover:text-brand">
+                        <Pencil size={12} /> Cambiar
+                      </button>
+                    </div>
+                  );
+                })()}
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                  <div className="col-span-2"><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Correo registrado <span className="text-paper-dim/70">(por aquí le llega la propuesta)</span></dt><dd className="text-paper">{(() => {
-                    const noEmail = !creator.email || /@equipo\.letshoot\.ai$/i.test(creator.email);
-                    return noEmail
-                      ? <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/60 bg-rose-500/15 px-1.5 py-px text-[11px] font-bold uppercase tracking-wide text-rose-300"><AlertTriangle size={10} /> Sin correo</span>
-                      : <span className="break-all font-medium">{creator.email}</span>;
-                  })()}</dd></div>
                   <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nombre legal</dt><dd className="text-paper">{creator.legal_first_name || creator.legal_last_name ? `${creator.legal_first_name || ''} ${creator.legal_last_name || ''}` : '—'}</dd></div>
                   <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nacimiento</dt><dd className="text-paper">{fmtDate(creator.date_of_birth)}</dd></div>
                   <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">País</dt><dd className="text-paper">{creator.country || '—'}</dd></div>
                   <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Teléfono</dt><dd className="text-paper">{creator.phone || '—'}</dd></div>
                 </dl>
-                <button onClick={() => { setForm({
-                  email: creator.email || '',
-                  full_name: creator.full_name || '', stage_name: creator.stage_name || '', handle: creator.handle || '',
-                  phone: creator.phone || '', legal_first_name: creator.legal_first_name || '', legal_last_name: creator.legal_last_name || '',
-                  date_of_birth: creator.date_of_birth || '', country: creator.country || '',
-                }); setEditing(true); }}
+                <button onClick={openEditor}
                   className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
                   <UserPlus size={13} /> Editar / llenar datos
                 </button>
