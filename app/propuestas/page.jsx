@@ -84,11 +84,18 @@ const BAUL = [
   })),
 ];
 
-const KIND_DOT = { ref: 'bg-amber-400', selfie: 'bg-emerald-400', ia: 'bg-brand' };
+const KIND_DOT = { ref: 'bg-amber-400', selfie: 'bg-emerald-400', real: 'bg-emerald-400', ia: 'bg-brand' };
+// Las 3 secciones del baúl, en el MISMO orden que los recuadros en pantalla
+// (Inspiración · Real de la modelo · IA). Herramienta interna → siempre español.
+const VAULT_KINDS = [
+  { kind: 'ref',  label: 'Inspiración',       dot: 'bg-amber-400'   },
+  { kind: 'real', label: 'Real de la modelo', dot: 'bg-emerald-400' },
+  { kind: 'ia',   label: 'IA · Higgsfield',   dot: 'bg-brand'       },
+];
 const SLOTS = [
-  { key: 'inspiration', tKey: 'inspiration', dot: 'bg-amber-400',   kind: 'ref' },
-  { key: 'real',        tKey: 'realModel',   dot: 'bg-emerald-400', kind: 'selfie' },
-  { key: 'result',      tKey: 'aiResult',    dot: 'bg-brand',       kind: 'ia' },
+  { key: 'inspiration', tKey: 'inspiration', dot: 'bg-amber-400',   kind: 'ref'  },
+  { key: 'real',        tKey: 'realModel',   dot: 'bg-emerald-400', kind: 'real' },
+  { key: 'result',      tKey: 'aiResult',    dot: 'bg-brand',       kind: 'ia'   },
 ];
 
 const isComplete = (l) => Boolean(l.inspiration && l.real && l.result);
@@ -268,6 +275,12 @@ export default function PropuestaAdmin() {
   const [picker, setPicker] = useState(null);
   const [pickerQ, setPickerQ] = useState('');
   const [pickerKind, setPickerKind] = useState('all');
+  // Baúl POR CREADORA: qué creadora estoy viendo en el picker, buscador y sus fotos.
+  const [vaultCreatorId, setVaultCreatorId] = useState('');
+  const [vaultCreatorQ, setVaultCreatorQ] = useState('');
+  const [vaultRows, setVaultRows] = useState([]);
+  const [vaultLoading, setVaultLoading] = useState(false);
+  const vaultCacheRef = useRef({}); // creatorId -> filas (evita re-descargar al volver)
   const [copied, setCopied] = useState(false);
   // Qué textos tocó el dueño a mano (por campo). Los NO tocados se re-traducen
   // solos al cambiar el idioma del link; los tocados se respetan.
@@ -415,15 +428,22 @@ export default function PropuestaAdmin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
 
+  // El baúl arranca en la creadora de la propuesta (activa o el sujeto interno);
+  // si ya elegí otra a mano, se respeta (no la piso al reabrir).
+  const defaultVaultCreator = () => creatorId || subjectCreatorId || '';
   const openPicker = (lookId, slot) => {
     setPicker({ target: 'look', lookId, slotKey: slot.key, slotLabel: t[slot.tKey] });
-    setPickerKind(slot.kind);
+    setPickerKind('all'); // SIEMPRE arranca en "Todos" (no pre-filtra por slot)
     setPickerQ('');
+    setVaultCreatorQ('');
+    setVaultCreatorId((cur) => cur || defaultVaultCreator());
   };
   const openFramePicker = (target) => {
     setPicker({ target, slotLabel: target === 'cover' ? t.coverPhoto : t.closingPhoto });
-    setPickerKind('ia');
+    setPickerKind('all'); // SIEMPRE arranca en "Todos"
     setPickerQ('');
+    setVaultCreatorQ('');
+    setVaultCreatorId((cur) => cur || defaultVaultCreator());
   };
   const assign = (src) => {
     if (picker) {
@@ -433,6 +453,33 @@ export default function PropuestaAdmin() {
     }
     setPicker(null);
   };
+
+  // Cargar el baúl de la creadora elegida (cacheado por creadora).
+  useEffect(() => {
+    if (!picker || !vaultCreatorId) { setVaultRows([]); return; }
+    const cached = vaultCacheRef.current[vaultCreatorId];
+    if (cached) { setVaultRows(cached); return; }
+    let cancelled = false;
+    setVaultLoading(true);
+    (async () => {
+      try {
+        const { data } = await getSupabase()
+          .from('creator_vault')
+          .select('id, kind, url, caption, created_at')
+          .eq('creator_id', vaultCreatorId)
+          .order('created_at', { ascending: false });
+        if (cancelled) return;
+        const rows = Array.isArray(data) ? data : [];
+        vaultCacheRef.current[vaultCreatorId] = rows;
+        setVaultRows(rows);
+      } catch {
+        if (!cancelled) setVaultRows([]);
+      } finally {
+        if (!cancelled) setVaultLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [picker, vaultCreatorId]);
 
   // ── Subida desde la computadora del operador ──
   // Las fotos se comprimen a JPEG y se SUBEN al bucket público 'proposal-photos'
@@ -492,35 +539,61 @@ export default function PropuestaAdmin() {
     const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'));
     e.target.value = '';
     if (!files.length) return;
-    const kind = picker?.target === 'look' ? (SLOTS.find((s) => s.key === picker.slotKey)?.kind || 'ia') : 'ia';
+    // Tipo con el que se archiva la foto en el baúl: si hay un filtro activo
+    // distinto de "Todos", ese; si no, el del recuadro desde donde se abrió.
+    const slotKind = picker?.target === 'look' ? (SLOTS.find((s) => s.key === picker.slotKey)?.kind || 'ia') : 'ia';
+    const uploadKind = (pickerKind && pickerKind !== 'all') ? pickerKind : slotKind;
+    const cid = vaultCreatorId;
     setUploadBusy(true);
     setUploadErr('');
     const sb = getSupabase();
     const nuevos = [];
+    const vaultInserts = [];
     for (const f of files) {
       const out = await compressImage(f);
       if (!out?.blob) continue;
-      // Sube al bucket público y guarda la URL (NO base64) en la propuesta.
-      const path = `${authorId || 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${out.ext}`;
+      // Sube al bucket público y guarda la URL (NO base64). Si hay creadora,
+      // la carpeta la separa por creadora + tipo para tener orden en el storage.
+      const folder = cid ? `vault/${cid}/${uploadKind}` : (authorId || 'anon');
+      const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${out.ext}`;
       const { error: upErr } = await sb.storage.from('proposal-photos').upload(path, out.blob, { contentType: out.type, upsert: false });
       if (upErr) { setUploadErr(upErr.message || 'No se pudo subir la foto. Reintentá.'); continue; }
       const src = sb.storage.from('proposal-photos').getPublicUrl(path)?.data?.publicUrl;
       if (!src) { setUploadErr('No se pudo obtener la URL de la foto.'); continue; }
-      nuevos.push({
-        id: `up-${Math.random().toString(36).slice(2, 9)}`,
-        src, kind,
-        caption: f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').slice(0, 40) || 'Subida',
-        uploaded: true,
-      });
+      const caption = f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').slice(0, 40) || 'Subida';
+      nuevos.push({ id: `up-${Math.random().toString(36).slice(2, 9)}`, src, kind: uploadKind, caption, uploaded: true });
+      vaultInserts.push({ creator_id: cid, kind: uploadKind, url: src, caption });
     }
     setUploadBusy(false);
     if (!nuevos.length) return;
-    setUploads((prev) => {
-      const next = [...nuevos, ...prev];
-      try { localStorage.setItem('ls_prop_uploads', JSON.stringify(next)); } catch {}
-      return next;
-    });
-    // Si subió una sola, asignarla directo al slot que estaba eligiendo.
+    if (cid && vaultInserts.length) {
+      // Archivar en el baúl de la creadora (queda de historial / reutilizable).
+      let rows = null;
+      try {
+        const { data: ins, error: insErr } = await sb
+          .from('creator_vault')
+          .insert(vaultInserts)
+          .select('id, kind, url, caption, created_at');
+        if (insErr) throw insErr;
+        rows = Array.isArray(ins) ? ins : null;
+      } catch (err) {
+        setUploadErr('La foto se subió pero no se pudo guardar en el baúl. Reintentá.');
+      }
+      if (!rows) rows = vaultInserts.map((v, i) => ({ id: `tmp-${Date.now()}-${i}`, kind: v.kind, url: v.url, caption: v.caption, created_at: null }));
+      setVaultRows((prev) => {
+        const next = [...rows, ...prev];
+        vaultCacheRef.current[cid] = next;
+        return next;
+      });
+    } else {
+      // Sin creadora elegida: comportamiento viejo (subidas globales locales).
+      setUploads((prev) => {
+        const next = [...nuevos, ...prev];
+        try { localStorage.setItem('ls_prop_uploads', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+    // Si subió una sola, asignarla directo al recuadro que estaba eligiendo.
     if (nuevos.length === 1 && picker) assign(nuevos[0].src);
   };
 
@@ -615,11 +688,66 @@ export default function PropuestaAdmin() {
     }
   };
 
-  const pickerItems = useMemo(() => [...uploads, ...BAUL].filter((p) => {
-    if (pickerKind !== 'all' && p.kind !== pickerKind) return false;
-    if (pickerQ && !p.caption.toLowerCase().includes(pickerQ.toLowerCase())) return false;
-    return true;
-  }), [uploads, pickerKind, pickerQ]);
+  // Fuente del baúl: si hay creadora elegida, SUS fotos; si no, las subidas
+  // globales locales (fallback para creadora "nueva" sin cuenta todavía).
+  const baulSource = useMemo(() => (
+    vaultCreatorId
+      ? vaultRows.map((r) => ({ id: r.id, src: r.url, kind: r.kind, caption: r.caption || '' }))
+      : uploads.map((u) => ({ id: u.id, src: u.src, kind: u.kind, caption: u.caption || '' }))
+  ), [vaultCreatorId, vaultRows, uploads]);
+
+  const pickerItems = useMemo(() => {
+    const q = pickerQ.trim().toLowerCase();
+    return baulSource.filter((p) => {
+      if (pickerKind !== 'all' && p.kind !== pickerKind) return false;
+      if (q && !(p.caption || '').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [baulSource, pickerKind, pickerQ]);
+
+  // Buscador de creadoras dentro del baúl.
+  const vaultCreator = useMemo(() => activeCreators.find((c) => c.id === vaultCreatorId) || null, [activeCreators, vaultCreatorId]);
+  const creatorMatches = useMemo(() => {
+    const q = vaultCreatorQ.trim().toLowerCase();
+    if (!q) return [];
+    return activeCreators
+      .filter((c) => (c.full_name || '').toLowerCase().includes(q) || (c.handle || '').toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [activeCreators, vaultCreatorQ]);
+
+  // Tipo con el que se archivará una subida AHORA (para rotular el botón).
+  const uploadKindNow = picker
+    ? ((pickerKind && pickerKind !== 'all') ? pickerKind : (picker.target === 'look' ? (SLOTS.find((s) => s.key === picker.slotKey)?.kind || 'ia') : 'ia'))
+    : 'ia';
+  const uploadKindLabel = (VAULT_KINDS.find((v) => v.kind === uploadKindNow) || {}).label || 'el baúl';
+
+  const creatorAvatar = (c, px = 24) => {
+    const initials = (c?.full_name || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+    return c?.avatar_url
+      ? <img src={c.avatar_url} alt="" className="shrink-0 rounded-full object-cover" style={{ width: px, height: px }} />
+      : <span className="grid shrink-0 place-items-center rounded-full bg-brand/20 font-bold text-brand" style={{ width: px, height: px, fontSize: Math.round(px * 0.36) }}>{initials}</span>;
+  };
+
+  const renderVaultGrid = (items) => (
+    <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
+      {items.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          onClick={() => assign(p.src)}
+          className="group relative overflow-hidden rounded-xl border border-line bg-ink-2 transition-colors hover:border-brand/60"
+        >
+          <img src={p.src} alt="" className="aspect-[4/5] w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-1.5">
+            <div className="flex items-center gap-1">
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${KIND_DOT[p.kind] || 'bg-white/40'}`} />
+              <span className="line-clamp-1 text-left text-[9px] font-medium text-white/85">{p.caption}</span>
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
 
   const completeCount = looks.filter(isComplete).length;
   const audioCount = audios.filter((a) => a?.src).length;
@@ -1889,17 +2017,61 @@ export default function PropuestaAdmin() {
             <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
               <div className="min-w-0">
                 <div className="truncate font-display text-base font-bold text-paper">
-                  {t.pickFromVault} — {picker.slotLabel}
+                  Baúl de la modelo — {picker.slotLabel}
                 </div>
-                <div className="text-[11px] text-paper-mute">{BAUL.length} {t.files}</div>
+                <div className="text-[11px] text-paper-mute">
+                  {vaultCreatorId
+                    ? `${baulSource.length} ${baulSource.length === 1 ? 'foto' : 'fotos'}${vaultCreator ? ` · ${vaultCreator.full_name}` : ''}`
+                    : 'Elegí una creadora para ver su baúl'}
+                </div>
               </div>
               <button type="button" onClick={() => setPicker(null)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
                 <X size={15} />
               </button>
             </div>
 
+            {/* Buscador de creadoras: cada creadora tiene su propio baúl. */}
+            <div className="relative z-20 border-b border-line px-5 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {vaultCreator ? (
+                  <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-ink-2 py-1 pl-1 pr-3">
+                    {creatorAvatar(vaultCreator, 24)}
+                    <span className="text-xs font-semibold text-paper">{vaultCreator.full_name}</span>
+                    {vaultCreator.handle && <span className="text-[10px] text-paper-dim">@{vaultCreator.handle}</span>}
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-xs font-medium text-amber-300">↓ Elegí una creadora</span>
+                )}
+                <div className="relative min-w-0 flex-1 basis-56">
+                  <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+                  <input
+                    value={vaultCreatorQ}
+                    onChange={(e) => setVaultCreatorQ(e.target.value)}
+                    placeholder={vaultCreator ? 'Cambiar de creadora…' : 'Buscar creadora…'}
+                    className="w-full rounded-xl border border-line bg-ink-2 py-2 pl-8 pr-3 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                  />
+                  {creatorMatches.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-line bg-card shadow-xl">
+                      {creatorMatches.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => { setVaultCreatorId(c.id); setVaultCreatorQ(''); }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/5"
+                        >
+                          {creatorAvatar(c, 22)}
+                          <span className="truncate text-xs font-medium text-paper">{c.full_name}</span>
+                          {c.handle && <span className="ml-auto shrink-0 text-[10px] text-paper-dim">@{c.handle}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3">
-              <div className="relative min-w-0 flex-1 basis-48">
+              <div className="relative min-w-0 flex-1 basis-40">
                 <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
                 <input
                   value={pickerQ}
@@ -1909,46 +2081,55 @@ export default function PropuestaAdmin() {
                 />
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                <Chip active={pickerKind === 'all'} onClick={() => setPickerKind('all')}>{t.tipoAll}</Chip>
-                <Chip active={pickerKind === 'ref'} onClick={() => setPickerKind('ref')} dot="bg-amber-400">{t.tipoRef}</Chip>
-                <Chip active={pickerKind === 'selfie'} onClick={() => setPickerKind('selfie')} dot="bg-emerald-400">{t.tipoSelfie}</Chip>
-                <Chip active={pickerKind === 'ia'} onClick={() => setPickerKind('ia')} dot="bg-brand">{t.tipoIa}</Chip>
+                <Chip active={pickerKind === 'all'} onClick={() => setPickerKind('all')}>Todos</Chip>
+                {VAULT_KINDS.map((v) => (
+                  <Chip key={v.kind} active={pickerKind === v.kind} onClick={() => setPickerKind(v.kind)} dot={v.dot}>{v.label}</Chip>
+                ))}
               </div>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadBusy}
                 className="btn3d inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
+                title={vaultCreatorId ? `Se guarda en “${uploadKindLabel}” de ${vaultCreator?.full_name || 'la creadora'}` : 'Subir foto'}
               >
-                <ImagePlus size={13} /> {uploadBusy ? 'Subiendo…' : 'Subir de tu computadora'}
+                <ImagePlus size={13} /> {uploadBusy ? 'Subiendo…' : `Subir a ${uploadKindLabel}`}
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFilesPicked} />
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {uploadErr && <p className="mb-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{uploadErr}</p>}
-              {pickerItems.length === 0 ? (
-                <div className="grid place-items-center py-16 text-sm text-paper-mute">—</div>
-              ) : (
-                <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
-                  {pickerItems.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => assign(p.src)}
-                      className="group relative overflow-hidden rounded-xl border border-line bg-ink-2 transition-colors hover:border-brand/60"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.src} alt="" className="aspect-[4/5] w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-1.5">
-                        <div className="flex items-center gap-1">
-                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${KIND_DOT[p.kind]}`} />
-                          <span className="line-clamp-1 text-left text-[9px] font-medium text-white/85">{p.caption}</span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+              {!vaultCreatorId ? (
+                <div className="grid place-items-center gap-2 py-16 text-center text-sm text-paper-mute">
+                  <Users size={22} className="text-paper-dim" />
+                  <p>Elegí una creadora arriba para ver su baúl.</p>
+                  <p className="text-[11px] text-paper-dim">Cada creadora tiene sus fotos separadas: inspiración, real y IA.</p>
                 </div>
+              ) : vaultLoading ? (
+                <div className="grid place-items-center py-16 text-sm text-paper-mute">Cargando el baúl…</div>
+              ) : pickerItems.length === 0 ? (
+                <div className="grid place-items-center gap-1 py-16 text-center text-sm text-paper-mute">
+                  <p>Todavía no hay fotos {pickerKind !== 'all' ? `en “${uploadKindLabel}”` : ''} para {vaultCreator?.full_name || 'esta creadora'}.</p>
+                  <p className="text-[11px] text-paper-dim">Usá “Subir a {uploadKindLabel}” para agregarlas — quedan guardadas.</p>
+                </div>
+              ) : pickerKind === 'all' ? (
+                VAULT_KINDS.map((v) => {
+                  const items = pickerItems.filter((p) => p.kind === v.kind);
+                  if (!items.length) return null;
+                  return (
+                    <div key={v.kind} className="mb-5 last:mb-0">
+                      <div className="mb-2 flex items-center gap-1.5">
+                        <span className={`h-2 w-2 rounded-full ${v.dot}`} />
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">{v.label}</span>
+                        <span className="text-[10px] text-paper-dim">· {items.length}</span>
+                      </div>
+                      {renderVaultGrid(items)}
+                    </div>
+                  );
+                })
+              ) : (
+                renderVaultGrid(pickerItems)
               )}
             </div>
           </div>
