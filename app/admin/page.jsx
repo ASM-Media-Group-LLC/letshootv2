@@ -800,7 +800,19 @@ export default function AdminPage() {
                                 <Avatar src={u.avatar_url} name={u.full_name} size="sm" />
                                 <span className="min-w-0">
                                   <span className="block truncate font-medium text-paper">{u.full_name || 'Sin nombre aún'}</span>
-                                  <span className="block truncate text-[11px] text-paper-dim">{u.handle ? `@${u.handle}` : u.email}</span>
+                                  {(() => {
+                                    // Correo SIEMPRE visible (el principal de la modelo). Si no hay
+                                    // correo real (vacío o placeholder interno) → badge ROJO bien visible.
+                                    const noEmail = !u.email || /@equipo\.letshoot\.ai$/i.test(u.email);
+                                    return (
+                                      <span className="block truncate text-[11px] text-paper-dim">
+                                        {u.handle ? `@${u.handle} · ` : ''}
+                                        {noEmail
+                                          ? <span className="inline-flex items-center gap-1 align-middle rounded-full border border-rose-500/60 bg-rose-500/15 px-1.5 py-px font-bold uppercase tracking-wide text-rose-300"><AlertTriangle size={10} /> Sin correo</span>
+                                          : u.email}
+                                      </span>
+                                    );
+                                  })()}
                                   <span className={`mt-0.5 inline-flex items-center gap-1 text-[10.5px] font-medium ${flow.cls}`}>
                                     <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" /> {flow.txt}
                                   </span>
