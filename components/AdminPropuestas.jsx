@@ -424,11 +424,15 @@ export default function AdminPropuestas() {
   // Movimiento. 'approved'/'rejected' caen en "Aprobadas".
   const activityGroups = useMemo(() => {
     const norm = (k) => (k === 'approved' || k === 'rejected') ? 'decided' : k;
-    const order = [['created', 'Creadas', 'bg-brand'], ['responded', 'Respondieron', 'bg-amber-400'], ['decided', 'Aprobadas (equipo)', 'bg-emerald-400'], ['opened', 'Abrieron', 'bg-sky-400'], ['unfinished', 'Sin terminar', 'bg-rose-400'], ['delivered', 'Entregadas', 'bg-violet-400']];
+    const order = [['created', 'Creadas', 'bg-brand'], ['responded', 'Respondieron', 'bg-amber-400'], ['decided', 'Aprobadas', 'bg-emerald-400'], ['opened', 'Abrieron', 'bg-sky-400'], ['unfinished', 'Sin terminar', 'bg-rose-400'], ['delivered', 'Entregadas', 'bg-violet-400']];
     const by = {};
     activityForDay.forEach((e) => { const g = norm(e.kind); (by[g] = by[g] || []).push(e); });
-    return order.filter(([g]) => by[g]?.length).map(([g, label, dot]) => ({ g, label, dot, items: by[g] }));
-  }, [activityForDay]);
+    // 'unfinished' (Sin terminar) es subconjunto de 'Abrieron' (que ya muestra
+    // "no terminó"). En la vista general no lo repetimos; solo cuando se filtra por él.
+    return order
+      .filter(([g]) => by[g]?.length && (g !== 'unfinished' || calKind === 'unfinished'))
+      .map(([g, label, dot]) => ({ g, label, dot, items: by[g] }));
+  }, [activityForDay, calKind]);
 
   // Mini-calendario: días del mes visible CON movimiento (para el puntito) + las
   // 42 celdas (6 semanas, lunes→domingo).
@@ -700,7 +704,7 @@ export default function AdminPropuestas() {
           {[
             ['creadas', 'Creadas', 'created'],
             ['respondieron', 'Respondieron', 'responded'],
-            ['aprobadas', 'Aprobadas (equipo)', 'decided', 'Propuestas que pasaron el paso de APROBACIÓN del equipo (internas o con aprobador). No cuenta fotos — para propuestas directas a la creadora no aplica, por eso suele ser 0.'],
+            ['aprobadas', 'Aprobadas', 'decided', 'Propuestas que pasaron su paso de APROBACIÓN antes de ir a la creadora — la aprueba el equipo interno o un aprobador (manager con rol Decide). No cuenta fotos; solo aplica a propuestas que necesitan aprobación.'],
             ['abrieron', 'Abrieron', 'opened'],
             ['sinterminar', 'Sin terminar', 'unfinished', 'Abrió el link pero NO completó su respuesta. Tocá para verlos abajo y mandarles «Recordar ahora».'],
             ['entregadas', 'Entregadas', 'delivered'],
@@ -1346,10 +1350,14 @@ function eventLine(e) {
   const who = e.p.createdBy || 'Equipo';
   const rev = e.p.approval?.reviewer || e.p.approval?.approver || '';
   if (e.kind === 'created') return <><b className="font-medium text-paper">{who}</b> armó una propuesta para <b className="font-medium text-paper">{to}</b></>;
-  if (e.kind === 'approved') return <><b className="font-medium text-paper">{rev || 'Alguien'}</b> aprobó · {to}</>;
-  if (e.kind === 'rejected') return <><b className="font-medium text-paper">{rev || 'Alguien'}</b> rechazó · {to}</>;
+  if (e.kind === 'approved') return <>Aprobada · <b className="font-medium text-paper">{to}</b>{rev && rev !== to ? <span className="text-paper-dim"> · por {rev}</span> : null}</>;
+  if (e.kind === 'rejected') return <>Rechazada · <b className="font-medium text-paper">{to}</b>{rev && rev !== to ? <span className="text-paper-dim"> · por {rev}</span> : null}</>;
   if (e.kind === 'responded') { const f = feedbackSummary(e.p._feedback); return <><b className="font-medium text-paper">{to}</b> respondió · {f.liked} ♥ · {f.rejected} ✕</>; }
-  if (e.kind === 'opened') return <><b className="font-medium text-paper">{to}</b> abrió el link</>;
+  if (e.kind === 'opened') {
+    if (feedbackSummary(e.p._feedback).total > 0) return <><b className="font-medium text-paper">{to}</b> abrió · <span className="text-emerald-300">respondió</span></>;
+    const pr = e.p._progress; const va = pr && pr.total ? ` · va ${pr.decided}/${pr.total}` : '';
+    return <><b className="font-medium text-paper">{to}</b> abrió · <span className="text-rose-300">no terminó</span>{va}</>;
+  }
   if (e.kind === 'unfinished') { const pr = e.p._progress; const va = pr && pr.total ? ` · va ${pr.decided}/${pr.total}` : ''; return <><b className="font-medium text-paper">{to}</b> abrió · <span className="text-rose-300">no terminó</span>{va}</>; }
   if (e.kind === 'delivered') return <>Entregada a <b className="font-medium text-paper">{to}</b></>;
   return null;
