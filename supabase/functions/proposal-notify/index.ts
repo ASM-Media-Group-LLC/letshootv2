@@ -12,6 +12,9 @@ const CORS = {
 };
 const APP = 'https://letshoot.ai';
 const FROM = 'LetShoot <noreply@letshoot.ai>';
+// Dueño de la plataforma: SIEMPRE recibe copia cuando una creadora completa una
+// propuesta (además de quien la armó). (Multi-tenant: en el futuro, por org.)
+const OWNER = 'rusin24@gmail.com';
 const LOGO = 'https://www.letshoot.ai/logo.png';
 const BRAND = '#00B1F6';
 
@@ -48,13 +51,15 @@ function brandedLayout(o: { eyebrow: string; title: string; body: string; cta: s
 </table></body></html>`;
 }
 
-async function sendResend(to: string, subject: string, html: string) {
+async function sendResend(to: string[], subject: string, html: string, bcc: string[] = []) {
   const key = Deno.env.get('RESEND_API_KEY');
   if (!key) return { ok: true, skipped: 'RESEND_API_KEY no configurada' };
+  const payload: Record<string, unknown> = { from: FROM, to, subject, html };
+  if (bcc.length) payload.bcc = bcc;
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: FROM, to: [to], subject, html }),
+    body: JSON.stringify(payload),
   });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: out?.message || 'Resend error' };
@@ -75,15 +80,20 @@ Deno.serve(async (req) => {
     const { data: prop } = await svc.from('photo_proposals')
       .select('created_by, created_by_name, recipient_name, name, lang')
       .eq('link_id', link).maybeSingle();
-    if (!prop || !prop.created_by) return reply({ ok: true, skipped: 'sin creador vinculado' });
+    if (!prop) return reply({ ok: true, skipped: 'propuesta no encontrada' });
 
-    // Correo del empleado que la armó (resuelto por service role desde auth).
-    let email = '';
-    try {
-      const { data: u } = await svc.auth.admin.getUserById(String(prop.created_by));
-      email = u?.user?.email || '';
-    } catch { /* sin email → no se manda */ }
-    if (!email) return reply({ ok: true, skipped: 'sin correo' });
+    // Correo del empleado que la armó (puede faltar). El DUEÑO (rusin24) recibe
+    // copia SIEMPRE, tenga o no correo el que la armó.
+    let authorEmail = '';
+    if (prop.created_by) {
+      try {
+        const { data: u } = await svc.auth.admin.getUserById(String(prop.created_by));
+        authorEmail = u?.user?.email || '';
+      } catch { /* sin email → solo va al dueño */ }
+    }
+    const ownerIsAuthor = authorEmail.toLowerCase() === OWNER.toLowerCase();
+    const to = authorEmail ? [authorEmail] : [OWNER];
+    const bcc = authorEmail && !ownerIsAuthor ? [OWNER] : [];
 
     const es = prop.lang !== 'en';
     const who = (prop.recipient_name || (es ? 'La creadora' : 'The creator')).toString().slice(0, 80);
@@ -99,10 +109,11 @@ Deno.serve(async (req) => {
       pre: es ? `${who} respondió.` : `${who} responded.`,
     });
     const subject = es ? `${who} respondió: ${pname}` : `${who} responded: ${pname}`;
-    const r = await sendResend(email, subject, html);
-    await svc.from('email_log').insert({ template: 'proposal_response', recipient: email, subject, resend_id: r.id || null, lang: es ? 'es' : 'en' }).then(() => {}, () => {});
+    const r = await sendResend(to, subject, html, bcc);
+    const allTo = [...to, ...bcc].join(', ');
+    await svc.from('email_log').insert({ template: 'proposal_response', recipient: allTo, subject, resend_id: r.id || null, lang: es ? 'es' : 'en' }).then(() => {}, () => {});
     if (r.ok === false) return reply({ ok: false, error: r.error });
-    return reply({ ok: true, sent_to: email, skipped: r.skipped });
+    return reply({ ok: true, sent_to: allTo, skipped: r.skipped });
   } catch (e) {
     return reply({ ok: false, error: String((e as Error)?.message || e) }, 500);
   }

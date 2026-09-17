@@ -772,7 +772,7 @@ export default function PropuestaAdmin() {
             ? !!subjectCreatorId
             : (subjectName.trim().length > 0 && subjectInstagram.trim().length > 0)))
         : ((recipient.kind === 'active'
-            ? !!creatorId && recipient.name.trim().length > 0        // activa: elegí creadora (sin correo)
+            ? !!creatorId && recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim()) // activa: creadora + correo OBLIGATORIO
             : recipient.name.trim().length > 0 && EMAIL_RE.test(recipient.email.trim())) // nueva: nombre + correo
             && (!needsApproval || approverEmails.length > 0)))       // si va a aprobación, al menos un aprobador
     : step === 3
@@ -1011,11 +1011,14 @@ export default function PropuestaAdmin() {
                             // Autocompletar los managers guardados en su ficha (copia).
                             if (id) {
                               try {
-                                const { data } = await getSupabase().from('profiles').select('manager_emails').eq('id', id).maybeSingle();
+                                // Trae managers (copia) + el correo principal de la creadora
+                                // para PRELLENARLO — es obligatorio y por ahí le llega la propuesta.
+                                const { data } = await getSupabase().from('profiles').select('manager_emails, email').eq('id', id).maybeSingle();
                                 const mgrs = Array.isArray(data?.manager_emails)
                                   ? data.manager_emails.filter((m) => m?.email).map((m) => ({ email: String(m.email).toLowerCase(), role: m.role === 'decide' ? 'decide' : 'viewer' }))
                                   : [];
                                 setCcList(mgrs);
+                                setRecipient((r) => ({ ...r, email: (data?.email || r.email || '').trim() }));
                               } catch {}
                             } else { setCcList([]); }
                           }}
@@ -1042,8 +1045,10 @@ export default function PropuestaAdmin() {
                   </Field>
                   )}
 
-                  {/* El correo SOLO para creadora nueva (la activa ya tiene cuenta → va por link). */}
-                  {recipient.kind === 'new' && (
+                  {/* Correo de la modelo: OBLIGATORIO siempre (nueva o activa). Es el
+                      correo principal — por ahí le llega la propuesta. Para la activa
+                      se prellena de su ficha, pero se puede corregir. */}
+                  {(recipient.kind === 'new' || (recipient.kind === 'active' && !!creatorId)) && (
                     <Field label={t.recipEmail}>
                       <input
                         type="email"
@@ -1052,6 +1057,9 @@ export default function PropuestaAdmin() {
                         placeholder={t.recipEmailPh}
                         className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
                       />
+                      {recipient.kind === 'active' && !recipient.email.trim() && (
+                        <p className="mt-1 text-[11px] text-amber-300/90">Falta el correo de la modelo — es obligatorio, es donde le llega la propuesta.</p>
+                      )}
                     </Field>
                   )}
 
