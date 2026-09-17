@@ -198,18 +198,31 @@ export default function PropuestaAdmin() {
   // rechazar por su link con token — queda registrado, no frena nada).
   const [ccList, setCcList] = useState([]);
   const [ccInput, setCcInput] = useState('');
-  const addCc = (raw) => {
+  const [ccStaffErr, setCcStaffErr] = useState('');
+  // Copia EXTERNA: correos escritos a mano (managers, etc.). internal=false.
+  const addCc = (raw, internal = false) => {
     const parts = String(raw || '').split(/[,;\s]+/).map((s) => s.trim().toLowerCase())
       .filter((e) => EMAIL_RE.test(e));
     if (!parts.length) return;
     setCcList((s) => {
       const have = new Set(s.map((r) => r.email));
-      return [...s, ...parts.filter((e) => !have.has(e)).map((e) => ({ email: e, role: 'viewer' }))];
+      return [...s, ...parts.filter((e) => !have.has(e)).map((e) => ({ email: e, role: 'viewer', internal }))];
     });
     setCcInput('');
   };
+  // Copia INTERNA (equipo): se elige del equipo; su correo sale de su ficha.
+  const addCcStaff = async (staffId) => {
+    if (!staffId) return;
+    const m = staff.find((x) => x.id === staffId);
+    try {
+      const { data } = await getSupabase().from('profiles').select('email').eq('id', staffId).maybeSingle();
+      const email = String(data?.email || '').trim().toLowerCase();
+      if (!EMAIL_RE.test(email)) { setCcStaffErr(`${m?.full_name || 'Ese integrante'} no tiene un correo válido en su ficha.`); return; }
+      setCcStaffErr('');
+      setCcList((s) => (s.some((r) => r.email === email) ? s : [...s, { email, role: 'viewer', internal: true, name: m?.full_name || '' }]));
+    } catch { setCcStaffErr('No se pudo agregar. Reintentá.'); }
+  };
   const removeCc = (email) => setCcList((s) => s.filter((r) => r.email !== email));
-  const toggleCcRole = (email) => setCcList((s) => s.map((r) => (r.email === email ? { ...r, role: r.role === 'decide' ? 'viewer' : 'decide' } : r)));
   const [ccState, setCcState] = useState(''); // '' | 'sending' | 'sent' | 'error'
   const [feedback, setFeedback] = useState(null);
   const [template] = useState('redes'); // hoy: un solo tipo (contenido de redes)
@@ -369,7 +382,7 @@ export default function PropuestaAdmin() {
           }
           setNeedsApproval(!!data.approval_required && data.recipient_kind !== 'internal');
           if (typeof data.approver_email === 'string') setApproverEmails(data.approver_email.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean));
-          if (Array.isArray(data.cc_recipients)) setCcList(data.cc_recipients.filter((r) => r?.email).map((r) => ({ email: String(r.email).toLowerCase(), role: r.role === 'decide' ? 'decide' : 'viewer' })));
+          if (Array.isArray(data.cc_recipients)) setCcList(data.cc_recipients.filter((r) => r?.email).map((r) => ({ email: String(r.email).toLowerCase(), role: r.role === 'decide' ? 'decide' : 'viewer', internal: !!r.internal, name: r.name || '' })));
         }
         if (Array.isArray(data.looks) && data.looks.length > 0) {
           const seeded = data.looks.map((l) => ({
@@ -1191,7 +1204,7 @@ export default function PropuestaAdmin() {
                                 // para PRELLENARLO — es obligatorio y por ahí le llega la propuesta.
                                 const { data } = await getSupabase().from('profiles').select('manager_emails, email').eq('id', id).maybeSingle();
                                 const mgrs = Array.isArray(data?.manager_emails)
-                                  ? data.manager_emails.filter((m) => m?.email).map((m) => ({ email: String(m.email).toLowerCase(), role: m.role === 'decide' ? 'decide' : 'viewer' }))
+                                  ? data.manager_emails.filter((m) => m?.email).map((m) => ({ email: String(m.email).toLowerCase(), role: m.role === 'decide' ? 'decide' : 'viewer', internal: false }))
                                   : [];
                                 setCcList(mgrs);
                                 setRecipient((r) => ({ ...r, email: (data?.email || r.email || '').trim() }));
@@ -1221,10 +1234,25 @@ export default function PropuestaAdmin() {
                   </Field>
                   )}
 
-                  {/* Correo de la modelo: OBLIGATORIO siempre (nueva o activa). Es el
-                      correo principal — por ahí le llega la propuesta. Para la activa
-                      se prellena de su ficha, pero se puede corregir. */}
-                  {(recipient.kind === 'new' || (recipient.kind === 'active' && !!creatorId)) && (
+                  {/* Correo de la modelo. Para la ACTIVA es AUTOMÁTICO: sale de su
+                      cuenta, no se escribe a mano (para cambiarlo, se edita su perfil
+                      en Admin). La creadora "nueva" (rama vieja) sí lo escribe. */}
+                  {recipient.kind === 'active' && !!creatorId && (
+                    <Field label={t.recipEmail}>
+                      {recipient.email.trim() ? (
+                        <div className="flex items-center justify-between gap-2 rounded-xl border border-line bg-ink-2/60 px-3 py-2.5">
+                          <span className="truncate text-sm text-paper">{recipient.email}</span>
+                          <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide text-emerald-300">automático</span>
+                        </div>
+                      ) : (
+                        <p className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2.5 text-[11px] text-rose-300">
+                          Esta creadora no tiene correo en su cuenta. Agregáselo en Admin → su perfil: sin correo no se le puede enviar.
+                        </p>
+                      )}
+                      <p className="mt-1 text-[11px] text-paper-dim">Sale de su cuenta. Para cambiarlo, editá su perfil en Admin.</p>
+                    </Field>
+                  )}
+                  {recipient.kind === 'new' && (
                     <Field label={t.recipEmail}>
                       <input
                         type="email"
@@ -1233,43 +1261,72 @@ export default function PropuestaAdmin() {
                         placeholder={t.recipEmailPh}
                         className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
                       />
-                      {recipient.kind === 'active' && !recipient.email.trim() && (
-                        <p className="mt-1 text-[11px] text-amber-300/90">Falta el correo de la modelo — es obligatorio, es donde le llega la propuesta.</p>
-                      )}
                     </Field>
                   )}
 
-                  {/* COPIAS a managers (opcional): cada correo con su rol.
-                      «Mira» = solo lectura (?preview=1) · «Decide» = puede aprobar/
-                      rechazar con su link (queda registrado). NO retiene el envío:
-                      la creadora la recibe igual (decisión del dueño 2026-09-16). */}
-                  <div className="rounded-xl border border-line bg-ink-2/40 p-3.5">
-                    <span className="block text-sm font-semibold text-paper">Copia para managers <span className="font-normal text-paper-dim">(opcional)</span></span>
-                    <span className="mt-0.5 block text-[11px] leading-relaxed text-paper-mute">Les llega su copia por correo. La creadora la recibe igual, sin esperar a nadie.</span>
-                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-ink-2 px-2.5 py-2 focus-within:border-brand/60">
-                      {ccList.map((r) => (
-                        <span key={r.email} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-paper">
-                          {r.email}
-                          <button type="button" onClick={() => toggleCcRole(r.email)} title="Toca para cambiar el rol"
-                            className={`rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wide transition-colors ${r.role === 'decide' ? 'bg-brand text-on-accent' : 'bg-ink text-paper-mute'}`}>
-                            {r.role === 'decide' ? 'Decide' : 'Mira'}
-                          </button>
-                          <button type="button" onClick={() => removeCc(r.email)} className="text-paper-mute transition-colors hover:text-rose-300"><X size={12} /></button>
-                        </span>
-                      ))}
-                      <input
-                        type="email"
-                        value={ccInput}
-                        onChange={(e) => setCcInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addCc(ccInput); } }}
-                        onBlur={() => addCc(ccInput)}
-                        placeholder={ccList.length ? 'Agregar otro…' : 'manager@correo.com'}
-                        className="min-w-[150px] flex-1 bg-transparent px-1 py-1 text-sm text-paper placeholder:text-paper-dim outline-none"
-                      />
+                  {/* COPIA (opcional): al EQUIPO (interno, se elige del equipo) y/o a
+                      alguien de AFUERA (manager u otro, correo a mano). Todos reciben
+                      una copia por correo; la creadora la recibe igual, sin esperar. */}
+                  <div className="space-y-3 rounded-xl border border-line bg-ink-2/40 p-3.5">
+                    <div>
+                      <span className="block text-sm font-semibold text-paper">Copia <span className="font-normal text-paper-dim">(opcional)</span></span>
+                      <span className="mt-0.5 block text-[11px] leading-relaxed text-paper-mute">Les llega una copia por correo. La creadora la recibe igual, sin esperar a nadie.</span>
                     </div>
-                    {ccList.length > 0 && (
-                      <p className="mt-1.5 text-[11px] text-paper-dim">Toca el rol para cambiarlo: <span className="text-paper-mute">Mira</span> = solo ve · <span className="text-paper-mute">Decide</span> = puede aprobar/rechazar (queda registrado).</p>
-                    )}
+
+                    {/* Copia al equipo (interno) */}
+                    <div>
+                      <span className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-paper-mute">
+                        <Users size={12} /> Al equipo (interno)
+                      </span>
+                      {ccList.some((r) => r.internal) && (
+                        <div className="mb-1.5 flex flex-wrap gap-1.5">
+                          {ccList.filter((r) => r.internal).map((r) => (
+                            <span key={r.email} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-paper">
+                              {r.name || r.email}
+                              <button type="button" onClick={() => removeCc(r.email)} className="text-paper-mute transition-colors hover:text-rose-300"><X size={12} /></button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="relative">
+                        <select
+                          value=""
+                          onChange={(e) => { addCcStaff(e.target.value); e.target.value = ''; }}
+                          className="w-full appearance-none rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-8 text-sm text-paper outline-none focus:border-brand/60"
+                        >
+                          <option value="">{staff.length ? '+ Agregar del equipo…' : 'Cargando equipo…'}</option>
+                          {staff.map((m) => (
+                            <option key={m.id} value={m.id}>{m.full_name}{m.job_title ? ` · ${m.job_title}` : ''}</option>
+                          ))}
+                        </select>
+                        <ChevronDown size={15} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                      </div>
+                      {ccStaffErr && <p className="mt-1 text-[11px] text-rose-300">{ccStaffErr}</p>}
+                    </div>
+
+                    {/* Copia a alguien de afuera (externo) */}
+                    <div>
+                      <span className="mb-1.5 flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-paper-mute">
+                        <Mail size={12} /> De afuera (manager u otro)
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-ink-2 px-2.5 py-2 focus-within:border-brand/60">
+                        {ccList.filter((r) => !r.internal).map((r) => (
+                          <span key={r.email} className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-paper">
+                            {r.email}
+                            <button type="button" onClick={() => removeCc(r.email)} className="text-paper-mute transition-colors hover:text-rose-300"><X size={12} /></button>
+                          </span>
+                        ))}
+                        <input
+                          type="email"
+                          value={ccInput}
+                          onChange={(e) => setCcInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addCc(ccInput, false); } }}
+                          onBlur={() => addCc(ccInput, false)}
+                          placeholder={ccList.some((r) => !r.internal) ? 'Agregar otro…' : 'manager@correo.com'}
+                          className="min-w-[150px] flex-1 bg-transparent px-1 py-1 text-sm text-paper placeholder:text-paper-dim outline-none"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   {/* Aprobación OCULTA por ahora — la propuesta se manda directo a
