@@ -2638,6 +2638,12 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
             ) : (
               <>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div className="col-span-2"><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Correo registrado <span className="text-paper-dim/70">(por aquí le llega la propuesta)</span></dt><dd className="text-paper">{(() => {
+                    const noEmail = !creator.email || /@equipo\.letshoot\.ai$/i.test(creator.email);
+                    return noEmail
+                      ? <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/60 bg-rose-500/15 px-1.5 py-px text-[11px] font-bold uppercase tracking-wide text-rose-300"><AlertTriangle size={10} /> Sin correo</span>
+                      : <span className="break-all font-medium">{creator.email}</span>;
+                  })()}</dd></div>
                   <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nombre legal</dt><dd className="text-paper">{creator.legal_first_name || creator.legal_last_name ? `${creator.legal_first_name || ''} ${creator.legal_last_name || ''}` : '—'}</dd></div>
                   <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">Nacimiento</dt><dd className="text-paper">{fmtDate(creator.date_of_birth)}</dd></div>
                   <div><dt className="text-[11px] uppercase tracking-wide text-paper-dim">País</dt><dd className="text-paper">{creator.country || '—'}</dd></div>
