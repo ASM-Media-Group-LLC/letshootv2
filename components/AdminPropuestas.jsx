@@ -1133,6 +1133,13 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
               className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold">
               <ExternalLink size={14} /> Ver como cliente
             </a>
+            {!p._demo && !p._internal && (
+              <a href={`${link}${link.includes('?') ? '&' : '?'}asmodel=1`} target="_blank" rel="noopener noreferrer"
+                title="Entrar a la propuesta COMO la modelo y completarla — lo que marques se guarda como SU respuesta"
+                className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold text-brand">
+                <UserCheck size={14} /> Entrar como la modelo
+              </a>
+            )}
             {!p._demo && (
               <a href={`/propuestas?edit=${encodeURIComponent(p.code)}`}
                 className="btn3d-ghost inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold">

@@ -157,6 +157,7 @@ export default function PropuestaViewer({ linkId }) {
   const [reg, setReg] = useState(null); // { id, name, email } del registro
   const [phase, setPhase] = useState('loading'); // 'loading' | 'gate' | 'view' | 'unavailable'
   const [isPreview, setIsPreview] = useState(false); // ?preview=1 → vista del equipo (sin gate, solo lectura)
+  const [asModel, setAsModel] = useState(false); // ?asmodel=1 → equipo ENTRA como la modelo (guarda como su respuesta)
   // Modo APROBACIÓN: si el link trae ?approve=<token>, el que decide ve la
   // propuesta completa (sin gate) con barra Aprobar/Rechazar.
   const [approveToken, setApproveToken] = useState(null);
@@ -256,6 +257,17 @@ export default function PropuestaViewer({ linkId }) {
         return;
       }
 
+      // "Entrar como la modelo" (equipo, ?asmodel=1): entra a la propuesta COMO la
+      // creadora — interactivo y GUARDA como SU respuesta (no como feedback interno).
+      // Sin gate. Sirve para completar/ajustar la propuesta a nombre de la modelo.
+      const asModelParam = new URLSearchParams(window.location.search).get('asmodel');
+      if (asModelParam === '1') {
+        setAsModel(true);
+        setReg({ id: null, name: mapped.recipient?.name || '', email: mapped.recipient?.email || '' });
+        setPhase('view');
+        return;
+      }
+
       // Entrada por INVITACIÓN: el id del registro viaja en el link (?reg=…) →
       // saltamos el gate (el equipo ya la invitó). También salta si ya hay sesión
       // (usuaria con cuenta, entra directo) o si ya se registró en este dispositivo.
@@ -298,7 +310,7 @@ export default function PropuestaViewer({ linkId }) {
   return (
     <>
       {/* Audio y fotos usan EXACTAMENTE el mismo cuerpo (portada, cierre, flujo). */}
-      <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} viewer={viewer} preview={isPreview} />
+      <ProposalBody t={t} cfg={cfg} linkId={linkId} reg={reg} isDemo={isDemo} viewer={viewer} preview={isPreview} asModel={asModel} />
       {approveToken && <ApproveBar lang={lang} linkId={linkId} token={approveToken} viewer={viewer} initialStatus={cfg.approvalStatus} reviewer={cfg.approvalReviewer} />}
     </>
   );
@@ -701,7 +713,7 @@ function AudioPlayer({ src }) {
   );
 }
 
-function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) {
+function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false, asModel = false }) {
   // Mismo formato para fotos y audios. Para audio, los "looks" son los audios
   // (cada uno { id, label, src }); la portada, el cierre, el feedback y el flujo
   // son idénticos — solo cambia lo que se muestra en cada pantalla.
@@ -767,7 +779,9 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
   // (mismo aparato, instantáneo) y la cuenta (DB, cross-device por el link). NO
   // en preview/demo. Al TERMINAR ya no hace falta (queda el feedback real).
   const skipProgress = isDemo || preview;
-  const progressKind = viewer?.staff ? 'internal' : 'creator';
+  // "Entrar como la modelo" (asModel): aunque sea staff, guarda como la CREADORA
+  // (progreso + feedback), para completar la propuesta a nombre de ella.
+  const progressKind = (viewer?.staff && !asModel) ? 'internal' : 'creator';
   const PROG_KEY = `ls_prop_prog_${linkId}_${progressKind}`;
   // Guardamos POR kind (no un solo booleano): la sesión del equipo puede resolver
   // tarde y cambiar 'creator'→'internal'; hay que recargar con el kind correcto.
@@ -855,14 +869,16 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
     setSendErr('');
     try {
       // Si mira un STAFF logueado, su feedback va al bucket 'internal' (equipo),
-      // aparte del de la creadora ('creator') — no se pisan.
+      // aparte del de la creadora ('creator') — no se pisan. EXCEPTO en modo
+      // "entrar como la modelo" (asModel): ahí el staff guarda COMO la creadora.
       const isStaff = !!viewer?.staff;
+      const actAsCreator = asModel || !isStaff;
       const { error } = await getSupabase().rpc('save_proposal_feedback', {
         p_link: linkId,
         p_reg: reg?.id || null,
         p_items: items,
-        p_name: isStaff ? (viewer.name || 'Equipo') : (reg?.name || cfg.recipient?.name || ''),
-        p_kind: isStaff ? 'internal' : 'creator',
+        p_name: actAsCreator ? (reg?.name || cfg.recipient?.name || '') : (viewer.name || 'Equipo'),
+        p_kind: actAsCreator ? 'creator' : 'internal',
       });
       if (error) throw error;
       setSent(true);
@@ -960,6 +976,12 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false }) 
       {preview && !isDemo && (
         <div className="fixed inset-x-0 top-0 z-[75] flex items-center justify-center gap-2 bg-amber-400 px-4 py-2 text-center text-[12px] font-bold text-black">
           <Eye size={13} /> Vista de equipo · solo lectura — lo que marques aquí NO se guarda
+        </div>
+      )}
+      {/* Modo "entrar como la modelo" (equipo): SÍ guarda, como respuesta de ella. */}
+      {asModel && !isDemo && (
+        <div className="fixed inset-x-0 top-0 z-[75] flex items-center justify-center gap-2 bg-brand px-4 py-2 text-center text-[12px] font-bold text-on-accent">
+          <User size={13} /> Entrando como {cfg.recipient?.name || 'la modelo'} — lo que marques se guarda como SU respuesta
         </div>
       )}
 
