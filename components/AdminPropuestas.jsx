@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell, AlertTriangle, Maximize2, ChevronLeft, ChevronRight, CalendarDays, RotateCcw } from 'lucide-react';
+import { Send, Search, SlidersHorizontal, Copy, Check, Mail, Archive, ExternalLink, X, Heart, ThumbsDown, MessageSquare, UserCheck, ChevronDown, Inbox, Phone, Pencil, TrendingUp, Bell, AlertTriangle, Maximize2, ChevronLeft, ChevronRight, CalendarDays, RotateCcw, Users } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
 
@@ -220,6 +220,7 @@ export default function AdminPropuestas() {
   const [q, setQ] = useState('');
   const [fEmpleado, setFEmpleado] = useState('all');
   const [fEstado, setFEstado] = useState('all');
+  const [agrupar, setAgrupar] = useState(true); // juntar propuestas por creadora
 
   // Carga desde Supabase — el staff tiene sesión y su RLS (is_staff()) permite
   // leer TODAS las propuestas del equipo con consultas normales a las tablas.
@@ -470,6 +471,99 @@ export default function AdminPropuestas() {
       return true;
     }).sort((a, b) => new Date(b.createdAt || b.expiresAt || 0) - new Date(a.createdAt || a.expiresAt || 0));
   }, [all, q, fEmpleado, fEstado]);
+
+  // Agrupadas POR CREADORA (misma modelo, varias propuestas). Dentro de cada
+  // grupo, la que RESPONDIÓ de verdad va primera; después las "a medias"
+  // (abrió pero no terminó) y por último las que no tienen nada. Así no se
+  // confunde una propuesta a medias con la que trae las respuestas reales.
+  const grouped = useMemo(() => {
+    const keyOf = (p) => (p.recipient?.userId || (p.recipient?.name || '').trim().toLowerCase() || (p.recipient?.email || '').toLowerCase() || p.id);
+    const map = new Map();
+    shown.forEach((p) => {
+      const k = keyOf(p);
+      if (!map.has(k)) map.set(k, { key: k, name: p.recipient?.name || 'Sin destinatario', items: [] });
+      map.get(k).items.push(p);
+    });
+    const rank = (p) => {
+      const fs = feedbackSummary(p._feedback);
+      if (fs.total > 0) return 0;                              // respondió de verdad
+      if (p._progress && p._progress.decided > 0) return 1;    // a medias
+      return 2;                                                // sin nada
+    };
+    const groups = [...map.values()];
+    groups.forEach((g) => {
+      g.items.sort((a, b) => rank(a) - rank(b) || (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+      g.responded = g.items.filter((p) => feedbackSummary(p._feedback).total > 0).length;
+      g.partial = g.items.filter((p) => feedbackSummary(p._feedback).total === 0 && p._progress && p._progress.decided > 0).length;
+    });
+    return groups;
+  }, [shown]);
+
+  // Una fila de propuesta (se reusa en lista plana y agrupada por creadora).
+  const rowFor = (p) => {
+    const st = STATE_META[stateOf(p)];
+    const d = daysLeft(p);
+    const fs = feedbackSummary(p._feedback);
+    const opened = !!p._reg;
+    return (
+      <div key={p.id} role="button" tabIndex={0} onClick={() => setSel(p.id)}
+        onKeyDown={(e) => { if (e.key === 'Enter') setSel(p.id); }}
+        className="flex cursor-pointer flex-col gap-2 border-b border-line px-4 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04] sm:grid sm:grid-cols-[1.7fr_0.95fr_1fr_0.7fr_1.05fr] sm:items-center sm:gap-3 sm:px-5">
+        <span className="min-w-0">
+          <span className="block truncate font-medium text-paper">{p.recipient?.name || 'Sin destinatario'}</span>
+          <span className="block truncate text-[11px] text-paper-dim">
+            <span className="font-mono text-paper-mute">{p.code}</span>
+            {p.recipient?.email ? ` · ${p.recipient.email}` : ''}
+            {p.model?.name ? ` · ${p.model.name}` : ''}
+          </span>
+        </span>
+        <span className="flex min-w-0 items-center gap-2 text-paper-mute">
+          <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Creó</span>
+          <span className="truncate">{p.createdBy || '—'}</span>
+        </span>
+        <span className="flex items-start gap-2 sm:flex-col sm:gap-1">
+          <span className="w-24 shrink-0 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Estado</span>
+          <span className="flex flex-col gap-1">
+            <StatusDot tone={st.tone}>{st.label}</StatusDot>
+            {stateOf(p) !== 'borrador' && d !== null && (
+              d < 0 ? <span className="text-[11px] text-paper-dim">venció hace {Math.abs(d)}d</span>
+                : <span className="text-[11px] text-paper-dim">{d === 0 ? 'vence hoy' : `${d}d restantes`}</span>
+            )}
+            {p.approval && (
+              p.approval.status === 'approved'
+                ? <span className="text-[11px] font-medium text-emerald-300/90">✓ aprobada</span>
+                : p.approval.status === 'rejected'
+                  ? <span className="text-[11px] font-medium text-rose-300/90">rechazada</span>
+                  : <span className="text-[11px] font-medium text-amber-300/90">pend. aprobación</span>
+            )}
+          </span>
+        </span>
+        <span className="flex items-center gap-2 tabular-nums text-paper-mute">
+          <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Fecha</span>
+          <span className="min-w-0 truncate">{fmtFecha(p.createdAt) || '—'}</span>
+        </span>
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Respuestas</span>
+          {fs.total === 0 ? (
+            p._progress && p._progress.decided > 0 ? (
+              <span className="inline-flex items-center gap-1.5 font-medium text-amber-300/90">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> va {p._progress.decided}/{p._progress.total}
+              </span>
+            ) : (
+              <span className="text-paper-dim">Sin respuestas</span>
+            )
+          ) : (
+            <>
+              {fs.liked > 0 && <span className="inline-flex items-center gap-1 text-paper-mute"><Heart size={12} className="text-emerald-400" /> {fs.liked}</span>}
+              {fs.rejected > 0 && <span className="inline-flex items-center gap-1 text-paper-mute"><ThumbsDown size={12} className="text-rose-400" /> {fs.rejected}</span>}
+              {fs.comments > 0 && <span className="inline-flex items-center gap-1 text-paper-mute"><MessageSquare size={12} className="text-paper-dim" /> {fs.comments}</span>}
+            </>
+          )}
+          {(opened || (p._progress && p._progress.decided > 0)) && <StatusDot tone="ok">abrió</StatusDot>}
+        </span>
+      </div>
+    );
+  };
 
   const linkFor = (p) => `${origin}/p/${p.code}?lang=${p.lang || 'es'}`;
 
@@ -820,6 +914,11 @@ export default function AdminPropuestas() {
           ]} />
         <FilterSelect value={fEmpleado} onChange={setFEmpleado}
           options={[{ value: 'all', label: 'Todo el equipo' }, ...empleados.map((e) => ({ value: e, label: e }))]} />
+        <button type="button" onClick={() => setAgrupar((v) => !v)}
+          title="Juntar las propuestas de una misma creadora"
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors ${agrupar ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+          <Users size={13} /> Por creadora
+        </button>
       </div>
 
       <p className="mt-3 text-xs text-paper-dim">{shown.length} de {activeCount} · haz clic en una propuesta para ver el detalle y las respuestas.</p>
@@ -832,70 +931,22 @@ export default function AdminPropuestas() {
         {shown.length === 0 && (
           <p className="px-5 py-8 text-center text-sm text-paper-dim">{loading ? 'Cargando propuestas…' : 'No hay propuestas que coincidan con el filtro.'}</p>
         )}
-        {shown.map((p) => {
-          const st = STATE_META[stateOf(p)];
-          const d = daysLeft(p);
-          const fs = feedbackSummary(p._feedback);
-          const opened = !!p._reg;
-          return (
-            <div key={p.id} role="button" tabIndex={0} onClick={() => setSel(p.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter') setSel(p.id); }}
-              className="flex cursor-pointer flex-col gap-2 border-b border-line px-4 py-3.5 text-left text-sm transition-colors last:border-0 hover:bg-hair/[0.04] sm:grid sm:grid-cols-[1.7fr_0.95fr_1fr_0.7fr_1.05fr] sm:items-center sm:gap-3 sm:px-5">
-              <span className="min-w-0">
-                <span className="block truncate font-medium text-paper">{p.recipient?.name || 'Sin destinatario'}</span>
-                <span className="block truncate text-[11px] text-paper-dim">
-                  <span className="font-mono text-paper-mute">{p.code}</span>
-                  {p.recipient?.email ? ` · ${p.recipient.email}` : ''}
-                  {p.model?.name ? ` · ${p.model.name}` : ''}
-                </span>
-              </span>
-              <span className="flex min-w-0 items-center gap-2 text-paper-mute">
-                <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Creó</span>
-                <span className="truncate">{p.createdBy || '—'}</span>
-              </span>
-              <span className="flex items-start gap-2 sm:flex-col sm:gap-1">
-                <span className="w-24 shrink-0 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Estado</span>
-                <span className="flex flex-col gap-1">
-                  <StatusDot tone={st.tone}>{st.label}</StatusDot>
-                  {stateOf(p) !== 'borrador' && d !== null && (
-                    d < 0 ? <span className="text-[11px] text-paper-dim">venció hace {Math.abs(d)}d</span>
-                      : <span className="text-[11px] text-paper-dim">{d === 0 ? 'vence hoy' : `${d}d restantes`}</span>
-                  )}
-                  {p.approval && (
-                    p.approval.status === 'approved'
-                      ? <span className="text-[11px] font-medium text-emerald-300/90">✓ aprobada</span>
-                      : p.approval.status === 'rejected'
-                        ? <span className="text-[11px] font-medium text-rose-300/90">rechazada</span>
-                        : <span className="text-[11px] font-medium text-amber-300/90">pend. aprobación</span>
-                  )}
-                </span>
-              </span>
-              <span className="flex items-center gap-2 tabular-nums text-paper-mute">
-                <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Fecha</span>
-                <span className="min-w-0 truncate">{fmtFecha(p.createdAt) || '—'}</span>
-              </span>
-              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-                <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-paper-dim sm:hidden">Respuestas</span>
-                {fs.total === 0 ? (
-                  p._progress && p._progress.decided > 0 ? (
-                    <span className="inline-flex items-center gap-1.5 font-medium text-amber-300/90">
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> va {p._progress.decided}/{p._progress.total}
-                    </span>
-                  ) : (
-                    <span className="text-paper-dim">Sin respuestas</span>
-                  )
-                ) : (
-                  <>
-                    {fs.liked > 0 && <span className="inline-flex items-center gap-1 text-paper-mute"><Heart size={12} className="text-emerald-400" /> {fs.liked}</span>}
-                    {fs.rejected > 0 && <span className="inline-flex items-center gap-1 text-paper-mute"><ThumbsDown size={12} className="text-rose-400" /> {fs.rejected}</span>}
-                    {fs.comments > 0 && <span className="inline-flex items-center gap-1 text-paper-mute"><MessageSquare size={12} className="text-paper-dim" /> {fs.comments}</span>}
-                  </>
-                )}
-                {(opened || (p._progress && p._progress.decided > 0)) && <StatusDot tone="ok">abrió</StatusDot>}
-              </span>
-            </div>
-          );
-        })}
+        {shown.length > 0 && (agrupar
+          ? grouped.map((g) => (
+              <div key={g.key} className="border-b border-line last:border-0">
+                {/* Encabezado de la creadora: cuántas propuestas, cuál respondió. */}
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 bg-hair/[0.05] px-4 py-2 sm:px-5">
+                  <Users size={13} className="shrink-0 text-paper-dim" />
+                  <span className="truncate text-sm font-semibold text-paper">{g.name}</span>
+                  <span className="text-[11px] text-paper-dim">· {g.items.length} propuesta{g.items.length === 1 ? '' : 's'}</span>
+                  {g.responded > 0 && <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-300/90"><Heart size={11} className="text-emerald-400" /> {g.responded} respondió</span>}
+                  {g.partial > 0 && <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-300/90"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> {g.partial} a medias</span>}
+                </div>
+                {g.items.map(rowFor)}
+              </div>
+            ))
+          : shown.map(rowFor)
+        )}
       </div>
       </>
       )}
