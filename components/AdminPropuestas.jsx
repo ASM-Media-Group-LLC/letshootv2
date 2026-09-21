@@ -236,7 +236,7 @@ export default function AdminPropuestas() {
           sb.from('photo_proposal_registrations').select('proposal_id, name, email, phone, created_at').order('created_at', { ascending: false }),
           sb.from('proposal_content').select('proposal_id, item_id, kind, label, src, decision, prod_state').order('created_at', { ascending: true }),
           sb.from('proposal_reminders').select('proposal_id, kind, count, last_sent_at, paused'),
-          sb.from('proposal_progress').select('proposal_id, decided, liked, total, updated_at, reviewer_kind'),
+          sb.from('proposal_progress').select('proposal_id, decided, liked, total, updated_at, reviewer_kind, items'),
         ]);
         if (cancelled) return;
         const props = Array.isArray(propsRes.data) ? propsRes.data : [];
@@ -984,8 +984,21 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
   const [approving, setApproving] = useState(false);
   const st = STATE_META[stateOf(p)];
   const d = daysLeft(p);
-  const items = Array.isArray(p._feedback?.items) ? p._feedback.items : [];
+  // Respuestas ENVIADAS (feedback final). Si NO envió pero dejó likes/rechazos en
+  // borrador (proposal_progress.items — se autoguarda apenas marca), los mostramos
+  // igual: así no se pierde lo que decidió aunque no haya apretado "Enviar".
+  const submittedItems = Array.isArray(p._feedback?.items) ? p._feedback.items : [];
+  const lookById = {};
+  (Array.isArray(p.looks) ? p.looks : []).forEach((l) => { if (l?.id) lookById[l.id] = l; });
+  const draftItems = (Array.isArray(p._progress?.items) ? p._progress.items : [])
+    .filter((it) => it && (it.status === 'liked' || it.status === 'rejected' || (it.note || '').trim()))
+    .map((it) => ({ ...it, result: it.result || lookById[it.id]?.result || '', caption: it.caption || lookById[it.id]?.caption || '' }));
+  const isDraftResp = submittedItems.length === 0 && draftItems.length > 0;
+  const items = submittedItems.length > 0 ? submittedItems : draftItems;
+  // fs = solo ENVIADO (para "recordar": un borrador SIGUE pendiente de enviar).
   const fs = feedbackSummary(p._feedback);
+  // dispFs = lo que se MUESTRA (enviado o borrador) — para los chips/contadores.
+  const dispFs = feedbackSummary({ items });
   // Feedback del EQUIPO (interno) — bucket aparte del de la creadora.
   const internalItems = (Array.isArray(p._internalFeedback?.items) ? p._internalFeedback.items : [])
     .filter((i) => i.status || (i.note || '').trim());
@@ -1280,15 +1293,20 @@ function PropDetail({ p, archived, link, copied, onCopy, mailHref, onArchive, on
           <div className="mt-6">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h4 className="font-display text-sm font-semibold text-paper">Respuestas de la creadora</h4>
-              {fs.total > 0 && (
+              {isDraftResp && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300" title="Marcó estas fotos pero no apretó Enviar — es un borrador">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> borrador · sin enviar
+                </span>
+              )}
+              {dispFs.total > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <RespChip active={fResp === 'all'} onClick={() => setFResp('all')}>Todas · {fs.total}</RespChip>
+                  <RespChip active={fResp === 'all'} onClick={() => setFResp('all')}>Todas · {dispFs.total}</RespChip>
                   <RespChip active={fResp === 'rejected'} tone="bad" icon={ThumbsDown}
-                    onClick={() => setFResp((f) => (f === 'rejected' ? 'all' : 'rejected'))}>{fs.rejected} rechazó</RespChip>
+                    onClick={() => setFResp((f) => (f === 'rejected' ? 'all' : 'rejected'))}>{dispFs.rejected} rechazó</RespChip>
                   <RespChip active={fResp === 'liked'} tone="ok" icon={Heart}
-                    onClick={() => setFResp((f) => (f === 'liked' ? 'all' : 'liked'))}>{fs.liked} le gustaron</RespChip>
+                    onClick={() => setFResp((f) => (f === 'liked' ? 'all' : 'liked'))}>{dispFs.liked} le gustaron</RespChip>
                   <RespChip active={fResp === 'commented'} icon={MessageSquare}
-                    onClick={() => setFResp((f) => (f === 'commented' ? 'all' : 'commented'))}>{fs.comments} comentó</RespChip>
+                    onClick={() => setFResp((f) => (f === 'commented' ? 'all' : 'commented'))}>{dispFs.comments} comentó</RespChip>
                 </div>
               )}
             </div>

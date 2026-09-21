@@ -827,6 +827,26 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false, as
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, sent, skipProgress, progressKind]);
 
+  // Guardar el ÚLTIMO like al salir/ocultar la pestaña — por si cierra antes de los
+  // 700ms del autoguardado. Así nunca se pierde lo que marcó, aunque no envíe.
+  const flushRef = useRef(() => {});
+  useEffect(() => {
+    flushRef.current = () => {
+      if (skipProgress || sent || loadedKindRef.current !== progressKind) return;
+      const items = looks.map((l) => { const s = fb(l.id); return { id: l.id, status: s.status ?? null, note: s.note || '' }; });
+      if (!items.some((i) => i.status || (i.note || '').trim())) return;
+      try { localStorage.setItem(PROG_KEY, JSON.stringify(items)); } catch {}
+      try { getSupabase().rpc('save_proposal_progress', { p_link: linkId, p_items: items, p_kind: progressKind }); } catch {}
+    };
+  });
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'hidden') flushRef.current(); };
+    const onHide = () => flushRef.current();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', onHide);
+    return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', onHide); };
+  }, []);
+
   useEffect(() => {
     const block = (e) => { if (e.target?.tagName === 'IMG') e.preventDefault(); };
     document.addEventListener('contextmenu', block);
