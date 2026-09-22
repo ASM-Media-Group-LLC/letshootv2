@@ -29,6 +29,9 @@ const SOURCES = [
   { id: 'subir', label: 'Subir', icon: Upload },
 ];
 const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'Fiesta'];
+// Valor aprox del crédito Higgsfield (Soul 2.0 ≈ 0.12 créd ≈ US$0.011/foto). Ajustable.
+const USD_PER_CREDIT = 0.09;
+const money = (credits) => `US$${(Number(credits || 0) * USD_PER_CREDIT).toFixed(2)}`;
 
 export default function KitchenPage() {
   const [access, setAccess] = useState('loading');
@@ -158,6 +161,7 @@ export default function KitchenPage() {
   }
 
   const filteredCreators = creators.filter((c) => c.full_name.toLowerCase().includes(q.trim().toLowerCase()));
+  const totalCredits = gens.filter((g) => g.status !== 'failed').reduce((a, g) => a + Number(g.credits || 0), 0);
   const reviewRows = gens.filter((g) => g.creator_id === sel && g.status === 'done');
   const approvedRows = gens.filter((g) => g.creator_id === sel && g.status === 'approved');
   const pendingRows = gens.filter((g) => g.creator_id === sel && ['queued', 'in_progress'].includes(g.status));
@@ -190,9 +194,15 @@ export default function KitchenPage() {
         {/* ══════════ PASO 1 — ELEGÍ LA MODELO ══════════ */}
         {!sel && (
           <div>
-            <div className="mb-5">
-              <h1 className="font-display text-2xl font-bold tracking-tight text-paper">Elegí la modelo</h1>
-              <p className="mt-1 text-sm text-paper-mute">Tocá una modelo para entrar a su cocina.</p>
+            <div className="mb-5 flex items-end justify-between gap-3">
+              <div>
+                <h1 className="font-display text-2xl font-bold tracking-tight text-paper">Elegí la modelo</h1>
+                <p className="mt-1 text-sm text-paper-mute">Tocá una modelo para entrar a su cocina.</p>
+              </div>
+              <div className="shrink-0 rounded-xl border border-line bg-card px-3.5 py-2 text-center" title={`${totalCredits.toFixed(2)} créditos · Higgsfield Soul 2.0`}>
+                <div className="text-base font-bold tabular-nums text-amber-300">{money(totalCredits)}</div>
+                <div className="text-[10px] text-paper-dim">gastado en total</div>
+              </div>
             </div>
             <div className="relative mb-5 max-w-md">
               <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
@@ -216,7 +226,7 @@ export default function KitchenPage() {
                       </div>
                     </div>
                     <div className="flex w-full items-center gap-3 text-[11px] text-paper-dim">
-                      <span className="inline-flex items-center gap-1"><Coins size={11} className="text-amber-300" /> {s.credits.toFixed(1)}</span>
+                      <span className="inline-flex items-center gap-1" title={`${s.credits.toFixed(2)} créditos`}><Coins size={11} className="text-amber-300" /> {money(s.credits)}</span>
                       {s.review > 0 && <span className="inline-flex items-center gap-1 text-rose-300"><Flame size={11} /> {s.review} p/ revisar</span>}
                       {s.pending > 0 && <span className="inline-flex items-center gap-1 text-amber-300"><Loader2 size={11} className="animate-spin" /> {s.pending}</span>}
                       <ArrowRight size={13} className="ml-auto opacity-0 transition-opacity group-hover:opacity-100" />
@@ -244,9 +254,9 @@ export default function KitchenPage() {
                   : <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300"><AlertTriangle size={12} /> Sin soul — avisame y la enlazo</div>}
               </div>
               <div className="ml-auto flex items-center gap-2">
-                <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center">
-                  <div className="text-sm font-bold tabular-nums text-amber-300">{mine.credits.toFixed(1)}</div>
-                  <div className="text-[10px] text-paper-dim">créditos</div>
+                <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center" title={`${mine.credits.toFixed(2)} créditos · ~US$0.011/foto`}>
+                  <div className="text-sm font-bold tabular-nums text-amber-300">{money(mine.credits)}</div>
+                  <div className="text-[10px] text-paper-dim">gastado · {mine.credits.toFixed(1)} créd</div>
                 </div>
                 <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center">
                   <div className="text-sm font-bold tabular-nums text-paper">{mine.total}</div>
