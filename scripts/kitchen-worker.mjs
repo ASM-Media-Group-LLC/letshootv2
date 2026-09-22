@@ -17,9 +17,10 @@ function envFromFile(path) {
   return out;
 }
 const fe = envFromFile(new URL('../.env.local', import.meta.url).pathname);
+const we = envFromFile(new URL('./.worker.env', import.meta.url).pathname); // secreto local (gitignored)
 const SB_URL = process.env.SB_URL || fe.NEXT_PUBLIC_SUPABASE_URL;
 const SB_ANON = process.env.SB_ANON || fe.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const SECRET = process.env.WORKER_SECRET;
+const SECRET = process.env.WORKER_SECRET || we.WORKER_SECRET;
 const MODEL = 'text2image_soul_v2';
 const CREDITS = 0.12, USD = 0.011;
 if (!SB_URL || !SB_ANON || !SECRET) { console.error('Falta SB_URL / SB_ANON / WORKER_SECRET.'); process.exit(1); }

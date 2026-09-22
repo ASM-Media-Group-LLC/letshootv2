@@ -17,3 +17,6 @@ next-env.d.ts
 # Handoff
 .handoff-passphrase.txt
 .env.production.gpg
+
+# secreto local del auto-cocinero de /kitchen
+scripts/.worker.env
