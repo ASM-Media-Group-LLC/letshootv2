@@ -43,9 +43,19 @@ async function cookOne(job) {
 
   let args;
   if (job.prompt) {
-    // MODO VISIÓN: la edge ya escribió el prompt exacto de la pose (Anthropic) → sin image_references + estilo realista.
+    // MODO VISIÓN: la edge ya escribió el prompt exacto de la pose (Anthropic) → estilo realista.
     args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', job.prompt, '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
     if (job.style_id) args.push('--style_id', job.style_id);
+    // VARIACIÓN de carrusel: anclo a la foto réplica (image_ref) para clavar MISMO lugar/outfit/luz; el prompt solo cambia la pose.
+    if (job.image_ref) {
+      try {
+        const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+        const anchorPath = join(dir, `${job.id}-anchor.${ext}`);
+        const r = await fetch(job.image_ref);
+        writeFileSync(anchorPath, Buffer.from(await r.arrayBuffer()));
+        args.push('--image-references', anchorPath);
+      } catch { /* si falla el ancla, sigue solo con el prompt */ }
+    }
   } else {
     // MODO IMAGEN (fallback sin Anthropic): baja la referencia y se la pasa al motor.
     const ext = (String(job.reference_url).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';

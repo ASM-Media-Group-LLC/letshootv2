@@ -48,6 +48,7 @@ export default function KitchenPage() {
   const [msg, setMsg] = useState(null);
   const [compare, setCompare] = useState(null);
   const [detail, setDetail] = useState(null);      // ficha de una foto de la mesa
+  const [lightbox, setLightbox] = useState(null);  // ver una foto en grande (URL)
   const [q, setQ] = useState('');                  // buscador de modelos
 
   // Cocinar
@@ -677,8 +678,8 @@ export default function KitchenPage() {
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {/* Réplica: viral vs su versión */}
               <div className="grid grid-cols-2 gap-3">
-                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Viral (referencia)</div><img src={cmpRoot.reference_url} alt="" className="w-full rounded-xl border border-line object-cover" /></div>
-                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-brand">Su versión {cmpRoot.status === 'approved' && <span className="text-emerald-300">· aprobada ✓</span>}</div><img src={cmpRoot.result_url} alt="" className="w-full rounded-xl border border-brand/40 object-cover" /></div>
+                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Viral (referencia)</div><img src={cmpRoot.reference_url} alt="" onClick={() => setLightbox(cmpRoot.reference_url)} className="w-full cursor-zoom-in rounded-xl border border-line object-cover" /></div>
+                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-brand">Su versión {cmpRoot.status === 'approved' && <span className="text-emerald-300">· aprobada ✓</span>}</div><img src={cmpRoot.result_url} alt="" onClick={() => setLightbox(cmpRoot.result_url)} className="w-full cursor-zoom-in rounded-xl border border-brand/40 object-cover" /></div>
               </div>
               {cmpRoot.status === 'done' && (
                 <div className="mt-3 flex items-center justify-end gap-2">
@@ -745,7 +746,7 @@ export default function KitchenPage() {
                         ) : (
                           <>
                             <div className="relative">
-                              <img src={k.result_url} alt="" className="aspect-[3/4] w-full object-cover" />
+                              <img src={k.result_url} alt="" onClick={() => setLightbox(k.result_url)} className="aspect-[3/4] w-full cursor-zoom-in object-cover" />
                               {k.status === 'approved' && <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white"><Check size={11} /></span>}
                             </div>
                             {k.status === 'done' && (
@@ -763,6 +764,14 @@ export default function KitchenPage() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── VISOR EN GRANDE (lightbox) ── */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm" onClick={() => setLightbox(null)}>
+          <button type="button" onClick={() => setLightbox(null)} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/20 text-white/80 hover:bg-white/10"><X size={20} /></button>
+          <img src={lightbox} alt="" onClick={(e) => e.stopPropagation()} className="max-h-[92vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
         </div>
       )}
     </div>

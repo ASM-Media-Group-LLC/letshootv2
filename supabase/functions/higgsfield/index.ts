@@ -161,11 +161,11 @@ async function variationPrompt(key: string, srcUrl: string, styleDesc: string, i
       method: 'POST',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001', max_tokens: 400,
-        system: 'You are a fashion photography art director. You are shown one photo of a generic anonymous woman model in a location wearing an outfit. Write a single English text-to-image prompt for a NEW photo of the SAME shoot: KEEP the exact same setting/background and the exact same outfit (describe both faithfully so they are recognisably identical), but give her a DIFFERENT natural body pose and a slightly different moment/situation than the source. Describe the new posture first (standing/sitting/leaning/walking/kneeling etc.), then each arm/hand/leg, head and gaze, then re-state the identical outfit and identical location, then lighting and camera framing. Never identify, name or describe the face/identity of any real person. Output only the prompt text, one line, no quotes, no preamble.',
+        model: 'claude-haiku-4-5-20251001', max_tokens: 500,
+        system: 'You are a fashion photography art director. You are shown ONE photo of a generic anonymous woman model, at a location, wearing an outfit, under specific lighting. Write a single English text-to-image prompt for ANOTHER shot from the SAME photoshoot session — the ONLY thing that changes is her body pose and the camera framing. Everything else must stay IDENTICAL and you must describe it in precise detail so it is unmistakably the same shoot:\n\n1) OUTFIT — describe the garment exactly: type, every colour, the cut and neckline, straps/ties, fabric/texture, and ANY text, numbers or logos printed on it, plus jewellery/accessories. It must read as the exact same clothing.\n2) LOCATION — describe the exact same setting and the key background objects/landmarks in the same positions (same boat/room/deck/wall, same furniture, same scenery).\n3) LIGHTING — the exact same lighting: time of day, direction, hardness/softness, colour temperature and mood (e.g. warm golden-hour sun from the left, bright midday, soft indoor window light).\n\nThen give her a CLEARLY DIFFERENT natural, flattering influencer pose (name the posture first: standing/sitting/leaning/walking/kneeling, then each arm/hand/leg, head and gaze) and, if helpful, a slightly different camera framing/angle. Never identify, name or describe the face/identity of any real person. Output only the prompt text, one line, no quotes, no preamble.',
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'url', url: srcUrl } },
-          { type: 'text', text: `Same location, same outfit, NEW pose/situation.${idea ? ` Direction for the new shot: ${idea}.` : ' Pick a fresh flattering influencer pose that differs clearly from the source.'} Natural realistic photo.${styleDesc ? ` Overall style: ${styleDesc}.` : ''}` },
+          { type: 'text', text: `Another shot of the SAME shoot: IDENTICAL outfit (same colours, cut and any printed text/logos), IDENTICAL location and background objects, IDENTICAL lighting — change ONLY the body pose and framing.${idea ? ` New pose direction: ${idea}.` : ' Pick a fresh flattering pose clearly different from the source.'} Natural realistic photo.${styleDesc ? ` Overall style: ${styleDesc}.` : ''}` },
         ] }],
       }),
     });
@@ -284,7 +284,8 @@ Deno.serve(async (req) => {
           else vprompt = await visionPrompt(akey, (job as any).reference_url, styleDesc);
           if (vprompt) vstyle = REALISTIC_STYLE;
         }
-        return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null, prompt: vprompt, style_id: vstyle } });
+        // Para VARIACIONES: le paso la foto réplica como imagen-ancla (image_ref) → fija escena/outfit/luz, el prompt solo cambia la pose.
+        return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null, prompt: vprompt, style_id: vstyle, image_ref: (isVar && vprompt) ? (job as any).reference_url : null } });
       }
       const gid = String((body as any)?.generation_id || '');
       const rurl = (body as any)?.result_url || null;
