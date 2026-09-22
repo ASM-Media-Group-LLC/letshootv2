@@ -59,12 +59,13 @@ export default function KitchenPage() {
   const [niches, setNiches] = useState([]);
   const [newNiche, setNewNiche] = useState('');
   const [scraping, setScraping] = useState(false);
+  const [balance, setBalance] = useState(null); // saldo real de Higgsfield (créditos)
 
   const sb = getSupabase();
 
   const loadSummary = useCallback(async () => {
     const out = await callFn('kitchen_summary');
-    if (out.ok) { const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m); }
+    if (out.ok) { const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m); setBalance(out.balance ?? null); }
   }, []);
   const loadGens = useCallback(async () => {
     const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, note, created_at').order('created_at', { ascending: false }).limit(200);
@@ -250,9 +251,17 @@ export default function KitchenPage() {
                 <h1 className="font-display text-2xl font-bold tracking-tight text-paper">Elegí la modelo</h1>
                 <p className="mt-1 text-sm text-paper-mute">Tocá una modelo para entrar a su cocina.</p>
               </div>
-              <div className="shrink-0 rounded-xl border border-line bg-card px-3.5 py-2 text-center" title={`${totalCredits.toFixed(2)} créditos · Higgsfield Soul 2.0`}>
-                <div className="text-base font-bold tabular-nums text-amber-300">{money(totalCredits)}</div>
-                <div className="text-[10px] text-paper-dim">gastado en total</div>
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="rounded-xl border border-line bg-card px-3.5 py-2 text-center" title={`${totalCredits.toFixed(2)} créditos gastados en la app`}>
+                  <div className="text-base font-bold tabular-nums text-amber-300">{money(totalCredits)}</div>
+                  <div className="text-[10px] text-paper-dim">gastado (app)</div>
+                </div>
+                {balance != null && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3.5 py-2 text-center" title="Saldo real de tu cuenta Higgsfield (en vivo)">
+                    <div className="text-base font-bold tabular-nums text-emerald-300">{balance.toFixed(1)}</div>
+                    <div className="text-[10px] text-paper-dim">saldo real (créd)</div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="relative mb-5 max-w-md">

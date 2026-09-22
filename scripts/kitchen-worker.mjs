@@ -73,14 +73,25 @@ async function cookOne(job) {
   console.log(resultUrl ? `✓ ${job.id} → ${resultUrl.slice(0, 70)}…` : `✗ ${job.id} sin resultado`);
 }
 
+// Sincroniza el saldo REAL de Higgsfield al servidor (para las finanzas).
+async function syncBalance() {
+  try {
+    const out = execFileSync('higgsfield', ['account', 'status', '--json'], { encoding: 'utf8', timeout: 20000 });
+    const bal = JSON.parse(out)?.credits;
+    if (typeof bal === 'number') { await fn('sync_balance', { credits: bal }); console.log(`saldo real: ${bal} créd`); }
+  } catch (e) { /* noop */ }
+}
+
 console.log(`[kitchen-worker] arriba · ${FN}`);
+await syncBalance();
 let idle = 0;
 for (;;) {
   let res;
   try { res = await fn('cook_next'); } catch (e) { console.log('err cook_next:', String(e.message || e).slice(0, 120)); await sleep(5000); continue; }
   if (!res?.ok) { console.log('no autorizado / error:', res?.error); await sleep(8000); continue; }
-  if (!res.job) { if (idle++ % 12 === 0) console.log('cola vacía, esperando…'); await sleep(5000); continue; }
+  if (!res.job) { if (idle % 12 === 0) { console.log('cola vacía, esperando…'); await syncBalance(); } idle++; await sleep(5000); continue; }
   idle = 0;
   console.log(`→ cocinando ${res.job.id}`);
   await cookOne(res.job);
+  await syncBalance();
 }
