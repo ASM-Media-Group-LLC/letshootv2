@@ -29,20 +29,21 @@ const SOURCES = [
   { id: 'subir', label: 'Subir', icon: Upload },
 ];
 const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'Fiesta'];
-// Momentos de la vida real para el carrusel "Sorpréndeme": actividad + expresión + pose DISTINTAS en cada foto. Se barajan.
+// Momentos de la vida real para el carrusel "Sorpréndeme": actividad + expresión + ENCUADRE + prop DISTINTOS en cada foto. Se barajan.
+// El lugar es el MISMO punto exacto; solo cambia cuánto se ve (el crop), la pose y la situación.
 const POSE_POOL = [
-  'checking her phone, texting with a soft natural half-smile, weight on one hip',
-  'caught mid-laugh looking off to the side, candid and genuine, hand near her face',
-  'holding her phone up taking a mirror-style selfie, cheeky playful look',
-  'sipping a cold drink, relaxed and content, sitting casually',
-  'adjusting her hair with both hands, calm confident gaze straight at the lens',
-  'reclining back with her eyes closed soaking up the sun, serene expression',
-  'turned in profile looking into the distance, soft thoughtful expression',
-  'walking and glancing back over her shoulder with a playful smile',
-  'leaning on a wall or railing, relaxed neutral expression, looking slightly away',
-  'crouching down for a moment, a light candid smile, natural and unposed',
-  'stretching and arching her back gently, eyes half-closed, relaxed',
-  'sitting on the floor/edge hugging one knee, warm genuine smile',
+  'FULL-BODY shot, standing checking her phone, soft natural half-smile',
+  'WAIST-UP shot, caught mid-laugh looking off to the side, a cold drink in one hand',
+  'CLOSE-UP selfie framing, holding her phone up for a mirror-style selfie, cheeky playful look',
+  'WIDE shot showing the whole setting around her, walking a step and glancing back over her shoulder, playful smile',
+  'FULL-BODY shot, sitting casually sipping a coffee, relaxed content expression',
+  'WAIST-UP shot, sliding her sunglasses on, confident calm gaze at the lens',
+  'CLOSE-UP shot, adjusting her hair with both hands, warm genuine smile',
+  'WIDE shot, reclining back with her eyes closed soaking up the sun, serene expression',
+  'FULL-BODY shot, leaning on a wall scrolling her phone, relaxed neutral look slightly away',
+  'WAIST-UP shot, laughing naturally with her sunglasses held in one hand',
+  'CLOSE-UP selfie, a playful wink, phone held up',
+  'FULL-BODY shot, crouching for a moment to fix her sandal, a light candid smile',
 ];
 const shuffle = (arr) => { const b = [...arr]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 // Valor aprox del crédito Higgsfield (Soul 2.0 ≈ 0.12 créd ≈ US$0.011/foto). Ajustable.
