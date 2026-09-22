@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox, ChevronsLeft, ChevronsRight, Plug } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox, ChevronsLeft, ChevronsRight, Plug, ChefHat } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import StatusDot from '@/components/StatusDot';
 import PortalHeader from '@/components/PortalHeader';
@@ -546,6 +546,7 @@ export default function AdminPage() {
     { id: 'metricas', label: 'Métricas', icon: BarChart3, badges: [] },
     { id: 'actividad', label: 'Actividad', icon: Activity, badges: [] },
     { id: 'conexion', label: 'Conexión', icon: Plug, badges: [], href: '/conexion' },
+    { id: 'kitchen', label: 'Kitchen', icon: ChefHat, badges: [], href: '/kitchen' },
   ];
   const activeTab = NAV_TABS.find((t) => t.id === tab) || NAV_TABS[0];
   // Rojo MATE (no neón — el rose-500 sólido lastima la vista): tinte suave con

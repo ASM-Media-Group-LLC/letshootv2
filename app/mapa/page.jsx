@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Home, LogIn, Images, Sparkles, ShieldCheck, Map as MapIcon, ArrowUpRight, Plug, Send, Package, Building2, UserCheck, Crown, FileText, Mail, UserPlus, KeyRound, ClipboardList, User } from 'lucide-react';
+import { Home, LogIn, Images, Sparkles, ShieldCheck, Map as MapIcon, ArrowUpRight, Plug, Send, Package, Building2, UserCheck, Crown, FileText, Mail, UserPlus, KeyRound, ClipboardList, User, ChefHat } from 'lucide-react';
 import Logo from '@/components/Logo';
 
 const SECTIONS = [
@@ -39,6 +39,7 @@ const SECTIONS = [
       { path: '/admin', name: 'Administración', icon: ShieldCheck, role: 'Admin / Supervisor', desc: 'El centro de todo: Propuestas, Creadoras, Equipo, Agencias, Métricas, Verificaciones, Conexión.', status: 'listo' },
       { path: '/propuestas', name: 'Armar propuesta', icon: Send, role: 'Admin / Supervisor', desc: 'Wizard: destinatario → molde → fotos (baúl por creadora) → enviar. Copia al equipo o a afuera.', status: 'listo' },
       { path: '/conexion', name: 'Conexión · Motor de imágenes', icon: Plug, role: 'Admin / Supervisor', desc: 'Higgsfield: guardar la llave, verificar, foto de prueba y crear la identidad de Julia. Acá se generan las fotos por IA.', status: 'nuevo' },
+      { path: '/kitchen', name: 'Kitchen · Cocina de contenido', icon: ChefHat, role: 'Admin / Supervisor', desc: 'Elegís modelo + una foto viral de referencia → recrea SU versión → revisás y aprobás. Con contador de créditos gastados.', status: 'nuevo' },
       { path: '/trabajo', name: 'Trabajo / Almacén', icon: Package, role: 'Equipo', desc: 'Almacén de entregables y ventas manuales.', status: 'listo' },
     ],
   },
