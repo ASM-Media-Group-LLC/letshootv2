@@ -767,9 +767,9 @@ export default function KitchenPage() {
         </div>
       )}
 
-      {/* ── VISOR EN GRANDE (lightbox) ── */}
+      {/* ── VISOR EN GRANDE (lightbox) ── z-index inline alto para quedar SIEMPRE arriba del pop-up */}
       {lightbox && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm" onClick={() => setLightbox(null)}>
+        <div className="fixed inset-0 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm" style={{ zIndex: 2147483000 }} onClick={() => setLightbox(null)}>
           <button type="button" onClick={() => setLightbox(null)} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/20 text-white/80 hover:bg-white/10"><X size={20} /></button>
           <img src={lightbox} alt="" onClick={(e) => e.stopPropagation()} className="max-h-[92vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
         </div>
