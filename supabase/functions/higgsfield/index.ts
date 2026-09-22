@@ -52,6 +52,84 @@ function imgUrlsOf(j: any): string[] {
   return [...new Set(urls)];
 }
 
+// Corre el scraper de Apify (Instagram por hashtag) y guarda en creator_vault. Reusado por acción staff y worker.
+async function runScrape(svc: any, creatorId: string, limit: number, override?: string[]) {
+  if (!creatorId) return { ok: false, error: 'Falta la modelo.' };
+  const { data: tk } = await svc.from('app_config').select('value').eq('key', 'apify_token').maybeSingle();
+  const apToken = clean((tk as any)?.value);
+  if (!apToken) return { ok: false, error: 'Falta la llave de Apify. Pegala en /conexion.' };
+  let tags: string[] = Array.isArray(override) && override.length ? override : [];
+  if (!tags.length) {
+    const { data: sp } = await svc.from('creator_search_profile').select('niches, hashtags').eq('creator_id', creatorId).maybeSingle();
+    tags = [...(((sp as any)?.hashtags) || []), ...(((sp as any)?.niches) || [])];
+  }
+  tags = tags.map((h: string) => String(h).trim().replace(/^#/, '')).filter(Boolean).slice(0, 5);
+  if (!tags.length) return { ok: false, error: 'Configurá al menos un nicho o hashtag para esta modelo.' };
+  const runUrl = `https://api.apify.com/v2/acts/apify~instagram-hashtag-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
+  let items: any = [];
+  try {
+    const ar = await fetch(runUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hashtags: tags, resultsLimit: limit }) });
+    items = await ar.json();
+    if (!ar.ok) return { ok: false, error: `Apify devolvió ${ar.status}.`, detail: items };
+  } catch (e) { return { ok: false, error: `No se pudo llamar al scraper: ${(e as Error)?.message}` }; }
+  if (!Array.isArray(items)) return { ok: false, error: 'El scraper no devolvió una lista.', detail: items };
+  let saved = 0;
+  for (const it of items) {
+    const imgUrl = it?.displayUrl || it?.imageUrl || (Array.isArray(it?.images) ? it.images[0] : null);
+    if (!imgUrl) continue;
+    const row: Record<string, unknown> = {
+      creator_id: creatorId, kind: 'ref', url: imgUrl, source_platform: 'instagram',
+      source_handle: it?.ownerUsername || null, source_url: it?.url || null,
+      likes: Number(it?.likesCount) || null, vibe: tags[0] || null,
+      caption: it?.caption ? String(it.caption).slice(0, 200) : null,
+    };
+    // ignoreDuplicates: si ya existe (aunque esté descartada), NO la pisa — tus descartes se respetan.
+    const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url', ignoreDuplicates: true });
+    if (!error) saved += 1;
+  }
+  // Filtro IA (visión): revisa las que están sin revisar y marca basura. Solo si hay llave de Anthropic.
+  const reviewed = await aiReview(svc, creatorId);
+  return { ok: true, found: items.length, saved, tags, reviewed };
+}
+
+// Revisa con visión (Anthropic) las scrapeadas sin revisar de una modelo: ¿sirve como referencia de creadora o es basura?
+async function aiReview(svc: any, creatorId: string, limit = 20) {
+  const { data: ak } = await svc.from('app_config').select('value').eq('key', 'anthropic_api_key').maybeSingle();
+  const key = clean((ak as any)?.value);
+  if (!key) return 0;
+  const { data: sp } = await svc.from('creator_search_profile').select('style_desc').eq('creator_id', creatorId).maybeSingle();
+  const style = String((sp as any)?.style_desc || '').slice(0, 200);
+  const { data: rows } = await svc.from('creator_vault').select('id, url')
+    .eq('creator_id', creatorId).eq('kind', 'ref').eq('source_platform', 'instagram').is('ai_ok', null)
+    .order('created_at', { ascending: false }).limit(limit);
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+  let n = 0;
+  await Promise.all(rows.map(async (r: any) => {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001', max_tokens: 120,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'url', url: r.url } },
+            { type: 'text', text: `¿Sirve esta foto como referencia para recrear con una creadora de contenido mujer (UNA sola mujer, estilo influencer${style ? `; estilo buscado: ${style}` : ''})? Descartá: productos, ropa sola, hombres, paisajes, memes, collages, texto. Respondé SOLO JSON: {"ok":true|false,"reason":"motivo corto en español"}` },
+          ] }],
+        }),
+      });
+      const j = await res.json();
+      const txt = (j as any)?.content?.[0]?.text || '';
+      const m = txt.match(/\{[\s\S]*\}/);
+      const v = m ? JSON.parse(m[0]) : null;
+      if (v && typeof v.ok === 'boolean') {
+        await svc.from('creator_vault').update({ ai_ok: v.ok, ai_reason: String(v.reason || '').slice(0, 140) }).eq('id', r.id);
+        n += 1;
+      }
+    } catch { /* noop */ }
+  }));
+  return n;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   try {
@@ -66,10 +144,14 @@ Deno.serve(async (req) => {
 
     // ── Worker del cocinero (sin usuario; protegido por secreto en app_config) ──
     // Corre en la Mac del dueño con el CLI logueado; drena la cola de generations.
-    if (action === 'cook_next' || action === 'cook_result' || action === 'sync_balance') {
+    if (action === 'cook_next' || action === 'cook_result' || action === 'sync_balance' || action === 'scrape_run') {
       const { data: sc } = await svc.from('app_config').select('value').eq('key', 'kitchen_worker_secret').maybeSingle();
       const secret = clean((body as any)?.worker_secret);
       if (!secret || !(sc as any)?.value || secret !== clean((sc as any).value)) return reply({ ok: false, error: 'Worker no autorizado.' });
+      if (action === 'scrape_run') {
+        const r = await runScrape(svc, String((body as any)?.creator_id || ''), Math.min(Number((body as any)?.limit) || 24, 50), (body as any)?.niches);
+        return reply(r);
+      }
       if (action === 'sync_balance') {
         const bal = Number((body as any)?.credits);
         if (!isNaN(bal)) await svc.from('app_config').upsert({ key: 'higgsfield_balance', value: String(bal), updated_at: new Date().toISOString() }, { onConflict: 'key' });
@@ -227,38 +309,8 @@ Deno.serve(async (req) => {
 
     // ── Scraper de virales (Apify → Instagram por nicho/hashtag de la modelo) ──
     if (action === 'scrape') {
-      const creatorId = String(body?.creator_id || '');
-      if (!creatorId) return reply({ ok: false, error: 'Falta la modelo.' });
-      const { data: tk } = await svc.from('app_config').select('value').eq('key', 'apify_token').maybeSingle();
-      const apToken = clean((tk as any)?.value);
-      if (!apToken) return reply({ ok: false, error: 'Falta la llave de Apify. Pegala en /conexion.' });
-      const { data: sp } = await svc.from('creator_search_profile').select('niches, hashtags').eq('creator_id', creatorId).maybeSingle();
-      const tags = [...(((sp as any)?.hashtags) || []), ...(((sp as any)?.niches) || [])]
-        .map((h: string) => String(h).trim().replace(/^#/, '')).filter(Boolean).slice(0, 5);
-      if (tags.length === 0) return reply({ ok: false, error: 'Configurá al menos un nicho o hashtag para esta modelo (arriba).' });
-      const limit = Math.min(Number(body?.limit) || 24, 50);
-      const runUrl = `https://api.apify.com/v2/acts/apify~instagram-hashtag-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
-      let items: any = [];
-      try {
-        const ar = await fetch(runUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hashtags: tags, resultsLimit: limit }) });
-        items = await ar.json();
-        if (!ar.ok) return reply({ ok: false, error: `Apify devolvió ${ar.status}.`, detail: items });
-      } catch (e) { return reply({ ok: false, error: `No se pudo llamar al scraper: ${(e as Error)?.message}` }); }
-      if (!Array.isArray(items)) return reply({ ok: false, error: 'El scraper no devolvió una lista.', detail: items });
-      let saved = 0;
-      for (const it of items) {
-        const imgUrl = it?.displayUrl || it?.imageUrl || (Array.isArray(it?.images) ? it.images[0] : null);
-        if (!imgUrl) continue;
-        const row: Record<string, unknown> = {
-          creator_id: creatorId, kind: 'ref', url: imgUrl, source_platform: 'instagram',
-          source_handle: it?.ownerUsername || null, source_url: it?.url || null,
-          likes: Number(it?.likesCount) || null, vibe: tags[0] || null,
-          caption: it?.caption ? String(it.caption).slice(0, 200) : null,
-        };
-        const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url' });
-        if (!error) saved += 1;
-      }
-      return reply({ ok: true, found: items.length, saved });
+      const r = await runScrape(svc, String(body?.creator_id || ''), Math.min(Number(body?.limit) || 24, 50), (body as any)?.niches);
+      return reply(r);
     }
 
     return reply({ ok: false, error: `Acción desconocida: ${action || '(vacía)'}` });

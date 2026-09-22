@@ -47,6 +47,7 @@ export default function KitchenPage() {
   const [gens, setGens] = useState([]);
   const [msg, setMsg] = useState(null);
   const [compare, setCompare] = useState(null);
+  const [detail, setDetail] = useState(null);      // ficha de una foto de la mesa
   const [q, setQ] = useState('');                  // buscador de modelos
 
   // Cocinar
@@ -58,6 +59,7 @@ export default function KitchenPage() {
   // Perfil de búsqueda por modelo (nichos) + scraper
   const [niches, setNiches] = useState([]);
   const [newNiche, setNewNiche] = useState('');
+  const [styleDesc, setStyleDesc] = useState('');
   const [scraping, setScraping] = useState(false);
   const [balance, setBalance] = useState(null); // saldo real de Higgsfield (créditos)
 
@@ -72,7 +74,7 @@ export default function KitchenPage() {
     setGens(Array.isArray(data) ? data : []);
   }, [sb]);
   const loadVault = useCallback(async () => {
-    const { data } = await sb.from('creator_vault').select('id, url, caption, creator_id, kind, vibe, likes, source_handle, source_url').in('kind', ['ref', 'real']).order('created_at', { ascending: false }).limit(600);
+    const { data } = await sb.from('creator_vault').select('id, url, caption, creator_id, kind, vibe, likes, source_handle, source_url, source_platform, interest, ai_ok, ai_reason, created_at').in('kind', ['ref', 'real']).order('created_at', { ascending: false }).limit(600);
     const allV = Array.isArray(data) ? data : [];
     setVault(allV);
     const rc = {}; allV.filter((r) => r.kind === 'real').forEach((r) => { rc[r.creator_id] = (rc[r.creator_id] || 0) + 1; }); setRealCount(rc);
@@ -120,7 +122,8 @@ export default function KitchenPage() {
     const m = {}; sourceRows.forEach((r) => { const v = (r.vibe || '').trim(); if (v) m[v] = (m[v] || 0) + 1; }); return m;
   }, [sourceRows]);
   const pickPhotos = useMemo(() => {
-    let rows = sourceRows;
+    // Fuera las descartadas y la basura que marcó la IA.
+    let rows = sourceRows.filter((r) => r.interest !== 'descartada' && r.ai_ok !== false);
     if (vibe !== 'Todos' && vibeCounts[vibe]) rows = rows.filter((r) => (r.vibe || '').toLowerCase() === vibe.toLowerCase());
     // Éxitos primero: más likes arriba (las scrapeadas tienen likes; las subidas a mano quedan después).
     return [...rows].sort((a, b) => (Number(b.likes) || 0) - (Number(a.likes) || 0)).slice(0, 120);
@@ -128,14 +131,15 @@ export default function KitchenPage() {
 
   // Cargar el perfil de búsqueda (nichos) de la modelo elegida.
   useEffect(() => {
-    if (!sel) { setNiches([]); return; }
-    (async () => { const { data } = await sb.from('creator_search_profile').select('niches').eq('creator_id', sel).maybeSingle(); setNiches(Array.isArray(data?.niches) ? data.niches : []); })();
+    if (!sel) { setNiches([]); setStyleDesc(''); return; }
+    (async () => { const { data } = await sb.from('creator_search_profile').select('niches, style_desc').eq('creator_id', sel).maybeSingle(); setNiches(Array.isArray(data?.niches) ? data.niches : []); setStyleDesc(data?.style_desc || ''); })();
   }, [sel, sb]);
 
   const saveNiches = async (list) => {
     setNiches(list);
     await sb.from('creator_search_profile').upsert({ creator_id: sel, niches: list, updated_at: new Date().toISOString() }, { onConflict: 'creator_id' });
   };
+  const saveStyle = async () => { await sb.from('creator_search_profile').upsert({ creator_id: sel, style_desc: styleDesc, updated_at: new Date().toISOString() }, { onConflict: 'creator_id' }); };
   const addNiche = () => { const v = newNiche.trim(); if (!v) return; if (!niches.includes(v)) saveNiches([...niches, v].slice(0, 8)); setNewNiche(''); };
   const doScrape = async () => {
     if (niches.length === 0) { setMsg({ kind: 'info', text: 'Agregá al menos un nicho (ej: gótica, playa) para buscar.' }); return; }
@@ -144,8 +148,26 @@ export default function KitchenPage() {
     setScraping(false);
     if (!out.ok) { setMsg({ kind: 'err', text: out.error || 'No se pudo buscar.' }); return; }
     await loadVault();
-    setMsg({ kind: 'ok', text: `Encontré ${out.saved} virales para ${selCreator?.full_name}. Aparecen abajo con sus likes y su cuenta.` });
+    setMsg({ kind: 'ok', text: `Encontré ${out.saved} virales para ${selCreator?.full_name}.${out.reviewed ? ` La IA revisó ${out.reviewed} y sacó la basura.` : ''} Aparecen abajo, éxitos arriba.` });
   };
+
+  // Curación de la mesa
+  const markInterest = async (row, val) => {
+    await sb.from('creator_vault').update({ interest: val }).eq('id', row.id);
+    setVault((v) => v.map((r) => (r.id === row.id ? { ...r, interest: val } : r)));
+    if (val === 'descartada') { setDetail(null); setQueue((k) => k.filter((u) => u !== row.url)); }
+  };
+  const moreLikeThis = async (row) => {
+    const niche = row.vibe || '';
+    if (!niche) { setMsg({ kind: 'info', text: 'Esta foto no tiene nicho para buscar similares.' }); return; }
+    setDetail(null); setScraping(true); setMsg({ kind: 'info', text: `Buscando más como esta (#${niche})…` });
+    const out = await callFn('scrape', { creator_id: sel, niches: [niche] });
+    setScraping(false);
+    if (!out.ok) { setMsg({ kind: 'err', text: out.error || 'No se pudo buscar.' }); return; }
+    await loadVault();
+    setMsg({ kind: 'ok', text: `Traje ${out.saved} similares a "#${niche}".` });
+  };
+  const cookFromDetail = (row) => { if (!queue.includes(row.url)) setQueue((k) => [...k, row.url]); setDetail(null); setMsg({ kind: 'info', text: 'Agregada a la selección. Dale "Cocinar" abajo (o elegí más).' }); };
 
   const enterModel = (id) => { setSel(id); setSubtab('cocinar'); setQueue([]); setMsg(null); setSource('encontre'); setVibe('Todos'); };
   const toggleQueue = (url) => setQueue((k) => k.includes(url) ? k.filter((u) => u !== url) : [...k, url]);
@@ -162,6 +184,7 @@ export default function KitchenPage() {
     setQueue([]); loadGens();
     setMsg({ kind: 'ok', text: `${n} foto(s) en la cola de ${selCreator?.full_name || 'la modelo'}. Se cocinan con su soul real y aparecen en Resultados.` });
     setSubtab('resultados');
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
   };
 
   const onUpload = async (files) => {
@@ -373,7 +396,10 @@ export default function KitchenPage() {
                         {scraping ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} {scraping ? 'Buscando…' : 'Buscar virales'}
                       </button>
                     </div>
-                    <p className="mt-1.5 text-[11px] text-paper-dim">Vos elegís el nicho. Traigo virales de Instagram de ese estilo, con su @cuenta y sus likes. (El scraper corre por Apify.)</p>
+                    <input value={styleDesc} onChange={(e) => setStyleDesc(e.target.value)} onBlur={saveStyle}
+                      placeholder="Estilo de esta modelo (ej: fitness sensual de playa, nada de producto ni hombres)"
+                      className="mt-2 w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                    <p className="mt-1.5 text-[11px] text-paper-dim">Vos elegís el nicho y el estilo. Traigo virales de Instagram, con @cuenta y likes, y la IA saca la basura (productos, hombres, paisajes) según ese estilo.</p>
                   </div>
                 )}
 
@@ -407,18 +433,19 @@ export default function KitchenPage() {
                     {pickPhotos.map((r) => {
                       const on = queue.includes(r.url);
                       return (
-                        <button key={r.id} type="button" onClick={() => toggleQueue(r.url)}
-                          className={`group relative overflow-hidden rounded-xl border bg-ink-2 text-left transition-all ${on ? 'border-brand ring-2 ring-brand/50' : 'border-line hover:border-brand/40'}`}>
+                        <div key={r.id} onClick={() => setDetail(r)}
+                          className={`group relative cursor-pointer overflow-hidden rounded-xl border bg-ink-2 transition-all ${on ? 'border-brand ring-2 ring-brand/50' : 'border-line hover:border-brand/40'}`}>
                           <img src={r.url} alt="" className="aspect-[3/4] w-full object-cover" />
-                          <div className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/50 bg-black/40 text-transparent group-hover:text-white/70'}`}><Check size={13} /></div>
+                          <button type="button" title="Seleccionar para cocinar" onClick={(e) => { e.stopPropagation(); toggleQueue(r.url); }}
+                            className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/60 bg-black/50 text-white/80 hover:bg-black/70'}`}><Check size={13} /></button>
                           {cookedRefs.has(r.url) && <div className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/85 px-2 py-0.5 text-[10px] font-bold text-white"><Check size={10} /> Hecha</div>}
                           {(r.likes || r.source_handle) && (
-                            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-semibold text-white">
+                            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-semibold text-white">
                               {r.likes ? <span className="inline-flex items-center gap-0.5"><Heart size={10} className="fill-rose-400 text-rose-400" /> {fmtLikes(r.likes)}</span> : <span />}
                               {r.source_handle && <span className="truncate opacity-90">@{r.source_handle}</span>}
                             </div>
                           )}
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -525,6 +552,41 @@ export default function KitchenPage() {
               <button type="button" onClick={enqueue} disabled={enq} className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
                 {enq ? <Loader2 size={14} className="animate-spin" /> : <Pot size={14} />} Cocinar {queue.length}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FICHA de una viral de la mesa ── */}
+      {detail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setDetail(null)}>
+          <div className="card3d flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-line bg-card sm:flex-row" onClick={(e) => e.stopPropagation()}>
+            <div className="shrink-0 bg-ink-2 sm:w-1/2"><img src={detail.url} alt="" className="max-h-[42vh] w-full object-contain sm:max-h-[92vh]" /></div>
+            <div className="flex min-w-0 flex-1 flex-col p-5">
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <h3 className="font-display text-base font-bold text-paper">Info de la foto</h3>
+                <button type="button" onClick={() => setDetail(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-paper-mute hover:text-paper"><X size={15} /></button>
+              </div>
+              <div className="space-y-2 text-sm">
+                {detail.source_platform ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Red social</span><span className="font-semibold capitalize text-paper">{detail.source_platform}</span></div>
+                    {detail.source_handle && <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Cuenta</span>{detail.source_url ? <a href={detail.source_url} target="_blank" rel="noreferrer" className="font-semibold text-brand hover:underline">@{detail.source_handle} ↗</a> : <span className="font-semibold text-paper">@{detail.source_handle}</span>}</div>}
+                    {detail.likes != null && <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Likes</span><span className="inline-flex items-center gap-1 font-semibold text-paper"><Heart size={13} className="fill-rose-400 text-rose-400" /> {fmtLikes(detail.likes)}</span></div>}
+                    {detail.vibe && <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Nicho</span><span className="font-semibold text-paper">#{detail.vibe}</span></div>}
+                  </>
+                ) : (
+                  <p className="text-paper-mute">Foto tuya (subida a mano). No tiene datos de origen.</p>
+                )}
+                <div className="flex items-center justify-between gap-2 border-t border-line/60 pt-2"><span className="text-paper-dim">Cuesta recrearla</span><span className="font-semibold text-amber-300">~{money(0.12)} · 0.12 créd</span></div>
+                {detail.ai_reason && <p className="rounded-lg border border-line bg-ink-2/40 p-2 text-[12px] text-paper-mute">🤖 {detail.ai_reason}</p>}
+              </div>
+              <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+                <button type="button" onClick={() => cookFromDetail(detail)} className="btn3d col-span-2 inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold"><Flame size={15} /> Cocinar con {(selCreator?.full_name || '').split(' ')[0]}</button>
+                <button type="button" onClick={() => markInterest(detail, 'interesada')} className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold ${detail.interest === 'interesada' ? 'border-emerald-500/60 bg-emerald-500/20 text-emerald-200' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'}`}><Heart size={13} /> Me interesa</button>
+                <button type="button" onClick={() => markInterest(detail, 'descartada')} className="inline-flex items-center justify-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-semibold text-paper-mute hover:text-rose-300"><X size={13} /> Fuera</button>
+                {detail.vibe && <button type="button" onClick={() => moreLikeThis(detail)} className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-semibold text-paper-mute hover:text-paper"><Search size={13} /> Más como esta (#{detail.vibe})</button>}
+              </div>
             </div>
           </div>
         </div>
