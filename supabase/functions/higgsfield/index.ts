@@ -289,7 +289,15 @@ Deno.serve(async (req) => {
       const gid = String((body as any)?.generation_id || '');
       const rurl = (body as any)?.result_url || null;
       const good = (body as any)?.ok !== false && !!rurl;
+      const { data: grow } = await svc.from('generations').select('creator_id, created_by, auto_carousel, carousel_of').eq('id', gid).maybeSingle();
       await svc.from('generations').update({ status: good ? 'done' : 'failed', result_url: rurl, credits: Number((body as any)?.credits) || null, usd: Number((body as any)?.usd) || null, prompt: (body as any)?.prompt || null, note: (body as any)?.note || null }).eq('id', gid);
+      // Auto-carrusel: si la réplica salió bien y venía marcada, encola sus variaciones (misma escena, otras poses).
+      if (good && rurl && grow && Number((grow as any).auto_carousel) > 0 && !(grow as any).carousel_of) {
+        const nn = Math.min(Math.max(Number((grow as any).auto_carousel), 1), 7);
+        const rows = Array.from({ length: nn }, () => ({ creator_id: (grow as any).creator_id, reference_url: rurl, status: 'queued', model: 'soul-v2', note: 'var:', carousel_of: gid, created_by: (grow as any).created_by }));
+        await svc.from('generations').insert(rows);
+        await svc.from('generations').update({ auto_carousel: 0 }).eq('id', gid);
+      }
       return reply({ ok: true });
     }
 
@@ -394,19 +402,26 @@ Deno.serve(async (req) => {
       const { data: gen } = await svc.from('generations').insert({ creator_id: creatorId, reference_url: ref, request_id: rid, status: rid ? 'queued' : 'failed', credits, usd, model: 'soul-v1', created_by: user.id }).select('id').single();
       return reply({ ok: !!rid, status: r.status, generation_id: (gen as any)?.id, request_id: rid, detail: rid ? undefined : r.json });
     }
-    // Variaciones: mismo lugar + mismo outfit, otras poses/situaciones. Encola N jobs con note='var:<idea>' y reference = la foto ya generada.
+    // Variaciones: mismo lugar + mismo outfit, otras poses/situaciones. Una idea POR FOTO (ideas[]),
+    // o modo sorpresa (n fotos con idea vacía = la IA elige cada pose). Encola jobs con note='var:<idea>'.
     if (action === 'make_variations') {
       const gid = String(body?.generation_id || '');
-      const n = Math.min(Math.max(Number(body?.n) || 4, 1), 8);
-      const idea = String(body?.idea || '').slice(0, 200);
+      let ideas: string[];
+      if (Array.isArray((body as any)?.ideas)) {
+        ideas = (body as any).ideas.map((x: unknown) => String(x ?? '').slice(0, 200)).slice(0, 8);
+      } else {
+        const n = Math.min(Math.max(Number(body?.n) || 4, 1), 8);
+        ideas = Array.from({ length: n }, () => String(body?.idea || '').slice(0, 200));
+      }
+      if (!ideas.length) return reply({ ok: false, error: 'Elegí al menos una.' });
       const { data: g } = await svc.from('generations').select('creator_id, result_url, reference_url').eq('id', gid).maybeSingle();
       if (!g || !(g as any).creator_id) return reply({ ok: false, error: 'No existe esa foto.' });
       const src = (g as any).result_url || (g as any).reference_url;
       if (!src) return reply({ ok: false, error: 'Esa foto no tiene imagen para variar.' });
-      const rows = Array.from({ length: n }, () => ({ creator_id: (g as any).creator_id, reference_url: src, status: 'queued', model: 'soul-v2', note: `var:${idea}`, carousel_of: gid, created_by: user.id }));
+      const rows = ideas.map((idea) => ({ creator_id: (g as any).creator_id, reference_url: src, status: 'queued', model: 'soul-v2', note: `var:${idea}`, carousel_of: gid, created_by: user.id }));
       const { error } = await svc.from('generations').insert(rows);
       if (error) return reply({ ok: false, error: `No se pudo encolar: ${error.message}` });
-      return reply({ ok: true, queued: n });
+      return reply({ ok: true, queued: rows.length });
     }
     if (action === 'gen_poll') {
       const gid = String(body?.generation_id || '');

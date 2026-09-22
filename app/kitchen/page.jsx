@@ -168,6 +168,17 @@ export default function KitchenPage() {
     setMsg({ kind: 'ok', text: `Traje ${out.saved} similares a "#${niche}".` });
   };
   const cookFromDetail = (row) => { if (!queue.includes(row.url)) setQueue((k) => [...k, row.url]); setDetail(null); setMsg({ kind: 'info', text: 'Agregada a la selección. Dale "Cocinar" abajo (o elegí más).' }); };
+  // Cocina directo desde la ficha. Si total>1: cocina la réplica + (total-1) variaciones automáticas (mismo lugar/outfit, otras poses).
+  const cookDetail = async (row, total) => {
+    if (!selReady) { setMsg({ kind: 'err', text: `${selCreator?.full_name || 'Esta modelo'} todavía no tiene su soul enlazada. Avisame y la enlazo.` }); return; }
+    setEnq(true);
+    const { error } = await sb.from('generations').insert({ creator_id: sel, reference_url: row.url, status: 'queued', engine: 'soul2', model: 'text2image_soul_v2', auto_carousel: Math.max(0, total - 1) });
+    setEnq(false);
+    if (error) { setMsg({ kind: 'err', text: `No se pudo encolar: ${error.message}` }); return; }
+    setDetail(null); setDetailN(1); loadGens(); setSubtab('resultados');
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
+    setMsg({ kind: 'ok', text: total > 1 ? `Cocinando carrusel: la réplica + ${total - 1} variaciones. Aparece en Resultados.` : 'Cocinando la réplica. Aparece en Resultados.' });
+  };
 
   const enterModel = (id) => { setSel(id); setSubtab('cocinar'); setQueue([]); setMsg(null); setSource('encontre'); setVibe('Todos'); };
   const toggleQueue = (url) => setQueue((k) => k.includes(url) ? k.filter((u) => u !== url) : [...k, url]);
@@ -221,18 +232,28 @@ export default function KitchenPage() {
     setMsg({ kind: 'info', text: 'La mandé de nuevo a la cola.' });
   };
 
-  // Carrusel: encola N variaciones (mismo lugar + mismo outfit, otras poses) sobre la foto raíz.
+  // Carrusel: variaciones (mismo lugar + mismo outfit, otras poses) sobre la foto raíz.
+  // Dos modos: 'auto' (sorpréndeme: N fotos, la IA elige cada pose) o 'custom' (una idea por foto).
+  const [varMode, setVarMode] = useState('auto');
   const [varN, setVarN] = useState(3);
-  const [varIdea, setVarIdea] = useState('');
+  const [varIdeas, setVarIdeas] = useState(['', '']); // modo custom: una idea por foto
   const [varBusy, setVarBusy] = useState(false);
+  const [detailN, setDetailN] = useState(1); // ficha: 1 = normal, >1 = carrusel al cocinar
   const makeVariations = async (rootId) => {
     if (!rootId) return;
+    let ideas;
+    if (varMode === 'custom') {
+      ideas = varIdeas.map((s) => s.trim()).slice(0, 8);
+      if (ideas.length === 0) { setMsg({ kind: 'info', text: 'Agregá al menos una foto.' }); return; }
+    } else {
+      ideas = Array.from({ length: varN }, () => '');
+    }
     setVarBusy(true);
-    const r = await callFn('make_variations', { generation_id: rootId, n: varN, idea: varIdea.trim() });
+    const r = await callFn('make_variations', { generation_id: rootId, ideas });
     setVarBusy(false);
     if (r?.ok) {
-      setVarIdea('');
-      setMsg({ kind: 'ok', text: `${r.queued} variación(es) en la cola — mismo lugar y outfit, otras poses. Aparecen acá abajo cocinándose.` });
+      if (varMode === 'custom') setVarIdeas(['', '']);
+      setMsg({ kind: 'ok', text: `${r.queued} foto(s) en la cola — mismo lugar y outfit, otras poses. Aparecen acá abajo cocinándose.` });
       loadGens();
     } else setMsg({ kind: 'err', text: r?.error || 'No se pudo armar el carrusel.' });
   };
@@ -622,7 +643,19 @@ export default function KitchenPage() {
                 {detail.ai_reason && <p className="rounded-lg border border-line bg-ink-2/40 p-2 text-[12px] text-paper-mute">🤖 {detail.ai_reason}</p>}
               </div>
               <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
-                <button type="button" onClick={() => cookFromDetail(detail)} className="btn3d col-span-2 inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold"><Flame size={15} /> Cocinar con {(selCreator?.full_name || '').split(' ')[0]}</button>
+                {/* Elegir: normal (1 foto) o carrusel (réplica + N variaciones) */}
+                <div className="col-span-2">
+                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-paper-mute">Cocinar como:</span>
+                    <button type="button" onClick={() => setDetailN(1)} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${detailN === 1 ? 'bg-brand text-on-accent' : 'border border-line text-paper-mute hover:text-paper'}`}>Normal</button>
+                    {[2, 3, 4].map((n) => (
+                      <button key={n} type="button" onClick={() => setDetailN(n)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${detailN === n ? 'bg-brand text-on-accent' : 'border border-line text-paper-mute hover:text-paper'}`}><LayoutGrid size={11} /> Carrusel {n}</button>
+                    ))}
+                  </div>
+                  <button type="button" disabled={enq} onClick={() => cookDetail(detail, detailN)} className="btn3d inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-50">
+                    {enq ? <Loader2 size={15} className="animate-spin" /> : <Flame size={15} />} {detailN > 1 ? `Cocinar carrusel de ${detailN}` : 'Cocinar'} con {(selCreator?.full_name || '').split(' ')[0]}
+                  </button>
+                </div>
                 <button type="button" onClick={() => markInterest(detail, 'interesada')} className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold ${detail.interest === 'interesada' ? 'border-emerald-500/60 bg-emerald-500/20 text-emerald-200' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'}`}><Heart size={13} /> Me interesa</button>
                 <button type="button" onClick={() => markInterest(detail, 'descartada')} className="inline-flex items-center justify-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-semibold text-paper-mute hover:text-rose-300"><X size={13} /> Fuera</button>
                 {detail.vibe && <button type="button" onClick={() => moreLikeThis(detail)} className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-full border border-line px-3 py-2 text-xs font-semibold text-paper-mute hover:text-paper"><Search size={13} /> Más como esta (#{detail.vibe})</button>}
@@ -657,16 +690,42 @@ export default function KitchenPage() {
               {/* Carrusel: mismo lugar + mismo outfit, otras poses */}
               <div className="mt-4 rounded-2xl border border-brand/25 bg-ink-2 p-3">
                 <div className="mb-2 flex items-center gap-1.5 text-sm font-bold text-paper"><LayoutGrid size={15} className="text-brand" /> Hacer carrusel <span className="text-[11px] font-normal text-paper-dim">— mismo lugar y outfit, otras poses</span></div>
-                <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-paper-mute">¿Cuántas?</span>
-                  {[2, 3, 4, 6].map((n) => (
-                    <button key={n} type="button" onClick={() => setVarN(n)} className={`h-7 w-8 rounded-lg text-xs font-bold transition-colors ${varN === n ? 'bg-brand text-on-accent' : 'border border-line text-paper-mute hover:text-paper'}`}>{n}</button>
-                  ))}
+                {/* Modo: sorpréndeme vs una idea por foto */}
+                <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-line bg-card p-1">
+                  <button type="button" onClick={() => setVarMode('auto')} className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${varMode === 'auto' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}><Sparkles size={12} /> Sorpréndeme</button>
+                  <button type="button" onClick={() => setVarMode('custom')} className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${varMode === 'custom' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}><Flame size={12} /> Yo elijo cada una</button>
                 </div>
-                <input value={varIdea} onChange={(e) => setVarIdea(e.target.value)} placeholder="Idea opcional (ej: sentada en el sillón con un trago) — vacío = Auto" className="mb-2 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-paper placeholder:text-paper-dim/60 focus:border-brand/50 focus:outline-none" />
-                <button type="button" disabled={varBusy} onClick={() => makeVariations(compare.root)} className="btn3d inline-flex w-full items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
-                  {varBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {varIdea.trim() ? `Cocinar ${varN}` : `Auto ${varN}`} {varIdea.trim() ? 'con tu idea' : '(la IA elige)'}
-                </button>
+
+                {varMode === 'auto' ? (
+                  <>
+                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] text-paper-mute">¿Cuántas?</span>
+                      {[2, 3, 4, 6].map((n) => (
+                        <button key={n} type="button" onClick={() => setVarN(n)} className={`h-7 w-8 rounded-lg text-xs font-bold transition-colors ${varN === n ? 'bg-brand text-on-accent' : 'border border-line text-paper-mute hover:text-paper'}`}>{n}</button>
+                      ))}
+                    </div>
+                    <button type="button" disabled={varBusy} onClick={() => makeVariations(compare.root)} className="btn3d inline-flex w-full items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+                      {varBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Cocinar {varN} · la IA elige las poses
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="mb-2 text-[11px] text-paper-mute">Escribí qué querés en cada foto. La que dejes vacía, la IA la resuelve sola.</p>
+                    <div className="mb-2 space-y-1.5">
+                      {varIdeas.map((v, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-bold text-brand">{i + 1}</span>
+                          <input value={v} onChange={(e) => setVarIdeas((a) => a.map((x, j) => j === i ? e.target.value : x))} placeholder={`Foto ${i + 1} (ej: ${['de pie mirando a cámara', 'sentada de perfil', 'caminando', 'de espaldas mirando atrás', 'apoyada en la pared'][i % 5]})`} className="w-full rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-paper placeholder:text-paper-dim/60 focus:border-brand/50 focus:outline-none" />
+                          {varIdeas.length > 1 && <button type="button" onClick={() => setVarIdeas((a) => a.filter((_, j) => j !== i))} className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line text-paper-mute hover:text-rose-300"><X size={12} /></button>}
+                        </div>
+                      ))}
+                    </div>
+                    {varIdeas.length < 8 && <button type="button" onClick={() => setVarIdeas((a) => [...a, ''])} className="mb-2 inline-flex items-center gap-1 rounded-full border border-line px-3 py-1.5 text-[11px] font-semibold text-paper-mute hover:text-paper"><Plus size={12} /> Agregar otra foto</button>}
+                    <button type="button" disabled={varBusy} onClick={() => makeVariations(compare.root)} className="btn3d inline-flex w-full items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+                      {varBusy ? <Loader2 size={14} className="animate-spin" /> : <Flame size={14} />} Cocinar {varIdeas.length} con tus ideas
+                    </button>
+                  </>
+                )}
 
                 {/* Fotos del carrusel: cocinándose + listas */}
                 {cmpKids.length > 0 && (
