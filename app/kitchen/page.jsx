@@ -81,6 +81,14 @@ export default function KitchenPage() {
     })();
   }, [access, sb, loadVault, loadSummary, loadGens]);
 
+  // Auto-refresco: mientras haya algo cocinándose, recargar solo cada 6s (para que el resultado aparezca sin apretar nada).
+  useEffect(() => {
+    if (access !== 'ok') return;
+    if (!gens.some((g) => ['queued', 'in_progress'].includes(g.status))) return;
+    const t = setInterval(() => { loadGens(); }, 6000);
+    return () => clearInterval(t);
+  }, [access, gens, loadGens]);
+
   const selCreator = creators.find((c) => c.id === sel) || null;
   const selReady = ident[sel]?.status === 'ready';
 
@@ -172,6 +180,7 @@ export default function KitchenPage() {
   const reviewRows = gens.filter((g) => g.creator_id === sel && g.status === 'done');
   const approvedRows = gens.filter((g) => g.creator_id === sel && g.status === 'approved');
   const pendingRows = gens.filter((g) => g.creator_id === sel && ['queued', 'in_progress'].includes(g.status));
+  const failedRows = gens.filter((g) => g.creator_id === sel && g.status === 'failed');
 
   return (
     <div className="min-h-screen bg-ink text-paper">
@@ -354,7 +363,8 @@ export default function KitchenPage() {
             {/* ── RESULTADOS (de esta modelo) ── */}
             {subtab === 'resultados' && (
               <div>
-                {pendingRows.length > 0 && <p className="mb-3 inline-flex items-center gap-1.5 text-xs text-amber-300"><Loader2 size={13} className="animate-spin" /> {pendingRows.length} en la cola, cocinándose…</p>}
+                {pendingRows.length > 0 && <p className="mb-3 inline-flex items-center gap-1.5 text-xs text-amber-300"><Loader2 size={13} className="animate-spin" /> {pendingRows.length} en la cola, cocinándose… (se actualiza solo)</p>}
+                {failedRows.length > 0 && <p className="mb-3 inline-flex items-center gap-1.5 text-xs text-rose-300"><AlertTriangle size={13} /> {failedRows.length} rechazada(s) por el motor (NSFW o error) — probá otra referencia.</p>}
                 {reviewRows.length === 0 && approvedRows.length === 0 && pendingRows.length === 0 ? (
                   <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Todavía no cocinaste nada para {selCreator.full_name}. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button>.</p>
                 ) : (
