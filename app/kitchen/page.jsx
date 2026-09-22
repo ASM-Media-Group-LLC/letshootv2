@@ -32,6 +32,7 @@ const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'F
 // Valor aprox del crédito Higgsfield (Soul 2.0 ≈ 0.12 créd ≈ US$0.011/foto). Ajustable.
 const USD_PER_CREDIT = 0.09;
 const money = (credits) => `US$${(Number(credits || 0) * USD_PER_CREDIT).toFixed(2)}`;
+const fmtLikes = (n) => { const x = Number(n || 0); return x >= 1e6 ? `${(x / 1e6).toFixed(1)}M` : x >= 1e3 ? `${(x / 1e3).toFixed(1)}k` : `${x}`; };
 
 export default function KitchenPage() {
   const [access, setAccess] = useState('loading');
@@ -66,7 +67,7 @@ export default function KitchenPage() {
     setGens(Array.isArray(data) ? data : []);
   }, [sb]);
   const loadVault = useCallback(async () => {
-    const { data } = await sb.from('creator_vault').select('id, url, caption, creator_id, kind, vibe').in('kind', ['ref', 'real']).order('created_at', { ascending: false }).limit(600);
+    const { data } = await sb.from('creator_vault').select('id, url, caption, creator_id, kind, vibe, likes, source_handle, source_url').in('kind', ['ref', 'real']).order('created_at', { ascending: false }).limit(600);
     const allV = Array.isArray(data) ? data : [];
     setVault(allV);
     const rc = {}; allV.filter((r) => r.kind === 'real').forEach((r) => { rc[r.creator_id] = (rc[r.creator_id] || 0) + 1; }); setRealCount(rc);
@@ -96,14 +97,20 @@ export default function KitchenPage() {
   }, [gens]);
   const mine = statsFor(sel);
 
+  const sourceRows = useMemo(() => {
+    if (source === 'tengo') return vault.filter((r) => r.kind === 'real' && r.creator_id === sel);
+    if (source === 'encontre') return vault.filter((r) => r.kind === 'ref');
+    return vault.filter((r) => r.kind === 'ref' && r.creator_id === sel);
+  }, [vault, source, sel]);
+  // Vibes que realmente tienen fotos etiquetadas (para no mostrar chips que dan grilla vacía).
+  const vibeCounts = useMemo(() => {
+    const m = {}; sourceRows.forEach((r) => { const v = (r.vibe || '').trim(); if (v) m[v] = (m[v] || 0) + 1; }); return m;
+  }, [sourceRows]);
   const pickPhotos = useMemo(() => {
-    let rows = [];
-    if (source === 'tengo') rows = vault.filter((r) => r.kind === 'real' && r.creator_id === sel);
-    else if (source === 'encontre') rows = vault.filter((r) => r.kind === 'ref');
-    else rows = vault.filter((r) => r.kind === 'ref' && r.creator_id === sel);
-    if (vibe !== 'Todos') rows = rows.filter((r) => (r.vibe || '').toLowerCase() === vibe.toLowerCase());
+    let rows = sourceRows;
+    if (vibe !== 'Todos' && vibeCounts[vibe]) rows = rows.filter((r) => (r.vibe || '').toLowerCase() === vibe.toLowerCase());
     return rows.slice(0, 120);
-  }, [vault, source, vibe, sel]);
+  }, [sourceRows, vibe, vibeCounts]);
 
   const enterModel = (id) => { setSel(id); setSubtab('cocinar'); setQueue([]); setMsg(null); setSource('encontre'); setVibe('Todos'); };
   const toggleQueue = (url) => setQueue((k) => k.includes(url) ? k.filter((u) => u !== url) : [...k, url]);
@@ -296,13 +303,18 @@ export default function KitchenPage() {
                   })}
                 </div>
 
-                {source !== 'subir' && (
-                  <div className="mb-3 flex flex-wrap gap-1.5">
-                    {VIBES.map((v) => (
+                {source !== 'subir' && Object.keys(vibeCounts).length > 0 && (
+                  <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                    {['Todos', ...VIBES.filter((v) => v !== 'Todos' && vibeCounts[v])].map((v) => (
                       <button key={v} type="button" onClick={() => setVibe(v)}
-                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${vibe === v ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-dim hover:text-paper'}`}>{v}</button>
+                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${vibe === v ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-dim hover:text-paper'}`}>
+                        {v}{v !== 'Todos' && <span className="text-[10px] opacity-70">{vibeCounts[v]}</span>}
+                      </button>
                     ))}
                   </div>
+                )}
+                {source !== 'subir' && Object.keys(vibeCounts).length === 0 && (
+                  <p className="mb-3 text-xs text-paper-dim">Las secciones por vibe (casual, playa, editorial…) y los likes se activan cuando conecto el scraper, que trae las virales con su fuente y sus números.</p>
                 )}
 
                 {source === 'subir' ? (
@@ -325,6 +337,12 @@ export default function KitchenPage() {
                           className={`group relative overflow-hidden rounded-xl border bg-ink-2 text-left transition-all ${on ? 'border-brand ring-2 ring-brand/50' : 'border-line hover:border-brand/40'}`}>
                           <img src={r.url} alt="" className="aspect-[3/4] w-full object-cover" />
                           <div className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/50 bg-black/40 text-transparent group-hover:text-white/70'}`}><Check size={13} /></div>
+                          {(r.likes || r.source_handle) && (
+                            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-semibold text-white">
+                              {r.likes ? <span className="inline-flex items-center gap-0.5"><Heart size={10} className="fill-rose-400 text-rose-400" /> {fmtLikes(r.likes)}</span> : <span />}
+                              {r.source_handle && <span className="truncate opacity-90">@{r.source_handle}</span>}
+                            </div>
+                          )}
                         </button>
                       );
                     })}
