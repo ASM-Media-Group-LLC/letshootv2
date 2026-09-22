@@ -13,7 +13,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import {
   ArrowLeft, ChefHat, Loader2, CheckCircle2, Sparkles, IdCard, Coins, RefreshCw,
   Heart, Trash2, Flame, Images, ArrowRight, AlertTriangle, X, Search,
-  FolderHeart, Compass, Upload, Check, ChefHat as Pot,
+  FolderHeart, Compass, Upload, Check, ChefHat as Pot, LayoutGrid, Plus,
 } from 'lucide-react';
 
 async function callFn(action, extra) {
@@ -70,7 +70,7 @@ export default function KitchenPage() {
     if (out.ok) { const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m); setBalance(out.balance ?? null); }
   }, []);
   const loadGens = useCallback(async () => {
-    const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, note, created_at').order('created_at', { ascending: false }).limit(200);
+    const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, note, created_at, done_at, carousel_of').order('created_at', { ascending: false }).limit(200);
     setGens(Array.isArray(data) ? data : []);
   }, [sb]);
   const loadVault = useCallback(async () => {
@@ -207,10 +207,11 @@ export default function KitchenPage() {
     setUploading(false);
   };
 
-  const decide = async (g, approve) => {
+  const decide = async (g, approve, keepOpen = false) => {
     await callFn('approve_gen', { generation_id: g.id, approve });
-    setCompare(null); loadGens();
-    setMsg({ kind: approve ? 'ok' : 'info', text: approve ? 'Aprobada — va a su baúl IA ✓' : 'Descartada.' });
+    if (!keepOpen) setCompare(null);
+    loadGens();
+    setMsg({ kind: approve ? 'ok' : 'info', text: approve ? 'Aprobada — foto limpia (sin metadata) al baúl ✓' : 'Descartada.' });
   };
 
   // Reintentar una rechazada: la vuelve a la cola.
@@ -218,6 +219,22 @@ export default function KitchenPage() {
     await sb.from('generations').update({ status: 'queued', note: null, result_url: null }).eq('id', g.id);
     loadGens();
     setMsg({ kind: 'info', text: 'La mandé de nuevo a la cola.' });
+  };
+
+  // Carrusel: encola N variaciones (mismo lugar + mismo outfit, otras poses) sobre la foto raíz.
+  const [varN, setVarN] = useState(3);
+  const [varIdea, setVarIdea] = useState('');
+  const [varBusy, setVarBusy] = useState(false);
+  const makeVariations = async (rootId) => {
+    if (!rootId) return;
+    setVarBusy(true);
+    const r = await callFn('make_variations', { generation_id: rootId, n: varN, idea: varIdea.trim() });
+    setVarBusy(false);
+    if (r?.ok) {
+      setVarIdea('');
+      setMsg({ kind: 'ok', text: `${r.queued} variación(es) en la cola — mismo lugar y outfit, otras poses. Aparecen acá abajo cocinándose.` });
+      loadGens();
+    } else setMsg({ kind: 'err', text: r?.error || 'No se pudo armar el carrusel.' });
   };
 
   // Referencias que esta modelo YA cocinó (para marcarlas en el selector).
@@ -237,10 +254,21 @@ export default function KitchenPage() {
 
   const filteredCreators = creators.filter((c) => c.full_name.toLowerCase().includes(q.trim().toLowerCase()));
   const totalCredits = gens.filter((g) => g.status !== 'failed').reduce((a, g) => a + Number(g.credits || 0), 0);
-  const reviewRows = gens.filter((g) => g.creator_id === sel && g.status === 'done');
-  const approvedRows = gens.filter((g) => g.creator_id === sel && g.status === 'approved');
-  const pendingRows = gens.filter((g) => g.creator_id === sel && ['queued', 'in_progress'].includes(g.status));
-  const failedRows = gens.filter((g) => g.creator_id === sel && g.status === 'failed');
+  const doneTs = (g) => new Date(g.done_at || g.created_at).getTime();
+  const mineGens = gens.filter((g) => g.creator_id === sel);
+  const isRoot = (g) => !g.carousel_of; // réplica (no es variación de carrusel)
+  // Grid principal: solo réplicas. Las variaciones se ven/aprueban dentro del pop-up del carrusel.
+  const reviewRows = mineGens.filter((g) => g.status === 'done' && isRoot(g)).sort((a, b) => doneTs(b) - doneTs(a));
+  const approvedRows = mineGens.filter((g) => g.status === 'approved').sort((a, b) => doneTs(b) - doneTs(a)); // baúl: réplicas + variaciones
+  const pendingRows = mineGens.filter((g) => ['queued', 'in_progress'].includes(g.status) && isRoot(g));
+  const failedRows = mineGens.filter((g) => g.status === 'failed' && isRoot(g));
+  // Hijos de un carrusel (todas las fotos cuya raíz es rootId, sin la raíz), ordenadas por cocinado.
+  const rootOf = (g) => g.carousel_of || g.id;
+  const carouselKids = (rootId) => mineGens.filter((g) => g.carousel_of === rootId).sort((a, b) => doneTs(a) - doneTs(b));
+  const carouselCount = (rootId) => mineGens.filter((g) => g.carousel_of === rootId && g.status !== 'failed' && g.status !== 'rejected').length;
+  // Datos del pop-up del carrusel (se recalculan vivos con el polling de gens).
+  const cmpRoot = compare ? mineGens.find((x) => x.id === compare.root) : null;
+  const cmpKids = compare ? carouselKids(compare.root) : [];
 
   return (
     <div className="min-h-screen bg-ink text-paper">
@@ -338,9 +366,9 @@ export default function KitchenPage() {
                   : <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300"><AlertTriangle size={12} /> Sin soul — avisame y la enlazo</div>}
               </div>
               <div className="ml-auto flex items-center gap-2">
-                <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center" title={`${mine.credits.toFixed(2)} créditos · ~US$0.011/foto`}>
-                  <div className="text-sm font-bold tabular-nums text-amber-300">{money(mine.credits)}</div>
-                  <div className="text-[10px] text-paper-dim">gastado · {mine.credits.toFixed(1)} créd</div>
+                <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center" title={`Total gastado en ${selCreator.full_name}: ${money(mine.credits)} = ${mine.credits.toFixed(2)} créditos en ${mine.total} fotos (${money(0.12)} c/foto)`}>
+                  <div className="text-sm font-bold tabular-nums text-amber-300">{money(mine.credits)} <span className="text-paper-dim">·</span> {mine.credits.toFixed(1)} créd</div>
+                  <div className="text-[10px] text-paper-dim">total gastado</div>
                 </div>
                 <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center">
                   <div className="text-sm font-bold tabular-nums text-paper">{mine.total}</div>
@@ -481,35 +509,43 @@ export default function KitchenPage() {
                   </section>
                 )}
 
-                {/* Para revisar */}
+                {/* Para revisar — cada réplica abre su pop-up (comparador + carrusel) */}
                 {reviewRows.length > 0 && (
                   <section>
-                    <h3 className="mb-2 font-display text-sm font-bold text-paper">Para revisar · {reviewRows.length}</h3>
+                    <h3 className="mb-1 font-display text-sm font-bold text-paper">Para revisar · {reviewRows.length}</h3>
+                    <p className="mb-2 text-xs text-paper-dim">Tocá una foto para verla grande, aprobarla y armar su carrusel (mismo lugar y outfit, otras poses).</p>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                      {reviewRows.map((g) => (
+                      {reviewRows.map((g) => {
+                        const kids = carouselCount(g.id);
+                        return (
                         <div key={g.id} className="overflow-hidden rounded-xl border border-line bg-ink-2">
-                          <button type="button" onClick={() => setCompare({ reference_url: g.reference_url, result_url: g.result_url, generation_id: g.id, creator_id: g.creator_id })} className="block w-full">
+                          <button type="button" onClick={() => setCompare({ root: g.id, creator_id: g.creator_id })} className="relative block w-full">
                             {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                            {kids > 0 && <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
                           </button>
                           <div className="flex items-center gap-1 p-2">
                             <button type="button" onClick={() => decide(g, true)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={12} /> Aprobar</button>
+                            <button type="button" onClick={() => setCompare({ root: g.id, creator_id: g.creator_id })} className="inline-flex items-center justify-center gap-1 rounded-full border border-brand/40 px-2 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/10" title="Armar carrusel"><LayoutGrid size={12} /></button>
                             <button type="button" onClick={() => decide(g, false)} className="inline-flex items-center justify-center rounded-full border border-line px-2 py-1.5 text-paper-mute hover:text-rose-300"><Trash2 size={12} /></button>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </section>
                 )}
 
-                {/* Aprobadas */}
+                {/* Aprobadas — limpias en el baúl; tocá una para seguir su carrusel */}
                 {approvedRows.length > 0 && (
                   <section>
-                    <h3 className="mb-2 font-display text-sm font-bold text-paper">Aprobadas · {approvedRows.length}</h3>
+                    <h3 className="mb-1 font-display text-sm font-bold text-paper">Aprobadas · {approvedRows.length}</h3>
+                    <p className="mb-2 inline-flex items-center gap-1 text-xs text-emerald-300/80"><Check size={12} /> Limpias (sin metadata) en el baúl. Tocá una réplica para hacerle más carrusel.</p>
                     <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
                       {approvedRows.map((g) => (
-                        <div key={g.id} className="overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
+                        <button type="button" key={g.id} onClick={() => setCompare({ root: rootOf(g), creator_id: g.creator_id })} className="group relative block overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
                           {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
-                        </div>
+                          <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/60 py-1 text-[10px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100"><LayoutGrid size={10} /> carrusel</span>
+                        </button>
                       ))}
                     </div>
                   </section>
@@ -596,21 +632,76 @@ export default function KitchenPage() {
         </div>
       )}
 
-      {/* ── ANTES / DESPUÉS ── */}
-      {compare && (
+      {/* ── ANTES / DESPUÉS + CARRUSEL (todo dentro del pop-up) ── */}
+      {compare && cmpRoot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setCompare(null)}>
-          <div className="card3d flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-line bg-card" onClick={(e) => e.stopPropagation()}>
+          <div className="card3d flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-line bg-card" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-line px-5 py-3">
-              <h3 className="font-display text-base font-bold text-paper">Antes / Después</h3>
+              <h3 className="inline-flex items-center gap-2 font-display text-base font-bold text-paper">Antes / Después {cmpKids.length > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold text-brand"><LayoutGrid size={11} /> Carrusel · {carouselCount(compare.root) + 1}</span>}</h3>
               <button type="button" onClick={() => setCompare(null)} className="grid h-8 w-8 place-items-center rounded-full border border-line text-paper-mute hover:text-paper"><X size={15} /></button>
             </div>
-            <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-y-auto p-4">
-              <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Viral (referencia)</div><img src={compare.reference_url} alt="" className="w-full rounded-xl border border-line object-cover" /></div>
-              <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-brand">Su versión</div><img src={compare.result_url} alt="" className="w-full rounded-xl border border-brand/40 object-cover" /></div>
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
-              <button type="button" onClick={() => decide({ id: compare.generation_id, creator_id: compare.creator_id, result_url: compare.result_url }, false)} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold"><Trash2 size={14} /> Descartar</button>
-              <button type="button" onClick={() => decide({ id: compare.generation_id, creator_id: compare.creator_id, result_url: compare.result_url }, true)} className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold"><Heart size={14} /> Aprobar → baúl</button>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {/* Réplica: viral vs su versión */}
+              <div className="grid grid-cols-2 gap-3">
+                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Viral (referencia)</div><img src={cmpRoot.reference_url} alt="" className="w-full rounded-xl border border-line object-cover" /></div>
+                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-brand">Su versión {cmpRoot.status === 'approved' && <span className="text-emerald-300">· aprobada ✓</span>}</div><img src={cmpRoot.result_url} alt="" className="w-full rounded-xl border border-brand/40 object-cover" /></div>
+              </div>
+              {cmpRoot.status === 'done' && (
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <button type="button" onClick={() => decide(cmpRoot, false, false)} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold"><Trash2 size={14} /> Descartar</button>
+                  <button type="button" onClick={() => decide(cmpRoot, true, true)} className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold"><Heart size={14} /> Aprobar → baúl</button>
+                </div>
+              )}
+
+              {/* Carrusel: mismo lugar + mismo outfit, otras poses */}
+              <div className="mt-4 rounded-2xl border border-brand/25 bg-ink-2 p-3">
+                <div className="mb-2 flex items-center gap-1.5 text-sm font-bold text-paper"><LayoutGrid size={15} className="text-brand" /> Hacer carrusel <span className="text-[11px] font-normal text-paper-dim">— mismo lugar y outfit, otras poses</span></div>
+                <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-paper-mute">¿Cuántas?</span>
+                  {[2, 3, 4, 6].map((n) => (
+                    <button key={n} type="button" onClick={() => setVarN(n)} className={`h-7 w-8 rounded-lg text-xs font-bold transition-colors ${varN === n ? 'bg-brand text-on-accent' : 'border border-line text-paper-mute hover:text-paper'}`}>{n}</button>
+                  ))}
+                </div>
+                <input value={varIdea} onChange={(e) => setVarIdea(e.target.value)} placeholder="Idea opcional (ej: sentada en el sillón con un trago) — vacío = Auto" className="mb-2 w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-paper placeholder:text-paper-dim/60 focus:border-brand/50 focus:outline-none" />
+                <button type="button" disabled={varBusy} onClick={() => makeVariations(compare.root)} className="btn3d inline-flex w-full items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+                  {varBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {varIdea.trim() ? `Cocinar ${varN}` : `Auto ${varN}`} {varIdea.trim() ? 'con tu idea' : '(la IA elige)'}
+                </button>
+
+                {/* Fotos del carrusel: cocinándose + listas */}
+                {cmpKids.length > 0 && (
+                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {cmpKids.map((k) => (
+                      <div key={k.id} className={`overflow-hidden rounded-lg border bg-card ${k.status === 'approved' ? 'border-emerald-500/40' : k.status === 'failed' ? 'border-rose-500/30' : 'border-line'}`}>
+                        {['queued', 'in_progress'].includes(k.status) ? (
+                          <div className="relative">
+                            {k.reference_url ? <img src={k.reference_url} alt="" className="aspect-[3/4] w-full scale-105 object-cover blur-md brightness-[0.4]" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                            <div className="absolute inset-0 grid place-items-center"><Loader2 size={20} className="animate-spin text-amber-300" /></div>
+                          </div>
+                        ) : k.status === 'failed' ? (
+                          <div className="relative">
+                            {k.reference_url ? <img src={k.reference_url} alt="" className="aspect-[3/4] w-full object-cover opacity-40" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                            <button type="button" onClick={() => retry(k)} className="absolute inset-0 grid place-items-center text-[10px] font-semibold text-rose-200"><RefreshCw size={16} /></button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="relative">
+                              <img src={k.result_url} alt="" className="aspect-[3/4] w-full object-cover" />
+                              {k.status === 'approved' && <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white"><Check size={11} /></span>}
+                            </div>
+                            {k.status === 'done' && (
+                              <div className="flex items-center gap-1 p-1.5">
+                                <button type="button" onClick={() => decide(k, true, true)} className="inline-flex flex-1 items-center justify-center gap-0.5 rounded-full bg-emerald-500/20 px-1 py-1 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={10} /></button>
+                                <button type="button" onClick={() => decide(k, false, true)} className="inline-flex items-center justify-center rounded-full border border-line px-1.5 py-1 text-paper-mute hover:text-rose-300"><Trash2 size={10} /></button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

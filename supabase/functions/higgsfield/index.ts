@@ -138,18 +138,106 @@ async function visionPrompt(key: string, refUrl: string, styleDesc: string): Pro
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001', max_tokens: 400,
+        system: 'You are a fashion photography art director writing a single English text-to-image prompt that RE-STAGES the EXACT body posture of a reference photo, for a NEW photoshoot with a generic anonymous woman model.\n\nRULE #1 — POSTURE FIRST. The prompt MUST begin by naming the overall body posture explicitly, choosing the correct one: standing, sitting / seated on <surface>, reclining, lying down, kneeling, crouching, squatting, or leaning against <surface>. Look at the hips and weight: if her hips or buttocks rest on a bench, step, ledge, chair, bed or floor she is SEATED — never default to standing. State what bears her weight (which leg she stands on, which hand props her up, the surface she sits/leans on) and her leg configuration (extended, bent, crossed, tucked).\n\nThen, in order: torso orientation (facing camera / three-quarter turn / profile / back-to-camera), the exact position of EACH arm and hand, each leg, head tilt and gaze direction, the outfit, the setting/background, and the lighting and camera framing (full-body / three-quarter / waist-up, high or low angle).\n\nNever identify, name or describe the face or identity of any real person — describe only posture, wardrobe and scene. Output only the prompt text, one line, no quotes, no preamble.',
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'url', url: refUrl } },
-          { type: 'text', text: `Mirá esta foto de referencia. Escribí UN prompt en INGLÉS, detallado, para recrearla con OTRA mujer influencer. Describí con precisión: la POSE EXACTA (posición de cada brazo y mano, orientación del cuerpo, hacia dónde mira, si está parada/sentada/reclinada), el outfit, el escenario/fondo, la luz y el encuadre. Foto realista, natural, piel real.${styleDesc ? ` Estilo general: ${styleDesc}.` : ''} Respondé SOLO el prompt (una sola línea, sin comillas, sin explicaciones).` },
+          { type: 'text', text: `Write the image prompt for a generic influencer woman reproducing THIS composition with the SAME body posture. Decide FIRST and state FIRST whether she is standing, sitting/seated, reclining, lying down, kneeling or crouching — study the hips and what her weight rests on, do NOT assume standing. Then match each arm, hand and leg, the outfit, setting, lighting and framing exactly. Natural realistic photo.${styleDesc ? ` Overall style: ${styleDesc}.` : ''}` },
         ] }],
       }),
     });
     const j = await res.json();
     const t = String((j as any)?.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
-    return t.length > 20 ? t.slice(0, 1500) : null;
+    // Detector de rechazo: si el modelo se niega, devolver null (el worker cae al modo imagen).
+    if (/i can’?t|i cannot|i'?m (sorry|unable|not able)|no puedo|i won'?t|as an ai/i.test(t) || t.length < 40) return null;
+    return t.slice(0, 1500);
   } catch { return null; }
 }
 const REALISTIC_STYLE = '74abc530-cec8-4c13-88a6-2b3f78bfd0ff'; // "Digital camera": look de foto real.
+
+// Variación: mira la foto YA generada y escribe un prompt nuevo que mantiene MISMO lugar + MISMO outfit pero cambia la pose/situación.
+async function variationPrompt(key: string, srcUrl: string, styleDesc: string, idea: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001', max_tokens: 400,
+        system: 'You are a fashion photography art director. You are shown one photo of a generic anonymous woman model in a location wearing an outfit. Write a single English text-to-image prompt for a NEW photo of the SAME shoot: KEEP the exact same setting/background and the exact same outfit (describe both faithfully so they are recognisably identical), but give her a DIFFERENT natural body pose and a slightly different moment/situation than the source. Describe the new posture first (standing/sitting/leaning/walking/kneeling etc.), then each arm/hand/leg, head and gaze, then re-state the identical outfit and identical location, then lighting and camera framing. Never identify, name or describe the face/identity of any real person. Output only the prompt text, one line, no quotes, no preamble.',
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'url', url: srcUrl } },
+          { type: 'text', text: `Same location, same outfit, NEW pose/situation.${idea ? ` Direction for the new shot: ${idea}.` : ' Pick a fresh flattering influencer pose that differs clearly from the source.'} Natural realistic photo.${styleDesc ? ` Overall style: ${styleDesc}.` : ''}` },
+        ] }],
+      }),
+    });
+    const j = await res.json();
+    const t = String((j as any)?.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
+    if (/i can’?t|i cannot|i'?m (sorry|unable|not able)|no puedo|i won'?t|as an ai/i.test(t) || t.length < 40) return null;
+    return t.slice(0, 1500);
+  } catch { return null; }
+}
+
+// ── Limpieza de metadata (misma idea que lib/cleanImage.js de producción) ──
+// Higgsfield mete credenciales C2PA ("hecho con IA") + EXIF/XMP dentro del archivo.
+// Antes de entregar al baúl, reescribimos el archivo dejando SOLO los datos de píxeles
+// → cae todo el EXIF/XMP/C2PA (queda "como un screenshot"), sin tocar la imagen.
+function concatU8(parts: Uint8Array[]): Uint8Array {
+  let n = 0; for (const q of parts) n += q.length;
+  const o = new Uint8Array(n); let off = 0; for (const q of parts) { o.set(q, off); off += q.length; } return o;
+}
+// PNG: conserva solo los chunks críticos de imagen; descarta tEXt/zTXt/iTXt/eXIf/caBX(C2PA)/iCCP/tIME/etc.
+function stripPng(buf: Uint8Array): Uint8Array | null {
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  for (let i = 0; i < 8; i++) if (buf[i] !== sig[i]) return null;
+  const keep = new Set(['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 'gAMA', 'cHRM', 'sRGB']);
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const parts: Uint8Array[] = [new Uint8Array(sig)];
+  let p = 8;
+  while (p + 8 <= buf.length) {
+    const len = dv.getUint32(p);
+    const type = String.fromCharCode(buf[p + 4], buf[p + 5], buf[p + 6], buf[p + 7]);
+    const end = p + 12 + len;
+    if (end > buf.length) break;
+    if (keep.has(type)) parts.push(buf.subarray(p, end));
+    p = end;
+    if (type === 'IEND') break;
+  }
+  return concatU8(parts);
+}
+// JPEG: descarta todos los segmentos APPn (EXIF/XMP/ICC/JUMBF-C2PA) y comentarios; conserva la imagen.
+function stripJpeg(buf: Uint8Array): Uint8Array | null {
+  if (buf[0] !== 0xFF || buf[1] !== 0xD8) return null;
+  const parts: Uint8Array[] = [buf.subarray(0, 2)];
+  let p = 2;
+  while (p + 4 <= buf.length) {
+    if (buf[p] !== 0xFF) break;
+    const marker = buf[p + 1];
+    if (marker === 0xDA || marker === 0xD9) { parts.push(buf.subarray(p)); break; } // SOS/EOI → resto tal cual
+    const len = (buf[p + 2] << 8) | buf[p + 3];
+    const end = p + 2 + len;
+    if (end > buf.length) break;
+    const drop = (marker >= 0xE0 && marker <= 0xEF) || marker === 0xFE; // APPn + COM
+    if (!drop) parts.push(buf.subarray(p, end));
+    p = end;
+  }
+  return concatU8(parts);
+}
+// Baja la foto generada, le saca la metadata y la re-hospeda limpia en storage. Devuelve la URL limpia (o la original si algo falla).
+async function cleanAndStore(svc: any, creatorId: string, gid: string, srcUrl: string): Promise<string> {
+  try {
+    const r = await fetch(srcUrl);
+    if (!r.ok) return srcUrl;
+    const ab = new Uint8Array(await r.arrayBuffer());
+    let out: Uint8Array | null = null; let ext = 'png'; let ct = 'image/png';
+    if (ab[0] === 0x89 && ab[1] === 0x50) { out = stripPng(ab); ext = 'png'; ct = 'image/png'; }
+    else if (ab[0] === 0xFF && ab[1] === 0xD8) { out = stripJpeg(ab); ext = 'jpg'; ct = 'image/jpeg'; }
+    if (!out) out = ab; // formato raro: al menos la re-hospedamos fuera de CloudFront
+    const path = `vault/${creatorId}/ia/${gid}.${ext}`;
+    const up = await svc.storage.from('proposal-photos').upload(path, out, { contentType: ct, upsert: true });
+    if (up.error) return srcUrl;
+    const { data: pub } = svc.storage.from('proposal-photos').getPublicUrl(path);
+    return (pub as any)?.publicUrl || srcUrl;
+  } catch { return srcUrl; }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -179,7 +267,7 @@ Deno.serve(async (req) => {
         return reply({ ok: true });
       }
       if (action === 'cook_next') {
-        const { data: job } = await svc.from('generations').select('id, creator_id, reference_url').eq('status', 'queued').order('created_at', { ascending: true }).limit(1).maybeSingle();
+        const { data: job } = await svc.from('generations').select('id, creator_id, reference_url, note').eq('status', 'queued').order('created_at', { ascending: true }).limit(1).maybeSingle();
         if (!job) return reply({ ok: true, job: null });
         const { data: idrow } = await svc.from('creator_identity').select('character_id, engine').eq('creator_id', (job as any).creator_id).maybeSingle();
         await svc.from('generations').update({ status: 'in_progress' }).eq('id', (job as any).id);
@@ -187,9 +275,13 @@ Deno.serve(async (req) => {
         let vprompt: string | null = null, vstyle: string | null = null;
         const { data: ak } = await svc.from('app_config').select('value').eq('key', 'anthropic_api_key').maybeSingle();
         const akey = clean((ak as any)?.value);
+        const note = String((job as any)?.note || '');
+        const isVar = note.startsWith('var:');
         if (akey && (job as any).reference_url) {
           const { data: sp } = await svc.from('creator_search_profile').select('style_desc').eq('creator_id', (job as any).creator_id).maybeSingle();
-          vprompt = await visionPrompt(akey, (job as any).reference_url, String((sp as any)?.style_desc || ''));
+          const styleDesc = String((sp as any)?.style_desc || '');
+          if (isVar) vprompt = await variationPrompt(akey, (job as any).reference_url, styleDesc, note.slice(4).trim());
+          else vprompt = await visionPrompt(akey, (job as any).reference_url, styleDesc);
           if (vprompt) vstyle = REALISTIC_STYLE;
         }
         return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null, prompt: vprompt, style_id: vstyle } });
@@ -302,6 +394,20 @@ Deno.serve(async (req) => {
       const { data: gen } = await svc.from('generations').insert({ creator_id: creatorId, reference_url: ref, request_id: rid, status: rid ? 'queued' : 'failed', credits, usd, model: 'soul-v1', created_by: user.id }).select('id').single();
       return reply({ ok: !!rid, status: r.status, generation_id: (gen as any)?.id, request_id: rid, detail: rid ? undefined : r.json });
     }
+    // Variaciones: mismo lugar + mismo outfit, otras poses/situaciones. Encola N jobs con note='var:<idea>' y reference = la foto ya generada.
+    if (action === 'make_variations') {
+      const gid = String(body?.generation_id || '');
+      const n = Math.min(Math.max(Number(body?.n) || 4, 1), 8);
+      const idea = String(body?.idea || '').slice(0, 200);
+      const { data: g } = await svc.from('generations').select('creator_id, result_url, reference_url').eq('id', gid).maybeSingle();
+      if (!g || !(g as any).creator_id) return reply({ ok: false, error: 'No existe esa foto.' });
+      const src = (g as any).result_url || (g as any).reference_url;
+      if (!src) return reply({ ok: false, error: 'Esa foto no tiene imagen para variar.' });
+      const rows = Array.from({ length: n }, () => ({ creator_id: (g as any).creator_id, reference_url: src, status: 'queued', model: 'soul-v2', note: `var:${idea}`, carousel_of: gid, created_by: user.id }));
+      const { error } = await svc.from('generations').insert(rows);
+      if (error) return reply({ ok: false, error: `No se pudo encolar: ${error.message}` });
+      return reply({ ok: true, queued: n });
+    }
     if (action === 'gen_poll') {
       const gid = String(body?.generation_id || '');
       const { data: g } = await svc.from('generations').select('request_id, status').eq('id', gid).maybeSingle();
@@ -324,7 +430,10 @@ Deno.serve(async (req) => {
       if (!g) return reply({ ok: false, error: 'No existe.' });
       await svc.from('generations').update({ status: approve ? 'approved' : 'rejected' }).eq('id', gid);
       if (approve && (g as any).result_url && (g as any).creator_id) {
-        await svc.from('creator_vault').insert({ creator_id: (g as any).creator_id, kind: 'ia', url: (g as any).result_url, caption: 'Generada en /kitchen' });
+        // Entrega LIMPIA: le saca la metadata (C2PA/EXIF/XMP) y la re-hospeda antes de mandarla al baúl.
+        const cleanUrl = await cleanAndStore(svc, (g as any).creator_id, gid, (g as any).result_url);
+        await svc.from('creator_vault').insert({ creator_id: (g as any).creator_id, kind: 'ia', url: cleanUrl, caption: 'Generada en /kitchen' });
+        await svc.from('generations').update({ result_url: cleanUrl }).eq('id', gid);
       }
       return reply({ ok: true });
     }
