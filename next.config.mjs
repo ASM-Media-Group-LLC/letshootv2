@@ -11,6 +11,8 @@ const nextConfig = {
       // (con tilde) que no dé 404: lo mandamos a la buena.
       { source: '/conexión', destination: '/conexion', permanent: false },
       { source: '/conexi%C3%B3n', destination: '/conexion', permanent: false },
+      // /all era un índice viejo duplicado; ahora hay UN solo mapa: /mapa.
+      { source: '/all', destination: '/mapa', permanent: false },
     ];
   },
 };
