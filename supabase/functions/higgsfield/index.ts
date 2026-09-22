@@ -66,10 +66,15 @@ Deno.serve(async (req) => {
 
     // ── Worker del cocinero (sin usuario; protegido por secreto en app_config) ──
     // Corre en la Mac del dueño con el CLI logueado; drena la cola de generations.
-    if (action === 'cook_next' || action === 'cook_result') {
+    if (action === 'cook_next' || action === 'cook_result' || action === 'sync_balance') {
       const { data: sc } = await svc.from('app_config').select('value').eq('key', 'kitchen_worker_secret').maybeSingle();
       const secret = clean((body as any)?.worker_secret);
       if (!secret || !(sc as any)?.value || secret !== clean((sc as any).value)) return reply({ ok: false, error: 'Worker no autorizado.' });
+      if (action === 'sync_balance') {
+        const bal = Number((body as any)?.credits);
+        if (!isNaN(bal)) await svc.from('app_config').upsert({ key: 'higgsfield_balance', value: String(bal), updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        return reply({ ok: true });
+      }
       if (action === 'cook_next') {
         const { data: job } = await svc.from('generations').select('id, creator_id, reference_url').eq('status', 'queued').order('created_at', { ascending: true }).limit(1).maybeSingle();
         if (!job) return reply({ ok: true, job: null });
@@ -216,7 +221,44 @@ Deno.serve(async (req) => {
       let credits = 0, usd = 0, count = 0;
       (Array.isArray(gens) ? gens : []).forEach((g: any) => { if (g.status !== 'failed') { credits += Number(g.credits || 0); usd += Number(g.usd || 0); count += 1; } });
       const { data: ids } = await svc.from('creator_identity').select('creator_id, status, character_id, n_photos');
-      return reply({ ok: true, total_credits: credits, total_usd: usd, total_images: count, identities: Array.isArray(ids) ? ids : [] });
+      const { data: bal } = await svc.from('app_config').select('value, updated_at').eq('key', 'higgsfield_balance').maybeSingle();
+      return reply({ ok: true, total_credits: credits, total_usd: usd, total_images: count, identities: Array.isArray(ids) ? ids : [], balance: (bal as any)?.value ? Number((bal as any).value) : null, balance_at: (bal as any)?.updated_at || null });
+    }
+
+    // ── Scraper de virales (Apify → Instagram por nicho/hashtag de la modelo) ──
+    if (action === 'scrape') {
+      const creatorId = String(body?.creator_id || '');
+      if (!creatorId) return reply({ ok: false, error: 'Falta la modelo.' });
+      const { data: tk } = await svc.from('app_config').select('value').eq('key', 'apify_token').maybeSingle();
+      const apToken = clean((tk as any)?.value);
+      if (!apToken) return reply({ ok: false, error: 'Falta la llave de Apify. Pegala en /conexion.' });
+      const { data: sp } = await svc.from('creator_search_profile').select('niches, hashtags').eq('creator_id', creatorId).maybeSingle();
+      const tags = [...(((sp as any)?.hashtags) || []), ...(((sp as any)?.niches) || [])]
+        .map((h: string) => String(h).trim().replace(/^#/, '')).filter(Boolean).slice(0, 5);
+      if (tags.length === 0) return reply({ ok: false, error: 'Configurá al menos un nicho o hashtag para esta modelo (arriba).' });
+      const limit = Math.min(Number(body?.limit) || 24, 50);
+      const runUrl = `https://api.apify.com/v2/acts/apify~instagram-hashtag-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
+      let items: any = [];
+      try {
+        const ar = await fetch(runUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hashtags: tags, resultsLimit: limit }) });
+        items = await ar.json();
+        if (!ar.ok) return reply({ ok: false, error: `Apify devolvió ${ar.status}.`, detail: items });
+      } catch (e) { return reply({ ok: false, error: `No se pudo llamar al scraper: ${(e as Error)?.message}` }); }
+      if (!Array.isArray(items)) return reply({ ok: false, error: 'El scraper no devolvió una lista.', detail: items });
+      let saved = 0;
+      for (const it of items) {
+        const imgUrl = it?.displayUrl || it?.imageUrl || (Array.isArray(it?.images) ? it.images[0] : null);
+        if (!imgUrl) continue;
+        const row: Record<string, unknown> = {
+          creator_id: creatorId, kind: 'ref', url: imgUrl, source_platform: 'instagram',
+          source_handle: it?.ownerUsername || null, source_url: it?.url || null,
+          likes: Number(it?.likesCount) || null, vibe: tags[0] || null,
+          caption: it?.caption ? String(it.caption).slice(0, 200) : null,
+        };
+        const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url' });
+        if (!error) saved += 1;
+      }
+      return reply({ ok: true, found: items.length, saved });
     }
 
     return reply({ ok: false, error: `Acción desconocida: ${action || '(vacía)'}` });

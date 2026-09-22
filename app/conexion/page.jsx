@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import {
-  ArrowLeft, Plug, Zap, CheckCircle2, XCircle, Loader2, Sparkles, KeyRound, ImageIcon, IdCard,
+  ArrowLeft, Plug, Zap, CheckCircle2, XCircle, Loader2, Sparkles, KeyRound, ImageIcon, IdCard, Eye, EyeOff,
 } from 'lucide-react';
 
 const JULIA_ID = '4014e339-ead8-4fb7-bcda-82fee2c7926e';
@@ -60,6 +60,8 @@ export default function ConexionPage() {
   const [anthropicVal, setAnthropicVal] = useState('');
   const [cfgBusy, setCfgBusy] = useState('');
   const [cfgMsg, setCfgMsg] = useState('');
+  const [showApify, setShowApify] = useState(false);
+  const [showAnthropic, setShowAnthropic] = useState(false);
   useEffect(() => {
     if (access !== 'ok') return;
     (async () => { const out = await callFn('config_status'); if (out.ok) setCfg({ apify: !!out.apify, anthropic: !!out.anthropic }); })();
@@ -211,8 +213,12 @@ export default function ConexionPage() {
               {cfg.apify === true && <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-300">✓ conectada</span>}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <input value={apifyVal} onChange={(e) => setApifyVal(e.target.value)} type="password" placeholder="Pegá tu token de Apify (apify_api_…)"
-                className="min-w-[260px] flex-1 rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+              <div className="relative min-w-[260px] flex-1">
+                <input value={apifyVal} onChange={(e) => setApifyVal(e.target.value)} type={showApify ? 'text' : 'password'} placeholder="Pegá tu token de Apify (apify_api_…)"
+                  className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-10 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                <button type="button" onClick={() => setShowApify((s) => !s)} title={showApify ? 'Ocultar' : 'Mostrar'}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-lg text-paper-dim hover:text-paper">{showApify ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+              </div>
               <button type="button" onClick={() => saveCfg('apify_token', apifyVal, setApifyVal)} disabled={cfgBusy === 'apify_token'}
                 className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-semibold disabled:opacity-50">
                 {cfgBusy === 'apify_token' ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} Guardar
@@ -229,8 +235,12 @@ export default function ConexionPage() {
               {cfg.anthropic === true && <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-300">✓ conectada</span>}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <input value={anthropicVal} onChange={(e) => setAnthropicVal(e.target.value)} type="password" placeholder="Pegá tu API key de Anthropic (sk-ant-…)"
-                className="min-w-[260px] flex-1 rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+              <div className="relative min-w-[260px] flex-1">
+                <input value={anthropicVal} onChange={(e) => setAnthropicVal(e.target.value)} type={showAnthropic ? 'text' : 'password'} placeholder="Pegá tu API key de Anthropic (sk-ant-…)"
+                  className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-10 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                <button type="button" onClick={() => setShowAnthropic((s) => !s)} title={showAnthropic ? 'Ocultar' : 'Mostrar'}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-lg text-paper-dim hover:text-paper">{showAnthropic ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+              </div>
               <button type="button" onClick={() => saveCfg('anthropic_api_key', anthropicVal, setAnthropicVal)} disabled={cfgBusy === 'anthropic_api_key'}
                 className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-semibold disabled:opacity-50">
                 {cfgBusy === 'anthropic_api_key' ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} Guardar

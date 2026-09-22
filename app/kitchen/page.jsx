@@ -55,6 +55,10 @@ export default function KitchenPage() {
   const [queue, setQueue] = useState([]);
   const [enq, setEnq] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Perfil de búsqueda por modelo (nichos) + scraper
+  const [niches, setNiches] = useState([]);
+  const [newNiche, setNewNiche] = useState('');
+  const [scraping, setScraping] = useState(false);
 
   const sb = getSupabase();
 
@@ -119,6 +123,27 @@ export default function KitchenPage() {
     if (vibe !== 'Todos' && vibeCounts[vibe]) rows = rows.filter((r) => (r.vibe || '').toLowerCase() === vibe.toLowerCase());
     return rows.slice(0, 120);
   }, [sourceRows, vibe, vibeCounts]);
+
+  // Cargar el perfil de búsqueda (nichos) de la modelo elegida.
+  useEffect(() => {
+    if (!sel) { setNiches([]); return; }
+    (async () => { const { data } = await sb.from('creator_search_profile').select('niches').eq('creator_id', sel).maybeSingle(); setNiches(Array.isArray(data?.niches) ? data.niches : []); })();
+  }, [sel, sb]);
+
+  const saveNiches = async (list) => {
+    setNiches(list);
+    await sb.from('creator_search_profile').upsert({ creator_id: sel, niches: list, updated_at: new Date().toISOString() }, { onConflict: 'creator_id' });
+  };
+  const addNiche = () => { const v = newNiche.trim(); if (!v) return; if (!niches.includes(v)) saveNiches([...niches, v].slice(0, 8)); setNewNiche(''); };
+  const doScrape = async () => {
+    if (niches.length === 0) { setMsg({ kind: 'info', text: 'Agregá al menos un nicho (ej: gótica, playa) para buscar.' }); return; }
+    setScraping(true); setMsg({ kind: 'info', text: 'Buscando virales en Instagram… (puede tardar 1-2 min)' });
+    const out = await callFn('scrape', { creator_id: sel });
+    setScraping(false);
+    if (!out.ok) { setMsg({ kind: 'err', text: out.error || 'No se pudo buscar.' }); return; }
+    await loadVault();
+    setMsg({ kind: 'ok', text: `Encontré ${out.saved} virales para ${selCreator?.full_name}. Aparecen abajo con sus likes y su cuenta.` });
+  };
 
   const enterModel = (id) => { setSel(id); setSubtab('cocinar'); setQueue([]); setMsg(null); setSource('encontre'); setVibe('Todos'); };
   const toggleQueue = (url) => setQueue((k) => k.includes(url) ? k.filter((u) => u !== url) : [...k, url]);
@@ -321,6 +346,26 @@ export default function KitchenPage() {
                     );
                   })}
                 </div>
+
+                {source === 'encontre' && (
+                  <div className="mb-3 rounded-2xl border border-line bg-card p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-paper-dim"><Search size={13} /> Buscar para {selCreator.full_name}:</span>
+                      {niches.map((n) => (
+                        <span key={n} className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
+                          {n}
+                          <button type="button" onClick={() => saveNiches(niches.filter((x) => x !== n))} className="opacity-70 hover:opacity-100"><X size={11} /></button>
+                        </span>
+                      ))}
+                      <input value={newNiche} onChange={(e) => setNewNiche(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNiche(); } }}
+                        placeholder="nicho o #hashtag (gótica, playa…)" className="min-w-[150px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                      <button type="button" onClick={doScrape} disabled={scraping} className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-50">
+                        {scraping ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} {scraping ? 'Buscando…' : 'Buscar virales'}
+                      </button>
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-paper-dim">Vos elegís el nicho. Traigo virales de Instagram de ese estilo, con su @cuenta y sus likes. (El scraper corre por Apify.)</p>
+                  </div>
+                )}
 
                 {source !== 'subir' && Object.keys(vibeCounts).length > 0 && (
                   <div className="mb-3 flex flex-wrap items-center gap-1.5">
