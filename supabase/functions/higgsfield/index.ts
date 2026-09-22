@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       const gid = String((body as any)?.generation_id || '');
       const rurl = (body as any)?.result_url || null;
       const good = (body as any)?.ok !== false && !!rurl;
-      await svc.from('generations').update({ status: good ? 'done' : 'failed', result_url: rurl, credits: Number((body as any)?.credits) || null, usd: Number((body as any)?.usd) || null, prompt: (body as any)?.prompt || null }).eq('id', gid);
+      await svc.from('generations').update({ status: good ? 'done' : 'failed', result_url: rurl, credits: Number((body as any)?.credits) || null, usd: Number((body as any)?.usd) || null, prompt: (body as any)?.prompt || null, note: (body as any)?.note || null }).eq('id', gid);
       return reply({ ok: true });
     }
 
@@ -100,6 +100,22 @@ Deno.serve(async (req) => {
       ], { onConflict: 'key' });
       if (error) return reply({ ok: false, error: `No se pudo guardar: ${error.message}` });
       return reply({ ok: true, saved: true });
+    }
+
+    // Guardar/consultar otras llaves (Apify para el scraper, Anthropic para la visión del cocinero).
+    if (action === 'set_config') {
+      const ALLOW = ['apify_token', 'anthropic_api_key'];
+      const k = String((body as any)?.k || ''); const v = clean((body as any)?.v);
+      if (!ALLOW.includes(k)) return reply({ ok: false, error: 'Clave no permitida.' });
+      if (!v) return reply({ ok: false, error: 'Falta el valor de la llave.' });
+      const { error } = await svc.from('app_config').upsert({ key: k, value: v, updated_at: new Date().toISOString(), updated_by: user.id }, { onConflict: 'key' });
+      if (error) return reply({ ok: false, error: `No se pudo guardar: ${error.message}` });
+      return reply({ ok: true, saved: true });
+    }
+    if (action === 'config_status') {
+      const { data } = await svc.from('app_config').select('key').in('key', ['apify_token', 'anthropic_api_key']);
+      const have = new Set((Array.isArray(data) ? data : []).map((r: any) => r.key));
+      return reply({ ok: true, apify: have.has('apify_token'), anthropic: have.has('anthropic_api_key') });
     }
 
     // Resolver llave.

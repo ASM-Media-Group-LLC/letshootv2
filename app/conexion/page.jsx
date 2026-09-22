@@ -54,6 +54,25 @@ export default function ConexionPage() {
     verify();
   };
 
+  // ── Otras llaves: Apify (scraper) y Anthropic (visión del cocinero) ──
+  const [cfg, setCfg] = useState({ apify: null, anthropic: null });
+  const [apifyVal, setApifyVal] = useState('');
+  const [anthropicVal, setAnthropicVal] = useState('');
+  const [cfgBusy, setCfgBusy] = useState('');
+  const [cfgMsg, setCfgMsg] = useState('');
+  useEffect(() => {
+    if (access !== 'ok') return;
+    (async () => { const out = await callFn('config_status'); if (out.ok) setCfg({ apify: !!out.apify, anthropic: !!out.anthropic }); })();
+  }, [access]);
+  const saveCfg = async (k, val, setVal) => {
+    if (!val.trim()) { setCfgMsg('Pegá la llave primero.'); return; }
+    setCfgBusy(k); setCfgMsg('');
+    const out = await callFn('set_config', { k, v: val });
+    setCfgBusy('');
+    if (!out.ok) { setCfgMsg(out.error || 'No se pudo guardar.'); return; }
+    setVal(''); setCfg((c) => ({ ...c, [k === 'apify_token' ? 'apify' : 'anthropic']: true })); setCfgMsg('Guardada ✓');
+  };
+
   // ── Conexión ──
   const [conn, setConn] = useState(null); // {state:'checking'|'ok'|'bad'|'needsKey', ...}
   const verify = async () => {
@@ -176,6 +195,49 @@ export default function ConexionPage() {
             {keyMsg && <span className={`text-xs ${keyMsg.includes('✓') ? 'text-emerald-300' : 'text-rose-300'}`}>{keyMsg}</span>}
           </div>
           <p className="mt-2 text-[11px] text-paper-dim">Los valores están en tu archivo <code className="text-paper-mute">letshoot-internal/.env</code> (líneas HIGGSFIELD_KEY_ID / HIGGSFIELD_KEY_SECRET).</p>
+        </section>
+
+        {/* Otras llaves: Apify (scraper) + Anthropic (visión del cocinero) */}
+        <section className="card3d rounded-3xl border border-line bg-card p-6 sm:p-7">
+          <h2 className="flex items-center gap-2 font-display text-lg font-bold text-paper"><KeyRound size={18} className="text-brand" /> Otras conexiones</h2>
+          <p className="mt-1 text-sm text-paper-mute">Se guardan en el servidor, nunca en el navegador. Pegalas vos (yo no puedo tocarlas).</p>
+
+          <div className="mt-5 rounded-2xl border border-line bg-ink-2/40 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-sm font-bold text-paper">Apify — el scraper de virales</h3>
+                <p className="mt-0.5 text-xs text-paper-mute">Trae fotos virales de Instagram por nicho, con su fuente y sus likes/vistas. Copiá tu token de <span className="font-mono text-paper-mute">console.apify.com/settings/integrations</span> y pegalo acá.</p>
+              </div>
+              {cfg.apify === true && <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-300">✓ conectada</span>}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input value={apifyVal} onChange={(e) => setApifyVal(e.target.value)} type="password" placeholder="Pegá tu token de Apify (apify_api_…)"
+                className="min-w-[260px] flex-1 rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+              <button type="button" onClick={() => saveCfg('apify_token', apifyVal, setApifyVal)} disabled={cfgBusy === 'apify_token'}
+                className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-semibold disabled:opacity-50">
+                {cfgBusy === 'apify_token' ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} Guardar
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-2xl border border-line bg-ink-2/40 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-sm font-bold text-paper">Anthropic — la visión del cocinero</h3>
+                <p className="mt-0.5 text-xs text-paper-mute">Para que el cocinero mire cada viral y escriba el prompt exacto (pose clavada) solo, sin vos. Token de <span className="font-mono text-paper-mute">console.anthropic.com</span> → API Keys.</p>
+              </div>
+              {cfg.anthropic === true && <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-300">✓ conectada</span>}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input value={anthropicVal} onChange={(e) => setAnthropicVal(e.target.value)} type="password" placeholder="Pegá tu API key de Anthropic (sk-ant-…)"
+                className="min-w-[260px] flex-1 rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+              <button type="button" onClick={() => saveCfg('anthropic_api_key', anthropicVal, setAnthropicVal)} disabled={cfgBusy === 'anthropic_api_key'}
+                className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-semibold disabled:opacity-50">
+                {cfgBusy === 'anthropic_api_key' ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} Guardar
+              </button>
+            </div>
+          </div>
+          {cfgMsg && <p className={`mt-3 text-xs ${cfgMsg.includes('✓') ? 'text-emerald-300' : 'text-rose-300'}`}>{cfgMsg}</p>}
         </section>
 
         {/* 1 · Conexión */}
