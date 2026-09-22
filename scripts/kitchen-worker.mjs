@@ -37,30 +37,32 @@ async function fn(action, extra) {
   return res.json();
 }
 
+// Saldo real de Higgsfield en créditos (para medir el costo exacto por diferencia).
+function getBalance() {
+  try { const out = execFileSync('higgsfield', ['account', 'status', '--json'], { encoding: 'utf8', timeout: 20000 }); const b = JSON.parse(out)?.credits; return typeof b === 'number' ? b : null; } catch { return null; }
+}
+
 async function cookOne(job) {
-  if (!job.character_id) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'La modelo no tiene su soul enlazada todavía.' }); console.log(`· ${job.id} sin soul enlazada → skip`); return; }
   const dir = join(tmpdir(), 'kitchen-worker'); mkdirSync(dir, { recursive: true });
 
   let args;
-  if (job.prompt) {
-    // MODO VISIÓN: la edge ya escribió el prompt exacto de la pose (Anthropic).
+  if (job.nano_edit && job.image_ref && job.edit_prompt) {
+    // VARIACIÓN por EDICIÓN (Nano Banana Pro): baja la réplica y la edita → misma mujer/outfit/lugar/luz, pose y ángulo REALMENTE distintos. No necesita soul.
+    const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+    const srcPath = join(dir, `${job.id}-src.${ext}`);
+    try {
+      const r = await fetch(job.image_ref);
+      writeFileSync(srcPath, Buffer.from(await r.arrayBuffer()));
+    } catch (e) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'No se pudo bajar la foto a editar.' }); console.log(`· ${job.id} no se pudo bajar la src`); return; }
+    args = ['generate', 'create', 'nano_banana_pro', '--image-references', srcPath, '--prompt', job.edit_prompt, '--aspect_ratio', '3:4', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
+  } else if (!job.character_id) {
+    await fn('cook_result', { generation_id: job.id, ok: false, note: 'La modelo no tiene su soul enlazada todavía.' }); console.log(`· ${job.id} sin soul enlazada → skip`); return;
+  } else if (job.prompt) {
+    // RÉPLICA (visión): la edge ya escribió el prompt exacto de la pose (Anthropic) + soul. Sin image_references (perdería la pose).
     args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', job.prompt, '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
-    // VARIACIÓN de carrusel: anclo a la foto réplica (image_ref) para clavar MISMO lugar/outfit/luz; el prompt solo cambia la pose.
-    // OJO: el CLI NO permite --style_id junto con --image-references. La imagen-ancla ya trae el estilo realista de la réplica.
-    let anchored = false;
-    if (job.image_ref) {
-      try {
-        const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-        const anchorPath = join(dir, `${job.id}-anchor.${ext}`);
-        const r = await fetch(job.image_ref);
-        writeFileSync(anchorPath, Buffer.from(await r.arrayBuffer()));
-        args.push('--image-references', anchorPath);
-        anchored = true;
-      } catch { /* si falla el ancla, cae al estilo por texto */ }
-    }
-    if (!anchored && job.style_id) args.push('--style_id', job.style_id);
+    if (job.style_id) args.push('--style_id', job.style_id);
   } else {
-    // MODO IMAGEN (fallback sin Anthropic): baja la referencia y se la pasa al motor.
+    // Fallback sin Anthropic: modo imagen con la referencia.
     const ext = (String(job.reference_url).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
     const refPath = join(dir, `${job.id}.${ext}`);
     try {
@@ -70,9 +72,10 @@ async function cookOne(job) {
     args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--image-references', refPath, '--prompt', 'recreate this photo faithfully — same pose, body position, outfit, setting, framing and lighting; realistic, high detail', '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
   }
 
+  const balBefore = getBalance();
   let rec;
   try {
-    const stdout = execFileSync('higgsfield', args, { encoding: 'utf8', timeout: 6 * 60 * 1000, maxBuffer: 32 * 1024 * 1024 });
+    const stdout = execFileSync('higgsfield', args, { encoding: 'utf8', timeout: 6 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 });
     const out = JSON.parse(stdout); rec = Array.isArray(out) ? out[0] : out;
   } catch (e) {
     // Uso el stderr real del CLI (no e.message, que incluye los args con "--wait-timeout" y da falsos "timeout").
@@ -86,8 +89,14 @@ async function cookOne(job) {
   }
   const resultUrl = rec?.result_url || rec?.min_result_url || null;
   const prompt = (rec?.params?.prompt || '').slice(0, 800);
-  await fn('cook_result', { generation_id: job.id, ok: !!resultUrl, result_url: resultUrl, credits: CREDITS, usd: USD, prompt });
-  console.log(resultUrl ? `✓ ${job.id} → ${resultUrl.slice(0, 70)}…` : `✗ ${job.id} sin resultado`);
+  // Costo REAL por diferencia de saldo (sirve para cualquier motor). Fallback al costo Soul si no se pudo medir.
+  const balAfter = getBalance();
+  let credits = CREDITS;
+  if (typeof balBefore === 'number' && typeof balAfter === 'number' && balBefore > balAfter) credits = Math.round((balBefore - balAfter) * 1000) / 1000;
+  const usd = Math.round(credits * 0.09 * 1000) / 1000;
+  await fn('cook_result', { generation_id: job.id, ok: !!resultUrl, result_url: resultUrl, credits, usd, prompt });
+  if (typeof balAfter === 'number') await fn('sync_balance', { credits: balAfter });
+  console.log(resultUrl ? `✓ ${job.id} (${credits} créd) → ${resultUrl.slice(0, 60)}…` : `✗ ${job.id} sin resultado`);
 }
 
 // Sincroniza el saldo REAL de Higgsfield al servidor (para las finanzas).

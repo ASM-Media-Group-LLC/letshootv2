@@ -156,18 +156,18 @@ const REALISTIC_STYLE = '74abc530-cec8-4c13-88a6-2b3f78bfd0ff'; // "Digital came
 // Momentos de la vida real para el carrusel (auto): actividad + expresión + ENCUADRE + prop DISTINTOS en cada foto. Se barajan.
 // El lugar es el MISMO punto exacto; solo cambia cuánto se ve (el crop), la pose y la situación.
 const POSE_POOL = [
-  'FULL-BODY shot, standing checking her phone, soft natural half-smile',
-  'WAIST-UP shot, caught mid-laugh looking off to the side, a cold drink in one hand',
-  'CLOSE-UP selfie framing, holding her phone up for a mirror-style selfie, cheeky playful look',
-  'WIDE shot showing the whole setting around her, walking a step and glancing back over her shoulder, playful smile',
-  'FULL-BODY shot, sitting casually sipping a coffee, relaxed content expression',
-  'WAIST-UP shot, sliding her sunglasses on, confident calm gaze at the lens',
-  'CLOSE-UP shot, adjusting her hair with both hands, warm genuine smile',
-  'WIDE shot, reclining back with her eyes closed soaking up the sun, serene expression',
-  'FULL-BODY shot, leaning on a wall scrolling her phone, relaxed neutral look slightly away',
-  'WAIST-UP shot, laughing naturally with her sunglasses held in one hand',
-  'CLOSE-UP selfie, a playful wink, phone held up',
-  'FULL-BODY shot, crouching for a moment to fix her sandal, a light candid smile',
+  'seen FROM THE SIDE (profile angle), sitting on the floor checking her phone, soft natural smile',
+  'a CLOSE hand-held SELFIE from slightly above, cheeky playful look',
+  'shot FROM ACROSS THE ROOM (wide), walking a step and glancing back over her shoulder, playful smile',
+  'from a THREE-QUARTER back angle, leaning against a wall scrolling her phone, relaxed neutral look',
+  'a LOW-ANGLE full-body shot, standing with a hand on her hip holding her sunglasses, confident calm gaze',
+  'FROM BEHIND, looking over her shoulder toward the camera, warm genuine smile',
+  'a HIGH-ANGLE close-up, lying back relaxing with eyes half-closed, serene expression',
+  'waist-up FROM THE SIDE, caught mid-laugh with a cold drink in one hand',
+  'full-body from the FRONT, crouching for a moment to fix her sandal, a light candid smile',
+  'a candid FROM THE SIDE, adjusting her hair with both hands, soft thoughtful expression',
+  'a CLOSE SELFIE angle, sipping a coffee, content relaxed smile',
+  'a WIDE shot from a corner of the room, sitting hugging one knee, natural laugh',
 ];
 function shufflePoses(): string[] { const b = [...POSE_POOL]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
 
@@ -288,21 +288,25 @@ Deno.serve(async (req) => {
         if (!job) return reply({ ok: true, job: null });
         const { data: idrow } = await svc.from('creator_identity').select('character_id, engine').eq('creator_id', (job as any).creator_id).maybeSingle();
         await svc.from('generations').update({ status: 'in_progress' }).eq('id', (job as any).id);
-        // Modo VISIÓN (si hay llave de Anthropic): escribo el prompt exacto de la pose + estilo realista → pose clavada, sin image_references.
+        const note = String((job as any)?.note || '');
+        const isVar = note.startsWith('var:');
+        // VARIACIÓN de carrusel: se cocina EDITANDO la réplica con Nano Banana Pro → misma mujer/outfit/lugar/luz, pero pose REAL distinta.
+        // (Soul 2.0 con image-reference copiaba la pose; el motor de edición sí la cambia de verdad.)
+        if (isVar && (job as any).reference_url) {
+          const pose = note.slice(4).trim();
+          const editPrompt = `Keep the SAME woman (same face and hair), the SAME exact outfit, the SAME location and background, and the SAME lighting as in the photo. This is the same photoshoot on the same day. Change her body pose/moment AND the camera angle so it is clearly a DIFFERENT shot: now she is ${pose || 'in a clearly different natural pose than the original'}. Feel free to move the camera (shoot from the side, from a three-quarter angle, from further back showing more of the room, a higher or lower angle, or a close hand-held selfie) so it does not look like the same frame. Make it a REAL candid amateur phone photo — natural skin texture and real lighting, never glossy, plastic or AI-looking; full natural body with correct anatomy and correct hands.`;
+          return reply({ ok: true, job: { ...(job as any), nano_edit: true, edit_prompt: editPrompt, image_ref: (job as any).reference_url } });
+        }
+        // RÉPLICA (foto 1): prompt de visión (Anthropic) que clava la pose exacta de la viral + soul real. Sin image_references (perdería la pose).
         let vprompt: string | null = null, vstyle: string | null = null;
         const { data: ak } = await svc.from('app_config').select('value').eq('key', 'anthropic_api_key').maybeSingle();
         const akey = clean((ak as any)?.value);
-        const note = String((job as any)?.note || '');
-        const isVar = note.startsWith('var:');
         if (akey && (job as any).reference_url) {
           const { data: sp } = await svc.from('creator_search_profile').select('style_desc').eq('creator_id', (job as any).creator_id).maybeSingle();
-          const styleDesc = String((sp as any)?.style_desc || '');
-          if (isVar) vprompt = await variationPrompt(akey, (job as any).reference_url, styleDesc, note.slice(4).trim());
-          else vprompt = await visionPrompt(akey, (job as any).reference_url, styleDesc);
+          vprompt = await visionPrompt(akey, (job as any).reference_url, String((sp as any)?.style_desc || ''));
           if (vprompt) vstyle = REALISTIC_STYLE;
         }
-        // Para VARIACIONES: le paso la foto réplica como imagen-ancla (image_ref) → fija escena/outfit/luz, el prompt solo cambia la pose.
-        return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null, prompt: vprompt, style_id: vstyle, image_ref: (isVar && vprompt) ? (job as any).reference_url : null } });
+        return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null, prompt: vprompt, style_id: vstyle } });
       }
       const gid = String((body as any)?.generation_id || '');
       const rurl = (body as any)?.result_url || null;
