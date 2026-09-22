@@ -153,6 +153,18 @@ async function visionPrompt(key: string, refUrl: string, styleDesc: string): Pro
   } catch { return null; }
 }
 const REALISTIC_STYLE = '74abc530-cec8-4c13-88a6-2b3f78bfd0ff'; // "Digital camera": look de foto real.
+// Poses variadas y naturales para el carrusel (auto). Se barajan y a cada foto le toca una distinta.
+const POSE_POOL = [
+  'standing facing the camera, relaxed and natural',
+  'turned to the side in profile, showing her silhouette',
+  'back to the camera, glancing over her shoulder toward the lens',
+  'sitting down casually and relaxed',
+  'reclining or lying down in a relaxed natural way',
+  'caught candid mid-movement like a real content creator — walking, adjusting her hair, or laughing',
+  'three-quarter turn with her weight on one hip',
+  'leaning against a nearby wall or surface',
+];
+function shufflePoses(): string[] { const b = [...POSE_POOL]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
 
 // Variación: mira la foto YA generada y escribe un prompt nuevo que mantiene MISMO lugar + MISMO outfit pero cambia la pose/situación.
 async function variationPrompt(key: string, srcUrl: string, styleDesc: string, idea: string): Promise<string | null> {
@@ -162,10 +174,10 @@ async function variationPrompt(key: string, srcUrl: string, styleDesc: string, i
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001', max_tokens: 500,
-        system: 'You are a fashion photography art director. You are shown ONE photo of a generic anonymous woman model, at a location, wearing an outfit, under specific lighting. Write a single English text-to-image prompt for ANOTHER shot from the SAME photoshoot session — the ONLY thing that changes is her body pose and the camera framing. Everything else must stay IDENTICAL and you must describe it in precise detail so it is unmistakably the same shoot:\n\n1) OUTFIT — copy the garment EXACTLY, including its construction and coverage. Name the precise style: e.g. an underwire / structured cup bikini top must stay an underwire cup top and NEVER become a thin string-triangle top (and vice-versa); keep the same neckline, the same strap thickness and type (tie / clasp / halter), the same bottoms coverage and rise, the exact same fabric and texture, every colour, and ANY text, numbers or logos printed on it, plus the same jewellery/accessories. It must read as the identical clothing item, only seen from the new pose.\n2) LOCATION — describe the exact same setting and the key background objects/landmarks in the same positions (same boat/room/deck/wall, same furniture, same scenery).\n3) LIGHTING — the exact same lighting: time of day, direction, hardness/softness, colour temperature and mood (e.g. warm golden-hour sun from the left, bright midday, soft indoor window light).\n\nThen give her a CLEARLY DIFFERENT natural, flattering influencer pose (name the posture first: standing/sitting/leaning/walking/kneeling, then each arm/hand/leg, head and gaze) and, if helpful, a slightly different camera framing/angle. Never identify, name or describe the face/identity of any real person. Output only the prompt text, one line, no quotes, no preamble.',
+        system: 'You are a fashion photography art director. You are shown ONE photo of a generic anonymous woman model, at a location, wearing an outfit, under specific lighting. Write a single English text-to-image prompt for ANOTHER shot from the SAME photoshoot session — the ONLY thing that changes is her body pose and the camera framing. Everything else must stay IDENTICAL and you must describe it in precise detail so it is unmistakably the same shoot:\n\n1) OUTFIT — copy the garment EXACTLY, including its construction and coverage. Name the precise style: e.g. an underwire / structured cup bikini top must stay an underwire cup top and NEVER become a thin string-triangle top (and vice-versa); keep the same neckline, the same strap thickness and type (tie / clasp / halter), the same bottoms coverage and rise, the exact same fabric and texture, every colour, and ANY text, numbers or logos printed on it, plus the same jewellery/accessories. It must read as the identical clothing item, only seen from the new pose.\n2) LOCATION — describe the exact same setting and the key background objects/landmarks in the same positions (same boat/room/deck/wall, same furniture, same scenery).\n3) LIGHTING — the exact same lighting: time of day, direction, hardness/softness, colour temperature and mood (e.g. warm golden-hour sun from the left, bright midday, soft indoor window light).\n\nThen stage the NEW pose (given below): describe it fully and naturally — the posture first (standing/sitting/leaning/walking/reclining/back-to-camera), then each arm/hand/leg, head tilt and gaze, and a fitting camera framing/angle — the way a REAL content creator would actually stand, relaxed and candid, NOT a stiff studio pose. REALISM IS THE TOP PRIORITY: the final image must read as an authentic real photograph — natural skin texture with pores and subtle imperfections, real ambient lighting and soft shadows, an amateur phone-camera or DSLR look — never glossy, plastic, airbrushed or obviously AI-generated. Never identify, name or describe the face/identity of any real person. Output only the prompt text, one line, no quotes, no preamble.',
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'url', url: srcUrl } },
-          { type: 'text', text: `Another shot of the SAME shoot: IDENTICAL outfit — same exact garment style, construction and coverage (do not turn a structured/cup top into a string triangle), same colours and any printed text/logos — IDENTICAL location and background objects, IDENTICAL lighting. Change ONLY the body pose and framing.${idea ? ` New pose direction: ${idea}.` : ' Pick a fresh flattering pose clearly different from the source.'} Natural realistic photo.${styleDesc ? ` Overall style: ${styleDesc}.` : ''}` },
+          { type: 'text', text: `Another shot of the SAME shoot: IDENTICAL outfit — same exact garment style, construction and coverage (do not turn a structured/cup top into a string triangle), same colours and any printed text/logos — IDENTICAL location and background objects, IDENTICAL lighting. Change ONLY the body pose and framing.${idea ? ` The new pose MUST be: ${idea} — stage it naturally and candidly like a real creator.` : ' Pick a fresh flattering pose clearly different from the source.'} It must look like a real authentic photo, not AI.${styleDesc ? ` Overall style: ${styleDesc}.` : ''}` },
         ] }],
       }),
     });
@@ -295,7 +307,8 @@ Deno.serve(async (req) => {
       // Auto-carrusel: si la réplica salió bien y venía marcada, encola sus variaciones (misma escena, otras poses).
       if (good && rurl && grow && Number((grow as any).auto_carousel) > 0 && !(grow as any).carousel_of) {
         const nn = Math.min(Math.max(Number((grow as any).auto_carousel), 1), 7);
-        const rows = Array.from({ length: nn }, () => ({ creator_id: (grow as any).creator_id, reference_url: rurl, status: 'queued', model: 'soul-v2', note: 'var:', carousel_of: gid, created_by: (grow as any).created_by }));
+        const poses = shufflePoses();
+        const rows = Array.from({ length: nn }, (_, i) => ({ creator_id: (grow as any).creator_id, reference_url: rurl, status: 'queued', model: 'soul-v2', note: `var:${poses[i % poses.length]}`, carousel_of: gid, created_by: (grow as any).created_by }));
         await svc.from('generations').insert(rows);
         await svc.from('generations').update({ auto_carousel: 0 }).eq('id', gid);
       }

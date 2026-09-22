@@ -29,6 +29,18 @@ const SOURCES = [
   { id: 'subir', label: 'Subir', icon: Upload },
 ];
 const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'Fiesta'];
+// Poses variadas y naturales para el carrusel en modo "Sorpréndeme": se barajan y a cada foto le toca una distinta.
+const POSE_POOL = [
+  'standing facing the camera, relaxed and natural',
+  'turned to the side in profile, showing her silhouette',
+  'back to the camera, glancing over her shoulder toward the lens',
+  'sitting down casually and relaxed',
+  'reclining or lying down in a relaxed natural way',
+  'caught candid mid-movement like a real content creator — walking, adjusting her hair, or laughing',
+  'three-quarter turn with her weight on one hip',
+  'leaning against a nearby wall or surface',
+];
+const shuffle = (arr) => { const b = [...arr]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 // Valor aprox del crédito Higgsfield (Soul 2.0 ≈ 0.12 créd ≈ US$0.011/foto). Ajustable.
 const USD_PER_CREDIT = 0.09;
 const money = (credits) => `US$${(Number(credits || 0) * USD_PER_CREDIT).toFixed(2)}`;
@@ -247,7 +259,9 @@ export default function KitchenPage() {
       ideas = varIdeas.map((s) => s.trim()).slice(0, 8);
       if (ideas.length === 0) { setMsg({ kind: 'info', text: 'Agregá al menos una foto.' }); return; }
     } else {
-      ideas = Array.from({ length: varN }, () => '');
+      // Sorpréndeme: cada foto una pose DISTINTA (pool barajado) → variedad garantizada, natural.
+      const poses = shuffle(POSE_POOL);
+      ideas = Array.from({ length: varN }, (_, i) => poses[i % poses.length]);
     }
     setVarBusy(true);
     const r = await callFn('make_variations', { generation_id: rootId, ideas });
@@ -706,7 +720,7 @@ export default function KitchenPage() {
                       ))}
                     </div>
                     <button type="button" disabled={varBusy} onClick={() => makeVariations(compare.root)} className="btn3d inline-flex w-full items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
-                      {varBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Cocinar {varN} · la IA elige las poses
+                      {varBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Cocinar {varN} · cada una una pose distinta
                     </button>
                   </>
                 ) : (
