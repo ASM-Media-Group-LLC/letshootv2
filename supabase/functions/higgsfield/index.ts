@@ -153,16 +153,20 @@ async function visionPrompt(key: string, refUrl: string, styleDesc: string): Pro
   } catch { return null; }
 }
 const REALISTIC_STYLE = '74abc530-cec8-4c13-88a6-2b3f78bfd0ff'; // "Digital camera": look de foto real.
-// Poses variadas y naturales para el carrusel (auto). Se barajan y a cada foto le toca una distinta.
+// Momentos de la vida real para el carrusel (auto): actividad + expresión + pose DISTINTAS en cada foto. Se barajan.
 const POSE_POOL = [
-  'standing facing the camera, relaxed and natural',
-  'turned to the side in profile, showing her silhouette',
-  'back to the camera, glancing over her shoulder toward the lens',
-  'sitting down casually and relaxed',
-  'reclining or lying down in a relaxed natural way',
-  'caught candid mid-movement like a real content creator — walking, adjusting her hair, or laughing',
-  'three-quarter turn with her weight on one hip',
-  'leaning against a nearby wall or surface',
+  'checking her phone, texting with a soft natural half-smile, weight on one hip',
+  'caught mid-laugh looking off to the side, candid and genuine, hand near her face',
+  'holding her phone up taking a mirror-style selfie, cheeky playful look',
+  'sipping a cold drink, relaxed and content, sitting casually',
+  'adjusting her hair with both hands, calm confident gaze straight at the lens',
+  'reclining back with her eyes closed soaking up the sun, serene expression',
+  'turned in profile looking into the distance, soft thoughtful expression',
+  'walking and glancing back over her shoulder with a playful smile',
+  'leaning on a wall or railing, relaxed neutral expression, looking slightly away',
+  'crouching down for a moment, a light candid smile, natural and unposed',
+  'stretching and arching her back gently, eyes half-closed, relaxed',
+  'sitting on the floor or edge hugging one knee, warm genuine smile',
 ];
 function shufflePoses(): string[] { const b = [...POSE_POOL]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
 
@@ -174,7 +178,7 @@ async function variationPrompt(key: string, srcUrl: string, styleDesc: string, i
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001', max_tokens: 500,
-        system: 'You are a fashion photography art director. You are shown ONE photo of a generic anonymous woman model, at a location, wearing an outfit, under specific lighting. Write a single English text-to-image prompt for ANOTHER shot from the SAME photoshoot session — the ONLY thing that changes is her body pose and the camera framing. Everything else must stay IDENTICAL and you must describe it in precise detail so it is unmistakably the same shoot:\n\n1) OUTFIT — copy the garment EXACTLY, including its construction and coverage. Name the precise style: e.g. an underwire / structured cup bikini top must stay an underwire cup top and NEVER become a thin string-triangle top (and vice-versa); keep the same neckline, the same strap thickness and type (tie / clasp / halter), the same bottoms coverage and rise, the exact same fabric and texture, every colour, and ANY text, numbers or logos printed on it, plus the same jewellery/accessories. It must read as the identical clothing item, only seen from the new pose.\n2) LOCATION — describe the exact same setting and the key background objects/landmarks in the same positions (same boat/room/deck/wall, same furniture, same scenery).\n3) LIGHTING — the exact same lighting: time of day, direction, hardness/softness, colour temperature and mood (e.g. warm golden-hour sun from the left, bright midday, soft indoor window light).\n\nThen stage the NEW pose (given below): describe it fully and naturally — the posture first (standing/sitting/leaning/walking/reclining/back-to-camera), then each arm/hand/leg, head tilt and gaze, and a fitting camera framing/angle — the way a REAL content creator would actually stand, relaxed and candid, NOT a stiff studio pose. REALISM IS THE TOP PRIORITY: the final image must read as an authentic real photograph — natural skin texture with pores and subtle imperfections, real ambient lighting and soft shadows, an amateur phone-camera or DSLR look — never glossy, plastic, airbrushed or obviously AI-generated. Never identify, name or describe the face/identity of any real person. Output only the prompt text, one line, no quotes, no preamble.',
+        system: 'You are a fashion photography art director. You are shown ONE photo of a generic anonymous woman model, at a location, wearing an outfit, under specific lighting. Write a single English text-to-image prompt for ANOTHER shot from the SAME photoshoot session — the ONLY thing that changes is her body pose and the camera framing. Everything else must stay IDENTICAL and you must describe it in precise detail so it is unmistakably the same shoot:\n\n1) OUTFIT — copy the garment EXACTLY, including its construction and coverage. Name the precise style: e.g. an underwire / structured cup bikini top must stay an underwire cup top and NEVER become a thin string-triangle top (and vice-versa); keep the same neckline, the same strap thickness and type (tie / clasp / halter), the same bottoms coverage and rise, the exact same fabric and texture, every colour, and ANY text, numbers or logos printed on it, plus the same jewellery/accessories. It must read as the identical clothing item, only seen from the new pose.\n2) LOCATION — describe the exact same setting and the key background objects/landmarks in the same positions (same boat/room/deck/wall, same furniture, same scenery).\n3) LIGHTING — the exact same lighting: time of day, direction, hardness/softness, colour temperature and mood (e.g. warm golden-hour sun from the left, bright midday, soft indoor window light).\n\nThen stage the NEW moment (given below) as a real slice-of-life instant: describe the ACTIVITY and posture (standing/sitting/leaning/walking/reclining/back-to-camera, on her phone, sipping a drink, laughing, adjusting her hair, etc.), each arm/hand/leg, head tilt and gaze, AND a NATURAL FACIAL EXPRESSION that fits the moment and CLEARLY DIFFERS from a plain neutral face — a genuine smile, a candid laugh, a soft serious look, a playful glance, eyes closed — vary the expression, never repeat the same blank stare. Pick a fitting camera framing/angle, the way a REAL content creator would take a candid photo, NOT a stiff studio pose. REALISM IS THE TOP PRIORITY: the final image must read as an authentic real photograph — natural skin texture with pores and subtle imperfections, real ambient lighting and soft shadows, an amateur phone-camera or DSLR look — never glossy, plastic, airbrushed or obviously AI-generated. Never identify, name or describe the face/identity of any real person. Output only the prompt text, one line, no quotes, no preamble.',
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'url', url: srcUrl } },
           { type: 'text', text: `Another shot of the SAME shoot: IDENTICAL outfit — same exact garment style, construction and coverage (do not turn a structured/cup top into a string triangle), same colours and any printed text/logos — IDENTICAL location and background objects, IDENTICAL lighting. Change ONLY the body pose and framing.${idea ? ` The new pose MUST be: ${idea} — stage it naturally and candidly like a real creator.` : ' Pick a fresh flattering pose clearly different from the source.'} It must look like a real authentic photo, not AI.${styleDesc ? ` Overall style: ${styleDesc}.` : ''}` },

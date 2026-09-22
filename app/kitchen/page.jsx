@@ -29,16 +29,20 @@ const SOURCES = [
   { id: 'subir', label: 'Subir', icon: Upload },
 ];
 const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'Fiesta'];
-// Poses variadas y naturales para el carrusel en modo "Sorpréndeme": se barajan y a cada foto le toca una distinta.
+// Momentos de la vida real para el carrusel "Sorpréndeme": actividad + expresión + pose DISTINTAS en cada foto. Se barajan.
 const POSE_POOL = [
-  'standing facing the camera, relaxed and natural',
-  'turned to the side in profile, showing her silhouette',
-  'back to the camera, glancing over her shoulder toward the lens',
-  'sitting down casually and relaxed',
-  'reclining or lying down in a relaxed natural way',
-  'caught candid mid-movement like a real content creator — walking, adjusting her hair, or laughing',
-  'three-quarter turn with her weight on one hip',
-  'leaning against a nearby wall or surface',
+  'checking her phone, texting with a soft natural half-smile, weight on one hip',
+  'caught mid-laugh looking off to the side, candid and genuine, hand near her face',
+  'holding her phone up taking a mirror-style selfie, cheeky playful look',
+  'sipping a cold drink, relaxed and content, sitting casually',
+  'adjusting her hair with both hands, calm confident gaze straight at the lens',
+  'reclining back with her eyes closed soaking up the sun, serene expression',
+  'turned in profile looking into the distance, soft thoughtful expression',
+  'walking and glancing back over her shoulder with a playful smile',
+  'leaning on a wall or railing, relaxed neutral expression, looking slightly away',
+  'crouching down for a moment, a light candid smile, natural and unposed',
+  'stretching and arching her back gently, eyes half-closed, relaxed',
+  'sitting on the floor/edge hugging one knee, warm genuine smile',
 ];
 const shuffle = (arr) => { const b = [...arr]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 // Valor aprox del crédito Higgsfield (Soul 2.0 ≈ 0.12 créd ≈ US$0.011/foto). Ajustable.
@@ -730,7 +734,7 @@ export default function KitchenPage() {
                       {varIdeas.map((v, i) => (
                         <div key={i} className="flex items-center gap-1.5">
                           <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-bold text-brand">{i + 1}</span>
-                          <input value={v} onChange={(e) => setVarIdeas((a) => a.map((x, j) => j === i ? e.target.value : x))} placeholder={`Foto ${i + 1} (ej: ${['de pie mirando a cámara', 'sentada de perfil', 'caminando', 'de espaldas mirando atrás', 'apoyada en la pared'][i % 5]})`} className="w-full rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-paper placeholder:text-paper-dim/60 focus:border-brand/50 focus:outline-none" />
+                          <input value={v} onChange={(e) => setVarIdeas((a) => a.map((x, j) => j === i ? e.target.value : x))} placeholder={`Foto ${i + 1} (ej: ${['con el teléfono, media sonrisa', 'riéndose mirando a un lado', 'tomando algo, relajada', 'de espaldas mirando atrás', 'selfie al espejo, coqueta'][i % 5]})`} className="w-full rounded-lg border border-line bg-card px-3 py-1.5 text-sm text-paper placeholder:text-paper-dim/60 focus:border-brand/50 focus:outline-none" />
                           {varIdeas.length > 1 && <button type="button" onClick={() => setVarIdeas((a) => a.filter((_, j) => j !== i))} className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line text-paper-mute hover:text-rose-300"><X size={12} /></button>}
                         </div>
                       ))}
