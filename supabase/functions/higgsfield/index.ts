@@ -80,8 +80,8 @@ async function runScrape(svc: any, creatorId: string, limit: number, override?: 
     const row: Record<string, unknown> = {
       creator_id: creatorId, kind: 'ref', url: imgUrl, source_platform: 'instagram',
       source_handle: it?.ownerUsername || null, source_url: it?.url || null,
-      likes: Number(it?.likesCount) || null, vibe: tags[0] || null,
-      caption: it?.caption ? String(it.caption).slice(0, 200) : null,
+      likes: Number(it?.likesCount) || null, views: Number(it?.videoViewCount || it?.videoPlayCount || it?.viewsCount) || null,
+      vibe: tags[0] || null, caption: it?.caption ? String(it.caption).slice(0, 200) : null,
     };
     // ignoreDuplicates: si ya existe (aunque esté descartada), NO la pisa — tus descartes se respetan.
     const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url', ignoreDuplicates: true });
@@ -130,6 +130,27 @@ async function aiReview(svc: any, creatorId: string, limit = 20) {
   return n;
 }
 
+// Mira la foto de referencia con visión (Anthropic) y escribe un prompt en inglés que clava la POSE exacta.
+async function visionPrompt(key: string, refUrl: string, styleDesc: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001', max_tokens: 400,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'url', url: refUrl } },
+          { type: 'text', text: `Mirá esta foto de referencia. Escribí UN prompt en INGLÉS, detallado, para recrearla con OTRA mujer influencer. Describí con precisión: la POSE EXACTA (posición de cada brazo y mano, orientación del cuerpo, hacia dónde mira, si está parada/sentada/reclinada), el outfit, el escenario/fondo, la luz y el encuadre. Foto realista, natural, piel real.${styleDesc ? ` Estilo general: ${styleDesc}.` : ''} Respondé SOLO el prompt (una sola línea, sin comillas, sin explicaciones).` },
+        ] }],
+      }),
+    });
+    const j = await res.json();
+    const t = String((j as any)?.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
+    return t.length > 20 ? t.slice(0, 1500) : null;
+  } catch { return null; }
+}
+const REALISTIC_STYLE = '74abc530-cec8-4c13-88a6-2b3f78bfd0ff'; // "Digital camera": look de foto real.
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   try {
@@ -162,7 +183,16 @@ Deno.serve(async (req) => {
         if (!job) return reply({ ok: true, job: null });
         const { data: idrow } = await svc.from('creator_identity').select('character_id, engine').eq('creator_id', (job as any).creator_id).maybeSingle();
         await svc.from('generations').update({ status: 'in_progress' }).eq('id', (job as any).id);
-        return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null } });
+        // Modo VISIÓN (si hay llave de Anthropic): escribo el prompt exacto de la pose + estilo realista → pose clavada, sin image_references.
+        let vprompt: string | null = null, vstyle: string | null = null;
+        const { data: ak } = await svc.from('app_config').select('value').eq('key', 'anthropic_api_key').maybeSingle();
+        const akey = clean((ak as any)?.value);
+        if (akey && (job as any).reference_url) {
+          const { data: sp } = await svc.from('creator_search_profile').select('style_desc').eq('creator_id', (job as any).creator_id).maybeSingle();
+          vprompt = await visionPrompt(akey, (job as any).reference_url, String((sp as any)?.style_desc || ''));
+          if (vprompt) vstyle = REALISTIC_STYLE;
+        }
+        return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null, prompt: vprompt, style_id: vstyle } });
       }
       const gid = String((body as any)?.generation_id || '');
       const rurl = (body as any)?.result_url || null;

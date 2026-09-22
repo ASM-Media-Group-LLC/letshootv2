@@ -546,7 +546,7 @@ export default function AdminPage() {
     { id: 'metricas', label: 'Métricas', icon: BarChart3, badges: [] },
     { id: 'actividad', label: 'Actividad', icon: Activity, badges: [] },
     { id: 'conexion', label: 'Conexión', icon: Plug, badges: [], href: '/conexion' },
-    { id: 'kitchen', label: 'Kitchen', icon: ChefHat, badges: [], href: '/kitchen' },
+    { id: 'kitchen', label: 'Cocina', icon: ChefHat, badges: [], href: '/kitchen' },
   ];
   const activeTab = NAV_TABS.find((t) => t.id === tab) || NAV_TABS[0];
   // Rojo MATE (no neón — el rose-500 sólido lastima la vista): tinte suave con

@@ -74,7 +74,7 @@ export default function KitchenPage() {
     setGens(Array.isArray(data) ? data : []);
   }, [sb]);
   const loadVault = useCallback(async () => {
-    const { data } = await sb.from('creator_vault').select('id, url, caption, creator_id, kind, vibe, likes, source_handle, source_url, source_platform, interest, ai_ok, ai_reason, created_at').in('kind', ['ref', 'real']).order('created_at', { ascending: false }).limit(600);
+    const { data } = await sb.from('creator_vault').select('id, url, caption, creator_id, kind, vibe, likes, views, source_handle, source_url, source_platform, interest, ai_ok, ai_reason, created_at').in('kind', ['ref', 'real']).order('created_at', { ascending: false }).limit(600);
     const allV = Array.isArray(data) ? data : [];
     setVault(allV);
     const rc = {}; allV.filter((r) => r.kind === 'real').forEach((r) => { rc[r.creator_id] = (rc[r.creator_id] || 0) + 1; }); setRealCount(rc);
@@ -439,9 +439,12 @@ export default function KitchenPage() {
                           <button type="button" title="Seleccionar para cocinar" onClick={(e) => { e.stopPropagation(); toggleQueue(r.url); }}
                             className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/60 bg-black/50 text-white/80 hover:bg-black/70'}`}><Check size={13} /></button>
                           {cookedRefs.has(r.url) && <div className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/85 px-2 py-0.5 text-[10px] font-bold text-white"><Check size={10} /> Hecha</div>}
-                          {(r.likes || r.source_handle) && (
+                          {(r.likes || r.views || r.source_handle) && (
                             <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-semibold text-white">
-                              {r.likes ? <span className="inline-flex items-center gap-0.5"><Heart size={10} className="fill-rose-400 text-rose-400" /> {fmtLikes(r.likes)}</span> : <span />}
+                              <span className="inline-flex items-center gap-1.5">
+                                {r.views ? <span className="inline-flex items-center gap-0.5 text-sky-300">▶ {fmtLikes(r.views)}</span> : null}
+                                {r.likes ? <span className="inline-flex items-center gap-0.5"><Heart size={10} className="fill-rose-400 text-rose-400" /> {fmtLikes(r.likes)}</span> : null}
+                              </span>
                               {r.source_handle && <span className="truncate opacity-90">@{r.source_handle}</span>}
                             </div>
                           )}
@@ -573,6 +576,7 @@ export default function KitchenPage() {
                     <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Red social</span><span className="font-semibold capitalize text-paper">{detail.source_platform}</span></div>
                     {detail.source_handle && <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Cuenta</span>{detail.source_url ? <a href={detail.source_url} target="_blank" rel="noreferrer" className="font-semibold text-brand hover:underline">@{detail.source_handle} ↗</a> : <span className="font-semibold text-paper">@{detail.source_handle}</span>}</div>}
                     {detail.likes != null && <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Likes</span><span className="inline-flex items-center gap-1 font-semibold text-paper"><Heart size={13} className="fill-rose-400 text-rose-400" /> {fmtLikes(detail.likes)}</span></div>}
+                    {detail.views != null ? <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Views (video)</span><span className="inline-flex items-center gap-1 font-semibold text-sky-300">▶ {fmtLikes(detail.views)}</span></div> : <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Views</span><span className="text-[11px] text-paper-dim">solo videos/reels</span></div>}
                     {detail.vibe && <div className="flex items-center justify-between gap-2"><span className="text-paper-dim">Nicho</span><span className="font-semibold text-paper">#{detail.vibe}</span></div>}
                   </>
                 ) : (

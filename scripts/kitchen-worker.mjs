@@ -40,23 +40,26 @@ async function fn(action, extra) {
 async function cookOne(job) {
   if (!job.character_id) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'La modelo no tiene su soul enlazada todavía.' }); console.log(`· ${job.id} sin soul enlazada → skip`); return; }
   const dir = join(tmpdir(), 'kitchen-worker'); mkdirSync(dir, { recursive: true });
-  const ext = (String(job.reference_url).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const refPath = join(dir, `${job.id}.${ext}`);
-  try {
-    const r = await fetch(job.reference_url);
-    writeFileSync(refPath, Buffer.from(await r.arrayBuffer()));
-  } catch (e) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'No se pudo bajar la foto de referencia.' }); console.log(`· ${job.id} no se pudo bajar la ref`); return; }
+
+  let args;
+  if (job.prompt) {
+    // MODO VISIÓN: la edge ya escribió el prompt exacto de la pose (Anthropic) → sin image_references + estilo realista.
+    args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', job.prompt, '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
+    if (job.style_id) args.push('--style_id', job.style_id);
+  } else {
+    // MODO IMAGEN (fallback sin Anthropic): baja la referencia y se la pasa al motor.
+    const ext = (String(job.reference_url).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    const refPath = join(dir, `${job.id}.${ext}`);
+    try {
+      const r = await fetch(job.reference_url);
+      writeFileSync(refPath, Buffer.from(await r.arrayBuffer()));
+    } catch (e) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'No se pudo bajar la foto de referencia.' }); console.log(`· ${job.id} no se pudo bajar la ref`); return; }
+    args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--image-references', refPath, '--prompt', 'recreate this photo faithfully — same pose, body position, outfit, setting, framing and lighting; realistic, high detail', '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
+  }
 
   let rec;
   try {
-    const stdout = execFileSync('higgsfield', [
-      'generate', 'create', MODEL,
-      '--custom_reference_id', job.character_id,
-      '--image-references', refPath,
-      '--prompt', 'recreate this photo faithfully — same pose, body position, outfit, setting, framing and lighting; realistic, high detail',
-      '--aspect_ratio', '3:4', '--quality', '2k',
-      '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json',
-    ], { encoding: 'utf8', timeout: 6 * 60 * 1000, maxBuffer: 32 * 1024 * 1024 });
+    const stdout = execFileSync('higgsfield', args, { encoding: 'utf8', timeout: 6 * 60 * 1000, maxBuffer: 32 * 1024 * 1024 });
     const out = JSON.parse(stdout); rec = Array.isArray(out) ? out[0] : out;
   } catch (e) {
     const msg = String(e.message || e);
