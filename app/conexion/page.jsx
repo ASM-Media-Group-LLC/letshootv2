@@ -34,6 +34,26 @@ export default function ConexionPage() {
     })();
   }, []);
 
+  // ── Configurar la llave (se guarda en el servidor vía set_key, NO en el navegador) ──
+  const [keyId, setKeyId] = useState('');
+  const [keySecret, setKeySecret] = useState('');
+  const [keySaving, setKeySaving] = useState(false);
+  const [keyMsg, setKeyMsg] = useState('');
+  const [keyOk, setKeyOk] = useState(null); // null | true | false
+  useEffect(() => {
+    if (access !== 'ok') return;
+    (async () => { const out = await callFn('key_status'); setKeyOk(!!out.configured); })();
+  }, [access]);
+  const saveKey = async () => {
+    if (!keyId.trim() || !keySecret.trim()) { setKeyMsg('Pegá las dos partes de la llave.'); return; }
+    setKeySaving(true); setKeyMsg('');
+    const out = await callFn('set_key', { key_id: keyId, key_secret: keySecret });
+    setKeySaving(false);
+    if (!out.ok) { setKeyMsg(out.error || 'No se pudo guardar.'); return; }
+    setKeyOk(true); setKeyId(''); setKeySecret(''); setKeyMsg('Llave guardada ✓');
+    verify();
+  };
+
   // ── Conexión ──
   const [conn, setConn] = useState(null); // {state:'checking'|'ok'|'bad'|'needsKey', ...}
   const verify = async () => {
@@ -126,6 +146,38 @@ export default function ConexionPage() {
       </header>
 
       <main className="mx-auto w-full max-w-3xl space-y-4 px-4 py-8 lg:px-6">
+        {/* 0 · Configurar la llave — se pega ACÁ, en tu app (no en Supabase). */}
+        <section className="card3d rounded-3xl border border-brand/30 bg-card p-6 sm:p-7">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 font-display text-lg font-bold text-paper"><KeyRound size={18} className="text-brand" /> Llave de Higgsfield</h2>
+              <p className="mt-1 text-sm text-paper-mute">Pegá acá tu KEY_ID y KEY_SECRET (de tu cuenta de Higgsfield). Se guarda en el servidor — <b>nunca</b> queda en el navegador.</p>
+            </div>
+            {keyOk === true && <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-300">✓ configurada</span>}
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-paper-dim">KEY_ID</span>
+              <input value={keyId} onChange={(e) => setKeyId(e.target.value)} placeholder="Pegá tu KEY_ID"
+                className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-paper-dim">KEY_SECRET</span>
+              <input value={keySecret} onChange={(e) => setKeySecret(e.target.value)} type="password" placeholder="Pegá tu KEY_SECRET"
+                className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button type="button" onClick={saveKey} disabled={keySaving}
+              className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50">
+              {keySaving ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+              {keySaving ? 'Guardando…' : 'Guardar llave'}
+            </button>
+            {keyMsg && <span className={`text-xs ${keyMsg.includes('✓') ? 'text-emerald-300' : 'text-rose-300'}`}>{keyMsg}</span>}
+          </div>
+          <p className="mt-2 text-[11px] text-paper-dim">Los valores están en tu archivo <code className="text-paper-mute">letshoot-internal/.env</code> (líneas HIGGSFIELD_KEY_ID / HIGGSFIELD_KEY_SECRET).</p>
+        </section>
+
         {/* 1 · Conexión */}
         <section className="card3d rounded-3xl border border-line bg-card p-6 sm:p-7">
           <div className="flex items-start justify-between gap-3">
