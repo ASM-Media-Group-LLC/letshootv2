@@ -35,6 +35,22 @@ async function hf(path: string, keyId: string, keySecret: string, init: RequestI
 function reqIdOf(j: any) {
   return j?.request_id || j?.id || (Array.isArray(j?.jobs) ? (j.jobs[0]?.id || j.jobs[0]?.request_id) : null) || null;
 }
+// Saca las URLs de imagen de las distintas formas del resultado (job_set, jobs[], results[], images[]).
+function imgUrlsOf(j: any): string[] {
+  const urls: string[] = [];
+  const push = (u: unknown) => { if (typeof u === 'string' && /^https?:\/\//.test(u)) urls.push(u); };
+  const scan = (node: any, depth = 0) => {
+    if (!node || depth > 6) return;
+    if (typeof node === 'string') { push(node); return; }
+    if (Array.isArray(node)) { node.forEach((n) => scan(n, depth + 1)); return; }
+    if (typeof node === 'object') {
+      for (const k of ['url', 'image_url', 'image', 'output_url', 'result_url', 'signed_url', 'min', 'raw']) push(node[k]);
+      for (const k of ['images', 'results', 'jobs', 'outputs', 'output', 'result', 'assets', 'data']) if (node[k]) scan(node[k], depth + 1);
+    }
+  };
+  scan(j);
+  return [...new Set(urls)];
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -84,7 +100,7 @@ Deno.serve(async (req) => {
       return reply({ ok: true, connected: true, note: 'Auth OK; ajustar parámetros.', status: r.status, detail: r.json, base: HF_BASE, source });
     }
     if (action === 'generate') {
-      const r = await hf(`/${String(body?.model || DEFAULT_MODEL)}`, keyId, keySecret, { method: 'POST', body: JSON.stringify(body?.payload || DEFAULT_PAYLOAD) });
+      const r = await hf(`/${String(body?.model || DEFAULT_MODEL)}`, keyId, keySecret, { method: 'POST', body: JSON.stringify({ params: (body?.payload || DEFAULT_PAYLOAD) }) });
       return reply({ ok: r.ok, status: r.status, result: r.json });
     }
     if (action === 'status') {
@@ -123,8 +139,8 @@ Deno.serve(async (req) => {
       const { data: idrow } = await svc.from('creator_identity').select('character_id').eq('creator_id', creatorId).maybeSingle();
       const charId = (idrow as any)?.character_id;
       if (!charId) return reply({ ok: false, error: 'Esa creadora todavía no tiene identidad creada.' });
-      const v1body = { prompt, custom_reference_id: charId, custom_reference_strength: 1, image_reference_url: ref, quality: '1080p', aspect_ratio: '3:4' };
-      const r = await hf(`/v1/text2image/soul`, keyId, keySecret, { method: 'POST', body: JSON.stringify(v1body) });
+      const v1body = { prompt, custom_reference_id: charId, custom_reference_strength: 1, image_reference_url: ref, width_and_height: '1536x2048', quality: '1080p', batch_size: 1 };
+      const r = await hf(`/v1/text2image/soul`, keyId, keySecret, { method: 'POST', body: JSON.stringify({ params: v1body }) });
       const rid = reqIdOf(r.json);
       // costo estimado (best-effort) para el contador.
       let credits: number | null = null, usd: number | null = null;
@@ -138,13 +154,13 @@ Deno.serve(async (req) => {
       const rid = (g as any)?.request_id;
       if (!rid) return reply({ ok: false, error: 'Generación sin request.' });
       const r = await hf(`/requests/${rid}/status`, keyId, keySecret, { method: 'GET' });
-      const st = (r.json as any)?.status;
-      if (st === 'completed') {
-        const imgs = ((r.json as any)?.images || []).map((x: any) => x?.url).filter(Boolean);
+      const st = String((r.json as any)?.status || '').toLowerCase();
+      const imgs = imgUrlsOf(r.json);
+      if (['completed', 'succeeded', 'success', 'done', 'finished'].includes(st) || imgs.length) {
         await svc.from('generations').update({ status: 'done', result_url: imgs[0] || null }).eq('id', gid);
-        return reply({ ok: true, status: 'done', result_url: imgs[0] || null });
+        return reply({ ok: true, status: 'done', result_url: imgs[0] || null, images: imgs });
       }
-      if (['failed', 'nsfw', 'canceled'].includes(st)) { await svc.from('generations').update({ status: 'failed' }).eq('id', gid); return reply({ ok: true, status: 'failed', detail: r.json }); }
+      if (['failed', 'nsfw', 'canceled', 'error', 'rejected'].includes(st)) { await svc.from('generations').update({ status: 'failed' }).eq('id', gid); return reply({ ok: true, status: 'failed', detail: r.json }); }
       return reply({ ok: true, status: st || 'in_progress' });
     }
     if (action === 'approve_gen') {
