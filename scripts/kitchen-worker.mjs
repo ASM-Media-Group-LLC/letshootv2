@@ -10,14 +10,15 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function envFromFile(path) {
   const out = {};
   try { for (const line of readFileSync(path, 'utf8').split('\n')) { const m = line.match(/^([A-Z0-9_]+)=(.*)$/); if (m) out[m[1]] = m[2].trim(); } } catch { /* noop */ }
   return out;
 }
-const fe = envFromFile(new URL('../.env.local', import.meta.url).pathname);
-const we = envFromFile(new URL('./.worker.env', import.meta.url).pathname); // secreto local (gitignored)
+const fe = envFromFile(fileURLToPath(new URL('../.env.local', import.meta.url)));
+const we = envFromFile(fileURLToPath(new URL('./.worker.env', import.meta.url))); // secreto local (gitignored)
 const SB_URL = process.env.SB_URL || fe.NEXT_PUBLIC_SUPABASE_URL;
 const SB_ANON = process.env.SB_ANON || fe.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SECRET = process.env.WORKER_SECRET || we.WORKER_SECRET;
@@ -37,14 +38,14 @@ async function fn(action, extra) {
 }
 
 async function cookOne(job) {
-  if (!job.character_id) { await fn('cook_result', { generation_id: job.id, ok: false }); console.log(`· ${job.id} sin soul enlazada → skip`); return; }
+  if (!job.character_id) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'La modelo no tiene su soul enlazada todavía.' }); console.log(`· ${job.id} sin soul enlazada → skip`); return; }
   const dir = join(tmpdir(), 'kitchen-worker'); mkdirSync(dir, { recursive: true });
   const ext = (String(job.reference_url).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
   const refPath = join(dir, `${job.id}.${ext}`);
   try {
     const r = await fetch(job.reference_url);
     writeFileSync(refPath, Buffer.from(await r.arrayBuffer()));
-  } catch (e) { await fn('cook_result', { generation_id: job.id, ok: false }); console.log(`· ${job.id} no se pudo bajar la ref`); return; }
+  } catch (e) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'No se pudo bajar la foto de referencia.' }); console.log(`· ${job.id} no se pudo bajar la ref`); return; }
 
   let rec;
   try {
@@ -58,8 +59,12 @@ async function cookOne(job) {
     ], { encoding: 'utf8', timeout: 6 * 60 * 1000, maxBuffer: 32 * 1024 * 1024 });
     const out = JSON.parse(stdout); rec = Array.isArray(out) ? out[0] : out;
   } catch (e) {
-    await fn('cook_result', { generation_id: job.id, ok: false });
-    console.log(`✗ ${job.id} falló el CLI: ${String(e.message || e).slice(0, 160)}`);
+    const msg = String(e.message || e);
+    const note = /nsfw/i.test(msg) ? 'NSFW — la referencia es muy explícita para el motor.'
+      : /timeout/i.test(msg) ? 'Tardó demasiado (timeout). Probá de nuevo.'
+      : 'Error del motor al generar. Probá con otra referencia.';
+    await fn('cook_result', { generation_id: job.id, ok: false, note });
+    console.log(`✗ ${job.id} falló: ${note}`);
     return;
   }
   const resultUrl = rec?.result_url || rec?.min_result_url || null;

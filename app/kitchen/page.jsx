@@ -63,7 +63,7 @@ export default function KitchenPage() {
     if (out.ok) { const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m); }
   }, []);
   const loadGens = useCallback(async () => {
-    const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, created_at').order('created_at', { ascending: false }).limit(200);
+    const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, note, created_at').order('created_at', { ascending: false }).limit(200);
     setGens(Array.isArray(data) ? data : []);
   }, [sb]);
   const loadVault = useCallback(async () => {
@@ -162,6 +162,16 @@ export default function KitchenPage() {
     setCompare(null); loadGens();
     setMsg({ kind: approve ? 'ok' : 'info', text: approve ? 'Aprobada — va a su baúl IA ✓' : 'Descartada.' });
   };
+
+  // Reintentar una rechazada: la vuelve a la cola.
+  const retry = async (g) => {
+    await sb.from('generations').update({ status: 'queued', note: null, result_url: null }).eq('id', g.id);
+    loadGens();
+    setMsg({ kind: 'info', text: 'La mandé de nuevo a la cola.' });
+  };
+
+  // Referencias que esta modelo YA cocinó (para marcarlas en el selector).
+  const cookedRefs = useMemo(() => new Set(gens.filter((g) => g.creator_id === sel && g.reference_url && g.status !== 'failed').map((g) => g.reference_url)), [gens, sel]);
 
   if (access === 'loading') return <div className="min-h-screen bg-ink" />;
   if (access === 'denied') {
@@ -346,6 +356,7 @@ export default function KitchenPage() {
                           className={`group relative overflow-hidden rounded-xl border bg-ink-2 text-left transition-all ${on ? 'border-brand ring-2 ring-brand/50' : 'border-line hover:border-brand/40'}`}>
                           <img src={r.url} alt="" className="aspect-[3/4] w-full object-cover" />
                           <div className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/50 bg-black/40 text-transparent group-hover:text-white/70'}`}><Check size={13} /></div>
+                          {cookedRefs.has(r.url) && <div className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/85 px-2 py-0.5 text-[10px] font-bold text-white"><Check size={10} /> Hecha</div>}
                           {(r.likes || r.source_handle) && (
                             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-semibold text-white">
                               {r.likes ? <span className="inline-flex items-center gap-0.5"><Heart size={10} className="fill-rose-400 text-rose-400" /> {fmtLikes(r.likes)}</span> : <span />}
@@ -362,14 +373,33 @@ export default function KitchenPage() {
 
             {/* ── RESULTADOS (de esta modelo) ── */}
             {subtab === 'resultados' && (
-              <div>
-                {pendingRows.length > 0 && <p className="mb-3 inline-flex items-center gap-1.5 text-xs text-amber-300"><Loader2 size={13} className="animate-spin" /> {pendingRows.length} en la cola, cocinándose… (se actualiza solo)</p>}
-                {failedRows.length > 0 && <p className="mb-3 inline-flex items-center gap-1.5 text-xs text-rose-300"><AlertTriangle size={13} /> {failedRows.length} rechazada(s) por el motor (NSFW o error) — probá otra referencia.</p>}
-                {reviewRows.length === 0 && approvedRows.length === 0 && pendingRows.length === 0 ? (
+              <div className="space-y-6">
+                {reviewRows.length === 0 && approvedRows.length === 0 && pendingRows.length === 0 && failedRows.length === 0 && (
                   <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Todavía no cocinaste nada para {selCreator.full_name}. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button>.</p>
-                ) : (
-                  <>
-                    {reviewRows.length > 0 && <h3 className="mb-2 font-display text-sm font-bold text-paper">Para revisar · {reviewRows.length}</h3>}
+                )}
+
+                {/* Cocinándose — la referencia borrosa con spinner */}
+                {pendingRows.length > 0 && (
+                  <section>
+                    <h3 className="mb-2 inline-flex items-center gap-1.5 font-display text-sm font-bold text-amber-300"><Loader2 size={14} className="animate-spin" /> Cocinándose · {pendingRows.length}</h3>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                      {pendingRows.map((g) => (
+                        <div key={g.id} className="relative overflow-hidden rounded-xl border border-amber-400/30 bg-ink-2">
+                          {g.reference_url ? <img src={g.reference_url} alt="" className="aspect-[3/4] w-full scale-105 object-cover blur-md brightness-[0.4]" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white">
+                            <Loader2 size={26} className="animate-spin text-amber-300" />
+                            <span className="text-[11px] font-semibold tracking-wide">cocinándose…</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Para revisar */}
+                {reviewRows.length > 0 && (
+                  <section>
+                    <h3 className="mb-2 font-display text-sm font-bold text-paper">Para revisar · {reviewRows.length}</h3>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                       {reviewRows.map((g) => (
                         <div key={g.id} className="overflow-hidden rounded-xl border border-line bg-ink-2">
@@ -383,19 +413,43 @@ export default function KitchenPage() {
                         </div>
                       ))}
                     </div>
-                    {approvedRows.length > 0 && (
-                      <>
-                        <h3 className="mb-2 mt-6 font-display text-sm font-bold text-paper">Aprobadas · {approvedRows.length}</h3>
-                        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
-                          {approvedRows.map((g) => (
-                            <div key={g.id} className="overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
-                              {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
-                            </div>
-                          ))}
+                  </section>
+                )}
+
+                {/* Aprobadas */}
+                {approvedRows.length > 0 && (
+                  <section>
+                    <h3 className="mb-2 font-display text-sm font-bold text-paper">Aprobadas · {approvedRows.length}</h3>
+                    <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
+                      {approvedRows.map((g) => (
+                        <div key={g.id} className="overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
+                          {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
                         </div>
-                      </>
-                    )}
-                  </>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Rechazadas — motivo + reintentar */}
+                {failedRows.length > 0 && (
+                  <section>
+                    <h3 className="mb-1 inline-flex items-center gap-1.5 font-display text-sm font-bold text-rose-300"><AlertTriangle size={14} /> Rechazadas · {failedRows.length}</h3>
+                    <p className="mb-2 text-xs text-paper-dim">La foto es la referencia que mandaste; abajo el motivo. Podés reintentar.</p>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                      {failedRows.map((g) => (
+                        <div key={g.id} className="overflow-hidden rounded-xl border border-rose-500/30 bg-ink-2">
+                          <div className="relative">
+                            {g.reference_url ? <img src={g.reference_url} alt="" className="aspect-[3/4] w-full object-cover opacity-50" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                            <div className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-rose-500/80 px-2 py-0.5 text-[10px] font-bold text-white"><AlertTriangle size={10} /> Rechazada</div>
+                          </div>
+                          <div className="p-2">
+                            <p className="mb-1.5 text-[11px] leading-snug text-rose-200">{g.note || 'Rechazada por el motor.'}</p>
+                            <button type="button" onClick={() => retry(g)} className="inline-flex w-full items-center justify-center gap-1 rounded-full border border-line px-2 py-1.5 text-[11px] font-semibold text-paper-mute hover:border-brand/40 hover:text-paper"><RefreshCw size={11} /> Reintentar</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                 )}
               </div>
             )}
