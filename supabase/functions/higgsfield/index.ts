@@ -60,15 +60,36 @@ Deno.serve(async (req) => {
     const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
     if (!token) return reply({ ok: false, error: 'No autenticado.' });
+    const svc = createClient(url, svcKey, { auth: { autoRefreshToken: false, persistSession: false } });
+    const body = await req.json().catch(() => ({}));
+    const action = String(body?.action || '');
+
+    // ── Worker del cocinero (sin usuario; protegido por secreto en app_config) ──
+    // Corre en la Mac del dueño con el CLI logueado; drena la cola de generations.
+    if (action === 'cook_next' || action === 'cook_result') {
+      const { data: sc } = await svc.from('app_config').select('value').eq('key', 'kitchen_worker_secret').maybeSingle();
+      const secret = clean((body as any)?.worker_secret);
+      if (!secret || !(sc as any)?.value || secret !== clean((sc as any).value)) return reply({ ok: false, error: 'Worker no autorizado.' });
+      if (action === 'cook_next') {
+        const { data: job } = await svc.from('generations').select('id, creator_id, reference_url').eq('status', 'queued').order('created_at', { ascending: true }).limit(1).maybeSingle();
+        if (!job) return reply({ ok: true, job: null });
+        const { data: idrow } = await svc.from('creator_identity').select('character_id, engine').eq('creator_id', (job as any).creator_id).maybeSingle();
+        await svc.from('generations').update({ status: 'in_progress' }).eq('id', (job as any).id);
+        return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null } });
+      }
+      const gid = String((body as any)?.generation_id || '');
+      const rurl = (body as any)?.result_url || null;
+      const good = (body as any)?.ok !== false && !!rurl;
+      await svc.from('generations').update({ status: good ? 'done' : 'failed', result_url: rurl, credits: Number((body as any)?.credits) || null, usd: Number((body as any)?.usd) || null, prompt: (body as any)?.prompt || null }).eq('id', gid);
+      return reply({ ok: true });
+    }
+
+    // ── Auth de usuario (admin/supervisor) para todo lo demás ──
     const caller = createClient(url, anon, { global: { headers: { Authorization: `Bearer ${token}` } } });
     const { data: { user } } = await caller.auth.getUser();
     if (!user) return reply({ ok: false, error: 'Sesión inválida.' });
     const { data: prof } = await caller.from('profiles').select('role').eq('id', user.id).single();
     if (!prof || (prof.role !== 'admin' && prof.role !== 'supervisor')) return reply({ ok: false, error: 'Necesitás ser admin o supervisor.' });
-
-    const svc = createClient(url, svcKey, { auth: { autoRefreshToken: false, persistSession: false } });
-    const body = await req.json().catch(() => ({}));
-    const action = String(body?.action || '');
 
     if (action === 'set_key') {
       const keyId = clean(body?.key_id), keySecret = clean(body?.key_secret);
