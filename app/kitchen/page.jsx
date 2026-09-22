@@ -1,20 +1,19 @@
 'use client';
 
-// /kitchen — "La cocina" (dashboard high-level, con pestañas).
-//   Resumen · Modelos · Cocinar · Resultados · Gastos
-// Pipeline REAL (Soul 2.0 de la cuenta Higgsfield, vía CLI oficial):
-//   elegís modelo → elegís virales (pestañas: Lo que tengo · Lo que encontré · Subir)
-//   → van a la COLA → el motor las cocina con SU soul real → ANTES/DESPUÉS → aprobás → baúl IA.
-// La generación de las souls reales corre por el CLI logueado (no por el edge). El /kitchen
-// encola; el "worker" (CLI) las procesa y escribe el resultado en `generations`.
+// /kitchen — "La cocina" (dashboard high-level, CENTRADO EN LA MODELO).
+// Flujo lineal: 1) Elegí la modelo (fácil, con buscador) → 2) su cocina: elegís virales
+// (pestañas: Lo que tengo · Lo que encontré · Subir + vibe) → cola → 3) sus Resultados
+// (Antes/Después → Aprobar → baúl IA). El gasto se ve POR MODELO en su cabecera.
+// Motor real = Soul 2.0 de la cuenta Higgsfield (soul entrenada), vía CLI oficial.
+// /kitchen encola (generations queued); el "worker" (CLI logueado) las cocina.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import {
   ArrowLeft, ChefHat, Loader2, CheckCircle2, Sparkles, IdCard, Coins, RefreshCw,
-  Heart, Trash2, LayoutDashboard, Users, Flame, Images, Wallet, ArrowRight, AlertTriangle, X,
-  FolderHeart, Compass, Upload, Plus, Check, ChefHat as Pot,
+  Heart, Trash2, Flame, Images, ArrowRight, AlertTriangle, X, Search,
+  FolderHeart, Compass, Upload, Check, ChefHat as Pot,
 } from 'lucide-react';
 
 async function callFn(action, extra) {
@@ -23,21 +22,11 @@ async function callFn(action, extra) {
   if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
   return out || {};
 }
-const money = (n) => `US$${(Number(n) || 0).toFixed(3)}`;
 
-const TABS = [
-  { id: 'resumen', label: 'Resumen', icon: LayoutDashboard },
-  { id: 'modelos', label: 'Modelos', icon: Users },
-  { id: 'cocinar', label: 'Cocinar', icon: Flame },
-  { id: 'resultados', label: 'Resultados', icon: Images },
-  { id: 'gastos', label: 'Gastos', icon: Wallet },
-];
-
-// Fuentes del selector de fotos.
 const SOURCES = [
-  { id: 'encontre', label: 'Lo que encontré', icon: Compass, hint: 'Referencias y virales guardadas' },
-  { id: 'tengo', label: 'Lo que tengo', icon: FolderHeart, hint: 'Fotos reales de la modelo' },
-  { id: 'subir', label: 'Subir', icon: Upload, hint: 'Una foto nueva del momento' },
+  { id: 'encontre', label: 'Lo que encontré', icon: Compass },
+  { id: 'tengo', label: 'Lo que tengo', icon: FolderHeart },
+  { id: 'subir', label: 'Subir', icon: Upload },
 ];
 const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'Fiesta'];
 
@@ -45,22 +34,21 @@ export default function KitchenPage() {
   const [access, setAccess] = useState('loading');
   useEffect(() => { (async () => { try { const up = await getUserProfile(); const p = up?.profile; setAccess(p && (p.role === 'admin' || p.role === 'supervisor') ? 'ok' : 'denied'); } catch { setAccess('denied'); } })(); }, []);
 
-  const [tab, setTab] = useState('cocinar');
   const [creators, setCreators] = useState([]);
-  const [sel, setSel] = useState('');
-  const [ident, setIdent] = useState({});        // creator_id -> {status, character_id, n_photos}
-  const [realCount, setRealCount] = useState({}); // creator_id -> nº fotos reales
-  const [summary, setSummary] = useState({ credits: 0, usd: 0, images: 0 });
-  const [vault, setVault] = useState([]);         // baúl completo (ref + real) con vibe
+  const [sel, setSel] = useState('');              // modelo elegida (si vacío → pantalla de elegir modelo)
+  const [subtab, setSubtab] = useState('cocinar'); // dentro de la modelo: cocinar | resultados
+  const [ident, setIdent] = useState({});
+  const [realCount, setRealCount] = useState({});
+  const [vault, setVault] = useState([]);
   const [gens, setGens] = useState([]);
-  const [idBusy, setIdBusy] = useState('');
   const [msg, setMsg] = useState(null);
   const [compare, setCompare] = useState(null);
+  const [q, setQ] = useState('');                  // buscador de modelos
 
   // Cocinar
   const [source, setSource] = useState('encontre');
   const [vibe, setVibe] = useState('Todos');
-  const [queue, setQueue] = useState([]);         // urls seleccionadas para encolar
+  const [queue, setQueue] = useState([]);
   const [enq, setEnq] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -68,17 +56,14 @@ export default function KitchenPage() {
 
   const loadSummary = useCallback(async () => {
     const out = await callFn('kitchen_summary');
-    if (out.ok) {
-      setSummary({ credits: out.total_credits || 0, usd: out.total_usd || 0, images: out.total_images || 0 });
-      const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m);
-    }
+    if (out.ok) { const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m); }
   }, []);
   const loadGens = useCallback(async () => {
-    const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, usd, created_at').order('created_at', { ascending: false }).limit(80);
+    const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, created_at').order('created_at', { ascending: false }).limit(200);
     setGens(Array.isArray(data) ? data : []);
   }, [sb]);
   const loadVault = useCallback(async () => {
-    const { data } = await sb.from('creator_vault').select('id, url, caption, creator_id, kind, vibe').in('kind', ['ref', 'real']).order('created_at', { ascending: false }).limit(500);
+    const { data } = await sb.from('creator_vault').select('id, url, caption, creator_id, kind, vibe').in('kind', ['ref', 'real']).order('created_at', { ascending: false }).limit(600);
     const allV = Array.isArray(data) ? data : [];
     setVault(allV);
     const rc = {}; allV.filter((r) => r.kind === 'real').forEach((r) => { rc[r.creator_id] = (rc[r.creator_id] || 0) + 1; }); setRealCount(rc);
@@ -94,48 +79,47 @@ export default function KitchenPage() {
 
   const selCreator = creators.find((c) => c.id === sel) || null;
   const selReady = ident[sel]?.status === 'ready';
-  const modelsReady = creators.filter((c) => ident[c.id]?.status === 'ready').length;
 
-  // Fotos que muestra el selector según fuente + vibe.
+  // Métricas por modelo (de las generaciones cargadas).
+  const statsFor = useCallback((cid) => {
+    const rows = gens.filter((g) => g.creator_id === cid);
+    return {
+      credits: rows.filter((g) => g.status !== 'failed').reduce((a, g) => a + Number(g.credits || 0), 0),
+      review: rows.filter((g) => g.status === 'done').length,
+      approved: rows.filter((g) => g.status === 'approved').length,
+      pending: rows.filter((g) => ['queued', 'in_progress'].includes(g.status)).length,
+      total: rows.filter((g) => g.status !== 'failed').length,
+    };
+  }, [gens]);
+  const mine = statsFor(sel);
+
   const pickPhotos = useMemo(() => {
     let rows = [];
-    if (source === 'tengo') rows = vault.filter((r) => r.kind === 'real' && (!sel || r.creator_id === sel));
+    if (source === 'tengo') rows = vault.filter((r) => r.kind === 'real' && r.creator_id === sel);
     else if (source === 'encontre') rows = vault.filter((r) => r.kind === 'ref');
-    else rows = vault.filter((r) => r.kind === 'ref' && r.creator_id === sel); // 'subir' muestra lo subido de esta modelo
+    else rows = vault.filter((r) => r.kind === 'ref' && r.creator_id === sel);
     if (vibe !== 'Todos') rows = rows.filter((r) => (r.vibe || '').toLowerCase() === vibe.toLowerCase());
     return rows.slice(0, 120);
   }, [vault, source, vibe, sel]);
 
-  const createIdentity = async (creatorId) => {
-    const c = creators.find((x) => x.id === creatorId);
-    setIdBusy(creatorId); setMsg(null);
-    const { data: rows } = await sb.from('creator_vault').select('url').eq('creator_id', creatorId).eq('kind', 'real').limit(20);
-    const urls = (rows || []).map((r) => r.url).filter(Boolean);
-    if (urls.length < 3) { setIdBusy(''); setMsg({ kind: 'err', text: `${c?.full_name || 'Esta modelo'} tiene ${urls.length} foto(s) real(es). Se necesitan 5+ para su cara. Subí más en Propuestas → baúl → "Real de la modelo".` }); return; }
-    const out = await callFn('create_character', { creator_id: creatorId, name: c?.full_name || 'Modelo', image_urls: urls });
-    setIdBusy('');
-    if (!out.ok || !out.character_id) { setMsg({ kind: 'err', text: out.error || 'No se pudo crear la identidad.' }); return; }
-    setMsg({ kind: 'ok', text: `Identidad de ${c?.full_name || 'la modelo'} creada ✓` }); loadSummary();
-  };
+  const enterModel = (id) => { setSel(id); setSubtab('cocinar'); setQueue([]); setMsg(null); setSource('encontre'); setVibe('Todos'); };
+  const toggleQueue = (url) => setQueue((k) => k.includes(url) ? k.filter((u) => u !== url) : [...k, url]);
 
-  const toggleQueue = (url) => setQueue((q) => q.includes(url) ? q.filter((u) => u !== url) : [...q, url]);
-
-  // Encolar: crea filas 'queued' en generations (las cocina el worker/CLI).
   const enqueue = async () => {
-    if (!sel) { setTab('cocinar'); setMsg({ kind: 'info', text: 'Elegí una modelo primero (arriba).' }); return; }
-    if (!selReady) { setMsg({ kind: 'err', text: 'Esa modelo todavía no tiene identidad. Creala en Modelos.' }); return; }
-    if (queue.length === 0) { setMsg({ kind: 'info', text: 'Elegí al menos una foto (tocá para seleccionar).' }); return; }
+    if (!selReady) { setMsg({ kind: 'err', text: `${selCreator?.full_name || 'Esta modelo'} todavía no tiene su soul enlazada. Avisame y la enlazo.` }); return; }
+    if (queue.length === 0) { setMsg({ kind: 'info', text: 'Tocá al menos una foto para seleccionarla.' }); return; }
     setEnq(true);
     const rows = queue.map((u) => ({ creator_id: sel, reference_url: u, status: 'queued', engine: 'soul2', model: 'text2image_soul_v2' }));
     const { error } = await sb.from('generations').insert(rows);
     setEnq(false);
     if (error) { setMsg({ kind: 'err', text: `No se pudo encolar: ${error.message}` }); return; }
-    setMsg({ kind: 'ok', text: `${queue.length} foto(s) en la cola. El motor las va cocinando con la Julia real → aparecen en Resultados.` });
+    const n = queue.length;
     setQueue([]); loadGens();
+    setMsg({ kind: 'ok', text: `${n} foto(s) en la cola de ${selCreator?.full_name || 'la modelo'}. Se cocinan con su soul real y aparecen en Resultados.` });
+    setSubtab('resultados');
   };
 
   const onUpload = async (files) => {
-    if (!sel) { setMsg({ kind: 'info', text: 'Elegí una modelo primero para subir su referencia.' }); return; }
     const list = Array.from(files || []).slice(0, 10);
     if (list.length === 0) return;
     setUploading(true); setMsg(null);
@@ -149,17 +133,16 @@ export default function KitchenPage() {
         await sb.from('creator_vault').insert({ creator_id: sel, kind: 'ref', url: pub.publicUrl, caption: file.name });
       }
       await loadVault();
-      setMsg({ kind: 'ok', text: `${list.length} foto(s) subida(s). Ya podés seleccionarlas y mandarlas a la cola.` });
-    } catch (e) {
-      setMsg({ kind: 'err', text: `No se pudo subir: ${e?.message || e}` });
-    }
+      setSource('subir');
+      setMsg({ kind: 'ok', text: `${list.length} foto(s) subida(s). Seleccionalas y mandalas a la cola.` });
+    } catch (e) { setMsg({ kind: 'err', text: `No se pudo subir: ${e?.message || e}` }); }
     setUploading(false);
   };
 
   const decide = async (g, approve) => {
     await callFn('approve_gen', { generation_id: g.id, approve });
     setCompare(null); loadGens();
-    setMsg({ kind: approve ? 'ok' : 'info', text: approve ? 'Aprobada — va al baúl IA de la modelo ✓' : 'Descartada.' });
+    setMsg({ kind: approve ? 'ok' : 'info', text: approve ? 'Aprobada — va a su baúl IA ✓' : 'Descartada.' });
   };
 
   if (access === 'loading') return <div className="min-h-screen bg-ink" />;
@@ -174,43 +157,24 @@ export default function KitchenPage() {
     );
   }
 
-  const pending = gens.filter((g) => ['queued', 'in_progress'].includes(g.status));
-  const toReview = gens.filter((g) => g.status === 'done');
-  const approved = gens.filter((g) => g.status === 'approved');
+  const filteredCreators = creators.filter((c) => c.full_name.toLowerCase().includes(q.trim().toLowerCase()));
+  const reviewRows = gens.filter((g) => g.creator_id === sel && g.status === 'done');
+  const approvedRows = gens.filter((g) => g.creator_id === sel && g.status === 'approved');
+  const pendingRows = gens.filter((g) => g.creator_id === sel && ['queued', 'in_progress'].includes(g.status));
 
   return (
     <div className="min-h-screen bg-ink text-paper">
       <header className="sticky top-0 z-30 border-b border-line bg-ink/90 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-4 lg:px-6">
-          <div className="flex items-center justify-between gap-4 py-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <Link href="/admin" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper" title="Volver al admin"><ArrowLeft size={17} /></Link>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute"><ChefHat size={13} className="text-brand" /> Kitchen</div>
-                <h1 className="truncate font-display text-xl font-bold tracking-tight text-paper">La cocina de contenido</h1>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-line bg-card px-3.5 py-2">
-              <Coins size={15} className="text-amber-300" />
-              <div className="text-right leading-tight">
-                <div className="text-sm font-bold tabular-nums text-paper">{summary.credits.toFixed(1)} créd.</div>
-                <div className="text-[10px] text-paper-dim">{summary.images} fotos generadas</div>
-              </div>
-            </div>
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3.5 lg:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/admin" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper" title="Volver al admin"><ArrowLeft size={17} /></Link>
+            <div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute"><ChefHat size={13} className="text-brand" /> Kitchen</div>
           </div>
-          <nav className="-mb-px flex gap-1 overflow-x-auto">
-            {TABS.map((t) => {
-              const Icon = t.icon; const on = tab === t.id;
-              const badge = t.id === 'resultados' ? (toReview.length || null) : t.id === 'modelos' ? (modelsReady || null) : null;
-              return (
-                <button key={t.id} type="button" onClick={() => setTab(t.id)}
-                  className={`inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors ${on ? 'border-brand text-brand' : 'border-transparent text-paper-mute hover:text-paper'}`}>
-                  <Icon size={15} /> {t.label}
-                  {badge ? <span className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold ${on ? 'bg-brand text-on-accent' : 'bg-hair/20 text-paper-mute'}`}>{badge}</span> : null}
-                </button>
-              );
-            })}
-          </nav>
+          {selCreator && (
+            <button type="button" onClick={() => setSel('')} className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">
+              <ArrowLeft size={13} /> Cambiar modelo
+            </button>
+          )}
         </div>
       </header>
 
@@ -223,216 +187,198 @@ export default function KitchenPage() {
           </div>
         )}
 
-        {(tab === 'cocinar' || tab === 'resultados') && (
-          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-paper-dim">Modelo</span>
-            <select value={sel} onChange={(e) => { setSel(e.target.value); }} className="min-w-[200px] rounded-xl border border-line bg-ink-2 px-3 py-2 text-sm text-paper outline-none focus:border-brand/60">
-              <option value="">— Elegí una modelo —</option>
-              {creators.map((c) => <option key={c.id} value={c.id}>{c.full_name}{ident[c.id]?.status === 'ready' ? ' · ✓' : ''}</option>)}
-            </select>
-            {sel && (selReady
-              ? <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300"><IdCard size={14} /> Identidad lista</span>
-              : <button type="button" onClick={() => setTab('modelos')} className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300"><AlertTriangle size={13} /> Sin identidad · crear en Modelos</button>)}
-            {pending.length > 0 && <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs font-semibold text-amber-300"><Loader2 size={13} className="animate-spin" /> {pending.length} en la cola</span>}
-          </div>
-        )}
-
-        {/* ── RESUMEN ── */}
-        {tab === 'resumen' && (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { label: 'Créditos gastados', value: summary.credits.toFixed(1), sub: `${summary.images} fotos`, icon: Wallet, tone: 'text-amber-300' },
-              { label: 'Fotos generadas', value: summary.images, sub: 'con soul real', icon: Images, tone: 'text-brand' },
-              { label: 'Modelos listas', value: `${modelsReady}/${creators.length}`, sub: 'con identidad', icon: Users, tone: 'text-emerald-300' },
-              { label: 'Para revisar', value: toReview.length, sub: pending.length ? `${pending.length} en la cola` : 'al día', icon: Flame, tone: 'text-rose-300' },
-            ].map((k) => {
-              const Icon = k.icon;
-              return (
-                <div key={k.label} className="card3d rounded-2xl border border-line bg-card p-4">
-                  <div className="flex items-center justify-between"><span className="text-xs font-semibold uppercase tracking-wider text-paper-dim">{k.label}</span><Icon size={16} className={k.tone} /></div>
-                  <div className="mt-2 font-display text-2xl font-bold tabular-nums text-paper">{k.value}</div>
-                  <div className="mt-0.5 text-[11px] text-paper-dim">{k.sub}</div>
-                </div>
-              );
-            })}
-            <div className="card3d col-span-full rounded-2xl border border-line bg-card p-5">
-              <h3 className="font-display text-sm font-bold text-paper">Cómo funciona</h3>
-              <ol className="mt-2 space-y-1.5 text-sm text-paper-mute">
-                <li><b className="text-paper">1.</b> En <b>Modelos</b>, cada creadora se enlaza con su <b>soul real</b> de Higgsfield (Soul 2.0).</li>
-                <li><b className="text-paper">2.</b> En <b>Cocinar</b>, elegís la modelo y seleccionás <b>varias virales</b> → van a la <b>cola</b>.</li>
-                <li><b className="text-paper">3.</b> El motor las cocina con SU cara y aparecen en <b>Resultados</b>: ves el <b>antes/después</b> y aprobás → baúl IA.</li>
-                <li className="text-paper-dim">4. El scraper (Apify · Instagram por nicho) llenará el feed de virales solo.</li>
-              </ol>
-              <button type="button" onClick={() => setTab('cocinar')} className="btn3d mt-4 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold">Ir a Cocinar <ArrowRight size={13} /></button>
-            </div>
-          </div>
-        )}
-
-        {/* ── MODELOS ── */}
-        {tab === 'modelos' && (
-          <div className="space-y-2.5">
-            <p className="text-sm text-paper-mute">Cada creadora se conecta con su <b>soul real</b> entrenada en Higgsfield (Soul 2.0) para que el motor haga SU cara. Se enlaza desde el CLI (te lo dejo mapeado yo).</p>
-            {creators.map((c) => {
-              const id = ident[c.id]; const nreal = realCount[c.id] || 0; const ready = id?.status === 'ready';
-              return (
-                <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-xs font-bold text-brand">
-                    {c.avatar_url ? <img src={c.avatar_url} alt="" className="h-full w-full object-cover" /> : (c.full_name || '?').slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-paper">{c.full_name}</div>
-                    <div className="text-[11px] text-paper-dim">{nreal} foto{nreal === 1 ? '' : 's'} real{nreal === 1 ? '' : 'es'}{ready ? ` · soul ${String(id.character_id).slice(0, 8)}…` : ''}</div>
-                  </div>
-                  {ready ? (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300"><CheckCircle2 size={14} /> Soul real enlazada</span>
-                  ) : (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[11px] font-medium text-paper-dim" title="Se enlaza su soul de Higgsfield desde el CLI"><AlertTriangle size={12} className="text-amber-400" /> Sin soul enlazada</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ── COCINAR ── */}
-        {tab === 'cocinar' && (
+        {/* ══════════ PASO 1 — ELEGÍ LA MODELO ══════════ */}
+        {!sel && (
           <div>
-            {/* Sub-pestañas de fuente */}
-            <div className="mb-3 flex flex-wrap items-center gap-1.5">
-              {SOURCES.map((s) => {
-                const Icon = s.icon; const on = source === s.id;
+            <div className="mb-5">
+              <h1 className="font-display text-2xl font-bold tracking-tight text-paper">Elegí la modelo</h1>
+              <p className="mt-1 text-sm text-paper-mute">Tocá una modelo para entrar a su cocina.</p>
+            </div>
+            <div className="relative mb-5 max-w-md">
+              <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…" className="w-full rounded-full border border-line bg-card py-2.5 pl-10 pr-4 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {filteredCreators.map((c) => {
+                const ready = ident[c.id]?.status === 'ready'; const s = statsFor(c.id);
                 return (
-                  <button key={s.id} type="button" onClick={() => setSource(s.id)} title={s.hint}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors ${on ? 'border-brand bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
-                    <Icon size={14} /> {s.label}
+                  <button key={c.id} type="button" onClick={() => enterModel(c.id)}
+                    className="card3d group flex flex-col items-start gap-3 rounded-2xl border border-line bg-card p-4 text-left transition-colors hover:border-brand/50">
+                    <div className="flex w-full items-center gap-3">
+                      <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-sm font-bold text-brand">
+                        {c.avatar_url ? <img src={c.avatar_url} alt="" className="h-full w-full object-cover" /> : (c.full_name || '?').slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-bold text-paper">{c.full_name}</div>
+                        {ready
+                          ? <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300"><CheckCircle2 size={11} /> Soul lista</div>
+                          : <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-paper-dim"><AlertTriangle size={11} className="text-amber-400" /> Sin soul</div>}
+                      </div>
+                    </div>
+                    <div className="flex w-full items-center gap-3 text-[11px] text-paper-dim">
+                      <span className="inline-flex items-center gap-1"><Coins size={11} className="text-amber-300" /> {s.credits.toFixed(1)}</span>
+                      {s.review > 0 && <span className="inline-flex items-center gap-1 text-rose-300"><Flame size={11} /> {s.review} p/ revisar</span>}
+                      {s.pending > 0 && <span className="inline-flex items-center gap-1 text-amber-300"><Loader2 size={11} className="animate-spin" /> {s.pending}</span>}
+                      <ArrowRight size={13} className="ml-auto opacity-0 transition-opacity group-hover:opacity-100" />
+                    </div>
                   </button>
                 );
               })}
-              <button type="button" onClick={() => { loadGens(); loadVault(); loadSummary(); }} className="btn3d-ghost ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold"><RefreshCw size={13} /> Actualizar</button>
             </div>
-
-            {/* Chips de vibe */}
-            {source !== 'subir' && (
-              <div className="mb-3 flex flex-wrap gap-1.5">
-                {VIBES.map((v) => (
-                  <button key={v} type="button" onClick={() => setVibe(v)}
-                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${vibe === v ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-dim hover:text-paper'}`}>{v}</button>
-                ))}
-              </div>
-            )}
-
-            {/* SUBIR */}
-            {source === 'subir' ? (
-              <label className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-card/40 p-10 text-center transition-colors hover:border-brand/40 ${!sel ? 'opacity-60' : ''}`}>
-                <input type="file" accept="image/*" multiple className="hidden" disabled={!sel || uploading} onChange={(e) => onUpload(e.target.files)} />
-                {uploading ? <Loader2 size={26} className="animate-spin text-brand" /> : <Upload size={26} className="text-paper-dim" />}
-                <div className="text-sm font-semibold text-paper">{uploading ? 'Subiendo…' : 'Subí una foto de referencia'}</div>
-                <div className="text-xs text-paper-dim">{sel ? `Se guarda en el baúl de ${selCreator?.full_name || 'la modelo'} y podés mandarla a la cola.` : 'Elegí una modelo primero (arriba).'}</div>
-              </label>
-            ) : pickPhotos.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">
-                {source === 'tengo' ? 'Esta modelo no tiene fotos reales cargadas todavía.' : 'No hay referencias con este filtro. Probá otra vibe o subí fotos.'}
-              </p>
-            ) : (
-              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-                {pickPhotos.map((r) => {
-                  const on = queue.includes(r.url);
-                  return (
-                    <button key={r.id} type="button" onClick={() => toggleQueue(r.url)}
-                      className={`group relative overflow-hidden rounded-xl border bg-ink-2 text-left transition-all ${on ? 'border-brand ring-2 ring-brand/50' : 'border-line hover:border-brand/40'}`}>
-                      <img src={r.url} alt="" className="aspect-[3/4] w-full object-cover" />
-                      <div className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/50 bg-black/40 text-transparent group-hover:text-white/70'}`}>
-                        <Check size={13} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {filteredCreators.length === 0 && <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">No hay modelos con ese nombre.</p>}
           </div>
         )}
 
-        {/* ── RESULTADOS ── */}
-        {tab === 'resultados' && (
+        {/* ══════════ COCINA DE LA MODELO ══════════ */}
+        {selCreator && (
           <div>
-            {pending.length > 0 && <p className="mb-3 inline-flex items-center gap-1.5 text-xs text-amber-300"><Loader2 size={13} className="animate-spin" /> {pending.length} en la cola, cocinándose…</p>}
-            {toReview.length === 0 && approved.length === 0 && pending.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Todavía no hay nada. Andá a <button onClick={() => setTab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button>, elegí virales y mandalas a la cola.</p>
-            ) : (
-              <>
-                {toReview.length > 0 && <h3 className="mb-2 font-display text-sm font-bold text-paper">Para revisar · {toReview.length}</h3>}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                  {toReview.map((g) => (
-                    <div key={g.id} className="overflow-hidden rounded-xl border border-line bg-ink-2">
-                      <button type="button" onClick={() => setCompare({ reference_url: g.reference_url, result_url: g.result_url, generation_id: g.id, creator_id: g.creator_id })} className="block w-full">
-                        {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
-                      </button>
-                      <div className="flex items-center gap-1 p-2">
-                        <button type="button" onClick={() => decide(g, true)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={12} /> Aprobar</button>
-                        <button type="button" onClick={() => decide(g, false)} className="inline-flex items-center justify-center rounded-full border border-line px-2 py-1.5 text-paper-mute hover:text-rose-300"><Trash2 size={12} /></button>
-                      </div>
-                    </div>
-                  ))}
+            {/* Cabecera de la modelo (con su gasto) */}
+            <div className="mb-5 flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-card p-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-base font-bold text-brand">
+                {selCreator.avatar_url ? <img src={selCreator.avatar_url} alt="" className="h-full w-full object-cover" /> : (selCreator.full_name || '?').slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="font-display text-lg font-bold text-paper">{selCreator.full_name}</div>
+                {selReady
+                  ? <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300"><IdCard size={13} /> Soul real enlazada</div>
+                  : <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300"><AlertTriangle size={12} /> Sin soul — avisame y la enlazo</div>}
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center">
+                  <div className="text-sm font-bold tabular-nums text-amber-300">{mine.credits.toFixed(1)}</div>
+                  <div className="text-[10px] text-paper-dim">créditos</div>
                 </div>
-                {approved.length > 0 && (
-                  <>
-                    <h3 className="mb-2 mt-6 font-display text-sm font-bold text-paper">Aprobadas · {approved.length}</h3>
-                    <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
-                      {approved.map((g) => (
-                        <div key={g.id} className="overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
-                          {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ── GASTOS ── */}
-        {tab === 'gastos' && (
-          <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="card3d rounded-2xl border border-line bg-card p-4"><div className="text-xs uppercase tracking-wider text-paper-dim">Créditos gastados</div><div className="mt-1 font-display text-2xl font-bold text-paper">{summary.credits.toFixed(2)}</div></div>
-              <div className="card3d rounded-2xl border border-line bg-card p-4"><div className="text-xs uppercase tracking-wider text-paper-dim">Fotos generadas</div><div className="mt-1 font-display text-2xl font-bold text-paper">{summary.images}</div></div>
-              <div className="card3d rounded-2xl border border-line bg-card p-4"><div className="text-xs uppercase tracking-wider text-paper-dim">Costo por foto</div><div className="mt-1 font-display text-2xl font-bold text-paper">{summary.images ? (summary.credits / summary.images).toFixed(2) : '—'}</div><div className="text-[11px] text-paper-dim">créditos/foto</div></div>
+                <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center">
+                  <div className="text-sm font-bold tabular-nums text-paper">{mine.total}</div>
+                  <div className="text-[10px] text-paper-dim">fotos</div>
+                </div>
+                <button type="button" onClick={() => { loadGens(); loadVault(); loadSummary(); }} className="grid h-10 w-10 place-items-center rounded-xl border border-line text-paper-mute hover:text-paper" title="Actualizar"><RefreshCw size={15} /></button>
+              </div>
             </div>
-            <div className="card3d rounded-2xl border border-line bg-card p-4">
-              <h3 className="mb-2 font-display text-sm font-bold text-paper">Últimas generaciones</h3>
-              {gens.length === 0 ? <p className="text-sm text-paper-dim">Sin movimientos.</p> : (
-                <div className="space-y-1.5">
-                  {gens.slice(0, 15).map((g) => {
-                    const c = creators.find((x) => x.id === g.creator_id);
+
+            {/* Sub-pestañas de la modelo */}
+            <div className="mb-4 flex gap-1 border-b border-line">
+              {[{ id: 'cocinar', label: 'Cocinar', icon: Flame }, { id: 'resultados', label: 'Resultados', icon: Images, badge: reviewRows.length || null }].map((t) => {
+                const Icon = t.icon; const on = subtab === t.id;
+                return (
+                  <button key={t.id} type="button" onClick={() => setSubtab(t.id)}
+                    className={`inline-flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${on ? 'border-brand text-brand' : 'border-transparent text-paper-mute hover:text-paper'}`}>
+                    <Icon size={15} /> {t.label}
+                    {t.badge ? <span className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold ${on ? 'bg-brand text-on-accent' : 'bg-hair/20 text-paper-mute'}`}>{t.badge}</span> : null}
+                    {t.id === 'resultados' && pendingRows.length > 0 ? <Loader2 size={12} className="animate-spin text-amber-300" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── COCINAR ── */}
+            {subtab === 'cocinar' && (
+              <div className="pb-24">
+                <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                  {SOURCES.map((s) => {
+                    const Icon = s.icon; const on = source === s.id;
                     return (
-                      <div key={g.id} className="flex items-center gap-3 border-b border-line/60 py-1.5 text-sm last:border-0">
-                        <span className="min-w-0 flex-1 truncate text-paper">{c?.full_name || '—'}</span>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${g.status === 'approved' ? 'bg-emerald-500/15 text-emerald-300' : g.status === 'failed' ? 'bg-rose-500/15 text-rose-300' : g.status === 'queued' ? 'bg-amber-500/15 text-amber-300' : 'bg-hair/15 text-paper-mute'}`}>{g.status}</span>
-                        <span className="shrink-0 tabular-nums text-paper-mute">{g.credits ? `${Number(g.credits).toFixed(2)} cr` : '—'}</span>
-                      </div>
+                      <button key={s.id} type="button" onClick={() => setSource(s.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors ${on ? 'border-brand bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
+                        <Icon size={14} /> {s.label}
+                      </button>
                     );
                   })}
                 </div>
-              )}
-            </div>
+
+                {source !== 'subir' && (
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    {VIBES.map((v) => (
+                      <button key={v} type="button" onClick={() => setVibe(v)}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${vibe === v ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-dim hover:text-paper'}`}>{v}</button>
+                    ))}
+                  </div>
+                )}
+
+                {source === 'subir' ? (
+                  <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-card/40 p-10 text-center transition-colors hover:border-brand/40">
+                    <input type="file" accept="image/*" multiple className="hidden" disabled={uploading} onChange={(e) => onUpload(e.target.files)} />
+                    {uploading ? <Loader2 size={26} className="animate-spin text-brand" /> : <Upload size={26} className="text-paper-dim" />}
+                    <div className="text-sm font-semibold text-paper">{uploading ? 'Subiendo…' : 'Subí una foto de referencia'}</div>
+                    <div className="text-xs text-paper-dim">Se guarda en el baúl de {selCreator.full_name} y la podés mandar a la cola.</div>
+                  </label>
+                ) : pickPhotos.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">
+                    {source === 'tengo' ? `${selCreator.full_name} no tiene fotos reales cargadas todavía.` : 'No hay referencias con este filtro. Probá otra vibe o subí fotos.'}
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                    {pickPhotos.map((r) => {
+                      const on = queue.includes(r.url);
+                      return (
+                        <button key={r.id} type="button" onClick={() => toggleQueue(r.url)}
+                          className={`group relative overflow-hidden rounded-xl border bg-ink-2 text-left transition-all ${on ? 'border-brand ring-2 ring-brand/50' : 'border-line hover:border-brand/40'}`}>
+                          <img src={r.url} alt="" className="aspect-[3/4] w-full object-cover" />
+                          <div className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/50 bg-black/40 text-transparent group-hover:text-white/70'}`}><Check size={13} /></div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── RESULTADOS (de esta modelo) ── */}
+            {subtab === 'resultados' && (
+              <div>
+                {pendingRows.length > 0 && <p className="mb-3 inline-flex items-center gap-1.5 text-xs text-amber-300"><Loader2 size={13} className="animate-spin" /> {pendingRows.length} en la cola, cocinándose…</p>}
+                {reviewRows.length === 0 && approvedRows.length === 0 && pendingRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Todavía no cocinaste nada para {selCreator.full_name}. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button>.</p>
+                ) : (
+                  <>
+                    {reviewRows.length > 0 && <h3 className="mb-2 font-display text-sm font-bold text-paper">Para revisar · {reviewRows.length}</h3>}
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                      {reviewRows.map((g) => (
+                        <div key={g.id} className="overflow-hidden rounded-xl border border-line bg-ink-2">
+                          <button type="button" onClick={() => setCompare({ reference_url: g.reference_url, result_url: g.result_url, generation_id: g.id, creator_id: g.creator_id })} className="block w-full">
+                            {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                          </button>
+                          <div className="flex items-center gap-1 p-2">
+                            <button type="button" onClick={() => decide(g, true)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={12} /> Aprobar</button>
+                            <button type="button" onClick={() => decide(g, false)} className="inline-flex items-center justify-center rounded-full border border-line px-2 py-1.5 text-paper-mute hover:text-rose-300"><Trash2 size={12} /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {approvedRows.length > 0 && (
+                      <>
+                        <h3 className="mb-2 mt-6 font-display text-sm font-bold text-paper">Aprobadas · {approvedRows.length}</h3>
+                        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
+                          {approvedRows.map((g) => (
+                            <div key={g.id} className="overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
+                              {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
       </main>
 
-      {/* Barra flotante de cola (en Cocinar) */}
-      {tab === 'cocinar' && queue.length > 0 && (
-        <div className="sticky bottom-4 z-20 mx-auto flex max-w-6xl items-center justify-between gap-3 rounded-2xl border border-brand/40 bg-card px-4 py-3 shadow-lg shadow-black/30 lg:px-6">
-          <div className="flex items-center gap-2 text-sm text-paper">
-            <span className="grid h-7 min-w-7 place-items-center rounded-full bg-brand px-2 text-xs font-bold text-on-accent">{queue.length}</span>
-            <span className="font-semibold">seleccionada{queue.length === 1 ? '' : 's'}</span>
-            {selCreator && <span className="text-paper-dim">→ {selCreator.full_name}</span>}
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setQueue([])} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold">Limpiar</button>
-            <button type="button" onClick={enqueue} disabled={enq} className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold disabled:opacity-50">
-              {enq ? <Loader2 size={14} className="animate-spin" /> : <Pot size={14} />} Mandar {queue.length} a la cola
-            </button>
+      {/* Barra flotante de cola */}
+      {selCreator && subtab === 'cocinar' && queue.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-brand/30 bg-ink/95 backdrop-blur">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 lg:px-6">
+            <div className="flex items-center gap-2 text-sm text-paper">
+              <span className="grid h-7 min-w-7 place-items-center rounded-full bg-brand px-2 text-xs font-bold text-on-accent">{queue.length}</span>
+              <span className="font-semibold">para {selCreator.full_name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setQueue([])} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold">Limpiar</button>
+              <button type="button" onClick={enqueue} disabled={enq} className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+                {enq ? <Loader2 size={14} className="animate-spin" /> : <Pot size={14} />} Cocinar {queue.length}
+              </button>
+            </div>
           </div>
         </div>
       )}
