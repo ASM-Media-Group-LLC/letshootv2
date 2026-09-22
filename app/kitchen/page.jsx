@@ -122,7 +122,8 @@ export default function KitchenPage() {
   const pickPhotos = useMemo(() => {
     let rows = sourceRows;
     if (vibe !== 'Todos' && vibeCounts[vibe]) rows = rows.filter((r) => (r.vibe || '').toLowerCase() === vibe.toLowerCase());
-    return rows.slice(0, 120);
+    // Éxitos primero: más likes arriba (las scrapeadas tienen likes; las subidas a mano quedan después).
+    return [...rows].sort((a, b) => (Number(b.likes) || 0) - (Number(a.likes) || 0)).slice(0, 120);
   }, [sourceRows, vibe, vibeCounts]);
 
   // Cargar el perfil de búsqueda (nichos) de la modelo elegida.
