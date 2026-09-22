@@ -43,10 +43,11 @@ async function cookOne(job) {
 
   let args;
   if (job.prompt) {
-    // MODO VISIÓN: la edge ya escribió el prompt exacto de la pose (Anthropic) → estilo realista.
+    // MODO VISIÓN: la edge ya escribió el prompt exacto de la pose (Anthropic).
     args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', job.prompt, '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
-    if (job.style_id) args.push('--style_id', job.style_id);
     // VARIACIÓN de carrusel: anclo a la foto réplica (image_ref) para clavar MISMO lugar/outfit/luz; el prompt solo cambia la pose.
+    // OJO: el CLI NO permite --style_id junto con --image-references. La imagen-ancla ya trae el estilo realista de la réplica.
+    let anchored = false;
     if (job.image_ref) {
       try {
         const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
@@ -54,8 +55,10 @@ async function cookOne(job) {
         const r = await fetch(job.image_ref);
         writeFileSync(anchorPath, Buffer.from(await r.arrayBuffer()));
         args.push('--image-references', anchorPath);
-      } catch { /* si falla el ancla, sigue solo con el prompt */ }
+        anchored = true;
+      } catch { /* si falla el ancla, cae al estilo por texto */ }
     }
+    if (!anchored && job.style_id) args.push('--style_id', job.style_id);
   } else {
     // MODO IMAGEN (fallback sin Anthropic): baja la referencia y se la pasa al motor.
     const ext = (String(job.reference_url).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
@@ -72,10 +75,11 @@ async function cookOne(job) {
     const stdout = execFileSync('higgsfield', args, { encoding: 'utf8', timeout: 6 * 60 * 1000, maxBuffer: 32 * 1024 * 1024 });
     const out = JSON.parse(stdout); rec = Array.isArray(out) ? out[0] : out;
   } catch (e) {
-    const msg = String(e.message || e);
+    // Uso el stderr real del CLI (no e.message, que incluye los args con "--wait-timeout" y da falsos "timeout").
+    const msg = String(e.stderr || e.stdout || e.message || e).replace(/\s+/g, ' ').trim();
     const note = /nsfw/i.test(msg) ? 'NSFW — la referencia es muy explícita para el motor.'
-      : /timeout/i.test(msg) ? 'Tardó demasiado (timeout). Probá de nuevo.'
-      : 'Error del motor al generar. Probá con otra referencia.';
+      : /timed?\s?out|deadline|wait.?timeout exceeded/i.test(msg) ? 'Tardó demasiado. Probá de nuevo.'
+      : `Error del motor: ${msg.slice(0, 160) || 'desconocido'}`;
     await fn('cook_result', { generation_id: job.id, ok: false, note });
     console.log(`✗ ${job.id} falló: ${note}`);
     return;
