@@ -407,6 +407,8 @@ export default function KitchenPage() {
   // Datos del pop-up del carrusel (se recalculan vivos con el polling de gens).
   const cmpRoot = compare ? mineGens.find((x) => x.id === compare.root) : null;
   const cmpKids = compare ? carouselKids(compare.root) : [];
+  // Motor real de una foto (honesto): lo que reportó el worker; si es viejo sin dato, la réplica fue Soul 2.0 y la variación fue Nano.
+  const engineOf = (g) => (g?.engine_label ? g.engine_label : (g?.carousel_of ? 'Nano' : 'Soul 2.0'));
 
   // Estado GLOBAL de la cocina (todas las modelos) — para la ruedita flotante que se ve en cualquier pantalla.
   const cookingAll = gens.filter((g) => ['queued', 'in_progress'].includes(g.status));
@@ -711,7 +713,7 @@ export default function KitchenPage() {
                             {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
                             {kids > 0 && <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
                           </button>
-                          <div className="px-2 pt-1 text-[10px] text-paper-dim">Motor: <span className={`font-semibold ${g.engine_label ? 'text-brand' : 'text-paper-dim'}`}>{g.engine_label || 'motor anterior (Nano)'}</span></div>
+                          <div className="px-2 pt-1 text-[10px] text-paper-dim">Motor: <span className={`font-semibold ${engineOf(g) === 'Nano' ? 'text-rose-300' : 'text-brand'}`}>{engineOf(g)}</span></div>
                           <div className="flex items-center gap-1 p-2 pt-1">
                             <button type="button" onClick={() => decide(g, true)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={12} /> Aprobar</button>
                             <button type="button" onClick={() => setCompare({ root: g.id, creator_id: g.creator_id })} className="inline-flex items-center justify-center gap-1 rounded-full border border-brand/40 px-2 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/10" title="Armar carrusel"><LayoutGrid size={12} /></button>
@@ -868,8 +870,8 @@ export default function KitchenPage() {
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {/* Réplica: viral vs su versión */}
               <div className="grid grid-cols-2 gap-3">
-                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Viral (referencia)</div><img src={cmpRoot.reference_url} alt="" onClick={() => setLightbox(cmpRoot.reference_url)} className="w-full cursor-zoom-in rounded-xl border border-line object-cover" /></div>
-                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-brand">Su versión {cmpRoot.status === 'approved' && <span className="text-emerald-300">· aprobada ✓</span>}</div><img src={cmpRoot.result_url} alt="" onClick={() => setLightbox(cmpRoot.result_url)} className="w-full cursor-zoom-in rounded-xl border border-brand/40 object-cover" /></div>
+                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Viral (referencia)</div><img src={cmpRoot.reference_url} alt="" onClick={() => setLightbox({ url: cmpRoot.reference_url, label: 'Viral (referencia)' })} className="w-full cursor-zoom-in rounded-xl border border-line object-cover" /></div>
+                <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-brand">Su versión · <span className={engineOf(cmpRoot) === 'Nano' ? 'text-rose-300' : 'text-brand'}>{engineOf(cmpRoot)}</span> {cmpRoot.status === 'approved' && <span className="text-emerald-300">· aprobada ✓</span>}</div><img src={cmpRoot.result_url} alt="" onClick={() => setLightbox({ url: cmpRoot.result_url, label: `Su versión · ${engineOf(cmpRoot)}` })} className="w-full cursor-zoom-in rounded-xl border border-brand/40 object-cover" /></div>
               </div>
               {cmpRoot.status === 'done' && (
                 <div className="mt-3 flex items-center justify-end gap-2">
@@ -945,10 +947,10 @@ export default function KitchenPage() {
                         ) : (
                           <>
                             <div className="relative">
-                              <img src={k.result_url} alt="" onClick={() => setLightbox(k.result_url)} className="aspect-[3/4] w-full cursor-zoom-in object-cover" />
+                              <img src={k.result_url} alt="" onClick={() => setLightbox({ url: k.result_url, label: `Motor: ${engineOf(k)}` })} className="aspect-[3/4] w-full cursor-zoom-in object-cover" />
                               {k.status === 'approved' && <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white"><Check size={11} /></span>}
                             </div>
-                            <div className={`px-1.5 pt-1 text-[9px] ${k.engine_label ? 'text-brand' : 'text-paper-dim'}`}>{k.engine_label || 'motor anterior (Nano)'}</div>
+                            <div className={`px-1.5 pt-1 text-[9px] ${engineOf(k) === 'Nano' ? 'text-rose-300' : 'text-brand'}`}>{engineOf(k)}</div>
                             {k.status === 'done' && (
                               <div className="flex items-center gap-1 p-1.5">
                                 <button type="button" onClick={() => decide(k, true, true)} className="inline-flex flex-1 items-center justify-center gap-0.5 rounded-full bg-emerald-500/20 px-1 py-1 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={10} /></button>
@@ -971,7 +973,8 @@ export default function KitchenPage() {
       {lightbox && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm" style={{ zIndex: 2147483000 }} onClick={() => setLightbox(null)}>
           <button type="button" onClick={() => setLightbox(null)} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/20 text-white/80 hover:bg-white/10"><X size={20} /></button>
-          <img src={lightbox} alt="" onClick={(e) => e.stopPropagation()} className="max-h-[92vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
+          {lightbox.label && <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white">{lightbox.label}</div>}
+          <img src={lightbox.url} alt="" onClick={(e) => e.stopPropagation()} className="max-h-[92vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
         </div>
       )}
     </div>
