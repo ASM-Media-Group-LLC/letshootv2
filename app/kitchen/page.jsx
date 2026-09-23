@@ -6,7 +6,7 @@
 // (Antes/Después → Aprobar → baúl IA). El gasto se ve POR MODELO en su cabecera.
 // Motor real = Soul 2.0 de la cuenta Higgsfield (soul entrenada), vía CLI oficial.
 // /kitchen encola (generations queued); el "worker" (CLI logueado) las cocina.
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
@@ -83,6 +83,10 @@ export default function KitchenPage() {
 
   const sb = getSupabase();
 
+  // Aviso "cuando terminan de cocinarse" — para no estar adivinando.
+  const seenCookingRef = useRef(new Set()); // ids que estaban cocinándose en el ciclo anterior
+  const askNotify = () => { try { if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission(); } catch { /* noop */ } };
+
   const loadSummary = useCallback(async () => {
     const out = await callFn('kitchen_summary');
     if (out.ok) { const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m); setBalance(out.balance ?? null); }
@@ -113,6 +117,41 @@ export default function KitchenPage() {
     const t = setInterval(() => { loadGens(); }, 6000);
     return () => clearInterval(t);
   }, [access, gens, loadGens]);
+
+  // Detecta la transición cocinándose → LISTA y AVISA: toast + notificación del navegador (aunque estés en otra pestaña).
+  useEffect(() => {
+    if (access !== 'ok') return;
+    const cookingNow = new Set(gens.filter((g) => ['queued', 'in_progress'].includes(g.status)).map((g) => g.id));
+    const prev = seenCookingRef.current;
+    seenCookingRef.current = cookingNow;
+    if (prev.size === 0) return; // primer ciclo: no avisar por lo que ya estaba hecho antes de abrir
+    const justDone = gens.filter((g) => g.status === 'done' && prev.has(g.id));
+    const justFailed = gens.filter((g) => g.status === 'failed' && prev.has(g.id));
+    const nameOf = (id) => (creators.find((c) => c.id === id)?.full_name) || 'una modelo';
+    if (justDone.length > 0) {
+      const byC = {}; justDone.forEach((g) => { byC[g.creator_id] = (byC[g.creator_id] || 0) + 1; });
+      const parts = Object.entries(byC).map(([cid, n]) => `${n} de ${nameOf(cid)}`);
+      const text = `Listas para revisar: ${parts.join(', ')}.${justFailed.length ? ` (${justFailed.length} fallaron)` : ''} Entrá a Resultados a verlas.`;
+      setMsg({ kind: 'ok', text });
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const n = new Notification('Kitchen — fotos listas 🍳', { body: text, tag: 'kitchen-ready', renotify: true });
+          n.onclick = () => { try { window.focus(); } catch { /* noop */ } };
+        }
+      } catch { /* noop */ }
+    } else if (justFailed.length > 0) {
+      setMsg({ kind: 'info', text: `${justFailed.length} foto(s) fallaron al cocinarse. Mirá "Rechazadas" para reintentar.` });
+    }
+  }, [gens, access, creators]);
+
+  // El TÍTULO de la pestaña como identificador (lo ves aunque estés en otra pestaña del navegador).
+  useEffect(() => {
+    if (access !== 'ok') { document.title = 'Kitchen · LetShoot'; return; }
+    const cooking = gens.filter((g) => ['queued', 'in_progress'].includes(g.status)).length;
+    const ready = gens.filter((g) => g.status === 'done' && !g.carousel_of).length;
+    document.title = cooking ? `🍳 Cocinando ${cooking}… · Kitchen` : ready ? `(${ready}) listas ✅ · Kitchen` : 'Kitchen · LetShoot';
+    return () => { document.title = 'LetShoot'; };
+  }, [gens, access]);
 
   const selCreator = creators.find((c) => c.id === sel) || null;
   const selReady = ident[sel]?.status === 'ready';
@@ -189,6 +228,7 @@ export default function KitchenPage() {
   // Cocina directo desde la ficha. Si total>1: cocina la réplica + (total-1) variaciones automáticas (mismo lugar/outfit, otras poses).
   const cookDetail = async (row, total) => {
     if (!selReady) { setMsg({ kind: 'err', text: `${selCreator?.full_name || 'Esta modelo'} todavía no tiene su soul enlazada. Avisame y la enlazo.` }); return; }
+    askNotify();
     setEnq(true);
     const { error } = await sb.from('generations').insert({ creator_id: sel, reference_url: row.url, status: 'queued', engine: 'soul2', model: 'text2image_soul_v2', auto_carousel: Math.max(0, total - 1) });
     setEnq(false);
@@ -204,6 +244,7 @@ export default function KitchenPage() {
   const enqueue = async () => {
     if (!selReady) { setMsg({ kind: 'err', text: `${selCreator?.full_name || 'Esta modelo'} todavía no tiene su soul enlazada. Avisame y la enlazo.` }); return; }
     if (queue.length === 0) { setMsg({ kind: 'info', text: 'Tocá al menos una foto para seleccionarla.' }); return; }
+    askNotify();
     setEnq(true);
     const rows = queue.map((u) => ({ creator_id: sel, reference_url: u, status: 'queued', engine: 'soul2', model: 'text2image_soul_v2' }));
     const { error } = await sb.from('generations').insert(rows);
@@ -259,6 +300,7 @@ export default function KitchenPage() {
   const [detailN, setDetailN] = useState(1); // ficha: 1 = normal, >1 = carrusel al cocinar
   const makeVariations = async (rootId) => {
     if (!rootId) return;
+    askNotify();
     let ideas;
     if (varMode === 'custom') {
       ideas = varIdeas.map((s) => s.trim()).slice(0, 8);
@@ -310,6 +352,17 @@ export default function KitchenPage() {
   // Datos del pop-up del carrusel (se recalculan vivos con el polling de gens).
   const cmpRoot = compare ? mineGens.find((x) => x.id === compare.root) : null;
   const cmpKids = compare ? carouselKids(compare.root) : [];
+
+  // Estado GLOBAL de la cocina (todas las modelos) — para la ruedita flotante que se ve en cualquier pantalla.
+  const cookingAll = gens.filter((g) => ['queued', 'in_progress'].includes(g.status));
+  const readyAll = gens.filter((g) => g.status === 'done' && !g.carousel_of);
+  const queueBarShown = !!(selCreator && subtab === 'cocinar' && queue.length > 0);
+  const goToCooking = () => {
+    const t = cookingAll[0] || readyAll[0];
+    if (!t) return;
+    setSel(t.creator_id); setSubtab('resultados'); setCompare(null); setDetail(null); setLightbox(null);
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
+  };
 
   return (
     <div className="min-h-screen bg-ink text-paper">
@@ -618,6 +671,27 @@ export default function KitchenPage() {
           </div>
         )}
       </main>
+
+      {/* ── RUEDITA FLOTANTE (identificador global): gira mientras cocina, se pone verde cuando hay listas ── */}
+      {(cookingAll.length > 0 || readyAll.length > 0) && (
+        <button type="button" onClick={goToCooking}
+          className={`fixed right-4 z-30 inline-flex items-center gap-2.5 rounded-full border px-4 py-2.5 text-sm font-bold shadow-lg backdrop-blur transition-colors ${queueBarShown ? 'bottom-20' : 'bottom-4'} ${cookingAll.length > 0 ? 'border-amber-400/40 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25' : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25'}`}
+          title={cookingAll.length > 0 ? 'Se están creando fotos — tocá para verlas' : 'Hay fotos listas para revisar — tocá para verlas'}>
+          {cookingAll.length > 0 ? (
+            <>
+              <Loader2 size={17} className="animate-spin" />
+              <span>Cocinando {cookingAll.length}…</span>
+              {readyAll.length > 0 && <span className="rounded-full bg-emerald-500/30 px-2 py-0.5 text-[11px] text-emerald-100">{readyAll.length} listas</span>}
+            </>
+          ) : (
+            <>
+              <CheckCircle2 size={17} />
+              <span>{readyAll.length} lista{readyAll.length > 1 ? 's' : ''} para revisar</span>
+              <ArrowRight size={15} />
+            </>
+          )}
+        </button>
+      )}
 
       {/* Barra flotante de cola */}
       {selCreator && subtab === 'cocinar' && queue.length > 0 && (
