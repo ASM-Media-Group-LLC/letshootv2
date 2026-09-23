@@ -228,13 +228,17 @@ export default function KitchenPage() {
   };
   const addAccount = () => { const v = newAccount.trim().replace(/^@/, '').replace(/\/+$/, '').split('/').pop(); if (!v) return; if (!accounts.includes(v)) saveAccounts([...accounts, v].slice(0, 8)); setNewAccount(''); };
   const doScrapeAccounts = async () => {
-    if (accounts.length === 0) { setMsg({ kind: 'info', text: 'Agregá al menos una cuenta guía (ej: @creadora) para traer sus posts.' }); return; }
-    setScrapingAcc(true); setMsg({ kind: 'info', text: `Trayendo lo mejor de ${accounts.map((a) => '@' + a).join(', ')}… (puede tardar 1-2 min)` });
-    const out = await callFn('scrape_accounts', { creator_id: sel });
+    // Si escribió una cuenta y no la agregó con Enter, la tomamos igual (no lo hacemos renegar).
+    const pending = newAccount.trim().replace(/^@/, '').replace(/\/+$/, '').split('/').pop();
+    let list = accounts;
+    if (pending && !accounts.includes(pending)) { list = [...accounts, pending].slice(0, 8); await saveAccounts(list); setNewAccount(''); }
+    if (list.length === 0) { setMsg({ kind: 'info', text: 'Escribí al menos una cuenta guía (ej: @creadora) arriba.' }); return; }
+    setScrapingAcc(true); setMsg({ kind: 'info', text: `Trayendo lo mejor de ${list.map((a) => '@' + a).join(', ')}… (puede tardar 1-2 min, no cierres)` });
+    const out = await callFn('scrape_accounts', { creator_id: sel, accounts: list });
     setScrapingAcc(false);
     if (!out.ok) { setMsg({ kind: 'err', text: out.error || 'No se pudo traer de esas cuentas.' }); return; }
     await loadVault();
-    setMsg({ kind: 'ok', text: `Traje ${out.saved} fotos de tus cuentas guía.${out.reviewed ? ` La IA revisó ${out.reviewed} y sacó la basura.` : ''} Aparecen abajo.` });
+    setMsg({ kind: out.saved ? 'ok' : 'info', text: out.saved ? `Traje ${out.saved} fotos de tus cuentas guía.${out.reviewed ? ` La IA revisó ${out.reviewed} y sacó la basura.` : ''} Aparecen abajo (filtro "Scraping").` : 'Esas cuentas no devolvieron fotos (¿privada o mal escrita?). Probá otra.' });
   };
 
   // Curación de la mesa
