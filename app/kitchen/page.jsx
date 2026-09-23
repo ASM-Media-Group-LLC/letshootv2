@@ -348,7 +348,7 @@ export default function KitchenPage() {
   // Carrusel: variaciones (mismo lugar + mismo outfit, otras poses) sobre la foto raíz.
   // Dos modos: 'auto' (sorpréndeme: N fotos, la IA elige cada pose) o 'custom' (una idea por foto).
   const [varMode, setVarMode] = useState('auto');
-  const [varEngine, setVarEngine] = useState('describe'); // Soul 2.0: 'describe' (poses distintas) | 'copy' (escena exacta)
+  const [varEngine, setVarEngine] = useState('mixed'); // Soul 2.0: 'mixed' (mitad y mitad) | 'describe' (poses distintas) | 'copy' (escena exacta)
   const [varN, setVarN] = useState(3);
   const [varIdeas, setVarIdeas] = useState(['', '']); // modo custom: una idea por foto
   const [varBusy, setVarBusy] = useState(false);
@@ -356,6 +356,25 @@ export default function KitchenPage() {
   const makeVariations = async (rootId) => {
     if (!rootId) return;
     askNotify();
+    // MITAD Y MITAD (mixed): mitad "poses distintas" (describe) + mitad "copiar escena exacta" (copy). Todo Soul 2.0.
+    // Así el carrusel trae fotos con el outfit EXACTO (para vender) + fotos con poses/situaciones nuevas.
+    if (varEngine === 'mixed') {
+      const n = varMode === 'custom' ? (varIdeas.map((s) => s.trim()).filter(Boolean).length || varIdeas.length) : varN;
+      if (n < 1) { setMsg({ kind: 'info', text: 'Elegí cuántas fotos.' }); return; }
+      const half = Math.ceil(n / 2);   // describe (poses nuevas)
+      const rest = n - half;           // copy (outfit exacto)
+      const poses = shuffle(POSE_POOL);
+      const describeIdeas = Array.from({ length: half }, (_, i) => poses[i % poses.length]);
+      const copyIdeas = Array.from({ length: rest }, () => ''); // copy copia la pose de la réplica; la idea no aplica
+      setVarBusy(true);
+      const r1 = half > 0 ? await callFn('make_variations', { generation_id: rootId, ideas: describeIdeas, method: 'describe' }) : { ok: true, queued: 0 };
+      const r2 = rest > 0 ? await callFn('make_variations', { generation_id: rootId, ideas: copyIdeas, method: 'copy' }) : { ok: true, queued: 0 };
+      setVarBusy(false);
+      const q = (r1?.queued || 0) + (r2?.queued || 0);
+      if (q > 0) { if (varMode === 'custom') setVarIdeas(['', '']); setMsg({ kind: 'ok', text: `${q} en la cola (Soul 2.0): ${half} con poses nuevas + ${rest} copia exacta del outfit.` }); loadGens(); }
+      else setMsg({ kind: 'err', text: r1?.error || r2?.error || 'No se pudo armar el carrusel.' });
+      return;
+    }
     let ideas;
     if (varMode === 'custom') {
       ideas = varIdeas.map((s) => s.trim()).slice(0, 8);
@@ -370,7 +389,7 @@ export default function KitchenPage() {
     setVarBusy(false);
     if (r?.ok) {
       if (varMode === 'custom') setVarIdeas(['', '']);
-      setMsg({ kind: 'ok', text: `${r.queued} foto(s) en la cola — mismo lugar y outfit, otras poses. Aparecen acá abajo cocinándose.` });
+      setMsg({ kind: 'ok', text: `${r.queued} foto(s) en la cola. Aparecen acá abajo cocinándose.` });
       loadGens();
     } else setMsg({ kind: 'err', text: r?.error || 'No se pudo armar el carrusel.' });
   };
@@ -886,11 +905,12 @@ export default function KitchenPage() {
                 {/* Modo Soul 2.0: poses distintas (describe) o copiar la escena exacta (elegís antes de cocinar) */}
                 <div className="mb-3">
                   <div className="mb-1 text-[11px] font-semibold text-paper-dim">Con <span className="text-brand">Soul 2.0</span>, ¿cómo?</div>
-                  <div className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-card p-1">
+                  <div className="grid grid-cols-3 gap-1 rounded-xl border border-line bg-card p-1">
+                    <button type="button" onClick={() => setVarEngine('mixed')} className={`rounded-lg px-2 py-1.5 text-[11px] font-bold transition-colors ${varEngine === 'mixed' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>Mitad y mitad</button>
                     <button type="button" onClick={() => setVarEngine('describe')} className={`rounded-lg px-2 py-1.5 text-[11px] font-bold transition-colors ${varEngine === 'describe' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>Poses distintas</button>
                     <button type="button" onClick={() => setVarEngine('copy')} className={`rounded-lg px-2 py-1.5 text-[11px] font-bold transition-colors ${varEngine === 'copy' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>Copiar escena exacta</button>
                   </div>
-                  <p className="mt-1 text-[10px] text-paper-dim">{varEngine === 'describe' ? 'Cara garantizada + poses/situaciones nuevas. El outfit/lugar quedan casi iguales (descritos al detalle).' : 'Outfit y lugar idénticos pixel a pixel, pero la pose sale casi igual a la réplica.'}</p>
+                  <p className="mt-1 text-[10px] text-paper-dim">{varEngine === 'mixed' ? 'La mitad copia el outfit EXACTO (para vender) + la mitad con poses/situaciones nuevas. Lo mejor de los dos.' : varEngine === 'describe' ? 'Cara garantizada + poses/situaciones nuevas. El outfit/lugar quedan casi iguales (descritos al detalle).' : 'Outfit y lugar idénticos pixel a pixel, pero la pose sale casi igual a la réplica.'}</p>
                 </div>
                 {/* Modo: sorpréndeme vs una idea por foto */}
                 <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-line bg-card p-1">
@@ -907,7 +927,7 @@ export default function KitchenPage() {
                       ))}
                     </div>
                     <button type="button" disabled={varBusy} onClick={() => makeVariations(compare.root)} className="btn3d inline-flex w-full items-center justify-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
-                      {varBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Cocinar {varN} · cada una una pose distinta
+                      {varBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Cocinar {varN} · {varEngine === 'mixed' ? 'mitad outfit exacto + mitad poses nuevas' : varEngine === 'copy' ? 'outfit exacto' : 'cada una una pose distinta'}
                     </button>
                   </>
                 ) : (
