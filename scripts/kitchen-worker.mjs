@@ -55,7 +55,7 @@ async function cookOne(job) {
   if (job.soul_copy && job.image_ref && job.character_id) {
     // VARIACIÓN 'copy' — Soul 2.0 con la réplica como image-ref: outfit/lugar idénticos (copia la pose), cara REAL por la soul.
     const look = LOOKS[job.creator_id];
-    const cprompt = (job.prompt || 'Keep this exact composition, outfit, location and lighting. Photorealistic candid amateur phone photo, full natural body, correct hands.') + (look ? ` The woman has ${look}.` : '');
+    const cprompt = (job.prompt || 'Keep this exact composition, outfit, location and lighting. Photorealistic candid amateur phone photo, full natural body, correct hands.') + (look ? ` The woman has ${look}.` : '') + ' Keep her FULL curvy figure with rounded full glutes and natural hips; do NOT slim or flatten her body or her butt.';
     const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
     const srcPath = join(dir, `${job.id}-src.${ext}`);
     try {
@@ -69,7 +69,7 @@ async function cookOne(job) {
     // RÉPLICA (con image_ref = la viral → outfit + pose EXACTOS) o VARIACIÓN 'describe' (sin image_ref → pose libre). Todo Soul 2.0.
     // Anclamos el pelo de la modelo para que su cara NO se despinte según la referencia (rubia/negra) — su pelo es el fijo (castaño).
     const look = LOOKS[job.creator_id];
-    const rprompt = look ? `${job.prompt} IMPORTANT: the woman has ${look} — this exact hair, regardless of the reference.` : job.prompt;
+    const rprompt = (look ? `${job.prompt} IMPORTANT: the woman has ${look} — this exact hair, regardless of the reference.` : job.prompt) + ' Keep her FULL curvy natural figure with rounded full glutes and thighs and natural hips; do NOT slim, shrink, snatch or flatten her body or her butt.';
     args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', rprompt, '--aspect_ratio', '3:4', '--quality', '2k'];
     if (job.image_ref) {
       // Réplica: la viral como referencia (outfit exacto). Con image_reference NO va style_id.
