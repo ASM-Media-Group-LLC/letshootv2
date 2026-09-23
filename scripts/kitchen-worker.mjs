@@ -66,12 +66,19 @@ async function cookOne(job) {
   } else if (!job.character_id) {
     await fn('cook_result', { generation_id: job.id, ok: false, note: 'La modelo no tiene su soul enlazada todavía.' }); console.log(`· ${job.id} sin soul enlazada → skip`); return;
   } else if (job.prompt) {
-    // RÉPLICA (visión): la edge escribió el prompt de la pose/outfit/escena (Anthropic) + soul. Sin image_references (perdería la pose).
-    // Anclamos el pelo de la modelo para que su cara NO se despinte según la viral (rubia/negra) — su pelo es el fijo (castaño).
+    // RÉPLICA (con image_ref = la viral → outfit + pose EXACTOS) o VARIACIÓN 'describe' (sin image_ref → pose libre). Todo Soul 2.0.
+    // Anclamos el pelo de la modelo para que su cara NO se despinte según la referencia (rubia/negra) — su pelo es el fijo (castaño).
     const look = LOOKS[job.creator_id];
     const rprompt = look ? `${job.prompt} IMPORTANT: the woman has ${look} — this exact hair, regardless of the reference.` : job.prompt;
-    args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', rprompt, '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
-    if (job.style_id) args.push('--style_id', job.style_id);
+    args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', rprompt, '--aspect_ratio', '3:4', '--quality', '2k'];
+    if (job.image_ref) {
+      // Réplica: la viral como referencia (outfit exacto). Con image_reference NO va style_id.
+      const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const refPath = join(dir, `${job.id}-ref.${ext}`);
+      try { const r = await fetch(job.image_ref); writeFileSync(refPath, Buffer.from(await r.arrayBuffer())); args.push('--image-references', refPath); }
+      catch (e) { if (job.style_id) args.push('--style_id', job.style_id); }
+    } else if (job.style_id) { args.push('--style_id', job.style_id); }
+    args.push('--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json');
   } else {
     // Fallback sin Anthropic: modo imagen con la referencia.
     const ext = (String(job.reference_url).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';

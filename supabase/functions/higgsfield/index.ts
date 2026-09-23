@@ -358,16 +358,18 @@ Deno.serve(async (req) => {
           }
           return reply({ ok: true, job: { ...(job as any), character_id: charId, prompt: vprompt, style_id: vstyle } });
         }
-        // RÉPLICA (foto 1): prompt de visión (Anthropic) que clava la pose exacta de la viral + soul real. Sin image_references (perdería la pose).
-        let vprompt: string | null = null, vstyle: string | null = null;
+        // RÉPLICA (foto 1): Soul 2.0 con la VIRAL como image_reference → outfit + pose EXACTOS (clave para vender ropa).
+        // La visión (Anthropic) describe el outfit al detalle para reforzar; el worker le pone el candado de pelo (LOOKS).
+        // Con image_reference NO va style_id (Soul 2.0 no los combina).
+        let vprompt: string | null = null;
         const { data: ak } = await svc.from('app_config').select('value').eq('key', 'anthropic_api_key').maybeSingle();
         const akey = clean((ak as any)?.value);
         if (akey && (job as any).reference_url) {
           const { data: sp } = await svc.from('creator_search_profile').select('style_desc').eq('creator_id', (job as any).creator_id).maybeSingle();
           vprompt = await visionPrompt(akey, (job as any).reference_url, String((sp as any)?.style_desc || ''));
-          if (vprompt) vstyle = REALISTIC_STYLE;
         }
-        return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null, prompt: vprompt, style_id: vstyle } });
+        const finalPrompt = vprompt || 'Recreate this exact photo: the same exact outfit and garment in full detail, the same pose, the same location and lighting. Photorealistic candid amateur phone photo, full natural body, correct hands.';
+        return reply({ ok: true, job: { ...(job as any), character_id: (idrow as any)?.character_id || null, prompt: finalPrompt, image_ref: (job as any).reference_url } });
       }
       const gid = String((body as any)?.generation_id || '');
       const rurl = (body as any)?.result_url || null;
