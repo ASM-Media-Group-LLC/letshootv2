@@ -224,6 +224,15 @@ export default function KitchenPage() {
     setVault((v) => v.map((r) => (r.id === row.id ? { ...r, interest: val } : r)));
     if (val === 'descartada') { setDetail(null); setQueue((k) => k.filter((u) => u !== row.url)); }
   };
+  // Sacar la basura EN LOTE: descarta todas las seleccionadas (desaparecen de la mesa) de una.
+  const bulkDiscard = async () => {
+    const ids = vault.filter((r) => queue.includes(r.url)).map((r) => r.id);
+    if (!ids.length) { setMsg({ kind: 'info', text: 'No hay fotos seleccionadas.' }); return; }
+    await sb.from('creator_vault').update({ interest: 'descartada' }).in('id', ids);
+    setVault((v) => v.map((r) => (ids.includes(r.id) ? { ...r, interest: 'descartada' } : r)));
+    setQueue([]);
+    setMsg({ kind: 'ok', text: `${ids.length} foto(s) fuera de la mesa (basura).` });
+  };
   const moreLikeThis = async (row) => {
     const niche = row.vibe || '';
     if (!niche) { setMsg({ kind: 'info', text: 'Esta foto no tiene nicho para buscar similares.' }); return; }
@@ -579,8 +588,10 @@ export default function KitchenPage() {
                         <div key={r.id} onClick={() => setDetail(r)}
                           className={`group relative cursor-pointer overflow-hidden rounded-xl border bg-ink-2 transition-all ${on ? 'border-brand ring-2 ring-brand/50' : 'border-line hover:border-brand/40'}`}>
                           <img src={r.url} alt="" className="aspect-[3/4] w-full object-cover" />
-                          <button type="button" title="Seleccionar para cocinar" onClick={(e) => { e.stopPropagation(); toggleQueue(r.url); }}
+                          <button type="button" title="Seleccionar (para cocinar o sacar)" onClick={(e) => { e.stopPropagation(); toggleQueue(r.url); }}
                             className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/60 bg-black/50 text-white/80 hover:bg-black/70'}`}><Check size={13} /></button>
+                          <button type="button" title="Sacar (basura) — un tipo, comida, ropa…" onClick={(e) => { e.stopPropagation(); markInterest(r, 'descartada'); }}
+                            className="absolute right-9 top-1.5 grid h-6 w-6 place-items-center rounded-full border border-white/50 bg-black/50 text-white/80 opacity-0 transition-opacity hover:border-rose-400 hover:bg-rose-500 hover:text-white group-hover:opacity-100"><X size={13} /></button>
                           <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
                             {/* Tag de ORIGEN: scraping (IG) vs subida por vos */}
                             {(r.source_platform || r.source_handle)
@@ -726,10 +737,11 @@ export default function KitchenPage() {
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 lg:px-6">
             <div className="flex items-center gap-2 text-sm text-paper">
               <span className="grid h-7 min-w-7 place-items-center rounded-full bg-brand px-2 text-xs font-bold text-on-accent">{queue.length}</span>
-              <span className="font-semibold">para {selCreator.full_name}</span>
+              <span className="font-semibold">seleccionada(s)</span>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setQueue([])} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold">Limpiar</button>
+              <button type="button" onClick={() => setQueue([])} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold">Quitar selección</button>
+              <button type="button" onClick={bulkDiscard} className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/20"><Trash2 size={14} /> Sacar la basura {queue.length}</button>
               <button type="button" onClick={enqueue} disabled={enq} className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
                 {enq ? <Loader2 size={14} className="animate-spin" /> : <Pot size={14} />} Cocinar {queue.length}
               </button>
