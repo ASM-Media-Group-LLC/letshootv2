@@ -24,6 +24,12 @@ const SB_ANON = process.env.SB_ANON || fe.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SECRET = process.env.WORKER_SECRET || we.WORKER_SECRET;
 const MODEL = 'text2image_soul_v2';
 const CREDITS = 0.12, USD = 0.011;
+// Rasgos FIJOS por modelo (bloqueo de look) para que el pelo/color no varíe entre fotos ni carruseles.
+// Provisional acá hasta que haya un campo por-modelo en la DB + UI. creator_id → descripción en inglés.
+const LOOKS = {
+  // Julia Parker: pelo castaño (no rubio, no negro), con mechas caramelo suaves enmarcando la cara.
+  '4014e339-ead8-4fb7-bcda-82fee2c7926e': 'long warm CHESTNUT-BROWN hair (castaño, natural medium brown) with a few subtle lighter caramel face-framing strands, NEVER platinum blonde and NEVER black',
+};
 if (!SB_URL || !SB_ANON || !SECRET) { console.error('Falta SB_URL / SB_ANON / WORKER_SECRET.'); process.exit(1); }
 const FN = `${SB_URL}/functions/v1/higgsfield`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -50,7 +56,9 @@ async function cookOne(job) {
     // VARIACIÓN por EDICIÓN (Nano Banana Pro): baja la réplica y la edita → misma mujer/outfit/lugar/luz, pose y ángulo distintos. No necesita soul.
     // El prompt BLOQUEA la identidad (cara + cuerpo de la persona de la foto): sin esto, Nano regenera a otra mujer al cambiar el encuadre.
     const pose = String(job.note || job.pose || '').replace(/^var:/, '').trim();
-    const editPrompt = job.edit_prompt_locked || `This is a real photo of ONE specific woman. KEEP HER EXACTLY THE SAME PERSON: identical face, same facial features, same eye colour and shape, same eyebrows, same nose and lips, same skin tone, same hairstyle and hair colour, and the same body shape and proportions. She must be unmistakably the SAME woman as in the photo — do not restyle her, do not change her identity, do not swap her face, do not beautify, slim or plump her. Keep the SAME exact outfit, the SAME location and background, and the SAME lighting. This is the same photoshoot on the same day. ONLY change her body POSE and the CAMERA ANGLE so it looks like a different frame from the same phone session: now she is ${pose || 'in a clearly different natural pose than the original'}. Make it a REAL candid amateur phone photo — natural skin texture and real lighting, never glossy, plastic or AI-looking; keep her full natural body with correct anatomy and correct hands.`;
+    const look = LOOKS[job.creator_id];
+    const hairLock = look ? ` Her hair is ${look} — keep EXACTLY this hair colour, do not lighten or darken it.` : ' Keep her hair the EXACT same colour as in the photo (do not lighten it to blonde or darken it to black).';
+    const editPrompt = `This is a real photo of ONE specific woman. KEEP HER EXACTLY THE SAME PERSON: identical face, same facial features, same eye colour and shape, same eyebrows, same nose and lips, same skin tone, same hairstyle, and the same body shape and proportions.${hairLock} She must be unmistakably the SAME woman as in the photo — do not restyle her, do not change her identity, do not swap her face, do not beautify, slim or plump her. Keep the SAME exact outfit, the SAME location and background, and the SAME lighting. This is the same photoshoot on the same day. ONLY change her body POSE and the CAMERA ANGLE so it looks like a different frame from the same phone session: now she is ${pose || 'in a clearly different natural pose than the original'}. Make it a REAL candid amateur phone photo — natural skin texture and real lighting, never glossy, plastic or AI-looking; keep her full natural body with correct anatomy and correct hands.`;
     const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
     const srcPath = join(dir, `${job.id}-src.${ext}`);
     try {
@@ -61,8 +69,11 @@ async function cookOne(job) {
   } else if (!job.character_id) {
     await fn('cook_result', { generation_id: job.id, ok: false, note: 'La modelo no tiene su soul enlazada todavía.' }); console.log(`· ${job.id} sin soul enlazada → skip`); return;
   } else if (job.prompt) {
-    // RÉPLICA (visión): la edge ya escribió el prompt exacto de la pose (Anthropic) + soul. Sin image_references (perdería la pose).
-    args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', job.prompt, '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
+    // RÉPLICA (visión): la edge escribió el prompt de la pose/outfit/escena (Anthropic) + soul. Sin image_references (perdería la pose).
+    // Anclamos el pelo de la modelo para que su cara NO se despinte según la viral (rubia/negra) — su pelo es el fijo (castaño).
+    const look = LOOKS[job.creator_id];
+    const rprompt = look ? `${job.prompt} IMPORTANT: the woman has ${look} — this exact hair, regardless of the reference.` : job.prompt;
+    args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', rprompt, '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
     if (job.style_id) args.push('--style_id', job.style_id);
   } else {
     // Fallback sin Anthropic: modo imagen con la referencia.
