@@ -290,12 +290,12 @@ Deno.serve(async (req) => {
         await svc.from('generations').update({ status: 'in_progress' }).eq('id', (job as any).id);
         const note = String((job as any)?.note || '');
         const isVar = note.startsWith('var:');
-        // VARIACIÓN de carrusel: se cocina EDITANDO la réplica con Nano Banana Pro → misma mujer/outfit/lugar/luz, pero pose REAL distinta.
-        // (Soul 2.0 con image-reference copiaba la pose; el motor de edición sí la cambia de verdad.)
+        // VARIACIÓN de carrusel: se cocina EDITANDO la réplica con Nano Banana Pro → misma mujer/outfit/lugar/luz, pero pose distinta.
+        // (Soul 2.0 con image-reference copiaba la pose; el motor de edición sí la cambia.) El worker arma el prompt que
+        // BLOQUEA la identidad (cara + cuerpo) a partir de `pose`; sin eso Nano regenera a otra mujer al cambiar el encuadre.
         if (isVar && (job as any).reference_url) {
           const pose = note.slice(4).trim();
-          const editPrompt = `Keep the SAME woman (same face and hair), the SAME exact outfit, the SAME location and background, and the SAME lighting as in the photo. This is the same photoshoot on the same day. Change her body pose/moment AND the camera angle so it is clearly a DIFFERENT shot: now she is ${pose || 'in a clearly different natural pose than the original'}. Feel free to move the camera (shoot from the side, from a three-quarter angle, from further back showing more of the room, a higher or lower angle, or a close hand-held selfie) so it does not look like the same frame. Make it a REAL candid amateur phone photo — natural skin texture and real lighting, never glossy, plastic or AI-looking; full natural body with correct anatomy and correct hands.`;
-          return reply({ ok: true, job: { ...(job as any), nano_edit: true, edit_prompt: editPrompt, image_ref: (job as any).reference_url } });
+          return reply({ ok: true, job: { ...(job as any), nano_edit: true, pose, image_ref: (job as any).reference_url } });
         }
         // RÉPLICA (foto 1): prompt de visión (Anthropic) que clava la pose exacta de la viral + soul real. Sin image_references (perdería la pose).
         let vprompt: string | null = null, vstyle: string | null = null;

@@ -46,15 +46,18 @@ async function cookOne(job) {
   const dir = join(tmpdir(), 'kitchen-worker'); mkdirSync(dir, { recursive: true });
 
   let args;
-  if (job.nano_edit && job.image_ref && job.edit_prompt) {
-    // VARIACIÓN por EDICIÓN (Nano Banana Pro): baja la réplica y la edita → misma mujer/outfit/lugar/luz, pose y ángulo REALMENTE distintos. No necesita soul.
+  if (job.nano_edit && job.image_ref) {
+    // VARIACIÓN por EDICIÓN (Nano Banana Pro): baja la réplica y la edita → misma mujer/outfit/lugar/luz, pose y ángulo distintos. No necesita soul.
+    // El prompt BLOQUEA la identidad (cara + cuerpo de la persona de la foto): sin esto, Nano regenera a otra mujer al cambiar el encuadre.
+    const pose = String(job.note || job.pose || '').replace(/^var:/, '').trim();
+    const editPrompt = job.edit_prompt_locked || `This is a real photo of ONE specific woman. KEEP HER EXACTLY THE SAME PERSON: identical face, same facial features, same eye colour and shape, same eyebrows, same nose and lips, same skin tone, same hairstyle and hair colour, and the same body shape and proportions. She must be unmistakably the SAME woman as in the photo — do not restyle her, do not change her identity, do not swap her face, do not beautify, slim or plump her. Keep the SAME exact outfit, the SAME location and background, and the SAME lighting. This is the same photoshoot on the same day. ONLY change her body POSE and the CAMERA ANGLE so it looks like a different frame from the same phone session: now she is ${pose || 'in a clearly different natural pose than the original'}. Make it a REAL candid amateur phone photo — natural skin texture and real lighting, never glossy, plastic or AI-looking; keep her full natural body with correct anatomy and correct hands.`;
     const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
     const srcPath = join(dir, `${job.id}-src.${ext}`);
     try {
       const r = await fetch(job.image_ref);
       writeFileSync(srcPath, Buffer.from(await r.arrayBuffer()));
     } catch (e) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'No se pudo bajar la foto a editar.' }); console.log(`· ${job.id} no se pudo bajar la src`); return; }
-    args = ['generate', 'create', 'nano_banana_pro', '--image-references', srcPath, '--prompt', job.edit_prompt, '--aspect_ratio', '3:4', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
+    args = ['generate', 'create', 'nano_banana_pro', '--image-references', srcPath, '--prompt', editPrompt, '--aspect_ratio', '3:4', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
   } else if (!job.character_id) {
     await fn('cook_result', { generation_id: job.id, ok: false, note: 'La modelo no tiene su soul enlazada todavía.' }); console.log(`· ${job.id} sin soul enlazada → skip`); return;
   } else if (job.prompt) {
