@@ -71,6 +71,7 @@ export default function KitchenPage() {
   // Cocinar
   const [source, setSource] = useState('encontre');
   const [vibe, setVibe] = useState('Todos');
+  const [origin, setOrigin] = useState('all'); // filtro de ORIGEN: todo | scraping | subidas por vos
   const [queue, setQueue] = useState([]);
   const [enq, setEnq] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -178,13 +179,22 @@ export default function KitchenPage() {
   const vibeCounts = useMemo(() => {
     const m = {}; sourceRows.forEach((r) => { const v = (r.vibe || '').trim(); if (v) m[v] = (m[v] || 0) + 1; }); return m;
   }, [sourceRows]);
+  // Es del scraper si tiene origen de red social (source_platform/handle). Si no, la subió un humano.
+  const isScraped = (r) => !!(r.source_platform || r.source_handle);
+  const originCounts = useMemo(() => {
+    const base = sourceRows.filter((r) => r.interest !== 'descartada' && r.ai_ok !== false);
+    let scraped = 0, mine = 0; base.forEach((r) => { if (isScraped(r)) scraped += 1; else mine += 1; });
+    return { all: base.length, scraped, mine };
+  }, [sourceRows]);
   const pickPhotos = useMemo(() => {
     // Fuera las descartadas y la basura que marcó la IA.
     let rows = sourceRows.filter((r) => r.interest !== 'descartada' && r.ai_ok !== false);
+    if (origin === 'scraped') rows = rows.filter(isScraped);
+    else if (origin === 'mine') rows = rows.filter((r) => !isScraped(r));
     if (vibe !== 'Todos' && vibeCounts[vibe]) rows = rows.filter((r) => (r.vibe || '').toLowerCase() === vibe.toLowerCase());
     // Éxitos primero: más likes arriba (las scrapeadas tienen likes; las subidas a mano quedan después).
     return [...rows].sort((a, b) => (Number(b.likes) || 0) - (Number(a.likes) || 0)).slice(0, 120);
-  }, [sourceRows, vibe, vibeCounts]);
+  }, [sourceRows, vibe, vibeCounts, origin]);
 
   // Cargar el perfil de búsqueda (nichos) de la modelo elegida.
   useEffect(() => {
@@ -525,6 +535,17 @@ export default function KitchenPage() {
                   </div>
                 )}
 
+                {source !== 'subir' && originCounts.all > 0 && (
+                  <div className="mb-3 inline-flex items-center gap-1 rounded-full border border-line bg-card p-1 text-xs font-semibold">
+                    {[['all', 'Todas', originCounts.all, null], ['scraped', 'Scraping', originCounts.scraped, Search], ['mine', 'Subidas por mí', originCounts.mine, Upload]].map(([k, label, n, Icon]) => (
+                      <button key={k} type="button" onClick={() => setOrigin(k)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${origin === k ? (k === 'scraped' ? 'bg-fuchsia-500 text-white' : k === 'mine' ? 'bg-sky-500 text-white' : 'bg-brand text-on-accent') : 'text-paper-mute hover:text-paper'}`}>
+                        {Icon ? <Icon size={12} /> : null} {label} <span className="opacity-70">{n}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {source !== 'subir' && Object.keys(vibeCounts).length > 0 && (
                   <div className="mb-3 flex flex-wrap items-center gap-1.5">
                     {['Todos', ...VIBES.filter((v) => v !== 'Todos' && vibeCounts[v])].map((v) => (
@@ -560,7 +581,13 @@ export default function KitchenPage() {
                           <img src={r.url} alt="" className="aspect-[3/4] w-full object-cover" />
                           <button type="button" title="Seleccionar para cocinar" onClick={(e) => { e.stopPropagation(); toggleQueue(r.url); }}
                             className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/60 bg-black/50 text-white/80 hover:bg-black/70'}`}><Check size={13} /></button>
-                          {cookedRefs.has(r.url) && <div className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/85 px-2 py-0.5 text-[10px] font-bold text-white"><Check size={10} /> Hecha</div>}
+                          <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
+                            {/* Tag de ORIGEN: scraping (IG) vs subida por vos */}
+                            {(r.source_platform || r.source_handle)
+                              ? <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow" title={`Del scraping${r.source_handle ? ` · @${r.source_handle}` : ''}`}><Search size={10} /> Scraping</span>
+                              : <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow" title="La subiste vos a mano"><Upload size={10} /> Subida</span>}
+                            {cookedRefs.has(r.url) && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/85 px-2 py-0.5 text-[10px] font-bold text-white"><Check size={10} /> Hecha</span>}
+                          </div>
                           {(r.likes || r.views || r.source_handle) && (
                             <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-semibold text-white">
                               <span className="inline-flex items-center gap-1.5">
