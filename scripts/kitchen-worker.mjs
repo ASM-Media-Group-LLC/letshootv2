@@ -52,20 +52,17 @@ async function cookOne(job) {
   const dir = join(tmpdir(), 'kitchen-worker'); mkdirSync(dir, { recursive: true });
 
   let args;
-  if (job.nano_edit && job.image_ref) {
-    // VARIACIÓN por EDICIÓN (Nano Banana Pro): baja la réplica y la edita → misma mujer/outfit/lugar/luz, pose y ángulo distintos. No necesita soul.
-    // El prompt BLOQUEA la identidad (cara + cuerpo de la persona de la foto): sin esto, Nano regenera a otra mujer al cambiar el encuadre.
-    const pose = String(job.note || job.pose || '').replace(/^var:/, '').trim();
+  if (job.soul_copy && job.image_ref && job.character_id) {
+    // VARIACIÓN 'copy' — Soul 2.0 con la réplica como image-ref: outfit/lugar idénticos (copia la pose), cara REAL por la soul.
     const look = LOOKS[job.creator_id];
-    const hairLock = look ? ` Her hair is ${look} — keep EXACTLY this hair colour, do not lighten or darken it.` : ' Keep her hair the EXACT same colour as in the photo (do not lighten it to blonde or darken it to black).';
-    const editPrompt = `This is a real photo of ONE specific woman. KEEP HER EXACTLY THE SAME PERSON: identical face, same facial features, same eye colour and shape, same eyebrows, same nose and lips, same skin tone, same hairstyle, and the same body shape and proportions.${hairLock} She must be unmistakably the SAME woman as in the photo — do not restyle her, do not change her identity, do not swap her face, do not beautify, slim or plump her. Keep the SAME exact outfit, the SAME location and background, and the SAME lighting. This is the same photoshoot on the same day. ONLY change her body POSE and the CAMERA ANGLE so it looks like a different frame from the same phone session: now she is ${pose || 'in a clearly different natural pose than the original'}. Make it a REAL candid amateur phone photo — natural skin texture and real lighting, never glossy, plastic or AI-looking; keep her full natural body with correct anatomy and correct hands.`;
+    const cprompt = (job.prompt || 'Keep this exact composition, outfit, location and lighting. Photorealistic candid amateur phone photo, full natural body, correct hands.') + (look ? ` The woman has ${look}.` : '');
     const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
     const srcPath = join(dir, `${job.id}-src.${ext}`);
     try {
       const r = await fetch(job.image_ref);
       writeFileSync(srcPath, Buffer.from(await r.arrayBuffer()));
-    } catch (e) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'No se pudo bajar la foto a editar.' }); console.log(`· ${job.id} no se pudo bajar la src`); return; }
-    args = ['generate', 'create', 'nano_banana_pro', '--image-references', srcPath, '--prompt', editPrompt, '--aspect_ratio', '3:4', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
+    } catch (e) { await fn('cook_result', { generation_id: job.id, ok: false, note: 'No se pudo bajar la foto a copiar.' }); console.log(`· ${job.id} no se pudo bajar la src`); return; }
+    args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--image-references', srcPath, '--prompt', cprompt, '--aspect_ratio', '3:4', '--quality', '2k', '--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json'];
   } else if (!job.character_id) {
     await fn('cook_result', { generation_id: job.id, ok: false, note: 'La modelo no tiene su soul enlazada todavía.' }); console.log(`· ${job.id} sin soul enlazada → skip`); return;
   } else if (job.prompt) {
@@ -108,7 +105,7 @@ async function cookOne(job) {
   let credits = CREDITS;
   if (typeof balBefore === 'number' && typeof balAfter === 'number' && balBefore > balAfter) credits = Math.round((balBefore - balAfter) * 1000) / 1000;
   const usd = Math.round(credits * 0.09 * 1000) / 1000;
-  await fn('cook_result', { generation_id: job.id, ok: !!resultUrl, result_url: resultUrl, credits, usd, prompt });
+  await fn('cook_result', { generation_id: job.id, ok: !!resultUrl, result_url: resultUrl, credits, usd, prompt, engine: 'Soul 2.0' });
   if (typeof balAfter === 'number') await fn('sync_balance', { credits: balAfter });
   console.log(resultUrl ? `✓ ${job.id} (${credits} créd) → ${resultUrl.slice(0, 60)}…` : `✗ ${job.id} sin resultado`);
 }

@@ -196,18 +196,24 @@ const REALISTIC_STYLE = '74abc530-cec8-4c13-88a6-2b3f78bfd0ff'; // "Digital came
 // Momentos de la vida real para el carrusel (auto): actividad + expresión + ENCUADRE + prop DISTINTOS en cada foto. Se barajan.
 // El lugar es el MISMO punto exacto; solo cambia cuánto se ve (el crop), la pose y la situación.
 const POSE_POOL = [
-  'seen FROM THE SIDE (profile angle), sitting on the floor checking her phone, soft natural smile',
-  'a CLOSE hand-held SELFIE from slightly above, cheeky playful look',
-  'shot FROM ACROSS THE ROOM (wide), walking a step and glancing back over her shoulder, playful smile',
-  'from a THREE-QUARTER back angle, leaning against a wall scrolling her phone, relaxed neutral look',
-  'a LOW-ANGLE full-body shot, standing with a hand on her hip holding her sunglasses, confident calm gaze',
-  'FROM BEHIND, looking over her shoulder toward the camera, warm genuine smile',
-  'a HIGH-ANGLE close-up, lying back relaxing with eyes half-closed, serene expression',
-  'waist-up FROM THE SIDE, caught mid-laugh with a cold drink in one hand',
-  'full-body from the FRONT, crouching for a moment to fix her sandal, a light candid smile',
-  'a candid FROM THE SIDE, adjusting her hair with both hands, soft thoughtful expression',
-  'a CLOSE SELFIE angle, sipping a coffee, content relaxed smile',
-  'a WIDE shot from a corner of the room, sitting hugging one knee, natural laugh',
+  'Straight-on bedroom mirror selfie, phone held at mid-chest and half caught in the reflection, weight dropped onto one hip with the free hand hooked loosely into the waistband, a calm closed-lip almost-smirk.',
+  'Overhead front-facing angle with the phone held just above and tilted down, lying back into a pile of pillows with one knee bent up and both arms relaxed at the sides, a drowsy soft half-smile.',
+  'Waist-up shot at full arm length beside a window, standing side-on and turned back toward the lens while both hands cradle a steaming ceramic mug near the chest, a gentle content smile.',
+  'Candid framing from a phone propped on a table a few feet away, sunk low into a soft couch with the legs curled to one side and one arm draped along the backrest, laughing naturally with the head tilted.',
+  'Low front-facing angle with the phone near floor level looking slightly up, sitting on the floor with the back leaned against the bed and the knees pulled up, forearms resting on them, a relaxed mid-thought look.',
+  'Full-length shot from a phone held at hip height and angled up, standing barefoot and turned three-quarters away to look out a window with one hand flat on the frame, a soft wistful expression in profile.',
+  'Handheld selfie at arm length lying on the stomach with the upper body propped on both elbows and the ankles crossed in the air behind, an easy playful grin caught mid-laugh.',
+  'Low-angle full-body shot from near the floor aimed steeply upward, standing tall with the weight shifted onto one leg, one hand lifted toward the collarbone and the other loose at the side, glancing off to the side with a calm confident look.',
+  'Wide shot framed from across the room so the whole figure sits small within the space, caught mid-stride walking toward the camera with both arms swinging naturally, laughing openly as if mid-conversation.',
+  'Shot from directly behind at shoulder height, glancing back over one shoulder toward the lens with the hips squared away and one hand trailing along a nearby edge, a subtle amused smirk.',
+  'Tight waist-up close-up filling the frame from just below the ribs upward, the torso squared to the camera with one hand resting lightly at the collarbone, a warm close-mouthed smile straight down the lens.',
+  'Over-the-shoulder shot from just behind and beside, the camera peeking past the near shoulder to reveal her looking down at a phone cupped in both hands, a quiet focused half-smile.',
+  'Eye-level three-quarter shot, kneeling upright with the weight settled back on the heels and one hand raised mid-gesture, mouth open mid-sentence as if telling a story to someone off-camera, brows lifted and animated.',
+  'Low candid side angle, crouched and balanced on the balls of the feet with the weight carried over the toes, one hand reaching down to adjust a shoe strap, brow lightly furrowed in casual concentration.',
+  'Eye-level medium shot leaning the shoulder and upper back into a wall with the weight tipped against it and the ankles loosely crossed, holding the phone down at the side, gazing off-frame with a quiet relaxed look.',
+  'Eye-level three-quarter shot perched on the front edge of a couch with the weight balanced on that edge and both feet planted flat, hands resting loosely in the lap, turning toward the camera with a warm genuine smile.',
+  'Slightly low-angle waist-up shot, standing with the weight on one hip while lifting a sweating clear plastic cup of iced coffee toward the mouth mid-sip, the gaze dropped to the straw with a relaxed soft smile.',
+  'Slightly low upward angle, the chin lifted toward the light with the eyes gently closed and a serene content half-smile, the arms loose and relaxed as if soaking in the warmth.',
 ];
 function shufflePoses(): string[] { const b = [...POSE_POOL]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
 
@@ -218,18 +224,18 @@ async function variationPrompt(key: string, srcUrl: string, styleDesc: string, i
       method: 'POST',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001', max_tokens: 500,
-        system: 'You are a fashion photography art director. You are shown ONE photo of a generic anonymous woman model, at a location, wearing an outfit, under specific lighting. Write a single English text-to-image prompt for ANOTHER shot from the SAME photoshoot session — the ONLY thing that changes is her body pose and the camera framing. Everything else must stay IDENTICAL and you must describe it in precise detail so it is unmistakably the same shoot:\n\n1) OUTFIT — copy the garment EXACTLY, including its construction and coverage. Name the precise style: e.g. an underwire / structured cup bikini top must stay an underwire cup top and NEVER become a thin string-triangle top (and vice-versa); keep the same neckline, the same strap thickness and type (tie / clasp / halter), the same bottoms coverage and rise, the exact same fabric and texture, every colour, and ANY text, numbers or logos printed on it, plus the same jewellery/accessories. It must read as the identical clothing item, only seen from the new pose.\n2) LOCATION — the EXACT SAME SPOT: describe the same setting and the key background objects/landmarks in the same positions (same boat/room/deck/wall, same furniture, same scenery). Do NOT relocate her to a different area or a different place; only the camera FRAMING/crop may change (full-body, waist-up, close-up selfie, or a wider ambient shot that shows more of this same setting).\n3) LIGHTING — the exact same lighting: time of day, direction, hardness/softness, colour temperature and mood (e.g. warm golden-hour sun from the left, bright midday, soft indoor window light).\n\nThen stage the NEW moment (given below) as a real slice-of-life instant: describe the ACTIVITY and posture (standing/sitting/leaning/walking/reclining/back-to-camera, on her phone, sipping a drink, laughing, adjusting her hair, etc.), each arm/hand/leg, head tilt and gaze, AND a NATURAL FACIAL EXPRESSION that fits the moment and CLEARLY DIFFERS from a plain neutral face — a genuine smile, a candid laugh, a soft serious look, a playful glance, eyes closed — vary the expression, never repeat the same blank stare. Use the camera framing named in the moment (full-body / waist-up / close-up selfie / wide ambient) so the carousel mixes crops, the way a REAL content creator would take a candid photo, NOT a stiff studio pose. If it fits this moment AND this exact setting, she may naturally hold ONE fitting prop (her phone, a drink or coffee, sunglasses, a towel/hat/bag) — only a prop that makes sense here, never out of place. REALISM IS THE TOP PRIORITY: the final image must read as an authentic real photograph — natural skin texture with pores and subtle imperfections, real ambient lighting and soft shadows, an amateur phone-camera or DSLR look — never glossy, plastic, airbrushed or obviously AI-generated. Never identify, name or describe the face/identity of any real person. Output only the prompt text, one line, no quotes, no preamble.',
+        model: 'claude-haiku-4-5-20251001', max_tokens: 900,
+        system: 'You write ONE text-to-image prompt for Higgsfield Soul 2.0 from a reference photo: another frame of the SAME shoot, the same outfit, the same location and the same lighting, but a NEW body pose, situation, camera angle, framing and facial expression, like the next photo in the same phone camera roll. Output only the finished prompt, with no quotes and no preface. IDENTITY: never describe her face, hair, eyes, skin tone, age or body type, because a trained Soul model supplies all of that; the only face words allowed are a plain expression with a real cause, for example a soft closed-lip smile, an open mid-laugh, a quiet focused look or eyes gently closed in the light. If you describe identity you fight the Soul and it drifts into a different woman. OUTFIT, top priority with realism: read the garment exactly and lock it word for word. Name the precise garment type, its cut, its coverage and exactly how much skin it leaves bare, the neckline, every strap tie knot and band, the cups or underwire if any, the colours, any print or pattern, the fabric and its finish, and any logo or text. State plainly it is the SAME EXACT garment as the reference, unchanged. Do NOT morph, swap, restyle, redesign, lengthen, shorten, widen, narrow, cover up, add to or remove the garment, and keep the exact same skin coverage. Use literal garment words: a string bikini stays thin strings and small triangles and never becomes a bandeau or sports bra or cup top; an underwire cup top keeps its underwire cups. Because there is no image reference, over-specify the garment and name the garment noun once more near the end. PLACE and LIGHT: recreate the same room, the same surfaces furniture and props, and the same single main light source with its direction and quality, the same time of day and the same colour cast, so the carousel reads as one continuous shoot. Do not move her, change the hour or add a light that is not in the reference. NEW POSE and SITUATION, the only thing that changes, so spell it out fully: state the camera angle first as the dominant instruction (a high selfie tilted down, a low angle from near the floor aimed up, a straight-on eye-level shot, a shot from directly behind, an over-the-shoulder shot or a straight-down overhead shot), then the framing crop (waist-up, full-body, tight chest-up close-up or a wide shot from across the room), then the body with weight-bearing verbs: which way the torso turns, which leg carries the weight and which knee is soft, where each hand lands and what it touches or holds, and where the gaze points. Give the moment a real cause so the expression is genuinely felt. Keep any prop small, natural and actually held, and never let a prop or a hand hide the outfit. BODY: keep her full natural body with real soft proportions; do not slim, snatch, reshape, trim the waist or beautify, and never use words like slim, toned, slender or snatched. REALISM is the single top priority: it must look like a real candid amateur smartphone snapshot, not a professional or studio or AI image. Stack real-skin language: natural bare skin texture with visible pores and fine peach fuzz, subtle uneven tone, faint natural blemishes and freckles, no skin smoothing and no beauty filter. Force real light: available natural light from one real source, soft believable directional shadows, slightly blown highlights, imperfect white balance and a mild everyday colour cast. Add phone-camera imperfections: a slight handheld tilt and crooked framing, faint motion blur, mild grain and noise, soft imperfect focus in places and light compression softness. End with negatives: NOT glossy, NOT plastic or waxy skin, NOT airbrushed or retouched, NOT CGI or a 3D render, NOT HDR glow, no ring-light catchlights, not oversaturated, not magazine perfect and not AI-looking. ASSEMBLY: write one flowing prompt in this order: the exact garment lock, then the place and light lock, then the new pose situation angle and expression, then the body clause, then the realism block ending with the negatives. Vary only the pose, situation, angle, framing and expression; keep the garment, place and light identical word for word.',
         messages: [{ role: 'user', content: [
           { type: 'image', source: { type: 'url', url: srcUrl } },
-          { type: 'text', text: `Another shot of the SAME shoot: IDENTICAL outfit — same exact garment style, construction and coverage (do not turn a structured/cup top into a string triangle), same colours and any printed text/logos — IDENTICAL location and background objects, IDENTICAL lighting. Change ONLY the body pose and framing.${idea ? ` The new pose MUST be: ${idea} — stage it naturally and candidly like a real creator.` : ' Pick a fresh flattering pose clearly different from the source.'} It must look like a real authentic photo, not AI.${styleDesc ? ` Overall style: ${styleDesc}.` : ''}` },
+          { type: 'text', text: `Here is the reference photo. Write ONE new Soul 2.0 prompt for another frame of the SAME shoot (same exact garment, same location, same lighting) but a NEW pose, situation, camera angle, framing and expression. Stage EXACTLY this new moment: ${idea || 'a clearly different natural pose and camera angle than the reference'}.${styleDesc ? ` Overall creator style: ${styleDesc}.` : ''} Output only the finished prompt.` },
         ] }],
       }),
     });
     const j = await res.json();
     const t = String((j as any)?.content?.[0]?.text || '').trim().replace(/^["']|["']$/g, '');
     if (/i can’?t|i cannot|i'?m (sorry|unable|not able)|no puedo|i won'?t|as an ai/i.test(t) || t.length < 40) return null;
-    return t.slice(0, 1500);
+    return t.slice(0, 2000);
   } catch { return null; }
 }
 
@@ -329,13 +335,28 @@ Deno.serve(async (req) => {
         const { data: idrow } = await svc.from('creator_identity').select('character_id, engine').eq('creator_id', (job as any).creator_id).maybeSingle();
         await svc.from('generations').update({ status: 'in_progress' }).eq('id', (job as any).id);
         const note = String((job as any)?.note || '');
-        const isVar = note.startsWith('var:');
-        // VARIACIÓN de carrusel: se cocina EDITANDO la réplica con Nano Banana Pro → misma mujer/outfit/lugar/luz, pero pose distinta.
-        // (Soul 2.0 con image-reference copiaba la pose; el motor de edición sí la cambia.) El worker arma el prompt que
-        // BLOQUEA la identidad (cara + cuerpo) a partir de `pose`; sin eso Nano regenera a otra mujer al cambiar el encuadre.
+        const isVar = note.startsWith('var:') || note.startsWith('varx:');
+        // VARIACIÓN de carrusel — SIEMPRE con Soul 2.0 (único motor que mantiene la identidad real de la modelo).
+        // Dos modos que elige el dueño: 'describe' (var:) = poses distintas: la IA describe outfit/lugar/luz + pose nueva
+        // y Soul 2.0 genera SIN image-ref (cara garantizada + pose libre). 'copy' (varx:) = outfit/lugar idénticos vía
+        // image-ref, pero copia la pose de la réplica.
         if (isVar && (job as any).reference_url) {
-          const pose = note.slice(4).trim();
-          return reply({ ok: true, job: { ...(job as any), nano_edit: true, pose, image_ref: (job as any).reference_url } });
+          const copyMode = note.startsWith('varx:');
+          const pose = note.replace(/^varx?:/, '').trim();
+          const charId = (idrow as any)?.character_id || null;
+          if (copyMode) {
+            const cp = `The SAME woman. Keep EXACTLY this photo: the same body pose, the same exact outfit, the same location and background, and the same lighting and framing. Do not change the composition or the garment. Photorealistic natural candid amateur phone photo, real skin texture, full natural body, correct hands.`;
+            return reply({ ok: true, job: { ...(job as any), character_id: charId, soul_copy: true, image_ref: (job as any).reference_url, prompt: cp } });
+          }
+          let vprompt: string | null = null, vstyle: string | null = null;
+          const { data: ak } = await svc.from('app_config').select('value').eq('key', 'anthropic_api_key').maybeSingle();
+          const akey = clean((ak as any)?.value);
+          if (akey) {
+            const { data: sp } = await svc.from('creator_search_profile').select('style_desc').eq('creator_id', (job as any).creator_id).maybeSingle();
+            vprompt = await variationPrompt(akey, (job as any).reference_url, String((sp as any)?.style_desc || ''), pose);
+            if (vprompt) vstyle = REALISTIC_STYLE;
+          }
+          return reply({ ok: true, job: { ...(job as any), character_id: charId, prompt: vprompt, style_id: vstyle } });
         }
         // RÉPLICA (foto 1): prompt de visión (Anthropic) que clava la pose exacta de la viral + soul real. Sin image_references (perdería la pose).
         let vprompt: string | null = null, vstyle: string | null = null;
@@ -352,7 +373,7 @@ Deno.serve(async (req) => {
       const rurl = (body as any)?.result_url || null;
       const good = (body as any)?.ok !== false && !!rurl;
       const { data: grow } = await svc.from('generations').select('creator_id, created_by, auto_carousel, carousel_of').eq('id', gid).maybeSingle();
-      await svc.from('generations').update({ status: good ? 'done' : 'failed', result_url: rurl, credits: Number((body as any)?.credits) || null, usd: Number((body as any)?.usd) || null, prompt: (body as any)?.prompt || null, note: (body as any)?.note || null }).eq('id', gid);
+      await svc.from('generations').update({ status: good ? 'done' : 'failed', result_url: rurl, credits: Number((body as any)?.credits) || null, usd: Number((body as any)?.usd) || null, prompt: (body as any)?.prompt || null, note: (body as any)?.note || null, engine_label: (body as any)?.engine || null }).eq('id', gid);
       // Auto-carrusel: si la réplica salió bien y venía marcada, encola sus variaciones (misma escena, otras poses).
       if (good && rurl && grow && Number((grow as any).auto_carousel) > 0 && !(grow as any).carousel_of) {
         const nn = Math.min(Math.max(Number((grow as any).auto_carousel), 1), 7);
@@ -481,7 +502,9 @@ Deno.serve(async (req) => {
       if (!g || !(g as any).creator_id) return reply({ ok: false, error: 'No existe esa foto.' });
       const src = (g as any).result_url || (g as any).reference_url;
       if (!src) return reply({ ok: false, error: 'Esa foto no tiene imagen para variar.' });
-      const rows = ideas.map((idea) => ({ creator_id: (g as any).creator_id, reference_url: src, status: 'queued', model: 'soul-v2', note: `var:${idea}`, carousel_of: gid, created_by: user.id }));
+      const method = String((body as any)?.method || 'describe');
+      const prefix = method === 'copy' ? 'varx:' : 'var:';
+      const rows = ideas.map((idea) => ({ creator_id: (g as any).creator_id, reference_url: src, status: 'queued', model: 'soul-v2', note: `${prefix}${idea}`, carousel_of: gid, created_by: user.id }));
       const { error } = await svc.from('generations').insert(rows);
       if (error) return reply({ ok: false, error: `No se pudo encolar: ${error.message}` });
       return reply({ ok: true, queued: rows.length });

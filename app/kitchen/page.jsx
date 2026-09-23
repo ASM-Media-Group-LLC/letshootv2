@@ -32,18 +32,24 @@ const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'F
 // Momentos de la vida real para el carrusel "Sorpréndeme": actividad + expresión + ENCUADRE + prop DISTINTOS en cada foto. Se barajan.
 // El lugar es el MISMO punto exacto; solo cambia cuánto se ve (el crop), la pose y la situación.
 const POSE_POOL = [
-  'seen FROM THE SIDE (profile angle), sitting on the floor checking her phone, soft natural smile',
-  'a CLOSE hand-held SELFIE from slightly above, cheeky playful look',
-  'shot FROM ACROSS THE ROOM (wide), walking a step and glancing back over her shoulder, playful smile',
-  'from a THREE-QUARTER back angle, leaning against a wall scrolling her phone, relaxed neutral look',
-  'a LOW-ANGLE full-body shot, standing with a hand on her hip holding her sunglasses, confident calm gaze',
-  'FROM BEHIND, looking over her shoulder toward the camera, warm genuine smile',
-  'a HIGH-ANGLE close-up, lying back relaxing with eyes half-closed, serene expression',
-  'waist-up FROM THE SIDE, caught mid-laugh with a cold drink in one hand',
-  'full-body from the FRONT, crouching for a moment to fix her sandal, a light candid smile',
-  'a candid FROM THE SIDE, adjusting her hair with both hands, soft thoughtful expression',
-  'a CLOSE SELFIE angle, sipping a coffee, content relaxed smile',
-  'a WIDE shot from a corner of the room, sitting hugging one knee, natural laugh',
+  'Straight-on bedroom mirror selfie, phone held at mid-chest and half caught in the reflection, weight dropped onto one hip with the free hand hooked loosely into the waistband, a calm closed-lip almost-smirk.',
+  'Overhead front-facing angle with the phone held just above and tilted down, lying back into a pile of pillows with one knee bent up and both arms relaxed at the sides, a drowsy soft half-smile.',
+  'Waist-up shot at full arm length beside a window, standing side-on and turned back toward the lens while both hands cradle a steaming ceramic mug near the chest, a gentle content smile.',
+  'Candid framing from a phone propped on a table a few feet away, sunk low into a soft couch with the legs curled to one side and one arm draped along the backrest, laughing naturally with the head tilted.',
+  'Low front-facing angle with the phone near floor level looking slightly up, sitting on the floor with the back leaned against the bed and the knees pulled up, forearms resting on them, a relaxed mid-thought look.',
+  'Full-length shot from a phone held at hip height and angled up, standing barefoot and turned three-quarters away to look out a window with one hand flat on the frame, a soft wistful expression in profile.',
+  'Handheld selfie at arm length lying on the stomach with the upper body propped on both elbows and the ankles crossed in the air behind, an easy playful grin caught mid-laugh.',
+  'Low-angle full-body shot from near the floor aimed steeply upward, standing tall with the weight shifted onto one leg, one hand lifted toward the collarbone and the other loose at the side, glancing off to the side with a calm confident look.',
+  'Wide shot framed from across the room so the whole figure sits small within the space, caught mid-stride walking toward the camera with both arms swinging naturally, laughing openly as if mid-conversation.',
+  'Shot from directly behind at shoulder height, glancing back over one shoulder toward the lens with the hips squared away and one hand trailing along a nearby edge, a subtle amused smirk.',
+  'Tight waist-up close-up filling the frame from just below the ribs upward, the torso squared to the camera with one hand resting lightly at the collarbone, a warm close-mouthed smile straight down the lens.',
+  'Over-the-shoulder shot from just behind and beside, the camera peeking past the near shoulder to reveal her looking down at a phone cupped in both hands, a quiet focused half-smile.',
+  'Eye-level three-quarter shot, kneeling upright with the weight settled back on the heels and one hand raised mid-gesture, mouth open mid-sentence as if telling a story to someone off-camera, brows lifted and animated.',
+  'Low candid side angle, crouched and balanced on the balls of the feet with the weight carried over the toes, one hand reaching down to adjust a shoe strap, brow lightly furrowed in casual concentration.',
+  'Eye-level medium shot leaning the shoulder and upper back into a wall with the weight tipped against it and the ankles loosely crossed, holding the phone down at the side, gazing off-frame with a quiet relaxed look.',
+  'Eye-level three-quarter shot perched on the front edge of a couch with the weight balanced on that edge and both feet planted flat, hands resting loosely in the lap, turning toward the camera with a warm genuine smile.',
+  'Slightly low-angle waist-up shot, standing with the weight on one hip while lifting a sweating clear plastic cup of iced coffee toward the mouth mid-sip, the gaze dropped to the straw with a relaxed soft smile.',
+  'Slightly low upward angle, the chin lifted toward the light with the eyes gently closed and a serene content half-smile, the arms loose and relaxed as if soaking in the warmth.',
 ];
 const shuffle = (arr) => { const b = [...arr]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 // Valor aprox del crédito Higgsfield (Soul 2.0 ≈ 0.12 créd ≈ US$0.011/foto). Ajustable.
@@ -96,7 +102,7 @@ export default function KitchenPage() {
     if (out.ok) { const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m); setBalance(out.balance ?? null); }
   }, []);
   const loadGens = useCallback(async () => {
-    const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, note, created_at, done_at, carousel_of').order('created_at', { ascending: false }).limit(200);
+    const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, note, created_at, done_at, carousel_of, engine_label').order('created_at', { ascending: false }).limit(200);
     setGens(Array.isArray(data) ? data : []);
   }, [sb]);
   const loadVault = useCallback(async () => {
@@ -342,6 +348,7 @@ export default function KitchenPage() {
   // Carrusel: variaciones (mismo lugar + mismo outfit, otras poses) sobre la foto raíz.
   // Dos modos: 'auto' (sorpréndeme: N fotos, la IA elige cada pose) o 'custom' (una idea por foto).
   const [varMode, setVarMode] = useState('auto');
+  const [varEngine, setVarEngine] = useState('describe'); // Soul 2.0: 'describe' (poses distintas) | 'copy' (escena exacta)
   const [varN, setVarN] = useState(3);
   const [varIdeas, setVarIdeas] = useState(['', '']); // modo custom: una idea por foto
   const [varBusy, setVarBusy] = useState(false);
@@ -359,7 +366,7 @@ export default function KitchenPage() {
       ideas = Array.from({ length: varN }, (_, i) => poses[i % poses.length]);
     }
     setVarBusy(true);
-    const r = await callFn('make_variations', { generation_id: rootId, ideas });
+    const r = await callFn('make_variations', { generation_id: rootId, ideas, method: varEngine });
     setVarBusy(false);
     if (r?.ok) {
       if (varMode === 'custom') setVarIdeas(['', '']);
@@ -704,7 +711,8 @@ export default function KitchenPage() {
                             {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
                             {kids > 0 && <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
                           </button>
-                          <div className="flex items-center gap-1 p-2">
+                          <div className="px-2 pt-1 text-[10px] text-paper-dim">Motor: <span className={`font-semibold ${g.engine_label ? 'text-brand' : 'text-paper-dim'}`}>{g.engine_label || 'motor anterior (Nano)'}</span></div>
+                          <div className="flex items-center gap-1 p-2 pt-1">
                             <button type="button" onClick={() => decide(g, true)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={12} /> Aprobar</button>
                             <button type="button" onClick={() => setCompare({ root: g.id, creator_id: g.creator_id })} className="inline-flex items-center justify-center gap-1 rounded-full border border-brand/40 px-2 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/10" title="Armar carrusel"><LayoutGrid size={12} /></button>
                             <button type="button" onClick={() => decide(g, false)} className="inline-flex items-center justify-center rounded-full border border-line px-2 py-1.5 text-paper-mute hover:text-rose-300"><Trash2 size={12} /></button>
@@ -834,6 +842,7 @@ export default function KitchenPage() {
                       <button key={n} type="button" onClick={() => setDetailN(n)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${detailN === n ? 'bg-brand text-on-accent' : 'border border-line text-paper-mute hover:text-paper'}`}><LayoutGrid size={11} /> Carrusel {n}</button>
                     ))}
                   </div>
+                  <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand/5 px-2.5 py-1 text-[11px]"><ChefHat size={12} className="text-brand" /> Motor: <span className="font-bold text-brand">Soul 2.0</span> <span className="text-paper-dim">— el único aprobado (mantiene cara y cuerpo real)</span></div>
                   <button type="button" disabled={enq} onClick={() => cookDetail(detail, detailN)} className="btn3d inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-50">
                     {enq ? <Loader2 size={15} className="animate-spin" /> : <Flame size={15} />} {detailN > 1 ? `Cocinar carrusel de ${detailN}` : 'Cocinar'} con {(selCreator?.full_name || '').split(' ')[0]}
                   </button>
@@ -872,6 +881,15 @@ export default function KitchenPage() {
               {/* Carrusel: mismo lugar + mismo outfit, otras poses */}
               <div className="mt-4 rounded-2xl border border-brand/25 bg-ink-2 p-3">
                 <div className="mb-2 flex items-center gap-1.5 text-sm font-bold text-paper"><LayoutGrid size={15} className="text-brand" /> Hacer carrusel <span className="text-[11px] font-normal text-paper-dim">— mismo lugar y outfit, otras poses</span></div>
+                {/* Modo Soul 2.0: poses distintas (describe) o copiar la escena exacta (elegís antes de cocinar) */}
+                <div className="mb-3">
+                  <div className="mb-1 text-[11px] font-semibold text-paper-dim">Con <span className="text-brand">Soul 2.0</span>, ¿cómo?</div>
+                  <div className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-card p-1">
+                    <button type="button" onClick={() => setVarEngine('describe')} className={`rounded-lg px-2 py-1.5 text-[11px] font-bold transition-colors ${varEngine === 'describe' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>Poses distintas</button>
+                    <button type="button" onClick={() => setVarEngine('copy')} className={`rounded-lg px-2 py-1.5 text-[11px] font-bold transition-colors ${varEngine === 'copy' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>Copiar escena exacta</button>
+                  </div>
+                  <p className="mt-1 text-[10px] text-paper-dim">{varEngine === 'describe' ? 'Cara garantizada + poses/situaciones nuevas. El outfit/lugar quedan casi iguales (descritos al detalle).' : 'Outfit y lugar idénticos pixel a pixel, pero la pose sale casi igual a la réplica.'}</p>
+                </div>
                 {/* Modo: sorpréndeme vs una idea por foto */}
                 <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl border border-line bg-card p-1">
                   <button type="button" onClick={() => setVarMode('auto')} className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${varMode === 'auto' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}><Sparkles size={12} /> Sorpréndeme</button>
@@ -930,6 +948,7 @@ export default function KitchenPage() {
                               <img src={k.result_url} alt="" onClick={() => setLightbox(k.result_url)} className="aspect-[3/4] w-full cursor-zoom-in object-cover" />
                               {k.status === 'approved' && <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white"><Check size={11} /></span>}
                             </div>
+                            <div className={`px-1.5 pt-1 text-[9px] ${k.engine_label ? 'text-brand' : 'text-paper-dim'}`}>{k.engine_label || 'motor anterior (Nano)'}</div>
                             {k.status === 'done' && (
                               <div className="flex items-center gap-1 p-1.5">
                                 <button type="button" onClick={() => decide(k, true, true)} className="inline-flex flex-1 items-center justify-center gap-0.5 rounded-full bg-emerald-500/20 px-1 py-1 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={10} /></button>
