@@ -347,7 +347,7 @@ export default function KitchenPage() {
   const failedRows = mineGens.filter((g) => g.status === 'failed' && isRoot(g));
   // Hijos de un carrusel (todas las fotos cuya raíz es rootId, sin la raíz), ordenadas por cocinado.
   const rootOf = (g) => g.carousel_of || g.id;
-  const carouselKids = (rootId) => mineGens.filter((g) => g.carousel_of === rootId).sort((a, b) => doneTs(a) - doneTs(b));
+  const carouselKids = (rootId) => mineGens.filter((g) => g.carousel_of === rootId).sort((a, b) => doneTs(b) - doneTs(a)); // más nuevas ARRIBA (las que se están creando primero)
   const carouselCount = (rootId) => mineGens.filter((g) => g.carousel_of === rootId && g.status !== 'failed' && g.status !== 'rejected').length;
   // Datos del pop-up del carrusel (se recalculan vivos con el polling de gens).
   const cmpRoot = compare ? mineGens.find((x) => x.id === compare.root) : null;
