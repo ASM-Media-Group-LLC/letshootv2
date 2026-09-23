@@ -80,6 +80,9 @@ export default function KitchenPage() {
   const [newNiche, setNewNiche] = useState('');
   const [styleDesc, setStyleDesc] = useState('');
   const [scraping, setScraping] = useState(false);
+  const [accounts, setAccounts] = useState([]);   // cuentas guía (IG) de referencia de la modelo
+  const [newAccount, setNewAccount] = useState('');
+  const [scrapingAcc, setScrapingAcc] = useState(false);
   const [balance, setBalance] = useState(null); // saldo real de Higgsfield (créditos)
 
   const sb = getSupabase();
@@ -198,8 +201,8 @@ export default function KitchenPage() {
 
   // Cargar el perfil de búsqueda (nichos) de la modelo elegida.
   useEffect(() => {
-    if (!sel) { setNiches([]); setStyleDesc(''); return; }
-    (async () => { const { data } = await sb.from('creator_search_profile').select('niches, style_desc').eq('creator_id', sel).maybeSingle(); setNiches(Array.isArray(data?.niches) ? data.niches : []); setStyleDesc(data?.style_desc || ''); })();
+    if (!sel) { setNiches([]); setStyleDesc(''); setAccounts([]); return; }
+    (async () => { const { data } = await sb.from('creator_search_profile').select('niches, style_desc, seed_accounts').eq('creator_id', sel).maybeSingle(); setNiches(Array.isArray(data?.niches) ? data.niches : []); setStyleDesc(data?.style_desc || ''); setAccounts(Array.isArray(data?.seed_accounts) ? data.seed_accounts : []); })();
   }, [sel, sb]);
 
   const saveNiches = async (list) => {
@@ -216,6 +219,22 @@ export default function KitchenPage() {
     if (!out.ok) { setMsg({ kind: 'err', text: out.error || 'No se pudo buscar.' }); return; }
     await loadVault();
     setMsg({ kind: 'ok', text: `Encontré ${out.saved} virales para ${selCreator?.full_name}.${out.reviewed ? ` La IA revisó ${out.reviewed} y sacó la basura.` : ''} Aparecen abajo, éxitos arriba.` });
+  };
+
+  // Cuentas guía (creadoras de referencia de IG): guardar + traer sus posts.
+  const saveAccounts = async (list) => {
+    setAccounts(list);
+    await sb.from('creator_search_profile').upsert({ creator_id: sel, seed_accounts: list, updated_at: new Date().toISOString() }, { onConflict: 'creator_id' });
+  };
+  const addAccount = () => { const v = newAccount.trim().replace(/^@/, '').replace(/\/+$/, '').split('/').pop(); if (!v) return; if (!accounts.includes(v)) saveAccounts([...accounts, v].slice(0, 8)); setNewAccount(''); };
+  const doScrapeAccounts = async () => {
+    if (accounts.length === 0) { setMsg({ kind: 'info', text: 'Agregá al menos una cuenta guía (ej: @creadora) para traer sus posts.' }); return; }
+    setScrapingAcc(true); setMsg({ kind: 'info', text: `Trayendo lo mejor de ${accounts.map((a) => '@' + a).join(', ')}… (puede tardar 1-2 min)` });
+    const out = await callFn('scrape_accounts', { creator_id: sel });
+    setScrapingAcc(false);
+    if (!out.ok) { setMsg({ kind: 'err', text: out.error || 'No se pudo traer de esas cuentas.' }); return; }
+    await loadVault();
+    setMsg({ kind: 'ok', text: `Traje ${out.saved} fotos de tus cuentas guía.${out.reviewed ? ` La IA revisó ${out.reviewed} y sacó la basura.` : ''} Aparecen abajo.` });
   };
 
   // Curación de la mesa
@@ -523,6 +542,25 @@ export default function KitchenPage() {
 
                 {source === 'encontre' && (
                   <div className="mb-3 rounded-2xl border border-line bg-card p-3">
+                    {/* CUENTAS GUÍA — objetivo principal: pasar el IG de una creadora y traer lo mejor */}
+                    <div className="mb-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-fuchsia-300"><Compass size={13} /> Cuentas guía de {selCreator.full_name.split(' ')[0]}:</span>
+                        {accounts.map((a) => (
+                          <span key={a} className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/40 bg-fuchsia-500/10 px-2.5 py-1 text-xs font-semibold text-fuchsia-200">
+                            @{a}
+                            <button type="button" onClick={() => saveAccounts(accounts.filter((x) => x !== a))} className="opacity-70 hover:opacity-100"><X size={11} /></button>
+                          </span>
+                        ))}
+                        <input value={newAccount} onChange={(e) => setNewAccount(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAccount(); } }}
+                          placeholder="@cuenta de instagram" className="min-w-[150px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
+                        <button type="button" onClick={doScrapeAccounts} disabled={scrapingAcc} className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-fuchsia-600 disabled:opacity-50">
+                          {scrapingAcc ? <Loader2 size={13} className="animate-spin" /> : <Compass size={13} />} {scrapingAcc ? 'Trayendo…' : 'Traer lo mejor'}
+                        </button>
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-paper-dim">Pasame las creadoras que son tu referencia (ej: @creadora). Traigo sus posts y la IA saca la basura. Se guardan por modelo.</p>
+                    </div>
+                    <div className="mb-3 border-t border-line/60" />
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-paper-dim"><Search size={13} /> Buscar para {selCreator.full_name}:</span>
                       {niches.map((n) => (

@@ -92,6 +92,46 @@ async function runScrape(svc: any, creatorId: string, limit: number, override?: 
   return { ok: true, found: items.length, saved, tags, reviewed };
 }
 
+// Trae los POSTS de las CUENTAS GUÍA (creadoras de referencia) de la modelo, vía Apify instagram-scraper.
+// Es lo que el dueño pidió: apuntar a cuentas modelo y bajar exactamente lo que ellas postean.
+async function runScrapeAccounts(svc: any, creatorId: string, limit: number, override?: string[]) {
+  if (!creatorId) return { ok: false, error: 'Falta la modelo.' };
+  const { data: tk } = await svc.from('app_config').select('value').eq('key', 'apify_token').maybeSingle();
+  const apToken = clean((tk as any)?.value);
+  if (!apToken) return { ok: false, error: 'Falta la llave de Apify. Pegala en /conexion.' };
+  let accts: string[] = Array.isArray(override) && override.length ? override : [];
+  if (!accts.length) {
+    const { data: sp } = await svc.from('creator_search_profile').select('seed_accounts').eq('creator_id', creatorId).maybeSingle();
+    accts = Array.isArray((sp as any)?.seed_accounts) ? (sp as any).seed_accounts : [];
+  }
+  accts = accts.map((a: string) => String(a).trim().replace(/^@/, '').replace(/\/+$/, '').split('/').pop() || '').filter(Boolean).slice(0, 8);
+  if (!accts.length) return { ok: false, error: 'Agregá al menos una cuenta guía (ej: @creadora).' };
+  const runUrl = `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
+  const directUrls = accts.map((u) => `https://www.instagram.com/${u}/`);
+  let items: any = [];
+  try {
+    const ar = await fetch(runUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ directUrls, resultsType: 'posts', resultsLimit: limit, addParentData: false }) });
+    items = await ar.json();
+    if (!ar.ok) return { ok: false, error: `Apify devolvió ${ar.status}.`, detail: items };
+  } catch (e) { return { ok: false, error: `No se pudo llamar al scraper: ${(e as Error)?.message}` }; }
+  if (!Array.isArray(items)) return { ok: false, error: 'El scraper no devolvió una lista.', detail: items };
+  let saved = 0;
+  for (const it of items) {
+    const imgUrl = it?.displayUrl || it?.imageUrl || (Array.isArray(it?.images) ? it.images[0] : null);
+    if (!imgUrl) continue;
+    const row: Record<string, unknown> = {
+      creator_id: creatorId, kind: 'ref', url: imgUrl, source_platform: 'instagram',
+      source_handle: it?.ownerUsername || null, source_url: it?.url || null,
+      likes: Number(it?.likesCount) || null, views: Number(it?.videoViewCount || it?.videoPlayCount || it?.viewsCount) || null,
+      vibe: null, caption: it?.caption ? String(it.caption).slice(0, 200) : null,
+    };
+    const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url', ignoreDuplicates: true });
+    if (!error) saved += 1;
+  }
+  const reviewed = await aiReview(svc, creatorId);
+  return { ok: true, found: items.length, saved, accounts: accts, reviewed };
+}
+
 // Revisa con visión (Anthropic) las scrapeadas sin revisar de una modelo: ¿sirve como referencia de creadora o es basura?
 async function aiReview(svc: any, creatorId: string, limit = 20) {
   const { data: ak } = await svc.from('app_config').select('value').eq('key', 'anthropic_api_key').maybeSingle();
@@ -487,6 +527,11 @@ Deno.serve(async (req) => {
     // ── Scraper de virales (Apify → Instagram por nicho/hashtag de la modelo) ──
     if (action === 'scrape') {
       const r = await runScrape(svc, String(body?.creator_id || ''), Math.min(Number(body?.limit) || 24, 50), (body as any)?.niches);
+      return reply(r);
+    }
+    // Traer los posts de las CUENTAS GUÍA (creadoras de referencia) de la modelo.
+    if (action === 'scrape_accounts') {
+      const r = await runScrapeAccounts(svc, String(body?.creator_id || ''), Math.min(Number(body?.limit) || 30, 60), (body as any)?.accounts);
       return reply(r);
     }
 
