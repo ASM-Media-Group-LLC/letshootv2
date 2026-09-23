@@ -226,7 +226,13 @@ export default function KitchenPage() {
     setAccounts(list);
     await sb.from('creator_search_profile').upsert({ creator_id: sel, seed_accounts: list, updated_at: new Date().toISOString() }, { onConflict: 'creator_id' });
   };
-  const addAccount = () => { const v = newAccount.trim().replace(/^@/, '').replace(/\/+$/, '').split('/').pop(); if (!v) return; if (!accounts.includes(v)) saveAccounts([...accounts, v].slice(0, 8)); setNewAccount(''); };
+  // Acepta pegar VARIAS de una (separadas por coma, espacio o salto de línea). Limpia @ y URLs.
+  const addAccount = () => {
+    const parts = newAccount.split(/[\s,\n]+/).map((s) => s.trim().replace(/^@/, '').replace(/\/+$/, '').split('/').pop()).filter(Boolean);
+    if (!parts.length) return;
+    const merged = [...new Set([...accounts, ...parts])].slice(0, 20);
+    saveAccounts(merged); setNewAccount('');
+  };
   const doScrapeAccounts = async () => {
     // Si escribió una cuenta y no la agregó con Enter, la tomamos igual (no lo hacemos renegar).
     const pending = newAccount.trim().replace(/^@/, '').replace(/\/+$/, '').split('/').pop();
@@ -557,7 +563,8 @@ export default function KitchenPage() {
                           </span>
                         ))}
                         <input value={newAccount} onChange={(e) => setNewAccount(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAccount(); } }}
-                          placeholder="@cuenta de instagram" className="min-w-[150px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
+                          placeholder="@cuenta (o pegá varias)" className="min-w-[140px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
+                        <button type="button" onClick={addAccount} disabled={!newAccount.trim()} className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/40 px-3 py-1.5 text-xs font-semibold text-fuchsia-200 hover:bg-fuchsia-500/10 disabled:opacity-40"><Plus size={13} /> Agregar</button>
                         <button type="button" onClick={doScrapeAccounts} disabled={scrapingAcc} className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-fuchsia-600 disabled:opacity-50">
                           {scrapingAcc ? <Loader2 size={13} className="animate-spin" /> : <Compass size={13} />} {scrapingAcc ? 'Trayendo…' : 'Traer lo mejor'}
                         </button>
