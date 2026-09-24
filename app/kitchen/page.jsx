@@ -24,8 +24,8 @@ async function callFn(action, extra) {
 }
 
 const SOURCES = [
-  { id: 'encontre', label: 'Lo que encontré', icon: Compass },
-  { id: 'tengo', label: 'Lo que tengo', icon: FolderHeart },
+  { id: 'encontre', label: 'Buscar', icon: Search },
+  { id: 'tengo', label: 'Sus fotos reales', icon: FolderHeart },
   { id: 'subir', label: 'Subir', icon: Upload },
 ];
 const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'Fiesta'];
@@ -580,45 +580,62 @@ export default function KitchenPage() {
                 </div>
 
                 {source === 'encontre' && (
-                  <div className="mb-3 rounded-2xl border border-line bg-card p-3">
-                    {/* CUENTAS GUÍA — objetivo principal: pasar el IG de una creadora y traer lo mejor */}
-                    <div className="mb-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-fuchsia-300"><Compass size={13} /> Cuentas guía de {selCreator.full_name.split(' ')[0]}:</span>
+                  <div className="mb-4 space-y-3">
+                    {/* MÉTODO 1 — CUENTAS GUÍA: preciso, cero basura (recomendado) */}
+                    <div className="rounded-2xl border border-fuchsia-500/40 bg-fuchsia-500/[0.05] p-3.5">
+                      <div className="mb-2.5 flex items-start gap-2.5">
+                        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-fuchsia-500/20 text-fuchsia-300"><Compass size={15} /></span>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 text-sm font-bold text-paper">Cuentas guía <span className="rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-200">recomendado · preciso</span></div>
+                          <div className="text-[11px] text-paper-dim">Pasame las creadoras que te gustan (cuentas <b className="text-paper-mute">públicas</b>) y traigo <b className="text-paper-mute">solo</b> lo que ellas postean. Cero perros, cero memes.</div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {accounts.map((a) => (
                           <span key={a} className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/40 bg-fuchsia-500/10 px-2.5 py-1 text-xs font-semibold text-fuchsia-200">
                             @{a}
-                            <button type="button" onClick={() => saveAccounts(accounts.filter((x) => x !== a))} className="opacity-70 hover:opacity-100"><X size={11} /></button>
+                            <button type="button" onClick={() => saveAccounts(accounts.filter((x) => x !== a))} className="opacity-70 hover:opacity-100" title="Quitar"><X size={12} /></button>
                           </span>
                         ))}
                         <input value={newAccount} onChange={(e) => setNewAccount(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAccount(); } }}
-                          placeholder="@cuenta (o pegá varias)" className="min-w-[140px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
+                          placeholder="@cuenta (o pegá varias)" className="min-w-[150px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
                         <button type="button" onClick={addAccount} disabled={!newAccount.trim()} className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/40 px-3 py-1.5 text-xs font-semibold text-fuchsia-200 hover:bg-fuchsia-500/10 disabled:opacity-40"><Plus size={13} /> Agregar</button>
-                        <button type="button" onClick={doScrapeAccounts} disabled={scrapingAcc} className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-fuchsia-600 disabled:opacity-50">
+                        <button type="button" onClick={doScrapeAccounts} disabled={scrapingAcc || (accounts.length === 0 && !newAccount.trim())} className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-fuchsia-600 disabled:opacity-50">
                           {scrapingAcc ? <Loader2 size={13} className="animate-spin" /> : <Compass size={13} />} {scrapingAcc ? 'Trayendo…' : 'Traer lo mejor'}
                         </button>
                       </div>
-                      <p className="mt-1.5 text-[11px] text-paper-dim">Pasame las creadoras que son tu referencia (ej: @creadora). Traigo sus posts y la IA saca la basura. Se guardan por modelo.</p>
+                      <p className="mt-1.5 text-[10px] text-paper-dim">Se guardan por modelo. Si una cuenta es privada, te aviso (Instagram no deja verla).</p>
                     </div>
-                    <div className="mb-3 border-t border-line/60" />
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-paper-dim"><Search size={13} /> Buscar para {selCreator.full_name}:</span>
-                      {niches.map((n) => (
-                        <span key={n} className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
-                          {n}
-                          <button type="button" onClick={() => saveNiches(niches.filter((x) => x !== n))} className="opacity-70 hover:opacity-100"><X size={11} /></button>
-                        </span>
-                      ))}
-                      <input value={newNiche} onChange={(e) => setNewNiche(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNiche(); } }}
-                        placeholder="nicho o #hashtag (gótica, playa…)" className="min-w-[150px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-                      <button type="button" onClick={doScrape} disabled={scraping} className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-50">
-                        {scraping ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} {scraping ? 'Buscando…' : 'Buscar virales'}
-                      </button>
-                    </div>
-                    <input value={styleDesc} onChange={(e) => setStyleDesc(e.target.value)} onBlur={saveStyle}
-                      placeholder="Estilo de esta modelo (ej: fitness sensual de playa, nada de producto ni hombres)"
-                      className="mt-2 w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-                    <p className="mt-1.5 text-[11px] text-paper-dim">Vos elegís el nicho y el estilo. Traigo virales de Instagram, con @cuenta y likes, y la IA saca la basura (productos, hombres, paisajes) según ese estilo.</p>
+
+                    {/* MÉTODO 2 — HASHTAG: más amplio, más ruido (secundario) */}
+                    <details className="group rounded-2xl border border-line bg-card">
+                      <summary className="flex cursor-pointer list-none items-center gap-2.5 p-3.5">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-hair/10 text-paper-mute"><Search size={15} /></span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-bold text-paper">Buscar por hashtag <span className="text-[10px] font-normal text-amber-300/80">— más amplio, trae ruido</span></div>
+                          <div className="text-[11px] text-paper-dim">Por nicho (#gym, #playa): mucho volumen pero se cuela basura (hombres, memes). Para precisión, usá cuentas guía. <span className="text-brand group-open:hidden">Abrir ▾</span></div>
+                        </div>
+                      </summary>
+                      <div className="border-t border-line/60 p-3.5 pt-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {niches.map((n) => (
+                            <span key={n} className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
+                              {n}
+                              <button type="button" onClick={() => saveNiches(niches.filter((x) => x !== n))} className="opacity-70 hover:opacity-100"><X size={12} /></button>
+                            </span>
+                          ))}
+                          <input value={newNiche} onChange={(e) => setNewNiche(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNiche(); } }}
+                            placeholder="nicho o #hashtag (gótica, playa…)" className="min-w-[150px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                          <button type="button" onClick={doScrape} disabled={scraping} className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-50">
+                            {scraping ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} {scraping ? 'Buscando…' : 'Buscar virales'}
+                          </button>
+                        </div>
+                        <input value={styleDesc} onChange={(e) => setStyleDesc(e.target.value)} onBlur={saveStyle}
+                          placeholder="Estilo: qué SÍ y qué NO (ej: fitness sensual de playa, nada de hombres ni producto)"
+                          className="mt-2 w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                        <p className="mt-1.5 text-[10px] text-paper-dim">La IA usa este estilo para sacar la basura de la búsqueda por hashtag.</p>
+                      </div>
+                    </details>
                   </div>
                 )}
 
