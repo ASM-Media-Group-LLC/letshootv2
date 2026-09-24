@@ -694,6 +694,13 @@ export default function KitchenPage() {
                               : <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow" title="La subiste vos a mano"><Upload size={10} /> Subida</span>}
                             {cookedRefs.has(r.url) && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/85 px-2 py-0.5 text-[10px] font-bold text-white"><Check size={10} /> Hecha</span>}
                           </div>
+                          {/* Cocinar DIRECTO desde la foto (aparece al pasar el mouse) */}
+                          <div className="absolute inset-x-0 bottom-8 z-10 flex items-center justify-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                            <button type="button" title="Cocinar réplica (Soul 2.0)" onClick={(e) => { e.stopPropagation(); cookDetail(r, 1); }}
+                              className="btn3d inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold"><Flame size={12} /> Cocinar</button>
+                            <button type="button" title="Cocinar en carrusel" onClick={(e) => { e.stopPropagation(); setDetailN(4); setDetail(r); }}
+                              className="inline-flex items-center gap-1 rounded-full border border-white/50 bg-black/65 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-black/80"><LayoutGrid size={12} /> Carrusel</button>
+                          </div>
                           {(r.likes || r.views || r.source_handle) && (
                             <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/85 to-transparent px-2 pb-1.5 pt-4 text-[10px] font-semibold text-white">
                               <span className="inline-flex items-center gap-1.5">
