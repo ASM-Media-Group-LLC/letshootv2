@@ -248,9 +248,10 @@ export default function KitchenPage() {
     setScrapingAcc(true); setMsg({ kind: 'info', text: `Trayendo lo mejor de ${list.map((a) => '@' + a).join(', ')}… (puede tardar 1-2 min, no cierres)` });
     const out = await callFn('scrape_accounts', { creator_id: sel, accounts: list });
     setScrapingAcc(false);
-    if (!out.ok) { setMsg({ kind: 'err', text: out.error || 'No se pudo traer de esas cuentas.' }); return; }
+    if (!out.ok) { setMsg({ kind: 'err', text: `${out.error || 'No se pudo traer de esas cuentas.'}${out.detail ? ` · Apify: ${(typeof out.detail === 'string' ? out.detail : JSON.stringify(out.detail)).slice(0, 400)}` : ''}` }); return; }
     await loadVault();
-    setMsg({ kind: out.saved ? 'ok' : 'info', text: out.saved ? `Traje ${out.saved} fotos de tus cuentas guía.${out.reviewed ? ` La IA revisó ${out.reviewed} y sacó la basura.` : ''} Aparecen abajo (filtro "Scraping").` : 'Esas cuentas no devolvieron fotos (¿privada o mal escrita?). Probá otra.' });
+    const privadas = (out.error_items || []).some((e) => /private|empty/i.test(`${e?.desc || ''}${e?.error || ''}`));
+    setMsg({ kind: out.saved ? 'ok' : 'info', text: out.saved ? `Traje ${out.saved} fotos de tus cuentas guía.${out.reviewed ? ` La IA revisó ${out.reviewed} y sacó la basura.` : ''} Aparecen abajo (filtro "Scraping").` : privadas ? '⚠️ Esa cuenta es PRIVADA (Instagram no deja ver sus posts a nadie que no la siga). Probá con una cuenta guía PÚBLICA.' : `Apify devolvió ${out.found ?? 0} items y 0 fotos usables. Probá con otra cuenta.` });
   };
 
   // Curación de la mesa

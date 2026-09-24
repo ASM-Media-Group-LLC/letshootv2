@@ -106,15 +106,17 @@ async function runScrapeAccounts(svc: any, creatorId: string, limit: number, ove
   }
   accts = accts.map((a: string) => String(a).trim().replace(/^@/, '').replace(/\/+$/, '').split('/').pop() || '').filter(Boolean).slice(0, 8);
   if (!accts.length) return { ok: false, error: 'Agregá al menos una cuenta guía (ej: @creadora).' };
-  const runUrl = `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
-  const directUrls = accts.map((u) => `https://www.instagram.com/${u}/`);
+  // Actor DEDICADO de posts por usuario (mismo publisher que el hashtag-scraper que SÍ funciona en esta cuenta).
+  const runUrl = `https://api.apify.com/v2/acts/apify~instagram-post-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
   let items: any = [];
+  let apifyStatus = 0;
   try {
-    const ar = await fetch(runUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ directUrls, resultsType: 'posts', resultsLimit: limit, addParentData: false }) });
+    const ar = await fetch(runUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: accts, resultsLimit: limit, proxyConfiguration: { useApifyProxy: true } }) });
+    apifyStatus = ar.status;
     items = await ar.json();
     if (!ar.ok) return { ok: false, error: `Apify devolvió ${ar.status}.`, detail: items };
   } catch (e) { return { ok: false, error: `No se pudo llamar al scraper: ${(e as Error)?.message}` }; }
-  if (!Array.isArray(items)) return { ok: false, error: 'El scraper no devolvió una lista.', detail: items };
+  if (!Array.isArray(items)) return { ok: false, error: 'El scraper no devolvió una lista.', detail: items, apify_status: apifyStatus };
   let saved = 0;
   for (const it of items) {
     const imgUrl = it?.displayUrl || it?.imageUrl || (Array.isArray(it?.images) ? it.images[0] : null);
@@ -128,8 +130,12 @@ async function runScrapeAccounts(svc: any, creatorId: string, limit: number, ove
     const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url', ignoreDuplicates: true });
     if (!error) saved += 1;
   }
-  const reviewed = await aiReview(svc, creatorId);
-  return { ok: true, found: items.length, saved, accounts: accts, reviewed };
+  const reviewed = saved > 0 ? await aiReview(svc, creatorId) : 0;
+  // Diagnóstico: si Apify devolvió items de ERROR (cuenta privada/bloqueo), devolvemos el motivo textual.
+  const sample_keys = Array.isArray(items) && items.length ? Object.keys(items[0] || {}).slice(0, 24) : [];
+  const error_items = (Array.isArray(items) ? items : []).filter((i: any) => i && (i.error || i.errorDescription)).slice(0, 2)
+    .map((i: any) => ({ error: i.error || null, desc: i.errorDescription || null, msgs: Array.isArray(i.requestErrorMessages) ? i.requestErrorMessages.slice(0, 3) : null, input: i.inputUrl || i.url || null }));
+  return { ok: true, found: items.length, saved, accounts: accts, reviewed, apify_status: apifyStatus, sample_keys, error_items };
 }
 
 // Revisa con visión (Anthropic) las scrapeadas sin revisar de una modelo: ¿sirve como referencia de creadora o es basura?
@@ -316,12 +322,16 @@ Deno.serve(async (req) => {
 
     // ── Worker del cocinero (sin usuario; protegido por secreto en app_config) ──
     // Corre en la Mac del dueño con el CLI logueado; drena la cola de generations.
-    if (action === 'cook_next' || action === 'cook_result' || action === 'sync_balance' || action === 'scrape_run') {
+    if (action === 'cook_next' || action === 'cook_result' || action === 'sync_balance' || action === 'scrape_run' || action === 'scrape_accounts_run') {
       const { data: sc } = await svc.from('app_config').select('value').eq('key', 'kitchen_worker_secret').maybeSingle();
       const secret = clean((body as any)?.worker_secret);
       if (!secret || !(sc as any)?.value || secret !== clean((sc as any).value)) return reply({ ok: false, error: 'Worker no autorizado.' });
       if (action === 'scrape_run') {
         const r = await runScrape(svc, String((body as any)?.creator_id || ''), Math.min(Number((body as any)?.limit) || 24, 50), (body as any)?.niches);
+        return reply(r);
+      }
+      if (action === 'scrape_accounts_run') {
+        const r = await runScrapeAccounts(svc, String((body as any)?.creator_id || ''), Math.min(Number((body as any)?.limit) || 30, 60), (body as any)?.accounts);
         return reply(r);
       }
       if (action === 'sync_balance') {
