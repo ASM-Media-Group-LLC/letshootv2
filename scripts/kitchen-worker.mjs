@@ -69,7 +69,12 @@ async function cookOne(job) {
     // RÉPLICA (con image_ref = la viral → outfit + pose EXACTOS) o VARIACIÓN 'describe' (sin image_ref → pose libre). Todo Soul 2.0.
     // Anclamos el pelo de la modelo para que su cara NO se despinte según la referencia (rubia/negra) — su pelo es el fijo (castaño).
     const look = LOOKS[job.creator_id];
-    const rprompt = (look ? `${job.prompt} IMPORTANT: the woman has ${look} — this exact hair, regardless of the reference.` : job.prompt) + ' Keep her FULL curvy natural figure with rounded full glutes and thighs and natural hips; do NOT slim, shrink, snatch or flatten her body or her butt.';
+    // Solo en la RÉPLICA (hay image_ref = la viral): forzar que COPIE la pose y el ángulo exactos,
+    // que es lo que se despinta (siempre sale de frente). En las variaciones (sin image_ref) NO va esto.
+    const poseLock = job.image_ref
+      ? 'FIRST AND MOST IMPORTANT: copy the EXACT body pose, body orientation, limb placement, weight distribution and CAMERA ANGLE of the reference photo — match its exact posture (standing / seated / reclining / lying down / kneeling / crouching / leaning / three-quarter turn / profile / back-to-camera), the exact framing and crop, and the exact height and tilt of the camera. Do NOT default to a front-facing, straight-on standing pose; if the reference is turned, seated, from the side or from behind, reproduce THAT. '
+      : '';
+    const rprompt = poseLock + (look ? `${job.prompt} IMPORTANT: the woman has ${look} — this exact hair, regardless of the reference.` : job.prompt) + ' Keep her FULL curvy natural figure with rounded full glutes and thighs and natural hips; do NOT slim, shrink, snatch or flatten her body or her butt.';
     args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', rprompt, '--aspect_ratio', '3:4', '--quality', '2k'];
     if (job.image_ref) {
       // Réplica: la viral como referencia (outfit exacto). Con image_reference NO va style_id.
