@@ -326,7 +326,7 @@ export default function KitchenPage() {
     const n = queue.length;
     setQueue([]); loadGens();
     setMsg({ kind: 'ok', text: `${n} foto(s) en la cola de ${selCreator?.full_name || 'la modelo'}. Se cocinan con su soul real; miralas en Cocinándose.` });
-    setSubtab('cocinandose');
+    setSubtab('resultados');
     setSubtab('resultados');
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
   };
@@ -410,7 +410,7 @@ export default function KitchenPage() {
     if (r?.ok) {
       if (varMode === 'custom') setVarIdeas(['', '']);
       setMsg({ kind: 'ok', text: `${r.queued} foto(s) en la cola. Miralas en Cocinándose.` });
-      setSubtab('cocinandose');
+      setSubtab('resultados');
       loadGens();
     } else setMsg({ kind: 'err', text: r?.error || 'No se pudo armar el carrusel.' });
   };
@@ -610,8 +610,7 @@ export default function KitchenPage() {
             <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
               {[
                 { id: 'cocinar', label: 'Cocinar', icon: Flame },
-                { id: 'cocinandose', label: 'Cocinándose', icon: Loader2, badge: cookingRows.length || null, spin: cookingRows.length > 0 },
-                { id: 'resultados', label: 'Resultados', icon: Images, badge: reviewRows.length || null },
+                { id: 'resultados', label: 'Resultados', icon: Images, badge: (reviewRows.length + cookingRows.length) || null, spin: cookingRows.length > 0 },
                 { id: 'aprobadas', label: 'Aprobadas', icon: Check, badge: approvedRows.length || null },
                 { id: 'todo', label: 'Todo', icon: LayoutGrid, badge: allRows.length || null },
               ].map((t) => {
@@ -816,27 +815,22 @@ export default function KitchenPage() {
               </div>
             )}
 
-            {/* ── COCINÁNDOSE — todo lo que se está creando, junto, con reloj ── */}
-            {subtab === 'cocinandose' && (
-              <div className="pb-24">
-                {cookingRows.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Nada cocinándose ahora. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button> o mirá <button onClick={() => setSubtab('todo')} className="font-semibold text-brand hover:underline">Todo</button>.</p>
-                ) : (
-                  <>
-                    <p className="mb-3 text-xs text-paper-dim">{cookingRows.length} foto(s) cocinándose. El reloj marca cuánto llevan; si una pasa de 15 min se marca <span className="font-semibold text-rose-300">¿trabada?</span>.</p>
+            {/* ── RESULTADOS — cocinándose (con reloj) + para revisar/aprobar (+ rechazadas), TODO junto ── */}
+            {subtab === 'resultados' && (
+              <div className="space-y-6 pb-24">
+                {cookingRows.length === 0 && reviewRows.length === 0 && failedRows.length === 0 && (
+                  <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Todavía no hay nada acá. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button>.</p>
+                )}
+
+                {/* Cocinándose — la foto viene en camino, acá mismo, con reloj */}
+                {cookingRows.length > 0 && (
+                  <section>
+                    <h3 className="mb-1 inline-flex items-center gap-1.5 font-display text-sm font-bold text-amber-300"><Loader2 size={14} className="animate-spin" /> Viene en camino · {cookingRows.length}</h3>
+                    <p className="mb-2 text-xs text-paper-dim">El reloj marca cuánto lleva; si una pasa de 15 min se marca <span className="font-semibold text-rose-300">¿trabada?</span>.</p>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                       {cookingRows.map((g) => cookingTile(g))}
                     </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* ── RESULTADOS — para revisar/aprobar (+ rechazadas) ── */}
-            {subtab === 'resultados' && (
-              <div className="space-y-6 pb-24">
-                {reviewRows.length === 0 && failedRows.length === 0 && (
-                  <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">No hay nada esperando tu OK.{cookingRows.length > 0 ? ' Todavía se están cocinando.' : ''} Mirá <button onClick={() => setSubtab('todo')} className="font-semibold text-brand hover:underline">Todo</button> o <button onClick={() => setSubtab('aprobadas')} className="font-semibold text-brand hover:underline">Aprobadas</button>.</p>
+                  </section>
                 )}
 
                 {/* Para revisar — cada réplica abre su pop-up (comparador + carrusel) */}
