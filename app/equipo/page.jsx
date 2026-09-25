@@ -85,6 +85,7 @@ export default function EquipoPage() {
   const [openId, setOpenId] = useState(null);
   const [q, setQ] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [tab, setTab] = useState('acceso'); // 'acceso' | 'correos' — son cosas distintas
   const sb = getSupabase();
 
   useEffect(() => { (async () => {
@@ -246,11 +247,23 @@ export default function EquipoPage() {
           </div>
         )}
 
-        <div className="mb-5">
+        <div className="mb-4">
           <h1 className="font-display text-2xl font-bold tracking-tight">Equipo y roles</h1>
-          <p className="mt-1 text-sm text-paper-mute">Arriba, <b className="text-paper">qué ve cada rol</b>. Abajo, <b className="text-paper">quién es quién</b> — cambiá su rol con “Mover a” o sacalo del equipo. {staff.length} en el equipo · {models.length} modelos.</p>
+          <p className="mt-1 text-sm text-paper-mute">{staff.length} en el equipo · {models.length} modelos.</p>
         </div>
 
+        {/* Pestañas: el ACCESO (qué ve cada rol) y los CORREOS son cosas distintas */}
+        <div className="mb-6 flex gap-1 border-b border-line">
+          {[['acceso', 'Acceso y roles'], ['correos', 'Avisos y correos']].map(([id, lbl]) => (
+            <button key={id} type="button" onClick={() => setTab(id)}
+              className={`-mb-px border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors ${tab === id ? 'border-brand text-paper' : 'border-transparent text-paper-mute hover:text-paper'}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'acceso' && (
+        <>
         {/* (1) Qué ve cada rol — la matriz fácil */}
         <section className="mb-7">
           <div className="mb-2.5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute"><ShieldCheck size={13} className="text-brand" /> Qué ve cada rol</div>
@@ -277,41 +290,6 @@ export default function EquipoPage() {
             ))}
           </div>
           <p className="mt-2.5 text-[11px] text-paper-dim">Así queda la <b className="text-paper-mute">propuesta</b>. Los candados de verdad (que cada uno solo entre a lo suyo) los activo en la <b className="text-paper-mute">Fase 2</b>.</p>
-        </section>
-
-        {/* (1b) Avisos y correos — quién recibe qué */}
-        <section className="mb-7">
-          <div className="mb-2.5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute"><Mail size={13} className="text-brand" /> Avisos y correos</div>
-          <p className="mb-3 text-[12px] text-paper-mute">Salen de <b className="text-paper">noreply@letshoot.ai</b> y llegan al correo de cada persona. Hoy <b className="text-paper">todos</b> van hacia la modelo; cuando la modelo <b className="text-paper">hace algo</b>, el equipo casi no se entera — eso lo conecto en la Fase 2.</p>
-
-          <div className="grid gap-2.5 lg:grid-cols-2">
-            {/* Hacia la modelo — ya funciona */}
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.05] p-3.5">
-              <div className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-emerald-300"><Check size={14} /> La plataforma → la modelo <span className="font-normal text-paper-dim">(funciona hoy)</span></div>
-              <ul className="space-y-1.5">
-                {MAILS_OUT.map((m, i) => (
-                  <li key={i} className="flex items-start justify-between gap-3 text-[12px]">
-                    <span className="text-paper-mute">{m.ev}</span>
-                    <span className="shrink-0 text-right font-semibold text-paper">{m.who}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* La modelo hace algo — el hueco */}
-            <div className="rounded-2xl border border-amber-500/40 bg-amber-500/[0.05] p-3.5">
-              <div className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-amber-300"><AlertTriangle size={14} /> La modelo hace algo → ¿quién se entera?</div>
-              <ul className="space-y-2">
-                {MAILS_IN.map((m, i) => (
-                  <li key={i} className="text-[12px]">
-                    <div className="font-semibold text-paper">{m.ev}</div>
-                    <div className="text-paper-dim">Hoy: <span className="text-amber-200/90">{m.now}</span></div>
-                    <div className="text-paper-dim">Fase 2 → <span className="font-semibold text-emerald-300">{m.next}</span></div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
         </section>
 
         {/* (2) Equipo agrupado por rol */}
@@ -370,6 +348,45 @@ export default function EquipoPage() {
         <p className="mt-6 rounded-xl border border-line bg-card/40 p-3 text-[11px] text-paper-dim">
           <b className="text-paper-mute">Nota:</b> acá definís rol + modelos y sacás gente. Los candados de verdad en cada página (que el Manager solo vea sus pedidos, el Editor solo /kitchen, Finanzas solo números, PR solo sus modelos) se activan en la <b className="text-paper-mute">Fase 2</b>.
         </p>
+        </>
+        )}
+
+        {tab === 'correos' && (
+        <section>
+          <div className="mb-2.5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute"><Mail size={13} className="text-brand" /> Avisos y correos</div>
+          <p className="mb-3 text-[13px] text-paper-mute">Los correos salen de <b className="text-paper">noreply@letshoot.ai</b> y llegan al correo de cada persona. Hoy <b className="text-paper">todos</b> van hacia la modelo; cuando la modelo <b className="text-paper">hace algo</b>, el equipo casi no se entera — eso lo conecto en la Fase 2.</p>
+
+          <div className="grid gap-2.5 lg:grid-cols-2">
+            {/* Hacia la modelo — ya funciona */}
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.05] p-3.5">
+              <div className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-emerald-300"><Check size={14} /> La plataforma → la modelo <span className="font-normal text-paper-dim">(funciona hoy)</span></div>
+              <ul className="space-y-1.5">
+                {MAILS_OUT.map((m, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3 text-[12px]">
+                    <span className="text-paper-mute">{m.ev}</span>
+                    <span className="shrink-0 text-right font-semibold text-paper">{m.who}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* La modelo hace algo — el hueco */}
+            <div className="rounded-2xl border border-amber-500/40 bg-amber-500/[0.05] p-3.5">
+              <div className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-amber-300"><AlertTriangle size={14} /> La modelo hace algo → ¿quién se entera?</div>
+              <ul className="space-y-2">
+                {MAILS_IN.map((m, i) => (
+                  <li key={i} className="text-[12px]">
+                    <div className="font-semibold text-paper">{m.ev}</div>
+                    <div className="text-paper-dim">Hoy: <span className="text-amber-200/90">{m.now}</span></div>
+                    <div className="text-paper-dim">Fase 2 → <span className="font-semibold text-emerald-300">{m.next}</span></div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-paper-dim">El <b className="text-paper-mute">acceso</b> (qué ve cada rol) está en la otra pestaña. Esto es solo <b className="text-paper-mute">quién recibe qué correo</b>.</p>
+        </section>
+        )}
       </main>
     </div>
   );
