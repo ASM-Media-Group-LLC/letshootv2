@@ -1,25 +1,58 @@
 'use client';
 
-// /equipo — "Equipo y roles" (solo admin). Una sola vista, agrupada POR ROL.
-// Cada rol dice QUÉ ve (lo recomendable) y debajo van las personas que lo tienen.
-// Modelo: rol + modelos asignadas (tabla staff_assignments, mig 0111).
-// Los candados por rol/página se aplican en Fase 2; acá está el control.
+// /equipo — "Equipo y roles" (solo admin).
+// (1) "Que ve cada rol": matriz simple con lo que PUEDE / NO puede cada rol.
+// (2) Equipo agrupado por rol; "Mover a" cambia el rol.
+// (3) "Sacar del equipo" archiva (active=false, reversible, mig 0113) sin borrar la fila.
+// Modelo: rol + modelos asignadas (staff_assignments, mig 0111). Candados reales = Fase 2.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
-import { ArrowLeft, Users, Search, X, Plus, Check, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Users, Search, X, Plus, Check, ShieldCheck, UserMinus, RotateCcw } from 'lucide-react';
 
-// Roles de STAFF. Valor real en la DB → etiqueta que ve el dueño.
-// supervisor = "PR", producer = "Editor / QA". 'desc' = lo recomendable que ve cada uno.
+// Roles de STAFF. Valor DB -> etiqueta UI. supervisor="PR", producer="Editor", chatter="Manager".
+// caps = lo recomendable que ve cada uno (para la matriz de arriba).
 const ROLES = [
-  { v: 'admin',      label: 'Admin',       desc: 'Todo el sistema, sin restricción.',                                   models: false, tone: 'text-brand',        ring: 'border-brand/40',        dot: 'bg-brand',        soft: 'bg-brand/[0.06]' },
-  { v: 'supervisor', label: 'PR',          desc: 'Ve y maneja SUS modelos asignadas: fichas, pedidos y entregas.',      models: true,  tone: 'text-emerald-300',  ring: 'border-emerald-500/40',  dot: 'bg-emerald-400',  soft: 'bg-emerald-500/[0.06]' },
-  { v: 'producer',   label: 'Editor / QA', desc: 'Sube y edita el contenido de sus modelos: /kitchen y entregas.',      models: true,  tone: 'text-sky-300',      ring: 'border-sky-500/40',      dot: 'bg-sky-400',      soft: 'bg-sky-500/[0.06]' },
-  { v: 'chatter',    label: 'Chatter',     desc: 'Atiende los pedidos (requests): baúl aprobado, ficha, precios y registra ventas.', models: true, tone: 'text-fuchsia-300', ring: 'border-fuchsia-500/40', dot: 'bg-fuchsia-400', soft: 'bg-fuchsia-500/[0.06]' },
-  { v: 'finance',    label: 'Finanzas',    desc: 'Solo los números: ventas, gastos y cuentas. (Aún no hay ventas.)',    models: false, tone: 'text-amber-300',    ring: 'border-amber-500/40',    dot: 'bg-amber-400',    soft: 'bg-amber-500/[0.06]' },
+  { v: 'admin', label: 'Admin', desc: 'Ve y hace TODO. Sin restricción.', models: false,
+    tone: 'text-brand', ring: 'border-brand/40', dot: 'bg-brand', soft: 'bg-brand/[0.06]',
+    caps: [{ t: 'Todo el sistema, sin límites', ok: true }] },
+  { v: 'supervisor', label: 'PR', desc: 'Maneja SUS modelos. (Hoy ve todas; luego solo las asignadas.)', models: true,
+    tone: 'text-emerald-300', ring: 'border-emerald-500/40', dot: 'bg-emerald-400', soft: 'bg-emerald-500/[0.06]',
+    caps: [
+      { t: 'Sus modelos: fichas, pedidos y entregas', ok: true },
+      { t: 'Baúl de fotos aprobadas', ok: true },
+      { t: 'Hacer fotos (/kitchen)', ok: true },
+      { t: 'Números / ventas', ok: false },
+      { t: 'Gestionar equipo', ok: false },
+    ] },
+  { v: 'producer', label: 'Editor', desc: 'Hace las fotos de TODAS las modelos y las entrega.', models: false,
+    tone: 'text-sky-300', ring: 'border-sky-500/40', dot: 'bg-sky-400', soft: 'bg-sky-500/[0.06]',
+    caps: [
+      { t: 'Hacer fotos en /kitchen — todas las modelos', ok: true },
+      { t: 'Subir y entregar el contenido', ok: true },
+      { t: 'Precios, ventas y números', ok: false },
+      { t: 'Verificar IDs / gestionar equipo', ok: false },
+    ] },
+  { v: 'chatter', label: 'Manager', desc: 'Manager de la modelo: pedidos, baúl, ficha y precios. Por modelo.', models: true,
+    tone: 'text-fuchsia-300', ring: 'border-fuchsia-500/40', dot: 'bg-fuchsia-400', soft: 'bg-fuchsia-500/[0.06]',
+    caps: [
+      { t: 'Sus modelos asignadas', ok: true },
+      { t: 'Pedidos (requests)', ok: true },
+      { t: 'Baúl de fotos aprobadas', ok: true },
+      { t: 'Ficha + precios', ok: true },
+      { t: 'Registrar ventas', ok: false },
+      { t: 'Números de la empresa', ok: false },
+    ] },
+  { v: 'finance', label: 'Finanzas', desc: 'Solo los números: ventas, gastos y cuentas.', models: false,
+    tone: 'text-amber-300', ring: 'border-amber-500/40', dot: 'bg-amber-400', soft: 'bg-amber-500/[0.06]',
+    caps: [
+      { t: 'Ver números: ventas, gastos, cuentas', ok: true },
+      { t: 'Modelos, fotos y pedidos', ok: false },
+      { t: 'Cobros / suscripciones', ok: false },
+    ] },
 ];
-const AGENT = { v: 'agent', label: 'Agente (antiguo)', desc: 'Rol viejo — mové estas personas a un rol nuevo.', models: false, tone: 'text-paper-mute', ring: 'border-line', dot: 'bg-paper-mute', soft: 'bg-ink-2/30' };
+const AGENT = { v: 'agent', label: 'Agente (antiguo)', desc: 'Rol viejo — mové estas personas a un rol nuevo.', models: false, tone: 'text-paper-mute', ring: 'border-line', dot: 'bg-paper-mute', soft: 'bg-ink-2/30', caps: [] };
 const ALL_ROLES = [...ROLES, AGENT];
 const roleMeta = (v) => ALL_ROLES.find((r) => r.v === v) || null;
 const STAFF_ROLES = ALL_ROLES.map((r) => r.v);
@@ -27,11 +60,12 @@ const STAFF_ROLES = ALL_ROLES.map((r) => r.v);
 export default function EquipoPage() {
   const [access, setAccess] = useState('loading');
   const [meId, setMeId] = useState(null);
-  const [people, setPeople] = useState([]);      // todos los perfiles
-  const [assign, setAssign] = useState([]);       // staff_assignments
+  const [people, setPeople] = useState([]);
+  const [assign, setAssign] = useState([]);
   const [msg, setMsg] = useState(null);
-  const [openId, setOpenId] = useState(null);     // fila con el selector de modelos abierto
-  const [q, setQ] = useState('');                 // buscador de modelos dentro del selector
+  const [openId, setOpenId] = useState(null);
+  const [q, setQ] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const sb = getSupabase();
 
   useEffect(() => { (async () => {
@@ -40,22 +74,32 @@ export default function EquipoPage() {
   })(); }, []);
 
   const load = useCallback(async () => {
-    const { data: pr } = await sb.from('profiles').select('id, full_name, email, role, avatar_url, staff_status').order('full_name', { ascending: true });
+    const { data: pr } = await sb.from('profiles').select('id, full_name, email, role, avatar_url, staff_status, active').order('full_name', { ascending: true });
     setPeople(Array.isArray(pr) ? pr : []);
     const { data: as } = await sb.from('staff_assignments').select('staff_id, creator_id');
     setAssign(Array.isArray(as) ? as : []);
   }, [sb]);
   useEffect(() => { if (access === 'ok') load(); }, [access, load]);
 
-  const staff = useMemo(() => people.filter((p) => STAFF_ROLES.includes(p.role)), [people]);
-  const models = useMemo(() => people.filter((p) => p.role === 'creator' && p.full_name), [people]);
+  const isActive = (p) => p.active !== false;
+  const staff = useMemo(() => people.filter((p) => STAFF_ROLES.includes(p.role) && isActive(p)), [people]);
+  const archived = useMemo(() => people.filter((p) => STAFF_ROLES.includes(p.role) && !isActive(p)), [people]);
+  const models = useMemo(() => people.filter((p) => p.role === 'creator' && p.full_name && isActive(p)), [people]);
   const assignedTo = useCallback((staffId) => assign.filter((a) => a.staff_id === staffId).map((a) => a.creator_id), [assign]);
+  const countByRole = (v) => staff.filter((p) => p.role === v).length;
 
   const setRole = async (id, role) => {
     setPeople((v) => v.map((p) => (p.id === id ? { ...p, role } : p)));
     const { error } = await sb.from('profiles').update({ role }).eq('id', id);
     if (error) { setMsg({ kind: 'err', text: `No se pudo cambiar el rol: ${error.message}` }); load(); return; }
     setMsg({ kind: 'ok', text: `Rol actualizado a ${roleMeta(role)?.label || role}.` });
+  };
+  const setActive = async (id, val, name) => {
+    if (!val && !confirm(`¿Sacar a ${name} del equipo? Queda archivada y la podés reactivar cuando quieras.`)) return;
+    setPeople((v) => v.map((p) => (p.id === id ? { ...p, active: val } : p)));
+    const { error } = await sb.from('profiles').update({ active: val }).eq('id', id);
+    if (error) { setMsg({ kind: 'err', text: `No se pudo: ${error.message}` }); load(); return; }
+    setMsg({ kind: 'ok', text: val ? `${name} reactivada.` : `${name} sacada del equipo (archivada).` });
   };
   const toggleModel = async (staffId, creatorId) => {
     const has = assignedTo(staffId).includes(creatorId);
@@ -82,7 +126,6 @@ export default function EquipoPage() {
     </div>
   );
 
-  // Una fila = una persona dentro de su sección de rol.
   const PersonRow = ({ p }) => {
     const meta = roleMeta(p.role);
     const mine = assignedTo(p.id);
@@ -97,7 +140,6 @@ export default function EquipoPage() {
             <div className="flex items-center gap-2 truncate text-sm font-semibold text-paper">{p.full_name || p.email}{isMe && <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand">vos</span>}</div>
             <div className="truncate text-[11px] text-paper-dim">{p.email}</div>
           </div>
-          {/* Mover de rol */}
           <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">
             <span className="mr-1.5 hidden sm:inline">Mover a</span>
             <select value={p.role} disabled={isMe} onChange={(e) => setRole(p.id, e.target.value)}
@@ -105,9 +147,14 @@ export default function EquipoPage() {
               {ALL_ROLES.map((r) => <option key={r.v} value={r.v} className="bg-ink text-paper">{r.label}</option>)}
             </select>
           </label>
+          {!isMe && (
+            <button type="button" onClick={() => setActive(p.id, false, p.full_name || p.email)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line px-2.5 py-1.5 text-[11px] font-semibold text-paper-dim hover:border-rose-500/50 hover:text-rose-300" title="Sacar del equipo (archivar, reversible)">
+              <UserMinus size={12} /> Sacar
+            </button>
+          )}
         </div>
 
-        {/* Modelos asignadas (solo roles que trabajan por modelo) */}
         {meta?.models && (
           <div className="mt-2.5 rounded-xl border border-line/60 bg-ink-2/40 p-2.5">
             <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -117,7 +164,7 @@ export default function EquipoPage() {
               </button>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {mine.length === 0 && <span className="text-[11px] text-paper-dim">Sin modelos — no ve ninguna todavía.</span>}
+              {mine.length === 0 && <span className="text-[11px] text-paper-dim">Sin modelos asignadas — por ahora ve todas.</span>}
               {mine.map((cid) => (
                 <span key={cid} className="inline-flex items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-1 text-[11px] font-semibold text-brand">
                   {modelName(cid)}
@@ -173,10 +220,38 @@ export default function EquipoPage() {
 
         <div className="mb-5">
           <h1 className="font-display text-2xl font-bold tracking-tight">Equipo y roles</h1>
-          <p className="mt-1 text-sm text-paper-mute">Cada rol dice <b className="text-paper">qué ve</b>. Debajo están las personas que lo tienen; cambiá su rol con <b className="text-paper">Mover a</b>. {staff.length} en el equipo · {models.length} modelos.</p>
+          <p className="mt-1 text-sm text-paper-mute">Arriba, <b className="text-paper">qué ve cada rol</b>. Abajo, <b className="text-paper">quién es quién</b> — cambiá su rol con “Mover a” o sacalo del equipo. {staff.length} en el equipo · {models.length} modelos.</p>
         </div>
 
-        {/* Una sola vista, agrupada por rol */}
+        {/* (1) Qué ve cada rol — la matriz fácil */}
+        <section className="mb-7">
+          <div className="mb-2.5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute"><ShieldCheck size={13} className="text-brand" /> Qué ve cada rol</div>
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            {ROLES.map((role) => (
+              <div key={role.v} className={`rounded-2xl border ${role.ring} ${role.soft} p-3.5 ${role.v === 'admin' ? 'sm:col-span-2' : ''}`}>
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${role.dot}`} />
+                  <span className={`text-sm font-bold ${role.tone}`}>{role.label}</span>
+                  <span className="text-[11px] text-paper-dim">· {countByRole(role.v)} {countByRole(role.v) === 1 ? 'persona' : 'personas'}</span>
+                </div>
+                <p className="mb-2 text-[12px] text-paper-mute">{role.desc}</p>
+                <ul className={`gap-x-4 gap-y-1 ${role.v === 'admin' ? '' : 'sm:columns-1'} space-y-1`}>
+                  {role.caps.map((c, i) => (
+                    <li key={i} className={`flex items-start gap-1.5 text-[12px] ${c.ok ? 'text-paper' : 'text-paper-dim'}`}>
+                      {c.ok
+                        ? <Check size={14} className="mt-0.5 shrink-0 text-emerald-400" />
+                        : <X size={14} className="mt-0.5 shrink-0 text-paper-dim/70" />}
+                      <span>{c.t}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2.5 text-[11px] text-paper-dim">Así queda la <b className="text-paper-mute">propuesta</b>. Los candados de verdad (que cada uno solo entre a lo suyo) los activo en la <b className="text-paper-mute">Fase 2</b>.</p>
+        </section>
+
+        {/* (2) Equipo agrupado por rol */}
         <div className="space-y-3">
           {groups.map((role) => {
             const members = staff.filter((p) => p.role === role.v);
@@ -199,8 +274,33 @@ export default function EquipoPage() {
           })}
         </div>
 
+        {/* (3) Archivados */}
+        {archived.length > 0 && (
+          <div className="mt-4">
+            <button type="button" onClick={() => setShowArchived((v) => !v)} className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-3.5 py-2 text-[12px] font-semibold text-paper-mute hover:text-paper">
+              <RotateCcw size={13} /> Archivados · {archived.length} {showArchived ? '(ocultar)' : '(ver)'}
+            </button>
+            {showArchived && (
+              <div className="mt-2 divide-y divide-line/40 overflow-hidden rounded-2xl border border-line bg-card/60">
+                {archived.map((p) => (
+                  <div key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ink-2 text-[10px] font-bold text-paper-dim">{initials(p)}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-paper-mute">{p.full_name || p.email}</div>
+                      <div className="truncate text-[11px] text-paper-dim">{p.email} · {roleMeta(p.role)?.label || p.role}</div>
+                    </div>
+                    <button type="button" onClick={() => setActive(p.id, true, p.full_name || p.email)} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/10">
+                      <RotateCcw size={12} /> Reactivar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <p className="mt-6 rounded-xl border border-line bg-card/40 p-3 text-[11px] text-paper-dim">
-          <b className="text-paper-mute">Nota:</b> acá definís rol + modelos. Los candados de verdad en cada página (que el Chatter solo vea sus pedidos, el Editor solo /kitchen, Finanzas solo números) se activan en la <b className="text-paper-mute">Fase 2</b> — te aviso cuando arranco esa.
+          <b className="text-paper-mute">Nota:</b> acá definís rol + modelos y sacás gente. Los candados de verdad en cada página (que el Manager solo vea sus pedidos, el Editor solo /kitchen, Finanzas solo números, PR solo sus modelos) se activan en la <b className="text-paper-mute">Fase 2</b>.
         </p>
       </main>
     </div>
