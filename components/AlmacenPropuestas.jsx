@@ -21,9 +21,10 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Copy, Check, Mail, Archive, X, Heart, ThumbsDown, MessageSquare, ChevronDown, Send, Play, ExternalLink, Inbox } from 'lucide-react';
+import { Search, Copy, Check, Mail, Archive, X, Heart, ThumbsDown, MessageSquare, ChevronDown, Send, Play, ExternalLink, Inbox, Download } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
 import { getSupabase } from '@/lib/supabase/client';
+import { buildZip } from '@/lib/zip';
 
 const S = {
   esperando:   { label: 'Esperando creadora', tone: 'warn' },
@@ -341,6 +342,33 @@ function PropCard({ p, origin, busy, readOnly, copied, onCopy, mailHref, onDeliv
   const delivered = !!p.delivered_at;
   const killed = !!p.link_killed || delivered;
   const photos = p.approved.filter((c) => c.kind === 'photo');
+  const [dl, setDl] = useState('');
+  // Descargar las fotos APROBADAS (ZIP). Para el equipo/manager de esa modelo — resiliente por foto.
+  const downloadApproved = async () => {
+    if (dl === 'bajando') return;
+    const set = photos.filter((c) => c.src);
+    if (!set.length) return;
+    setDl('bajando');
+    try {
+      const base = (creadora || 'letshoot').toString().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'letshoot';
+      const files = [];
+      for (let i = 0; i < set.length; i++) {
+        try {
+          const res = await fetch(set[i].src);
+          if (!res.ok) continue;
+          const buf = new Uint8Array(await (await res.blob()).arrayBuffer());
+          const ext = ((set[i].src.split('?')[0].split('.').pop() || 'webp').toLowerCase().replace(/[^a-z0-9]/g, '') || 'webp').slice(0, 4);
+          files.push({ name: `${base}-${String(i + 1).padStart(2, '0')}.${ext}`, data: buf });
+        } catch { /* una foto mala NO frena las demás */ }
+      }
+      if (!files.length) { setDl('err'); setTimeout(() => setDl(''), 3000); return; }
+      const zip = buildZip(files);
+      const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
+      const a = document.createElement('a'); a.href = url; a.download = `${base}-aprobadas.zip`; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setDl('ok'); setTimeout(() => setDl(''), 3000);
+    } catch { setDl('err'); setTimeout(() => setDl(''), 3000); }
+  };
   const audios = p.approved.filter((c) => c.kind === 'audio');
   const hasContent = p.approved.length > 0;
   const creadora = (p.recipient_name || 'la creadora').split(/\s+/)[0];
@@ -398,6 +426,12 @@ function PropCard({ p, origin, busy, readOnly, copied, onCopy, mailHref, onDeliv
                 </button>
               )}
             </>
+          )}
+          {photos.length > 0 && (
+            <button type="button" onClick={downloadApproved} disabled={dl === 'bajando'}
+              className={`inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-2.5 py-1.5 text-[12px] font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-60 ${delivered ? 'ml-auto' : ''}`}>
+              <Download size={12} /> {dl === 'bajando' ? 'Bajando…' : dl === 'ok' ? '¡Listo!' : dl === 'err' ? 'Reintentar' : 'Descargar aprobadas'}
+            </button>
           )}
         </div>
       )}
