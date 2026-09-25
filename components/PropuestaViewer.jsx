@@ -947,14 +947,16 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false, as
       const zipItems = []; const imgFiles = [];
       for (let i = 0; i < set.length; i++) {
         const l = set[i];
-        const res = await fetch(l.result, { mode: 'cors' });
-        if (!res.ok) continue;
-        const blob = await res.blob();
-        const buf = new Uint8Array(await blob.arrayBuffer());
-        const ext = ((l.result.split('?')[0].split('.').pop() || 'webp').toLowerCase().replace(/[^a-z0-9]/g, '') || 'webp').slice(0, 4);
-        const name = `${base}-${pad2(i + 1)}.${ext}`;
-        zipItems.push({ name, data: buf });
-        imgFiles.push(new File([blob], name, { type: blob.type || 'image/webp' }));
+        try {
+          const res = await fetch(l.result);
+          if (!res.ok) continue;
+          const blob = await res.blob();
+          const buf = new Uint8Array(await blob.arrayBuffer());
+          const ext = ((l.result.split('?')[0].split('.').pop() || 'webp').toLowerCase().replace(/[^a-z0-9]/g, '') || 'webp').slice(0, 4);
+          const name = `${base}-${pad2(i + 1)}.${ext}`;
+          zipItems.push({ name, data: buf });
+          imgFiles.push(new File([blob], name, { type: blob.type || 'image/webp' }));
+        } catch { /* una foto que falla (CORS/borrada) NO tumba las demás — seguimos */ }
       }
       if (!imgFiles.length) throw new Error('fetch');
       const zip = buildZip(zipItems);

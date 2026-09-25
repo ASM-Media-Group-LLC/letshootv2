@@ -604,8 +604,22 @@ export default function AdminPropuestas() {
         .update({ approval_status: 'approved', approved_at: nowIso, approval_reviewer_name: reviewer || null })
         .eq('id', p.id);
     } catch {}
+    // AUTO-ENVÍO a la creadora: aprobar YA le manda la propuesta por correo (se acabó el
+    // clic manual "Enviar a la creadora" que nadie hacía y dejaba 99 propuestas trabadas).
+    let sent = false;
+    try {
+      let email = (p.recipient?.email || '').trim();
+      if (!email && p.recipient?.userId) {
+        const { data: cp } = await getSupabase().from('profiles').select('email').eq('id', p.recipient.userId).maybeSingle();
+        email = (cp?.email || '').trim();
+      }
+      if (email && p.code) {
+        const { data } = await getSupabase().functions.invoke('proposal-invite', { body: { link_id: p.code, email, full_name: p.recipient?.name || '', lang: 'es' } });
+        sent = !!data?.ok;
+      }
+    } catch {}
     setRows((prev) => prev.map((r) => (r.id === p.id
-      ? { ...r, approvedAt: nowIso, approval: { ...(r.approval || {}), required: true, status: 'approved', reviewer } }
+      ? { ...r, approvedAt: nowIso, sentToCreator: sent, approval: { ...(r.approval || {}), required: true, status: 'approved', reviewer } }
       : r)));
   };
 
