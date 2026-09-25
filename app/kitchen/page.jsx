@@ -24,9 +24,9 @@ async function callFn(action, extra) {
 }
 
 const SOURCES = [
-  { id: 'encontre', label: 'Buscar', icon: Search },
+  { id: 'subir', label: 'Subir fotos', icon: Upload },
   { id: 'tengo', label: 'Sus fotos reales', icon: FolderHeart },
-  { id: 'subir', label: 'Subir', icon: Upload },
+  { id: 'encontre', label: 'Buscar (ayuda)', icon: Search },
 ];
 const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'Fiesta'];
 // Momentos de la vida real para el carrusel "Sorpréndeme": actividad + expresión + ENCUADRE + prop DISTINTOS en cada foto. Se barajan.
@@ -65,6 +65,7 @@ export default function KitchenPage() {
   const [sel, setSel] = useState('');              // modelo elegida (si vacío → pantalla de elegir modelo)
   const [subtab, setSubtab] = useState('todo'); // dentro de la modelo: cocinar | todo | cocinandose | resultados | aprobadas
   const [tick, setTick] = useState(() => Date.now()); // reloj para el contador de "cocinándose"
+  const [visN, setVisN] = useState(30); // cuántas fotos se muestran (scroll por tandas)
   const [ident, setIdent] = useState({});
   const [realCount, setRealCount] = useState({});
   const [vault, setVault] = useState([]);
@@ -82,6 +83,7 @@ export default function KitchenPage() {
   const [queue, setQueue] = useState([]);
   const [enq, setEnq] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   // Perfil de búsqueda por modelo (nichos) + scraper
   const [niches, setNiches] = useState([]);
   const [newNiche, setNewNiche] = useState('');
@@ -142,6 +144,17 @@ export default function KitchenPage() {
     setSubtab(cooking ? 'cocinandose' : 'todo');
   }, [sel, gens]);
 
+  // Scroll por tandas: reset a 30 al cambiar de pestaña/modelo/fuente; observer que suma de a 30.
+  const sentinelRef = useRef(null);
+  useEffect(() => { setVisN(30); }, [subtab, sel, source]);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) setVisN((v) => v + 30); }, { rootMargin: '700px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [subtab, sel, source]);
+
   // Detecta la transición cocinándose → LISTA y AVISA: toast + notificación del navegador (aunque estés en otra pestaña).
   useEffect(() => {
     if (access !== 'ok') return;
@@ -195,8 +208,8 @@ export default function KitchenPage() {
 
   const sourceRows = useMemo(() => {
     if (source === 'tengo') return vault.filter((r) => r.kind === 'real' && r.creator_id === sel);
-    if (source === 'encontre') return vault.filter((r) => r.kind === 'ref');
-    return vault.filter((r) => r.kind === 'ref' && r.creator_id === sel);
+    if (source === 'encontre') return vault.filter((r) => r.kind === 'ref' && (r.source_platform || r.source_handle)); // solo scraping
+    return vault.filter((r) => r.kind === 'ref' && r.creator_id === sel && !r.source_platform && !r.source_handle); // subir: solo lo que subiste vos
   }, [vault, source, sel]);
   // Vibes que realmente tienen fotos etiquetadas (para no mostrar chips que dan grilla vacía).
   const vibeCounts = useMemo(() => {
@@ -307,7 +320,7 @@ export default function KitchenPage() {
     setMsg({ kind: 'ok', text: total > 1 ? `Cocinando carrusel: la réplica + ${total - 1} variaciones. Aparece en Resultados.` : 'Cocinando la réplica. Aparece en Resultados.' });
   };
 
-  const enterModel = (id) => { setSel(id); setSubtab('todo'); setQueue([]); setMsg(null); setSource('encontre'); setVibe('Todos'); };
+  const enterModel = (id) => { setSel(id); setSubtab('todo'); setQueue([]); setMsg(null); setSource('subir'); setVibe('Todos'); };
   const toggleQueue = (url) => setQueue((k) => k.includes(url) ? k.filter((u) => u !== url) : [...k, url]);
 
   const enqueue = async () => {
@@ -328,7 +341,7 @@ export default function KitchenPage() {
   };
 
   const onUpload = async (files) => {
-    const list = Array.from(files || []).slice(0, 10);
+    const list = Array.from(files || []).filter((f) => f.type.startsWith('image/')).slice(0, 60);
     if (list.length === 0) return;
     setUploading(true); setMsg(null);
     try {
@@ -709,25 +722,31 @@ export default function KitchenPage() {
                   <p className="mb-3 text-xs text-paper-dim">Las secciones por vibe (casual, playa, editorial…) y los likes se activan cuando conecto el scraper, que trae las virales con su fuente y sus números.</p>
                 )}
 
-                {source === 'subir' ? (
-                  <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line bg-card/40 p-10 text-center transition-colors hover:border-brand/40">
+                {source === 'subir' && (
+                  <label
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => { e.preventDefault(); setDragOver(false); onUpload(e.dataTransfer.files); }}
+                    className={`mb-4 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-8 text-center transition-colors ${dragOver ? 'border-brand bg-brand/10' : 'border-line bg-card/40 hover:border-brand/40'}`}>
                     <input type="file" accept="image/*" multiple className="hidden" disabled={uploading} onChange={(e) => onUpload(e.target.files)} />
                     {uploading ? <Loader2 size={26} className="animate-spin text-brand" /> : <Upload size={26} className="text-paper-dim" />}
-                    <div className="text-sm font-semibold text-paper">{uploading ? 'Subiendo…' : 'Subí una foto de referencia'}</div>
-                    <div className="text-xs text-paper-dim">Se guarda en el baúl de {selCreator.full_name} y la podés mandar a la cola.</div>
+                    <div className="text-sm font-semibold text-paper">{uploading ? 'Subiendo…' : 'Arrastrá tus fotos acá (o tocá para elegir)'}</div>
+                    <div className="text-xs text-paper-dim">Muchas de una (hasta 60). Se guardan en el baúl de {selCreator.full_name} y quedan listas para cocinar.</div>
                   </label>
-                ) : pickPhotos.length === 0 ? (
+                )}
+                {pickPhotos.length === 0 ? (
                   <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">
-                    {source === 'tengo' ? `${selCreator.full_name} no tiene fotos reales cargadas todavía.` : 'No hay referencias con este filtro. Probá otra vibe o subí fotos.'}
+                    {source === 'subir' ? 'Todavía no subiste fotos. Arrastrá varias acá arriba.' : source === 'tengo' ? `${selCreator.full_name} no tiene fotos reales cargadas todavía.` : 'No hay referencias con este filtro. Probá otra vibe o subí fotos.'}
                   </p>
                 ) : (
+                  <>
                   <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-                    {pickPhotos.map((r) => {
+                    {pickPhotos.slice(0, visN).map((r) => {
                       const on = queue.includes(r.url);
                       return (
                         <div key={r.id} onClick={() => setDetail(r)}
                           className={`group relative cursor-pointer overflow-hidden rounded-xl border bg-ink-2 transition-all ${on ? 'border-brand ring-2 ring-brand/50' : 'border-line hover:border-brand/40'}`}>
-                          <img src={r.url} alt="" className="aspect-[3/4] w-full object-cover" />
+                          <img src={r.url} alt="" loading="lazy" decoding="async" className="aspect-[3/4] w-full object-cover" />
                           <button type="button" title="Seleccionar (para cocinar o sacar)" onClick={(e) => { e.stopPropagation(); toggleQueue(r.url); }}
                             className={`absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border transition-colors ${on ? 'border-brand bg-brand text-on-accent' : 'border-white/60 bg-black/50 text-white/80 hover:bg-black/70'}`}><Check size={13} /></button>
                           <button type="button" title="Sacar (basura) — un tipo, comida, ropa…" onClick={(e) => { e.stopPropagation(); markInterest(r, 'descartada'); }}
@@ -759,6 +778,8 @@ export default function KitchenPage() {
                       );
                     })}
                   </div>
+                  {visN < pickPhotos.length && <div ref={sentinelRef} className="h-8" />}
+                  </>
                 )}
               </div>
             )}
@@ -769,14 +790,15 @@ export default function KitchenPage() {
                 {allRows.length === 0 ? (
                   <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Todavía no cocinaste nada para {selCreator.full_name}. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button>.</p>
                 ) : (
+                  <>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
-                    {allRows.map((g) => {
+                    {allRows.slice(0, visN).map((g) => {
                       if (['queued', 'in_progress'].includes(g.status)) return cookingTile(g);
                       const isApproved = g.status === 'approved';
                       const kids = isRoot(g) ? carouselCount(g.id) : 0;
                       return (
                         <button type="button" key={g.id} onClick={() => setCompare({ root: rootOf(g), creator_id: g.creator_id })} className={`group relative block overflow-hidden rounded-xl border bg-ink-2 ${isApproved ? 'border-emerald-500/30' : 'border-line'}`}>
-                          {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                          {g.result_url ? <img src={g.result_url} alt="" loading="lazy" decoding="async" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
                           {isApproved && <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white"><Check size={11} /></span>}
                           {kids > 0 && <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
                           <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1.5 py-0.5 text-[9px] font-semibold text-white/90">{isApproved ? 'aprobada' : 'para revisar'} · {engineOf(g)}</span>
@@ -784,6 +806,8 @@ export default function KitchenPage() {
                       );
                     })}
                   </div>
+                  {visN < allRows.length && <div ref={sentinelRef} className="h-8" />}
+                  </>
                 )}
               </div>
             )}
@@ -822,7 +846,7 @@ export default function KitchenPage() {
                         return (
                         <div key={g.id} className="overflow-hidden rounded-xl border border-line bg-ink-2">
                           <button type="button" onClick={() => setCompare({ root: g.id, creator_id: g.creator_id })} className="relative block w-full">
-                            {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                            {g.result_url ? <img src={g.result_url} alt="" loading="lazy" decoding="async" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
                             {kids > 0 && <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
                           </button>
                           <div className="px-2 pt-1 text-[10px] text-paper-dim">Motor: <span className={`font-semibold ${engineOf(g) === 'Nano' ? 'text-rose-300' : 'text-brand'}`}>{engineOf(g)}</span></div>
@@ -873,7 +897,7 @@ export default function KitchenPage() {
                     <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
                       {approvedRows.map((g) => (
                         <button type="button" key={g.id} onClick={() => setCompare({ root: rootOf(g), creator_id: g.creator_id })} className="group relative block overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
-                          {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                          {g.result_url ? <img src={g.result_url} alt="" loading="lazy" decoding="async" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
                           <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/60 py-1 text-[10px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100"><LayoutGrid size={10} /> carrusel</span>
                         </button>
                       ))}
