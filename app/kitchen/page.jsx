@@ -26,7 +26,7 @@ async function callFn(action, extra) {
 const SOURCES = [
   { id: 'subir', label: 'Subir fotos', icon: Upload },
   { id: 'tengo', label: 'Sus fotos reales', icon: FolderHeart },
-  { id: 'encontre', label: 'Buscar (ayuda)', icon: Search },
+  { id: 'encontre', label: 'Buscar en IG', icon: Search },
 ];
 const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'Fiesta'];
 // Momentos de la vida real para el carrusel "Sorpréndeme": actividad + expresión + ENCUADRE + prop DISTINTOS en cada foto. Se barajan.
@@ -641,14 +641,17 @@ export default function KitchenPage() {
                 </div>
 
                 {source === 'encontre' && (
-                  <div className="mb-4 space-y-3">
-                    {/* MÉTODO 1 — CUENTAS GUÍA: preciso, cero basura (recomendado) */}
+                  <div className="mb-4 space-y-2.5">
+                    <div className="rounded-xl border border-line bg-card/40 px-3.5 py-2.5 text-[12px] text-paper-mute">
+                      Traé fotos de Instagram para cocinar. Decile <b className="text-paper">de dónde</b>: una <b className="text-paper">cuenta</b> o un <b className="text-paper">tema</b>. Traigo lo mejor y lo <b className="text-paper">filtro solo</b> — mujeres/cuerpo, sin hombres, comida ni basura.
+                    </div>
+                    {/* POR CUENTA — exacto */}
                     <div className="rounded-2xl border border-fuchsia-500/40 bg-fuchsia-500/[0.05] p-3.5">
-                      <div className="mb-2.5 flex items-start gap-2.5">
+                      <div className="mb-2 flex items-start gap-2.5">
                         <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-fuchsia-500/20 text-fuchsia-300"><Compass size={15} /></span>
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-1.5 text-sm font-bold text-paper">Cuentas guía <span className="rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-200">recomendado · preciso</span></div>
-                          <div className="text-[11px] text-paper-dim">Pasame las creadoras que te gustan (cuentas <b className="text-paper-mute">públicas</b>) y traigo <b className="text-paper-mute">solo</b> lo que ellas postean. Cero perros, cero memes.</div>
+                          <div className="flex flex-wrap items-center gap-1.5 text-sm font-bold text-paper">Por cuenta <span className="rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-200">exacto</span></div>
+                          <div className="text-[11px] text-paper-dim">Pegá cuentas de creadoras que te gustan (cuentas <b className="text-paper-mute">públicas</b>) y traigo <b className="text-paper-mute">solo</b> lo que ellas postean.</div>
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -668,35 +671,30 @@ export default function KitchenPage() {
                       <p className="mt-1.5 text-[10px] text-paper-dim">Se guardan por modelo. Si una cuenta es privada, te aviso (Instagram no deja verla).</p>
                     </div>
 
-                    {/* MÉTODO 2 — HASHTAG: más amplio, más ruido (secundario) */}
-                    <details className="group rounded-2xl border border-line bg-card">
-                      <summary className="flex cursor-pointer list-none items-center gap-2.5 p-3.5">
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-hair/10 text-paper-mute"><Search size={15} /></span>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-bold text-paper">Buscar por hashtag <span className="text-[10px] font-normal text-amber-300/80">— más amplio, trae ruido</span></div>
-                          <div className="text-[11px] text-paper-dim">Por nicho (#gym, #playa): mucho volumen pero se cuela basura (hombres, memes). Para precisión, usá cuentas guía. <span className="text-brand group-open:hidden">Abrir ▾</span></div>
+                    {/* POR TEMA — amplio, sin cuenta */}
+                    <div className="rounded-2xl border border-brand/40 bg-brand/[0.05] p-3.5">
+                      <div className="mb-2 flex items-start gap-2.5">
+                        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand/20 text-brand"><Search size={15} /></span>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 text-sm font-bold text-paper">Por tema <span className="rounded-full bg-brand/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">sin cuenta</span></div>
+                          <div className="text-[11px] text-paper-dim">Escribí un tema (<b className="text-paper-mute">bikini, fitness, playa</b>) y Buscar. No hace falta ninguna cuenta.</div>
                         </div>
-                      </summary>
-                      <div className="border-t border-line/60 p-3.5 pt-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {niches.map((n) => (
-                            <span key={n} className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
-                              {n}
-                              <button type="button" onClick={() => saveNiches(niches.filter((x) => x !== n))} className="opacity-70 hover:opacity-100"><X size={12} /></button>
-                            </span>
-                          ))}
-                          <input value={newNiche} onChange={(e) => setNewNiche(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNiche(); } }}
-                            placeholder="nicho o #hashtag (gótica, playa…)" className="min-w-[150px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-                          <button type="button" onClick={doScrape} disabled={scraping} className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-50">
-                            {scraping ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} {scraping ? 'Buscando…' : 'Buscar virales'}
-                          </button>
-                        </div>
-                        <input value={styleDesc} onChange={(e) => setStyleDesc(e.target.value)} onBlur={saveStyle}
-                          placeholder="Estilo: qué SÍ y qué NO (ej: fitness sensual de playa, nada de hombres ni producto)"
-                          className="mt-2 w-full rounded-xl border border-line bg-ink-2 px-3 py-2 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-                        <p className="mt-1.5 text-[10px] text-paper-dim">La IA usa este estilo para sacar la basura de la búsqueda por hashtag.</p>
                       </div>
-                    </details>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {niches.map((n) => (
+                          <span key={n} className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
+                            {n}
+                            <button type="button" onClick={() => saveNiches(niches.filter((x) => x !== n))} className="opacity-70 hover:opacity-100"><X size={12} /></button>
+                          </span>
+                        ))}
+                        <input value={newNiche} onChange={(e) => setNewNiche(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNiche(); } }}
+                          placeholder="tema (bikini, fitness, playa…)" className="min-w-[140px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                        <button type="button" onClick={addNiche} disabled={!newNiche.trim()} className="inline-flex items-center gap-1 rounded-full border border-brand/40 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/10 disabled:opacity-40"><Plus size={13} /> Agregar</button>
+                        <button type="button" onClick={doScrape} disabled={scraping || niches.length === 0} className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-xs font-bold text-on-accent hover:opacity-90 disabled:opacity-50">
+                          {scraping ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} {scraping ? 'Buscando…' : 'Buscar'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
