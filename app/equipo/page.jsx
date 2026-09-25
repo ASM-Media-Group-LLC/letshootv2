@@ -1,27 +1,28 @@
 'use client';
 
-// /equipo — "Equipo y roles" (solo admin). El dueño ve CADA persona del equipo,
-// le pone su ROL (qué PUEDE hacer) y le asigna sus MODELOS (sobre QUIÉN trabaja).
+// /equipo — "Equipo y roles" (solo admin). Una sola vista, agrupada POR ROL.
+// Cada rol dice QUÉ ve (lo recomendable) y debajo van las personas que lo tienen.
 // Modelo: rol + modelos asignadas (tabla staff_assignments, mig 0111).
 // Los candados por rol/página se aplican en Fase 2; acá está el control.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
-import { ArrowLeft, Users, Search, X, Plus, Check, ShieldCheck, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, Search, X, Plus, Check, ShieldCheck } from 'lucide-react';
 
-// Roles de STAFF que se pueden asignar acá (creator/agency se manejan aparte).
-// Valor real en la DB → etiqueta que ve el dueño. supervisor se muestra como "PR", producer como "Editor / QA".
+// Roles de STAFF. Valor real en la DB → etiqueta que ve el dueño.
+// supervisor = "PR", producer = "Editor / QA". 'desc' = lo recomendable que ve cada uno.
 const ROLES = [
-  { v: 'admin', label: 'Admin', desc: 'Todo el sistema', models: false, tone: 'text-brand border-brand/40' },
-  { v: 'supervisor', label: 'PR', desc: 'Maneja sus modelos asignadas', models: true, tone: 'text-emerald-300 border-emerald-500/40' },
-  { v: 'producer', label: 'Editor / QA', desc: 'Solo /kitchen de sus modelos', models: true, tone: 'text-sky-300 border-sky-500/40' },
-  { v: 'chatter', label: 'Chatter', desc: 'Baúl, ficha, precios y registra ventas', models: true, tone: 'text-fuchsia-300 border-fuchsia-500/40' },
-  { v: 'finance', label: 'Finanzas', desc: 'Solo números (ventas, gastos, cuentas)', models: false, tone: 'text-amber-300 border-amber-500/40' },
-  { v: 'agent', label: 'Agente', desc: 'Rol antiguo', models: false, tone: 'text-paper-mute border-line' },
+  { v: 'admin',      label: 'Admin',       desc: 'Todo el sistema, sin restricción.',                                   models: false, tone: 'text-brand',        ring: 'border-brand/40',        dot: 'bg-brand',        soft: 'bg-brand/[0.06]' },
+  { v: 'supervisor', label: 'PR',          desc: 'Ve y maneja SUS modelos asignadas: fichas, pedidos y entregas.',      models: true,  tone: 'text-emerald-300',  ring: 'border-emerald-500/40',  dot: 'bg-emerald-400',  soft: 'bg-emerald-500/[0.06]' },
+  { v: 'producer',   label: 'Editor / QA', desc: 'Sube y edita el contenido de sus modelos: /kitchen y entregas.',      models: true,  tone: 'text-sky-300',      ring: 'border-sky-500/40',      dot: 'bg-sky-400',      soft: 'bg-sky-500/[0.06]' },
+  { v: 'chatter',    label: 'Chatter',     desc: 'Atiende los pedidos (requests): baúl aprobado, ficha, precios y registra ventas.', models: true, tone: 'text-fuchsia-300', ring: 'border-fuchsia-500/40', dot: 'bg-fuchsia-400', soft: 'bg-fuchsia-500/[0.06]' },
+  { v: 'finance',    label: 'Finanzas',    desc: 'Solo los números: ventas, gastos y cuentas. (Aún no hay ventas.)',    models: false, tone: 'text-amber-300',    ring: 'border-amber-500/40',    dot: 'bg-amber-400',    soft: 'bg-amber-500/[0.06]' },
 ];
-const roleMeta = (v) => ROLES.find((r) => r.v === v) || null;
-const STAFF_ROLES = ROLES.map((r) => r.v);
+const AGENT = { v: 'agent', label: 'Agente (antiguo)', desc: 'Rol viejo — mové estas personas a un rol nuevo.', models: false, tone: 'text-paper-mute', ring: 'border-line', dot: 'bg-paper-mute', soft: 'bg-ink-2/30' };
+const ALL_ROLES = [...ROLES, AGENT];
+const roleMeta = (v) => ALL_ROLES.find((r) => r.v === v) || null;
+const STAFF_ROLES = ALL_ROLES.map((r) => r.v);
 
 export default function EquipoPage() {
   const [access, setAccess] = useState('loading');
@@ -81,6 +82,78 @@ export default function EquipoPage() {
     </div>
   );
 
+  // Una fila = una persona dentro de su sección de rol.
+  const PersonRow = ({ p }) => {
+    const meta = roleMeta(p.role);
+    const mine = assignedTo(p.id);
+    const isMe = p.id === meId;
+    return (
+      <div className="px-3 py-2.5 sm:px-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-[11px] font-bold text-brand">
+            {p.avatar_url ? <img src={p.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(p)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 truncate text-sm font-semibold text-paper">{p.full_name || p.email}{isMe && <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand">vos</span>}</div>
+            <div className="truncate text-[11px] text-paper-dim">{p.email}</div>
+          </div>
+          {/* Mover de rol */}
+          <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">
+            <span className="mr-1.5 hidden sm:inline">Mover a</span>
+            <select value={p.role} disabled={isMe} onChange={(e) => setRole(p.id, e.target.value)}
+              className={`rounded-full border bg-ink-2 px-2.5 py-1.5 text-xs font-bold outline-none disabled:opacity-50 ${meta?.tone || 'text-paper'} ${meta?.ring || 'border-line'}`} title={isMe ? 'No podés cambiar tu propio rol' : 'Cambiar de rol'}>
+              {ALL_ROLES.map((r) => <option key={r.v} value={r.v} className="bg-ink text-paper">{r.label}</option>)}
+            </select>
+          </label>
+        </div>
+
+        {/* Modelos asignadas (solo roles que trabajan por modelo) */}
+        {meta?.models && (
+          <div className="mt-2.5 rounded-xl border border-line/60 bg-ink-2/40 p-2.5">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-paper-mute"><ShieldCheck size={12} className="text-brand" /> Modelos asignadas · {mine.length}</span>
+              <button type="button" onClick={() => { setOpenId(openId === p.id ? null : p.id); setQ(''); }} className="inline-flex items-center gap-1 rounded-full border border-brand/40 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10">
+                <Plus size={12} /> {openId === p.id ? 'Cerrar' : 'Asignar'}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {mine.length === 0 && <span className="text-[11px] text-paper-dim">Sin modelos — no ve ninguna todavía.</span>}
+              {mine.map((cid) => (
+                <span key={cid} className="inline-flex items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-1 text-[11px] font-semibold text-brand">
+                  {modelName(cid)}
+                  <button type="button" onClick={() => toggleModel(p.id, cid)} className="opacity-70 hover:opacity-100"><X size={11} /></button>
+                </span>
+              ))}
+            </div>
+            {openId === p.id && (
+              <div className="mt-2 rounded-xl border border-line bg-card p-2">
+                <div className="relative mb-2">
+                  <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…" className="w-full rounded-full border border-line bg-ink-2 py-1.5 pl-9 pr-3 text-xs text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                <div className="grid max-h-56 grid-cols-2 gap-1 overflow-y-auto sm:grid-cols-3">
+                  {models.filter((m) => m.full_name.toLowerCase().includes(q.trim().toLowerCase())).map((m) => {
+                    const on = mine.includes(m.id);
+                    return (
+                      <button key={m.id} type="button" onClick={() => toggleModel(p.id, m.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left text-[11px] font-semibold transition-colors ${on ? 'border-brand bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
+                        <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>{on && <Check size={10} />}</span>
+                        <span className="truncate">{m.full_name}</span>
+                      </button>
+                    );
+                  })}
+                  {models.length === 0 && <span className="col-span-full p-2 text-[11px] text-paper-dim">No hay modelos activas.</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const groups = [...ROLES, ...(staff.some((p) => p.role === 'agent') ? [AGENT] : [])];
+
   return (
     <div className="min-h-screen bg-ink text-paper">
       <header className="sticky top-0 z-30 border-b border-line bg-ink/90 backdrop-blur">
@@ -100,91 +173,34 @@ export default function EquipoPage() {
 
         <div className="mb-5">
           <h1 className="font-display text-2xl font-bold tracking-tight">Equipo y roles</h1>
-          <p className="mt-1 text-sm text-paper-mute">Cada persona tiene un <b className="text-paper">rol</b> (qué puede hacer) y sus <b className="text-paper">modelos asignadas</b> (sobre quién). {staff.length} en el equipo · {models.length} modelos.</p>
+          <p className="mt-1 text-sm text-paper-mute">Cada rol dice <b className="text-paper">qué ve</b>. Debajo están las personas que lo tienen; cambiá su rol con <b className="text-paper">Mover a</b>. {staff.length} en el equipo · {models.length} modelos.</p>
         </div>
 
-        {/* Leyenda de roles */}
-        <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {ROLES.filter((r) => r.v !== 'agent').map((r) => (
-            <div key={r.v} className={`rounded-xl border bg-card px-3 py-2 ${r.tone}`}>
-              <div className="text-sm font-bold">{r.label}</div>
-              <div className="text-[11px] text-paper-dim">{r.desc}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Lista del equipo */}
-        <div className="space-y-2.5">
-          {staff.map((p) => {
-            const meta = roleMeta(p.role);
-            const mine = assignedTo(p.id);
-            const isMe = p.id === meId;
+        {/* Una sola vista, agrupada por rol */}
+        <div className="space-y-3">
+          {groups.map((role) => {
+            const members = staff.filter((p) => p.role === role.v);
             return (
-              <div key={p.id} className="rounded-2xl border border-line bg-card p-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-xs font-bold text-brand">
-                    {p.avatar_url ? <img src={p.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(p)}
-                  </div>
+              <section key={role.v} className={`overflow-hidden rounded-2xl border ${role.ring} ${role.soft}`}>
+                <div className="flex items-start gap-3 border-b border-line/50 bg-ink/30 px-4 py-3">
+                  <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${role.dot}`} />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 truncate text-sm font-bold text-paper">{p.full_name || p.email}{isMe && <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand">vos</span>}</div>
-                    <div className="truncate text-[11px] text-paper-dim">{p.email}</div>
+                    <div className={`text-sm font-bold ${role.tone}`}>{role.label} <span className="font-normal text-paper-dim">· {members.length}</span></div>
+                    <div className="text-[12px] text-paper-mute">{role.desc}</div>
                   </div>
-                  {/* Rol */}
-                  <select value={p.role} disabled={isMe} onChange={(e) => setRole(p.id, e.target.value)}
-                    className={`shrink-0 rounded-full border bg-ink-2 px-3 py-1.5 text-xs font-bold outline-none disabled:opacity-50 ${meta?.tone || 'border-line text-paper'}`} title={isMe ? 'No podés cambiar tu propio rol' : 'Cambiar rol'}>
-                    {ROLES.map((r) => <option key={r.v} value={r.v}>{r.label}</option>)}
-                  </select>
                 </div>
-
-                {/* Modelos asignadas (solo roles que trabajan por modelo) */}
-                {meta?.models && (
-                  <div className="mt-2.5 rounded-xl border border-line/60 bg-ink-2/40 p-2.5">
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-paper-mute"><ShieldCheck size={12} className="text-brand" /> Modelos asignadas · {mine.length}</span>
-                      <button type="button" onClick={() => { setOpenId(openId === p.id ? null : p.id); setQ(''); }} className="inline-flex items-center gap-1 rounded-full border border-brand/40 px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/10">
-                        <Plus size={12} /> {openId === p.id ? 'Cerrar' : 'Asignar'}
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {mine.length === 0 && <span className="text-[11px] text-paper-dim">Sin modelos — no ve ninguna todavía.</span>}
-                      {mine.map((cid) => (
-                        <span key={cid} className="inline-flex items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-2.5 py-1 text-[11px] font-semibold text-brand">
-                          {modelName(cid)}
-                          <button type="button" onClick={() => toggleModel(p.id, cid)} className="opacity-70 hover:opacity-100"><X size={11} /></button>
-                        </span>
-                      ))}
-                    </div>
-                    {openId === p.id && (
-                      <div className="mt-2 rounded-xl border border-line bg-card p-2">
-                        <div className="relative mb-2">
-                          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
-                          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…" className="w-full rounded-full border border-line bg-ink-2 py-1.5 pl-9 pr-3 text-xs text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
-                        </div>
-                        <div className="grid max-h-56 grid-cols-2 gap-1 overflow-y-auto sm:grid-cols-3">
-                          {models.filter((m) => m.full_name.toLowerCase().includes(q.trim().toLowerCase())).map((m) => {
-                            const on = mine.includes(m.id);
-                            return (
-                              <button key={m.id} type="button" onClick={() => toggleModel(p.id, m.id)}
-                                className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left text-[11px] font-semibold transition-colors ${on ? 'border-brand bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
-                                <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${on ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>{on && <Check size={10} />}</span>
-                                <span className="truncate">{m.full_name}</span>
-                              </button>
-                            );
-                          })}
-                          {models.length === 0 && <span className="col-span-full p-2 text-[11px] text-paper-dim">No hay modelos activas.</span>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                <div className="divide-y divide-line/40 bg-card">
+                  {members.length === 0
+                    ? <div className="px-4 py-3 text-[12px] text-paper-dim">Nadie con este rol todavía.</div>
+                    : members.map((p) => <PersonRow key={p.id} p={p} />)}
+                </div>
+              </section>
             );
           })}
-          {staff.length === 0 && <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">No hay personas de equipo.</p>}
         </div>
 
         <p className="mt-6 rounded-xl border border-line bg-card/40 p-3 text-[11px] text-paper-dim">
-          <b className="text-paper-mute">Nota:</b> acá definís rol + modelos. Los candados por rol en cada página (qué ve el chatter, el editor solo /kitchen, finanzas solo números) se activan en la Fase 2 — te aviso cuando arranco esa.
+          <b className="text-paper-mute">Nota:</b> acá definís rol + modelos. Los candados de verdad en cada página (que el Chatter solo vea sus pedidos, el Editor solo /kitchen, Finanzas solo números) se activan en la <b className="text-paper-mute">Fase 2</b> — te aviso cuando arranco esa.
         </p>
       </main>
     </div>
