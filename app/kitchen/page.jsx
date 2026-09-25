@@ -199,7 +199,7 @@ export default function KitchenPage() {
 
   const sourceRows = useMemo(() => {
     if (source === 'tengo') return vault.filter((r) => r.kind === 'real' && r.creator_id === sel);
-    if (source === 'encontre') return vault.filter((r) => r.kind === 'ref' && (r.source_platform || r.source_handle)); // solo scraping
+    if (source === 'encontre') return vault.filter((r) => r.kind === 'ref' && (r.source_platform || r.source_handle) && r.ai_ok !== false); // solo scraping, sin la basura que el filtro descartó
     return vault.filter((r) => r.kind === 'ref' && r.creator_id === sel && !r.source_platform && !r.source_handle); // subir: solo lo que subiste vos
   }, [vault, source, sel]);
   // Vibes que realmente tienen fotos etiquetadas (para no mostrar chips que dan grilla vacía).
@@ -663,7 +663,7 @@ export default function KitchenPage() {
                           placeholder="@cuenta (o pegá varias)" className="min-w-[150px] flex-1 rounded-full border border-line bg-ink-2 px-3 py-1.5 text-xs text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
                         <button type="button" onClick={addAccount} disabled={!newAccount.trim()} className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/40 px-3 py-1.5 text-xs font-semibold text-fuchsia-200 hover:bg-fuchsia-500/10 disabled:opacity-40"><Plus size={13} /> Agregar</button>
                         <button type="button" onClick={doScrapeAccounts} disabled={scrapingAcc || (accounts.length === 0 && !newAccount.trim())} className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500 px-4 py-1.5 text-xs font-bold text-white hover:bg-fuchsia-600 disabled:opacity-50">
-                          {scrapingAcc ? <Loader2 size={13} className="animate-spin" /> : <Compass size={13} />} {scrapingAcc ? 'Trayendo…' : 'Traer lo mejor'}
+                          {scrapingAcc ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} {scrapingAcc ? 'Buscando…' : 'Buscar'}
                         </button>
                       </div>
                       <p className="mt-1.5 text-[10px] text-paper-dim">Se guardan por modelo. Si una cuenta es privada, te aviso (Instagram no deja verla).</p>
