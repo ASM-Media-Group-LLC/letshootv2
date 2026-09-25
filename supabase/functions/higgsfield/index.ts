@@ -152,14 +152,22 @@ async function aiReview(svc: any, creatorId: string, limit = 20) {
   let n = 0;
   await Promise.all(rows.map(async (r: any) => {
     try {
+      // Descargar la imagen y mandarla como base64: la IA de Anthropic NO puede leer URLs de Instagram (por eso el filtro nunca corría).
+      const imgRes = await fetch(r.url);
+      if (!imgRes.ok) { await svc.from('creator_vault').update({ ai_ok: false, ai_reason: 'imagen no disponible' }).eq('id', r.id); n += 1; return; }
+      const ct = (imgRes.headers.get('content-type') || 'image/jpeg').toLowerCase();
+      const media = ct.includes('png') ? 'image/png' : ct.includes('webp') ? 'image/webp' : ct.includes('gif') ? 'image/gif' : 'image/jpeg';
+      const bytes = new Uint8Array(await imgRes.arrayBuffer());
+      let bin = ''; const CH = 0x8000; for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode(...bytes.subarray(i, i + CH));
+      const b64 = btoa(bin);
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001', max_tokens: 120,
           messages: [{ role: 'user', content: [
-            { type: 'image', source: { type: 'url', url: r.url } },
-            { type: 'text', text: `¿Sirve esta foto como referencia para recrear con una creadora de contenido mujer (UNA sola mujer, estilo influencer${style ? `; estilo buscado: ${style}` : ''})? Descartá: productos, ropa sola, hombres, paisajes, memes, collages, texto. Respondé SOLO JSON: {"ok":true|false,"reason":"motivo corto en español"}` },
+            { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
+            { type: 'text', text: `Mirá la foto. ¿Sirve como REFERENCIA para recrear una pose + outfit con una modelo mujer (estilo influencer${style ? `; estilo buscado: ${style}` : ''})? Decí ok:true SOLO si cumple TODO: es UNA sola mujer real, es claramente la protagonista, se le ve el cuerpo o medio cuerpo con una pose y un outfit útiles, y la foto es nítida y de buena calidad. Decí ok:false — y sé ESTRICTO, ante la MÍNIMA duda descartá — si: aparece algún hombre, hay 2 o más personas, es un producto / ropa sola / flatlay, comida, paisaje, animal, auto, meme, collage, captura de pantalla, dibujo o caricatura, tiene texto o logos encima, está borrosa, es muy chica, o está muy filtrada/editada. Respondé SOLO JSON: {"ok":true|false,"reason":"motivo corto en español"}` },
           ] }],
         }),
       });
