@@ -13,7 +13,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import {
   ArrowLeft, ChefHat, Loader2, CheckCircle2, Sparkles, IdCard, Coins, RefreshCw,
   Heart, Trash2, Flame, Images, ArrowRight, AlertTriangle, X, Search,
-  FolderHeart, Compass, Upload, Check, ChefHat as Pot, LayoutGrid, Plus, Clock,
+  FolderHeart, Compass, Upload, Check, ChefHat as Pot, LayoutGrid, Plus, Clock, ChevronDown,
 } from 'lucide-react';
 
 async function callFn(action, extra) {
@@ -84,6 +84,7 @@ export default function KitchenPage() {
   const [enq, setEnq] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [costOpen, setCostOpen] = useState(() => new Set()); // ids con el precio por foto desplegado
   // Perfil de búsqueda por modelo (nichos) + scraper
   const [niches, setNiches] = useState([]);
   const [newNiche, setNewNiche] = useState('');
@@ -469,6 +470,19 @@ export default function KitchenPage() {
     const h = Math.floor(min / 60), m = min % 60;
     return { txt: `${h} h${m ? ` ${m}m` : ''}`, stuck: true };
   };
+  // Motor + precio por foto (créditos + US$), desplegable con una flechita.
+  const motorLine = (g) => {
+    const open = costOpen.has(g.id);
+    const cr = Number(g.credits || 0);
+    return (
+      <button type="button" onClick={(e) => { e.stopPropagation(); setCostOpen((s) => { const n = new Set(s); n.has(g.id) ? n.delete(g.id) : n.add(g.id); return n; }); }}
+        className="flex w-full items-center gap-1 px-2 pt-1 text-left text-[10px] text-paper-dim hover:text-paper" title="Ver el precio de esta foto">
+        <span>Motor: <span className={`font-semibold ${engineOf(g) === 'Nano' ? 'text-rose-300' : 'text-brand'}`}>{engineOf(g)}</span></span>
+        {open && <span className="text-amber-300">· {cr > 0 ? `${cr.toFixed(2)} créd · ${money(cr)}` : 'sin costo registrado'}</span>}
+        <ChevronDown size={11} className={`ml-auto shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+    );
+  };
   const cookingTile = (g) => {
     const e = fmtElapsed(g);
     return (
@@ -849,7 +863,7 @@ export default function KitchenPage() {
                             {g.result_url ? <img src={g.result_url} alt="" loading="lazy" decoding="async" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
                             {kids > 0 && <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
                           </button>
-                          <div className="px-2 pt-1 text-[10px] text-paper-dim">Motor: <span className={`font-semibold ${engineOf(g) === 'Nano' ? 'text-rose-300' : 'text-brand'}`}>{engineOf(g)}</span></div>
+                          {motorLine(g)}
                           <div className="flex items-center gap-1 p-2 pt-1">
                             <button type="button" onClick={() => decide(g, true)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={12} /> Aprobar</button>
                             <button type="button" onClick={() => setCompare({ root: g.id, creator_id: g.creator_id })} className="inline-flex items-center justify-center gap-1 rounded-full border border-brand/40 px-2 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/10" title="Armar carrusel"><LayoutGrid size={12} /></button>
@@ -1092,7 +1106,7 @@ export default function KitchenPage() {
                               <img src={k.result_url} alt="" onClick={() => setLightbox({ url: k.result_url, label: `Motor: ${engineOf(k)}` })} className="aspect-[3/4] w-full cursor-zoom-in object-cover" />
                               {k.status === 'approved' && <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white"><Check size={11} /></span>}
                             </div>
-                            <div className={`px-1.5 pt-1 text-[9px] ${engineOf(k) === 'Nano' ? 'text-rose-300' : 'text-brand'}`}>{engineOf(k)}</div>
+                            {motorLine(k)}
                             {k.status === 'done' && (
                               <div className="flex items-center gap-1 p-1.5">
                                 <button type="button" onClick={() => decide(k, true, true)} className="inline-flex flex-1 items-center justify-center gap-0.5 rounded-full bg-emerald-500/20 px-1 py-1 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={10} /></button>
