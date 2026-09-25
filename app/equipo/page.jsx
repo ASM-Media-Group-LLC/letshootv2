@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
-import { ArrowLeft, Users, Search, X, Plus, Check, ShieldCheck, UserMinus, RotateCcw, Trash2, Heart } from 'lucide-react';
+import { ArrowLeft, Users, Search, X, Plus, Check, ShieldCheck, UserMinus, RotateCcw, Trash2, Heart, Mail, AlertTriangle } from 'lucide-react';
 
 // Roles de STAFF. Valor DB -> etiqueta UI. supervisor="PR", producer="Editor", chatter="Manager".
 // caps = lo recomendable que ve cada uno (para la matriz de arriba).
@@ -59,6 +59,22 @@ const AGENT = { v: 'agent', label: 'Agente (antiguo)', desc: 'Rol viejo — mov�
 const ALL_ROLES = [...ROLES, AGENT];
 const roleMeta = (v) => ALL_ROLES.find((r) => r.v === v) || null;
 const STAFF_ROLES = ALL_ROLES.map((r) => r.v);
+
+// Logística de correos. Salen de noreply@letshoot.ai (Resend). Verificado: hoy TODOS van hacia la modelo/agencia.
+const MAILS_OUT = [ // plataforma -> modelo/agencia (YA FUNCIONA)
+  { ev: 'Se crea o se invita su cuenta', who: 'La modelo (o el invitado)' },
+  { ev: 'Le preparan una propuesta de looks', who: 'La modelo' },
+  { ev: 'Aprueban su identidad (ID)', who: 'La modelo + su agencia' },
+  { ev: 'Rechazan su identidad (ID)', who: 'La modelo + su agencia' },
+  { ev: 'Le entregan contenido nuevo', who: 'La modelo' },
+  { ev: 'Su suscripción está por vencer', who: 'La modelo' },
+];
+const MAILS_IN = [ // la modelo hace algo -> ¿quién se entera? (HOY casi nadie)
+  { ev: 'La modelo aplica / se registra', now: 'Nadie recibe correo', next: 'Admin + su PR/Manager' },
+  { ev: 'Sube su ID (queda por revisar)', now: 'Solo aparece en la cola de Verificaciones', next: 'Quien tenga “Verificar IDs”' },
+  { ev: 'Reacciona a una foto (❤️ le gustó / ✏️ cambiar)', now: 'Nadie recibe correo', next: 'Editor + Manager + PR de esa modelo' },
+  { ev: 'Pide contenido (request)', now: 'Cae al inbox de Pedidos (sin correo)', next: 'Editor / Manager de esa modelo' },
+];
 
 export default function EquipoPage() {
   const [access, setAccess] = useState('loading');
@@ -261,6 +277,41 @@ export default function EquipoPage() {
             ))}
           </div>
           <p className="mt-2.5 text-[11px] text-paper-dim">Así queda la <b className="text-paper-mute">propuesta</b>. Los candados de verdad (que cada uno solo entre a lo suyo) los activo en la <b className="text-paper-mute">Fase 2</b>.</p>
+        </section>
+
+        {/* (1b) Avisos y correos — quién recibe qué */}
+        <section className="mb-7">
+          <div className="mb-2.5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute"><Mail size={13} className="text-brand" /> Avisos y correos</div>
+          <p className="mb-3 text-[12px] text-paper-mute">Salen de <b className="text-paper">noreply@letshoot.ai</b> y llegan al correo de cada persona. Hoy <b className="text-paper">todos</b> van hacia la modelo; cuando la modelo <b className="text-paper">hace algo</b>, el equipo casi no se entera — eso lo conecto en la Fase 2.</p>
+
+          <div className="grid gap-2.5 lg:grid-cols-2">
+            {/* Hacia la modelo — ya funciona */}
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.05] p-3.5">
+              <div className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-emerald-300"><Check size={14} /> La plataforma → la modelo <span className="font-normal text-paper-dim">(funciona hoy)</span></div>
+              <ul className="space-y-1.5">
+                {MAILS_OUT.map((m, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3 text-[12px]">
+                    <span className="text-paper-mute">{m.ev}</span>
+                    <span className="shrink-0 text-right font-semibold text-paper">{m.who}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* La modelo hace algo — el hueco */}
+            <div className="rounded-2xl border border-amber-500/40 bg-amber-500/[0.05] p-3.5">
+              <div className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-amber-300"><AlertTriangle size={14} /> La modelo hace algo → ¿quién se entera?</div>
+              <ul className="space-y-2">
+                {MAILS_IN.map((m, i) => (
+                  <li key={i} className="text-[12px]">
+                    <div className="font-semibold text-paper">{m.ev}</div>
+                    <div className="text-paper-dim">Hoy: <span className="text-amber-200/90">{m.now}</span></div>
+                    <div className="text-paper-dim">Fase 2 → <span className="font-semibold text-emerald-300">{m.next}</span></div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </section>
 
         {/* (2) Equipo agrupado por rol */}
