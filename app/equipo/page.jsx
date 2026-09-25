@@ -69,10 +69,10 @@ const MAILS_OUT = [ // plataforma -> modelo/agencia (YA FUNCIONA)
   { ev: 'Le entregan contenido nuevo', who: 'La modelo' },
   { ev: 'Su suscripción está por vencer', who: 'La modelo' },
 ];
-const MAILS_IN = [ // la modelo hace algo -> ¿quién se entera? (HOY casi nadie)
+const MAILS_IN = [ // la modelo hace algo -> ¿quién se entera?
+  { ev: 'Reacciona a una foto (❤️ le gustó / ✏️ cambiar)', live: 'Editor + Manager/PR de esa modelo + Admin. Resumen a los 5 min (correo + campanita), aunque no termine la sesión.' },
   { ev: 'La modelo aplica / se registra', now: 'Nadie recibe correo', next: 'Admin + su PR/Manager' },
   { ev: 'Sube su ID (queda por revisar)', now: 'Solo aparece en la cola de Verificaciones', next: 'Quien tenga “Verificar IDs”' },
-  { ev: 'Reacciona a una foto (❤️ le gustó / ✏️ cambiar)', now: 'Nadie recibe correo', next: 'Editor + Manager + PR de esa modelo' },
   { ev: 'Pide contenido (request)', now: 'Cae al inbox de Pedidos (sin correo)', next: 'Editor / Manager de esa modelo' },
 ];
 
@@ -354,7 +354,7 @@ export default function EquipoPage() {
         {tab === 'correos' && (
         <section>
           <div className="mb-2.5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute"><Mail size={13} className="text-brand" /> Avisos y correos</div>
-          <p className="mb-3 text-[13px] text-paper-mute">Los correos salen de <b className="text-paper">noreply@letshoot.ai</b> y llegan al correo de cada persona. Hoy <b className="text-paper">todos</b> van hacia la modelo; cuando la modelo <b className="text-paper">hace algo</b>, el equipo casi no se entera — eso lo conecto en la Fase 2.</p>
+          <p className="mb-3 text-[13px] text-paper-mute">Los correos salen de <b className="text-paper">noreply@letshoot.ai</b> y llegan al correo de cada persona. Cuando la modelo <b className="text-paper">reacciona a sus fotos</b>, ya le avisa al equipo de esa modelo (resumen a los 5 min · correo + campanita). El resto de eventos los conecto en la Fase 2.</p>
 
           <div className="grid gap-2.5 lg:grid-cols-2">
             {/* Hacia la modelo — ya funciona */}
@@ -377,8 +377,14 @@ export default function EquipoPage() {
                 {MAILS_IN.map((m, i) => (
                   <li key={i} className="text-[12px]">
                     <div className="font-semibold text-paper">{m.ev}</div>
-                    <div className="text-paper-dim">Hoy: <span className="text-amber-200/90">{m.now}</span></div>
-                    <div className="text-paper-dim">Fase 2 → <span className="font-semibold text-emerald-300">{m.next}</span></div>
+                    {m.live ? (
+                      <div className="text-paper-dim"><span className="font-semibold text-emerald-300">✅ Ya activo</span> → {m.live}</div>
+                    ) : (
+                      <>
+                        <div className="text-paper-dim">Hoy: <span className="text-amber-200/90">{m.now}</span></div>
+                        <div className="text-paper-dim">Fase 2 → <span className="font-semibold text-emerald-300">{m.next}</span></div>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
