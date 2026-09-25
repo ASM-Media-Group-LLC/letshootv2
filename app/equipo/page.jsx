@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
-import { ArrowLeft, Users, Search, X, Plus, Check, ShieldCheck, UserMinus, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Users, Search, X, Plus, Check, ShieldCheck, UserMinus, RotateCcw, Trash2, Heart } from 'lucide-react';
 
 // Roles de STAFF. Valor DB -> etiqueta UI. supervisor="PR", producer="Editor", chatter="Manager".
 // caps = lo recomendable que ve cada uno (para la matriz de arriba).
@@ -23,6 +23,7 @@ const ROLES = [
       { t: 'Sus modelos: fichas, pedidos y entregas', ok: true },
       { t: 'Baúl de fotos aprobadas', ok: true },
       { t: 'Hacer fotos (/kitchen)', ok: true },
+      { t: 'Recibe el feedback de sus modelos (le gustó / cambiar)', ok: true, fb: true },
       { t: 'Números / ventas', ok: false },
       { t: 'Gestionar equipo', ok: false },
     ] },
@@ -31,6 +32,7 @@ const ROLES = [
     caps: [
       { t: 'Hacer fotos en /kitchen — todas las modelos', ok: true },
       { t: 'Subir y entregar el contenido', ok: true },
+      { t: 'Recibe el QA de la modelo (le gustó / hay que cambiar)', ok: true, fb: true },
       { t: 'Precios, ventas y números', ok: false },
       { t: 'Verificar IDs / gestionar equipo', ok: false },
     ] },
@@ -41,6 +43,7 @@ const ROLES = [
       { t: 'Pedidos (requests)', ok: true },
       { t: 'Baúl de fotos aprobadas', ok: true },
       { t: 'Ficha + precios', ok: true },
+      { t: 'Recibe el feedback de su modelo (le gustó / cambiar)', ok: true, fb: true },
       { t: 'Registrar ventas', ok: false },
       { t: 'Números de la empresa', ok: false },
     ] },
@@ -100,6 +103,15 @@ export default function EquipoPage() {
     const { error } = await sb.from('profiles').update({ active: val }).eq('id', id);
     if (error) { setMsg({ kind: 'err', text: `No se pudo: ${error.message}` }); load(); return; }
     setMsg({ kind: 'ok', text: val ? `${name} reactivada.` : `${name} sacada del equipo (archivada).` });
+  };
+  const hardDelete = async (id, name) => {
+    const t = prompt(`BORRAR DEFINITIVAMENTE a ${name}.\n\nEsto NO se puede deshacer: borra su cuenta y su acceso para siempre.\nEscribí BORRAR para confirmar:`);
+    if ((t || '').trim().toUpperCase() !== 'BORRAR') return;
+    setMsg({ kind: 'ok', text: `Borrando a ${name}…` });
+    const { data, error } = await sb.functions.invoke('delete-user', { body: { user_id: id } });
+    if (error || data?.error) { setMsg({ kind: 'err', text: `No se pudo borrar: ${error?.message || data?.error}` }); return; }
+    setPeople((v) => v.filter((p) => p.id !== id));
+    setMsg({ kind: 'ok', text: `${name} borrada definitivamente.` });
   };
   const toggleModel = async (staffId, creatorId) => {
     const has = assignedTo(staffId).includes(creatorId);
@@ -239,7 +251,7 @@ export default function EquipoPage() {
                   {role.caps.map((c, i) => (
                     <li key={i} className={`flex items-start gap-1.5 text-[12px] ${c.ok ? 'text-paper' : 'text-paper-dim'}`}>
                       {c.ok
-                        ? <Check size={14} className="mt-0.5 shrink-0 text-emerald-400" />
+                        ? (c.fb ? <Heart size={14} className="mt-0.5 shrink-0 text-fuchsia-400" /> : <Check size={14} className="mt-0.5 shrink-0 text-emerald-400" />)
                         : <X size={14} className="mt-0.5 shrink-0 text-paper-dim/70" />}
                       <span>{c.t}</span>
                     </li>
@@ -289,9 +301,14 @@ export default function EquipoPage() {
                       <div className="truncate text-sm font-semibold text-paper-mute">{p.full_name || p.email}</div>
                       <div className="truncate text-[11px] text-paper-dim">{p.email} · {roleMeta(p.role)?.label || p.role}</div>
                     </div>
-                    <button type="button" onClick={() => setActive(p.id, true, p.full_name || p.email)} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/10">
-                      <RotateCcw size={12} /> Reactivar
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button type="button" onClick={() => setActive(p.id, true, p.full_name || p.email)} className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/10">
+                        <RotateCcw size={12} /> Reactivar
+                      </button>
+                      <button type="button" onClick={() => hardDelete(p.id, p.full_name || p.email)} className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/10" title="Borrar definitivamente (no se puede deshacer)">
+                        <Trash2 size={12} /> Borrar
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
