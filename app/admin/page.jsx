@@ -534,6 +534,7 @@ export default function AdminPage() {
   // `badges`: pills con contador (tono bad=rojo urgente, warn=ámbar, brand=azul).
   const NAV_TABS = [
     { id: 'propuestas', label: 'Propuestas', icon: Send, badges: propCounts.backlog ? [{ n: propCounts.backlog, tone: 'bad' }] : [] },
+    { id: 'kitchen', label: 'Cocinar', icon: ChefHat, badges: [], href: '/kitchen' },
     { id: 'peticiones', label: 'Peticiones', icon: Inbox, badges: [
       ...(delivOverdue ? [{ n: delivOverdue, tone: 'bad' }] : []),
       ...(delivPending ? [{ n: delivPending, tone: 'brand' }] : []),
@@ -546,7 +547,6 @@ export default function AdminPage() {
     { id: 'metricas', label: 'Métricas', icon: BarChart3, badges: [] },
     { id: 'actividad', label: 'Actividad', icon: Activity, badges: [] },
     { id: 'conexion', label: 'Conexión', icon: Plug, badges: [], href: '/conexion' },
-    { id: 'kitchen', label: 'Cocina', icon: ChefHat, badges: [], href: '/kitchen' },
   ];
   const activeTab = NAV_TABS.find((t) => t.id === tab) || NAV_TABS[0];
   // Rojo MATE (no neón — el rose-500 sólido lastima la vista): tinte suave con

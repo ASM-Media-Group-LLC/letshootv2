@@ -135,16 +135,6 @@ export default function KitchenPage() {
   // Reloj para el contador de "cocinándose" (se actualiza solo).
   useEffect(() => { const t = setInterval(() => setTick(Date.now()), 20000); return () => clearInterval(t); }, []);
 
-  // Al entrar a una modelo: caer en "Cocinándose" si hay algo cocinando, si no en "Todo" (una sola vez por modelo).
-  const landedFor = useRef(null);
-  useEffect(() => {
-    if (!sel) { landedFor.current = null; return; }
-    if (landedFor.current === sel || !gens.length) return;
-    landedFor.current = sel;
-    const cooking = gens.some((g) => g.creator_id === sel && ['queued', 'in_progress'].includes(g.status));
-    setSubtab(cooking ? 'cocinandose' : 'todo');
-  }, [sel, gens]);
-
   // Scroll por tandas: reset a 30 al cambiar de pestaña/modelo/fuente; observer que suma de a 30.
   const sentinelRef = useRef(null);
   useEffect(() => { setVisN(30); }, [subtab, sel, source]);
@@ -321,7 +311,7 @@ export default function KitchenPage() {
     setMsg({ kind: 'ok', text: total > 1 ? `Cocinando carrusel: la réplica + ${total - 1} variaciones. Aparece en Resultados.` : 'Cocinando la réplica. Aparece en Resultados.' });
   };
 
-  const enterModel = (id) => { setSel(id); setSubtab('todo'); setQueue([]); setMsg(null); setSource('subir'); setVibe('Todos'); };
+  const enterModel = (id) => { setSel(id); setSubtab('cocinar'); setQueue([]); setMsg(null); setSource('subir'); setVibe('Todos'); };
   const toggleQueue = (url) => setQueue((k) => k.includes(url) ? k.filter((u) => u !== url) : [...k, url]);
 
   const enqueue = async () => {
@@ -620,10 +610,10 @@ export default function KitchenPage() {
             <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
               {[
                 { id: 'cocinar', label: 'Cocinar', icon: Flame },
-                { id: 'todo', label: 'Todo', icon: LayoutGrid, badge: allRows.length || null },
                 { id: 'cocinandose', label: 'Cocinándose', icon: Loader2, badge: cookingRows.length || null, spin: cookingRows.length > 0 },
                 { id: 'resultados', label: 'Resultados', icon: Images, badge: reviewRows.length || null },
                 { id: 'aprobadas', label: 'Aprobadas', icon: Check, badge: approvedRows.length || null },
+                { id: 'todo', label: 'Todo', icon: LayoutGrid, badge: allRows.length || null },
               ].map((t) => {
                 const Icon = t.icon; const on = subtab === t.id;
                 return (
