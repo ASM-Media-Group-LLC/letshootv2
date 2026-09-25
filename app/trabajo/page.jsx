@@ -234,6 +234,11 @@ function TrabajoPageInner() {
             setToast(`${who} respondió en «${n.meta?.title || 'un pedido'}»`);
             setTimeout(() => setToast(''), 6000);
             setReqPing((x) => x + 1);
+          } else if (n?.kind === 'onboarding') {
+            setToast(n.meta?.text || 'Novedad de una modelo');
+            setTimeout(() => setToast(''), 6000);
+            setColaSeen(false);
+            load();
           }
         })
       .subscribe();

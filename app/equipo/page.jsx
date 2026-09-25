@@ -71,9 +71,10 @@ const MAILS_OUT = [ // plataforma -> modelo/agencia (YA FUNCIONA)
 ];
 const MAILS_IN = [ // la modelo hace algo -> ¿quién se entera?
   { ev: 'Reacciona a una foto (❤️ le gustó / ✏️ cambiar)', live: 'Editor + Manager/PR de esa modelo + Admin. Resumen a los 5 min (correo + campanita), aunque no termine la sesión.' },
-  { ev: 'La modelo aplica / se registra', now: 'Nadie recibe correo', next: 'Admin + su PR/Manager' },
-  { ev: 'Sube su ID (queda por revisar)', now: 'Solo aparece en la cola de Verificaciones', next: 'Quien tenga “Verificar IDs”' },
-  { ev: 'Pide contenido (request)', now: 'Cae al inbox de Pedidos (sin correo)', next: 'Editor / Manager de esa modelo' },
+  { ev: 'Completa su registro (sus datos)', live: 'Admin + quien la trajo (agencia/agente). Al instante — correo + campanita.' },
+  { ev: 'Sube su ID (para revisar)', live: 'Quien verifica IDs + Admin. Al instante — correo + campanita.' },
+  { ev: 'Sube sus fotos del clon (LoRA)', live: 'Equipo de esa modelo + Admin. Al instante — correo + campanita.' },
+  { ev: 'Pide contenido (request)', now: 'Cae al inbox de Pedidos (sin correo)', next: 'Editor / Manager de esa modelo (próximo)' },
 ];
 
 export default function EquipoPage() {
