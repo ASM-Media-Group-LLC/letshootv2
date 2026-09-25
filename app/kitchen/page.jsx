@@ -13,7 +13,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import {
   ArrowLeft, ChefHat, Loader2, CheckCircle2, Sparkles, IdCard, Coins, RefreshCw,
   Heart, Trash2, Flame, Images, ArrowRight, AlertTriangle, X, Search,
-  FolderHeart, Compass, Upload, Check, ChefHat as Pot, LayoutGrid, Plus,
+  FolderHeart, Compass, Upload, Check, ChefHat as Pot, LayoutGrid, Plus, Clock,
 } from 'lucide-react';
 
 async function callFn(action, extra) {
@@ -63,7 +63,8 @@ export default function KitchenPage() {
 
   const [creators, setCreators] = useState([]);
   const [sel, setSel] = useState('');              // modelo elegida (si vacío → pantalla de elegir modelo)
-  const [subtab, setSubtab] = useState('cocinar'); // dentro de la modelo: cocinar | resultados
+  const [subtab, setSubtab] = useState('todo'); // dentro de la modelo: cocinar | todo | cocinandose | resultados | aprobadas
+  const [tick, setTick] = useState(() => Date.now()); // reloj para el contador de "cocinándose"
   const [ident, setIdent] = useState({});
   const [realCount, setRealCount] = useState({});
   const [vault, setVault] = useState([]);
@@ -127,6 +128,19 @@ export default function KitchenPage() {
     const t = setInterval(() => { loadGens(); }, 6000);
     return () => clearInterval(t);
   }, [access, gens, loadGens]);
+
+  // Reloj para el contador de "cocinándose" (se actualiza solo).
+  useEffect(() => { const t = setInterval(() => setTick(Date.now()), 20000); return () => clearInterval(t); }, []);
+
+  // Al entrar a una modelo: caer en "Cocinándose" si hay algo cocinando, si no en "Todo" (una sola vez por modelo).
+  const landedFor = useRef(null);
+  useEffect(() => {
+    if (!sel) { landedFor.current = null; return; }
+    if (landedFor.current === sel || !gens.length) return;
+    landedFor.current = sel;
+    const cooking = gens.some((g) => g.creator_id === sel && ['queued', 'in_progress'].includes(g.status));
+    setSubtab(cooking ? 'cocinandose' : 'todo');
+  }, [sel, gens]);
 
   // Detecta la transición cocinándose → LISTA y AVISA: toast + notificación del navegador (aunque estés en otra pestaña).
   useEffect(() => {
@@ -293,7 +307,7 @@ export default function KitchenPage() {
     setMsg({ kind: 'ok', text: total > 1 ? `Cocinando carrusel: la réplica + ${total - 1} variaciones. Aparece en Resultados.` : 'Cocinando la réplica. Aparece en Resultados.' });
   };
 
-  const enterModel = (id) => { setSel(id); setSubtab('cocinar'); setQueue([]); setMsg(null); setSource('encontre'); setVibe('Todos'); };
+  const enterModel = (id) => { setSel(id); setSubtab('todo'); setQueue([]); setMsg(null); setSource('encontre'); setVibe('Todos'); };
   const toggleQueue = (url) => setQueue((k) => k.includes(url) ? k.filter((u) => u !== url) : [...k, url]);
 
   const enqueue = async () => {
@@ -307,7 +321,8 @@ export default function KitchenPage() {
     if (error) { setMsg({ kind: 'err', text: `No se pudo encolar: ${error.message}` }); return; }
     const n = queue.length;
     setQueue([]); loadGens();
-    setMsg({ kind: 'ok', text: `${n} foto(s) en la cola de ${selCreator?.full_name || 'la modelo'}. Se cocinan con su soul real y aparecen en Resultados.` });
+    setMsg({ kind: 'ok', text: `${n} foto(s) en la cola de ${selCreator?.full_name || 'la modelo'}. Se cocinan con su soul real; miralas en Cocinándose.` });
+    setSubtab('cocinandose');
     setSubtab('resultados');
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
   };
@@ -390,7 +405,8 @@ export default function KitchenPage() {
     setVarBusy(false);
     if (r?.ok) {
       if (varMode === 'custom') setVarIdeas(['', '']);
-      setMsg({ kind: 'ok', text: `${r.queued} foto(s) en la cola. Aparecen acá abajo cocinándose.` });
+      setMsg({ kind: 'ok', text: `${r.queued} foto(s) en la cola. Miralas en Cocinándose.` });
+      setSubtab('cocinandose');
       loadGens();
     } else setMsg({ kind: 'err', text: r?.error || 'No se pudo armar el carrusel.' });
   };
@@ -429,6 +445,30 @@ export default function KitchenPage() {
   const cmpKids = compare ? carouselKids(compare.root) : [];
   // Motor real de una foto (honesto): lo que reportó el worker; si es viejo sin dato, la réplica fue Soul 2.0 y la variación fue Nano.
   const engineOf = (g) => (g?.engine_label ? g.engine_label : (g?.carousel_of ? 'Nano' : 'Soul 2.0'));
+
+  // Listas para las pestañas nuevas.
+  const cookingRows = mineGens.filter((g) => ['queued', 'in_progress'].includes(g.status)).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)); // cocinándose (réplicas + carrusel) TODAS juntas de esta modelo
+  const allRows = mineGens.filter((g) => g.status !== 'failed').sort((a, b) => doneTs(b) - doneTs(a)); // "Todo": todas menos rechazadas, la última primero
+  // Contador de tiempo de una foto cocinándose (+ marca "trabada" si pasa mucho).
+  const fmtElapsed = (g) => {
+    const min = Math.max(0, Math.floor((tick - new Date(g.created_at).getTime()) / 60000));
+    if (min < 60) return { txt: `${min} min`, stuck: min >= 15 };
+    const h = Math.floor(min / 60), m = min % 60;
+    return { txt: `${h} h${m ? ` ${m}m` : ''}`, stuck: true };
+  };
+  const cookingTile = (g) => {
+    const e = fmtElapsed(g);
+    return (
+      <div key={g.id} className="relative overflow-hidden rounded-xl border border-amber-400/30 bg-ink-2">
+        {g.reference_url ? <img src={g.reference_url} alt="" className="aspect-[3/4] w-full scale-105 object-cover blur-md brightness-[0.4]" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-white">
+          <Loader2 size={24} className="animate-spin text-amber-300" />
+          <span className="text-[11px] font-semibold tracking-wide">cocinándose…</span>
+          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${e.stuck ? 'bg-rose-500/90 text-white' : 'bg-black/50 text-amber-200'}`}><Clock size={10} /> {e.txt}{e.stuck ? ' · ¿trabada?' : ''}</span>
+        </div>
+      </div>
+    );
+  };
 
   // Estado GLOBAL de la cocina (todas las modelos) — para la ruedita flotante que se ve en cualquier pantalla.
   const cookingAll = gens.filter((g) => ['queued', 'in_progress'].includes(g.status));
@@ -550,15 +590,20 @@ export default function KitchenPage() {
             </div>
 
             {/* Sub-pestañas de la modelo */}
-            <div className="mb-4 flex gap-1 border-b border-line">
-              {[{ id: 'cocinar', label: 'Cocinar', icon: Flame }, { id: 'resultados', label: 'Resultados', icon: Images, badge: reviewRows.length || null }].map((t) => {
+            <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
+              {[
+                { id: 'cocinar', label: 'Cocinar', icon: Flame },
+                { id: 'todo', label: 'Todo', icon: LayoutGrid, badge: allRows.length || null },
+                { id: 'cocinandose', label: 'Cocinándose', icon: Loader2, badge: cookingRows.length || null, spin: cookingRows.length > 0 },
+                { id: 'resultados', label: 'Resultados', icon: Images, badge: reviewRows.length || null },
+                { id: 'aprobadas', label: 'Aprobadas', icon: Check, badge: approvedRows.length || null },
+              ].map((t) => {
                 const Icon = t.icon; const on = subtab === t.id;
                 return (
                   <button key={t.id} type="button" onClick={() => setSubtab(t.id)}
-                    className={`inline-flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${on ? 'border-brand text-brand' : 'border-transparent text-paper-mute hover:text-paper'}`}>
-                    <Icon size={15} /> {t.label}
+                    className={`inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors ${on ? 'border-brand text-brand' : 'border-transparent text-paper-mute hover:text-paper'}`}>
+                    <Icon size={15} className={t.spin ? 'animate-spin text-amber-300' : ''} /> {t.label}
                     {t.badge ? <span className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold ${on ? 'bg-brand text-on-accent' : 'bg-hair/20 text-paper-mute'}`}>{t.badge}</span> : null}
-                    {t.id === 'resultados' && pendingRows.length > 0 ? <Loader2 size={12} className="animate-spin text-amber-300" /> : null}
                   </button>
                 );
               })}
@@ -718,29 +763,52 @@ export default function KitchenPage() {
               </div>
             )}
 
-            {/* ── RESULTADOS (de esta modelo) ── */}
-            {subtab === 'resultados' && (
-              <div className="space-y-6">
-                {reviewRows.length === 0 && approvedRows.length === 0 && pendingRows.length === 0 && failedRows.length === 0 && (
+            {/* ── TODO — todas las fotos, la última primero ── */}
+            {subtab === 'todo' && (
+              <div className="pb-24">
+                {allRows.length === 0 ? (
                   <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Todavía no cocinaste nada para {selCreator.full_name}. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button>.</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+                    {allRows.map((g) => {
+                      if (['queued', 'in_progress'].includes(g.status)) return cookingTile(g);
+                      const isApproved = g.status === 'approved';
+                      const kids = isRoot(g) ? carouselCount(g.id) : 0;
+                      return (
+                        <button type="button" key={g.id} onClick={() => setCompare({ root: rootOf(g), creator_id: g.creator_id })} className={`group relative block overflow-hidden rounded-xl border bg-ink-2 ${isApproved ? 'border-emerald-500/30' : 'border-line'}`}>
+                          {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                          {isApproved && <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white"><Check size={11} /></span>}
+                          {kids > 0 && <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
+                          <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1.5 py-0.5 text-[9px] font-semibold text-white/90">{isApproved ? 'aprobada' : 'para revisar'} · {engineOf(g)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
+              </div>
+            )}
 
-                {/* Cocinándose — la referencia borrosa con spinner */}
-                {pendingRows.length > 0 && (
-                  <section>
-                    <h3 className="mb-2 inline-flex items-center gap-1.5 font-display text-sm font-bold text-amber-300"><Loader2 size={14} className="animate-spin" /> Cocinándose · {pendingRows.length}</h3>
+            {/* ── COCINÁNDOSE — todo lo que se está creando, junto, con reloj ── */}
+            {subtab === 'cocinandose' && (
+              <div className="pb-24">
+                {cookingRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Nada cocinándose ahora. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button> o mirá <button onClick={() => setSubtab('todo')} className="font-semibold text-brand hover:underline">Todo</button>.</p>
+                ) : (
+                  <>
+                    <p className="mb-3 text-xs text-paper-dim">{cookingRows.length} foto(s) cocinándose. El reloj marca cuánto llevan; si una pasa de 15 min se marca <span className="font-semibold text-rose-300">¿trabada?</span>.</p>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                      {pendingRows.map((g) => (
-                        <div key={g.id} className="relative overflow-hidden rounded-xl border border-amber-400/30 bg-ink-2">
-                          {g.reference_url ? <img src={g.reference_url} alt="" className="aspect-[3/4] w-full scale-105 object-cover blur-md brightness-[0.4]" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
-                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white">
-                            <Loader2 size={26} className="animate-spin text-amber-300" />
-                            <span className="text-[11px] font-semibold tracking-wide">cocinándose…</span>
-                          </div>
-                        </div>
-                      ))}
+                      {cookingRows.map((g) => cookingTile(g))}
                     </div>
-                  </section>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── RESULTADOS — para revisar/aprobar (+ rechazadas) ── */}
+            {subtab === 'resultados' && (
+              <div className="space-y-6 pb-24">
+                {reviewRows.length === 0 && failedRows.length === 0 && (
+                  <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">No hay nada esperando tu OK.{cookingRows.length > 0 ? ' Todavía se están cocinando.' : ''} Mirá <button onClick={() => setSubtab('todo')} className="font-semibold text-brand hover:underline">Todo</button> o <button onClick={() => setSubtab('aprobadas')} className="font-semibold text-brand hover:underline">Aprobadas</button>.</p>
                 )}
 
                 {/* Para revisar — cada réplica abre su pop-up (comparador + carrusel) */}
@@ -770,22 +838,6 @@ export default function KitchenPage() {
                   </section>
                 )}
 
-                {/* Aprobadas — limpias en el baúl; tocá una para seguir su carrusel */}
-                {approvedRows.length > 0 && (
-                  <section>
-                    <h3 className="mb-1 font-display text-sm font-bold text-paper">Aprobadas · {approvedRows.length}</h3>
-                    <p className="mb-2 inline-flex items-center gap-1 text-xs text-emerald-300/80"><Check size={12} /> Limpias (sin metadata) en el baúl. Tocá una réplica para hacerle más carrusel.</p>
-                    <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
-                      {approvedRows.map((g) => (
-                        <button type="button" key={g.id} onClick={() => setCompare({ root: rootOf(g), creator_id: g.creator_id })} className="group relative block overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
-                          {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
-                          <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/60 py-1 text-[10px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100"><LayoutGrid size={10} /> carrusel</span>
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                )}
-
                 {/* Rechazadas — motivo + reintentar */}
                 {failedRows.length > 0 && (
                   <section>
@@ -806,6 +858,27 @@ export default function KitchenPage() {
                       ))}
                     </div>
                   </section>
+                )}
+              </div>
+            )}
+
+            {/* ── APROBADAS — el baúl ── */}
+            {subtab === 'aprobadas' && (
+              <div className="pb-24">
+                {approvedRows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Todavía no aprobaste ninguna. En <button onClick={() => setSubtab('resultados')} className="font-semibold text-brand hover:underline">Resultados</button> tocá ❤️ Aprobar.</p>
+                ) : (
+                  <>
+                    <p className="mb-2 inline-flex items-center gap-1 text-xs text-emerald-300/80"><Check size={12} /> Limpias (sin metadata) en el baúl. Tocá una réplica para hacerle más carrusel.</p>
+                    <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
+                      {approvedRows.map((g) => (
+                        <button type="button" key={g.id} onClick={() => setCompare({ root: rootOf(g), creator_id: g.creator_id })} className="group relative block overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
+                          {g.result_url ? <img src={g.result_url} alt="" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                          <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/60 py-1 text-[10px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100"><LayoutGrid size={10} /> carrusel</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             )}
