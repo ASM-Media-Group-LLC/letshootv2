@@ -29,8 +29,13 @@ export default function ReactionsDashboard({ creators = [], canResolve = false, 
   useEffect(() => {
     (async () => {
       const supabase = getSupabase();
+      // Acotado al roster que recibe (para el Manager ya viene solo con SUS
+      // modelos). Sin roster no hay nada que mostrar.
+      const scopeIds = creators.map((c) => c.id);
+      if (scopeIds.length === 0) { setRows([]); return; }
       const { data } = await supabase.from('feedback')
         .select('id, creator_id, asset_id, kind, message, author_role, created_at, resolved')
+        .in('creator_id', scopeIds)
         .order('created_at', { ascending: false });
       const fb = data || [];
       setRows(fb);

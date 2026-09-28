@@ -12,7 +12,7 @@ import ProposalEditor from '@/components/ProposalEditor';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
-import { CAPS, CAP_SECTIONS } from '@/lib/caps';
+import { CAPS, CAP_SECTIONS, ROLE_CAPS, ROLE_PICKER, STAFF_ROLES } from '@/lib/caps';
 import { PACKS } from '@/lib/packs';
 
 import ReactionsDashboard from '@/components/ReactionsDashboard';
@@ -106,7 +106,9 @@ export default function AdminPage() {
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState('');
   const [nu, setNu] = useState({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
-  const [nuCaps, setNuCaps] = useState([]); // accesos del puesto — se marcan a mano (sin preset)
+  const [nuCaps, setNuCaps] = useState(ROLE_CAPS.supervisor); // accesos del puesto — se auto-marcan según el rol elegido (ajustables)
+  // Elegir un rol auto-marca sus accesos por defecto (auto-seccionado); el admin puede tocarlos.
+  const pickRole = (role) => { setNu((v) => ({ ...v, role })); setNuCaps(ROLE_CAPS[role] || []); };
   const [createdCreds, setCreatedCreds] = useState(null); // { email, password } para mostrar tras crear
   const [selCreator, setSelCreator] = useState(null); // creator id whose profile drawer is open
   const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
@@ -279,12 +281,12 @@ export default function AdminPage() {
     // (they'll replace it); if there's no real email we surface it as a temp login instead.
     const fullName = [nu.first_name, nu.last_name].map((s) => s.trim()).filter(Boolean).join(' ');
     if (!fullName) { setNuError('Pon al menos el nombre.'); return; }
-    if (nu.role === 'supervisor' && nuCaps.length === 0) { setNuError('Marca al menos un acceso.'); return; }
+    if (STAFF_ROLES.includes(nu.role) && nuCaps.length === 0) { setNuError('Marca al menos un acceso.'); return; }
     const pw = `LS-${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
     setCreating(true);
     // Supabase Edge Function 'create-user' runs with the service role and verifies the
-    // caller is admin. The puesto is born WITH the accesses the admin picked.
-    const caps = nu.role === 'supervisor' ? nuCaps : [];
+    // caller is admin. El puesto nace CON el rol elegido y sus accesos.
+    const caps = STAFF_ROLES.includes(nu.role) ? nuCaps : [];
     const { data, error } = await getSupabase().functions.invoke('create-user', {
       body: { full_name: fullName, job_title: nu.job_title.trim(), email: nu.email.trim(), password: pw, role: nu.role, capabilities: caps },
     });
@@ -300,7 +302,7 @@ export default function AdminPage() {
     const showCreds = out.generated_email;
     if (showCreds) setCreatedCreds({ email: out.login_email || nu.email.trim(), password: pw, generated: true });
     setNu({ first_name: '', last_name: '', job_title: '', email: '', password: '', role: 'supervisor' });
-    setNuCaps([]);
+    setNuCaps(ROLE_CAPS.supervisor);
     if (!showCreds) setEquipoPanel(null);
     // Tell the admin exactly what happened + WHERE the account landed (agency/creator don't
     // live in this Equipo interno roster, so "created" would otherwise look like nothing).
@@ -546,7 +548,8 @@ export default function AdminPage() {
     { id: 'reacciones', label: 'Reacciones', icon: Heart, badges: [] },
     { id: 'metricas', label: 'Métricas', icon: BarChart3, badges: [] },
     { id: 'actividad', label: 'Actividad', icon: Activity, badges: [] },
-    { id: 'conexion', label: 'Conexión', icon: Plug, badges: [], href: '/conexion' },
+    // Conexión (llaves/API) = SOLO el dueño. Los demás admin no la ven.
+    ...(isOwnerAccount(me) ? [{ id: 'conexion', label: 'Conexión', icon: Plug, badges: [], href: '/conexion' }] : []),
   ];
   const activeTab = NAV_TABS.find((t) => t.id === tab) || NAV_TABS[0];
   // Rojo MATE (no neón — el rose-500 sólido lastima la vista): tinte suave con
@@ -1034,16 +1037,14 @@ export default function AdminPage() {
                   <input value={nu.last_name} onChange={(e) => setNu((v) => ({ ...v, last_name: e.target.value }))} placeholder="Apellido"
                     className="rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 </div>
-                {/* Selector de rol: empleado interno (supervisor con caps) o agente vendedor.
-                    Agencias y creadoras se crean del otro lado (Registros / Agencias). */}
+                {/* Selector de ROL real: PR / Editor / Manager / Finanzas / Agente. Al
+                    elegir uno se auto-marcan sus accesos. Agencias y creadoras se crean
+                    del otro lado (Registros / Agencias). */}
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  {[
-                    { v: 'supervisor', l: 'Empleado del equipo', s: 'Sube contenido, atiende pedidos, etc.' },
-                    { v: 'agent',      l: 'Agente vendedor',      s: 'Solo refiere modelos por correo.' },
-                  ].map((r) => {
+                  {ROLE_PICKER.map((r) => {
                     const on = nu.role === r.v;
                     return (
-                      <button type="button" key={r.v} onClick={() => setNu((v) => ({ ...v, role: r.v }))}
+                      <button type="button" key={r.v} onClick={() => pickRole(r.v)}
                         className={`rounded-xl border p-3 text-left transition-colors ${on ? 'border-brand/60 bg-brand/[0.08]' : 'border-line bg-ink-2 hover:border-hair'}`}>
                         <div className={`text-sm font-semibold ${on ? 'text-brand' : 'text-paper'}`}>{r.l}</div>
                         <div className="mt-0.5 text-[11px] text-paper-dim">{r.s}</div>
@@ -1051,7 +1052,7 @@ export default function AdminPage() {
                     );
                   })}
                 </div>
-                {nu.role === 'supervisor' && (
+                {STAFF_ROLES.includes(nu.role) && (
                   <input value={nu.job_title} onChange={(e) => setNu((v) => ({ ...v, job_title: e.target.value }))} placeholder="Puesto / cargo (opcional, ej. Coordinación)"
                     className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 )}
@@ -1060,9 +1061,11 @@ export default function AdminPage() {
                   className="mt-3 w-full rounded-xl border border-line bg-ink-2 px-3.5 py-2.5 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
                 <p className="mt-2 text-[11px] text-paper-dim">Con correo, le llega una <span className="text-paper-mute">invitación para poner su propia contraseña</span> — tú no la manejas. Sin correo, le generamos un login de empresa con una clave temporal para compartir.</p>
 
-                {/* Las funciones de la plataforma, por SECCIÓN → función — marcas qué puede hacer ESTE puesto */}
-                {nu.role === 'supervisor' && (
+                {/* Las funciones de la plataforma, por SECCIÓN → función. Vienen auto-marcadas
+                    según el rol elegido; el admin puede ajustarlas. */}
+                {STAFF_ROLES.includes(nu.role) && (
                   <div className="mt-4 space-y-4">
+                    <p className="text-[11px] text-paper-dim">Accesos del rol <span className="text-paper-mute">{ROLE_PICKER.find((r) => r.v === nu.role)?.l}</span> — ya vienen marcados. Ajustá si querés.</p>
                     {CAP_SECTIONS.map((sec) => (
                       <div key={sec.id}>
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-brand/80">{sec.name}</div>
@@ -1092,8 +1095,8 @@ export default function AdminPage() {
                 <button type="submit" disabled={creating}
                   className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-on-accent shadow-glow-sm transition-transform hover:scale-[1.01] disabled:opacity-60">
                   {creating ? <RefreshCw size={15} className="animate-spin" /> : <Plus size={15} />}
-                  {nu.role === 'supervisor'
-                    ? `Crear puesto con ${nuCaps.length} acceso${nuCaps.length === 1 ? '' : 's'}`
+                  {STAFF_ROLES.includes(nu.role)
+                    ? `Crear ${ROLE_PICKER.find((r) => r.v === nu.role)?.l || 'puesto'} con ${nuCaps.length} acceso${nuCaps.length === 1 ? '' : 's'}`
                     : nu.role === 'agent'
                     ? 'Crear cuenta de agente'
                     : 'Crear cuenta'}
@@ -2392,6 +2395,13 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
 
 function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, onDeleted, canSetCadence = false }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
+  const [kycZoom, setKycZoom] = useState(null); // { url, label } — foto de ID ampliada (visor con cerrar)
+  useEffect(() => {
+    if (!kycZoom) return;
+    const onKey = (e) => { if (e.key === 'Escape') setKycZoom(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [kycZoom]);
   const [loraCount, setLoraCount] = useState(null);
   const [lastDelivery, setLastDelivery] = useState(undefined); // ISO | null | undefined(cargando)
   const [rejecting, setRejecting] = useState(false);
@@ -2800,15 +2810,28 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
                   <div key={d.k}>
                     <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-paper-dim">{d.l}</p>
                     {docs[d.k] ? (
-                      <a href={docs[d.k]} target="_blank" rel="noreferrer" className="block aspect-[3/4] overflow-hidden rounded-lg border border-line">
+                      <button type="button" onClick={() => setKycZoom({ url: docs[d.k], label: d.l })} className="block aspect-[3/4] w-full cursor-zoom-in overflow-hidden rounded-lg border border-line" title="Ver grande">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={docs[d.k]} alt={d.l} className="h-full w-full object-cover transition-transform hover:scale-105" />
-                      </a>
+                      </button>
                     ) : <div className="grid aspect-[3/4] place-items-center rounded-lg border border-dashed border-line text-[10px] text-paper-dim">Falta</div>}
                   </div>
                 ))}
               </div>
             ) : <p className="text-sm text-paper-dim">Todavía no subió sus documentos de identidad.</p>}
+
+            {/* Visor de ID a pantalla completa — clic afuera, botón X o Escape para cerrar */}
+            {kycZoom && (
+              <div onClick={() => setKycZoom(null)} className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+                <div className="mb-2 flex w-full max-w-lg items-center justify-between text-sm font-semibold text-white">
+                  <span>{kycZoom.label}</span>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setKycZoom(null); }} className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-white hover:bg-white/20"><X size={15} /> Cerrar</button>
+                </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={kycZoom.url} alt={kycZoom.label} onClick={(e) => e.stopPropagation()} className="max-h-[82vh] max-w-full rounded-xl border border-white/20 object-contain" />
+                <p className="mt-2 text-[11px] text-white/60">Tocá afuera, el botón Cerrar o la tecla Esc para cerrar.</p>
+              </div>
+            )}
 
             {/* Review actions */}
             {hasDocs && (idPending || idRejected || idApproved) && (
@@ -3121,12 +3144,19 @@ function EmployeeProfile({ staff, isSelf, onClose, onToggleCap, onChangeRole, on
               <span className="text-[11px] font-semibold uppercase tracking-wider text-paper-dim">Tipo</span>
               {owner ? (
                 <span className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-2.5 py-1.5 text-sm text-amber-300">Dueño (no se cambia)</span>
+              ) : (staff.role === 'admin' || staff.role === 'supervisor') ? (
+                // admin ⇄ Empleado se togglea acá. Los roles finos (Editor/Manager/Finanzas/Agente) NO — se cambian en Equipo
+                // para no pisarlos sin querer (bug: el select viejo los degradaba a "Empleado" al tocarlo).
+                <select value={staff.role === 'admin' ? 'admin' : 'supervisor'} onChange={(e) => onChangeRole(staff.id, e.target.value)} disabled={isSelf}
+                  className="rounded-lg border border-line bg-ink px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
+                  <option value="admin">Admin (acceso total)</option>
+                  <option value="supervisor">Empleado</option>
+                </select>
               ) : (
-              <select value={isMgr ? 'admin' : 'supervisor'} onChange={(e) => onChangeRole(staff.id, e.target.value)} disabled={isSelf}
-                className="rounded-lg border border-line bg-ink px-2.5 py-1.5 text-sm text-paper outline-none focus:border-brand/60 disabled:opacity-50">
-                <option value="admin">Admin (acceso total)</option>
-                <option value="supervisor">Empleado</option>
-              </select>
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-ink px-2.5 py-1.5 text-sm text-paper">
+                  {({ producer: 'Editor', chatter: 'Manager', finance: 'Finanzas', agent: 'Agente' }[staff.role] || staff.role)}
+                  <span className="text-[10px] text-paper-dim">· cambialo en <Link href="/equipo" className="text-brand hover:underline">Equipo</Link></span>
+                </span>
               )}
               {savingId === staff.id && <RefreshCw size={14} className="animate-spin text-brand" />}
             </div>

@@ -34,24 +34,44 @@ export default function ConexionPage() {
     })();
   }, []);
 
-  // ── Configurar la llave (se guarda en el servidor vía set_key, NO en el navegador) ──
-  const [keyId, setKeyId] = useState('');
-  const [keySecret, setKeySecret] = useState('');
-  const [keySaving, setKeySaving] = useState(false);
-  const [keyMsg, setKeyMsg] = useState('');
-  const [keyOk, setKeyOk] = useState(null); // null | true | false
-  useEffect(() => {
-    if (access !== 'ok') return;
-    (async () => { const out = await callFn('key_status'); setKeyOk(!!out.configured); })();
-  }, [access]);
-  const saveKey = async () => {
-    if (!keyId.trim() || !keySecret.trim()) { setKeyMsg('Pegá las dos partes de la llave.'); return; }
-    setKeySaving(true); setKeyMsg('');
-    const out = await callFn('set_key', { key_id: keyId, key_secret: keySecret });
-    setKeySaving(false);
-    if (!out.ok) { setKeyMsg(out.error || 'No se pudo guardar.'); return; }
-    setKeyOk(true); setKeyId(''); setKeySecret(''); setKeyMsg('Llave guardada ✓');
-    verify();
+  // ── Cuentas de Higgsfield (multi-cuenta) — todo se maneja acá, solo dueño/admin ──
+  const callHf = async (action, extra) => {
+    const { data, error } = await getSupabase().functions.invoke('hf-accounts', { body: { action, ...(extra || {}) } });
+    let out = data; if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+    return out || {};
+  };
+  const [accounts, setAccounts] = useState([]);
+  const [models, setModels] = useState([]);
+  const [acctForm, setAcctForm] = useState({ id: '', label: '', key_id: '', key_secret: '', is_default: false });
+  const [acctBusy, setAcctBusy] = useState(false);
+  const [acctMsg, setAcctMsg] = useState('');
+  const [showFormKey, setShowFormKey] = useState(false);
+  const loadAccounts = async () => { const out = await callHf('list'); if (out.ok) setAccounts(out.accounts || []); };
+  const loadModels = async () => { const out = await callHf('models'); if (out.ok) setModels(out.models || []); };
+  useEffect(() => { if (access !== 'ok') return; loadAccounts(); loadModels(); }, [access]);
+
+  const saveAccount = async () => {
+    if (!acctForm.label.trim()) { setAcctMsg('Ponle un nombre a la cuenta.'); return; }
+    if (!acctForm.id && (!acctForm.key_id.trim() || !acctForm.key_secret.trim())) { setAcctMsg('Pegá las dos partes de la llave.'); return; }
+    setAcctBusy(true); setAcctMsg('');
+    const out = await callHf('save', { id: acctForm.id || undefined, label: acctForm.label, key_id: acctForm.key_id, key_secret: acctForm.key_secret, is_default: acctForm.is_default });
+    setAcctBusy(false);
+    if (!out.ok) { setAcctMsg(out.error || 'No se pudo guardar.'); return; }
+    setAcctForm({ id: '', label: '', key_id: '', key_secret: '', is_default: false }); setAcctMsg('Guardada ✓');
+    loadAccounts(); loadModels();
+  };
+  const setDefaultAccount = async (id) => { await callHf('set_default', { id }); loadAccounts(); };
+  const deleteAccount = async (id, label) => {
+    if (!confirm(`¿Borrar la cuenta "${label}"? Los modelos que apuntaban a ella quedan sin cuenta.`)) return;
+    const out = await callHf('delete', { id });
+    if (!out.ok) { setAcctMsg(out.error || 'No se pudo borrar.'); return; }
+    loadAccounts(); loadModels();
+  };
+  const editAccount = (a) => { setAcctForm({ id: a.id, label: a.label, key_id: '', key_secret: '', is_default: a.is_default }); setAcctMsg(''); };
+  const setModelAccount = async (creator_id, account_id) => {
+    setModels((m) => m.map((x) => (x.id === creator_id ? { ...x, account_id } : x)));
+    await callHf('set_model_account', { creator_id, account_id: account_id || null });
+    loadAccounts();
   };
 
   // ── Otras llaves: Apify (scraper) y Anthropic (visión del cocinero) ──
@@ -167,36 +187,76 @@ export default function ConexionPage() {
       </header>
 
       <main className="mx-auto w-full max-w-3xl space-y-4 px-4 py-8 lg:px-6">
-        {/* 0 · Configurar la llave — se pega ACÁ, en tu app (no en Supabase). */}
+        {/* Cuentas de Higgsfield — multi-cuenta, solo dueño/admin */}
         <section className="card3d rounded-3xl border border-brand/30 bg-card p-6 sm:p-7">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 font-display text-lg font-bold text-paper"><KeyRound size={18} className="text-brand" /> Llave de Higgsfield</h2>
-              <p className="mt-1 text-sm text-paper-mute">Pegá acá tu KEY_ID y KEY_SECRET (de tu cuenta de Higgsfield). Se guarda en el servidor — <b>nunca</b> queda en el navegador.</p>
+          <h2 className="flex items-center gap-2 font-display text-lg font-bold text-paper"><KeyRound size={18} className="text-brand" /> Cuentas de Higgsfield</h2>
+          <p className="mt-1 text-sm text-paper-mute">Tus cuentas y sus llaves. La marcada <b className="text-paper">por defecto</b> es la que usa el motor. Las llaves se guardan en el servidor — <b>nunca</b> quedan en el navegador.</p>
+
+          <div className="mt-4 space-y-2">
+            {accounts.map((a) => (
+              <div key={a.id} className="flex flex-col gap-2 rounded-2xl border border-line bg-ink-2/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-semibold text-paper">{a.label}</span>
+                    {a.is_default && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">Por defecto</span>}
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-paper-dim">Llave {a.has_key ? a.key_hint : '— sin llave'} · {a.models} modelo{a.models === 1 ? '' : 's'}</p>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  {!a.is_default && <button onClick={() => setDefaultAccount(a.id)} className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-paper-mute hover:text-paper">Hacer default</button>}
+                  <button onClick={() => editAccount(a)} className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-paper-mute hover:text-paper">Cambiar llave</button>
+                  {!a.is_default && <button onClick={() => deleteAccount(a.id, a.label)} className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-rose-300/80 hover:text-rose-200">Borrar</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-line bg-ink-2/30 p-4">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-paper-dim">{acctForm.id ? 'Cambiar la llave de esta cuenta' : 'Agregar una cuenta'}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input value={acctForm.label} onChange={(e) => setAcctForm((f) => ({ ...f, label: e.target.value }))} placeholder="Nombre (ej. Cuenta 2)"
+                className="rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:col-span-2" />
+              <input value={acctForm.key_id} onChange={(e) => setAcctForm((f) => ({ ...f, key_id: e.target.value }))} placeholder={acctForm.id ? 'KEY_ID nuevo (vacío = no cambiar)' : 'Pegá el KEY_ID'}
+                className="rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+              <div className="relative">
+                <input value={acctForm.key_secret} onChange={(e) => setAcctForm((f) => ({ ...f, key_secret: e.target.value }))} type={showFormKey ? 'text' : 'password'} placeholder={acctForm.id ? 'KEY_SECRET nuevo (opcional)' : 'Pegá el KEY_SECRET'}
+                  className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-10 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                <button type="button" onClick={() => setShowFormKey((s) => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-lg text-paper-dim hover:text-paper">{showFormKey ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+              </div>
             </div>
-            {keyOk === true && <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-300">✓ configurada</span>}
+            <div className="mt-2.5 flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-[12px] text-paper-mute">
+                <input type="checkbox" checked={acctForm.is_default} onChange={(e) => setAcctForm((f) => ({ ...f, is_default: e.target.checked }))} className="accent-brand" /> Usar esta como la del motor (default)
+              </label>
+              <button onClick={saveAccount} disabled={acctBusy} className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50">
+                {acctBusy ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} {acctForm.id ? 'Guardar cambios' : 'Agregar cuenta'}
+              </button>
+              {acctForm.id && <button onClick={() => { setAcctForm({ id: '', label: '', key_id: '', key_secret: '', is_default: false }); setAcctMsg(''); }} className="text-[12px] text-paper-dim hover:text-paper">Cancelar</button>}
+              {acctMsg && <span className={`text-xs ${acctMsg.includes('✓') ? 'text-emerald-300' : 'text-rose-300'}`}>{acctMsg}</span>}
+            </div>
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-paper-dim">KEY_ID</span>
-              <input value={keyId} onChange={(e) => setKeyId(e.target.value)} placeholder="Pegá tu KEY_ID"
-                className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-paper-dim">KEY_SECRET</span>
-              <input value={keySecret} onChange={(e) => setKeySecret(e.target.value)} type="password" placeholder="Pegá tu KEY_SECRET"
-                className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-            </label>
+        </section>
+
+        {/* Modelos → cuenta */}
+        <section className="card3d rounded-3xl border border-line bg-card p-6 sm:p-7">
+          <h2 className="flex items-center gap-2 font-display text-lg font-bold text-paper"><IdCard size={18} className="text-brand" /> Modelos → cuenta</h2>
+          <p className="mt-1 text-sm text-paper-mute">Elegí en qué cuenta de Higgsfield vive cada modelo. Ej.: Julia en una, las demás en otra.</p>
+          <div className="mt-4 space-y-2">
+            {models.length === 0 && <p className="text-sm text-paper-dim">No hay modelos todavía.</p>}
+            {models.map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-ink-2/40 px-4 py-2.5">
+                <div className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-paper">{m.name}{m.has_soul && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-300/80">soul ✓</span>}</span>
+                  {m.handle && <span className="block truncate text-[11px] text-paper-dim">@{m.handle}</span>}
+                </div>
+                <select value={m.account_id || ''} onChange={(e) => setModelAccount(m.id, e.target.value)}
+                  className="shrink-0 rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-[12px] font-semibold text-paper outline-none focus:border-brand/60">
+                  <option value="" className="bg-ink">— sin asignar</option>
+                  {accounts.map((a) => <option key={a.id} value={a.id} className="bg-ink">{a.label}</option>)}
+                </select>
+              </div>
+            ))}
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button type="button" onClick={saveKey} disabled={keySaving}
-              className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50">
-              {keySaving ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
-              {keySaving ? 'Guardando…' : 'Guardar llave'}
-            </button>
-            {keyMsg && <span className={`text-xs ${keyMsg.includes('✓') ? 'text-emerald-300' : 'text-rose-300'}`}>{keyMsg}</span>}
-          </div>
-          <p className="mt-2 text-[11px] text-paper-dim">Los valores están en tu archivo <code className="text-paper-mute">letshoot-internal/.env</code> (líneas HIGGSFIELD_KEY_ID / HIGGSFIELD_KEY_SECRET).</p>
         </section>
 
         {/* Otras llaves: Apify (scraper) + Anthropic (visión del cocinero) */}

@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
+import { ROLE_CAPS } from '@/lib/caps';
 import { ArrowLeft, Users, Search, X, Plus, Check, ShieldCheck, UserMinus, RotateCcw, Trash2, Heart, Mail, AlertTriangle } from 'lucide-react';
 
 // Roles de STAFF. Valor DB -> etiqueta UI. supervisor="PR", producer="Editor", chatter="Manager".
@@ -27,11 +28,12 @@ const ROLES = [
       { t: 'Números / ventas', ok: false },
       { t: 'Gestionar equipo', ok: false },
     ] },
-  { v: 'producer', label: 'Editor', desc: 'Hace las fotos de TODAS las modelos y las entrega.', models: false,
+  { v: 'producer', label: 'Editor', desc: 'Hace las fotos y las entrega. Sin asignar → hace TODAS; asignale modelos y su tablero de Entregables muestra solo esas.', models: true,
     tone: 'text-sky-300', ring: 'border-sky-500/40', dot: 'bg-sky-400', soft: 'bg-sky-500/[0.06]',
     caps: [
       { t: 'Hacer fotos en /kitchen — todas las modelos', ok: true },
       { t: 'Subir y entregar el contenido', ok: true },
+      { t: 'Entregables: sus modelos asignadas (o todas si no le asignás)', ok: true },
       { t: 'Recibe el QA de la modelo (le gustó / hay que cambiar)', ok: true, fb: true },
       { t: 'Precios, ventas y números', ok: false },
       { t: 'Verificar IDs / gestionar equipo', ok: false },
@@ -110,10 +112,12 @@ export default function EquipoPage() {
   const countByRole = (v) => staff.filter((p) => p.role === v).length;
 
   const setRole = async (id, role) => {
-    setPeople((v) => v.map((p) => (p.id === id ? { ...p, role } : p)));
-    const { error } = await sb.from('profiles').update({ role }).eq('id', id);
+    // Al cambiar de rol se fijan los accesos por defecto de ese rol (auto-seccionado).
+    const caps = ROLE_CAPS[role] || [];
+    setPeople((v) => v.map((p) => (p.id === id ? { ...p, role, capabilities: caps } : p)));
+    const { error } = await sb.from('profiles').update({ role, capabilities: caps }).eq('id', id);
     if (error) { setMsg({ kind: 'err', text: `No se pudo cambiar el rol: ${error.message}` }); load(); return; }
-    setMsg({ kind: 'ok', text: `Rol actualizado a ${roleMeta(role)?.label || role}.` });
+    setMsg({ kind: 'ok', text: `Rol actualizado a ${roleMeta(role)?.label || role} — accesos del rol aplicados.` });
   };
   const setActive = async (id, val, name) => {
     if (!val && !confirm(`¿Sacar a ${name} del equipo? Queda archivada y la podés reactivar cuando quieras.`)) return;

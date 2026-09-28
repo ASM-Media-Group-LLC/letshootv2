@@ -16,8 +16,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Inbox, Search, Check, X, Plus, AlertTriangle, Pencil, Loader2, ChevronDown, Clock, SlidersHorizontal } from 'lucide-react';
 import StatusDot from '@/components/StatusDot';
+import DeliveryBoard from '@/components/DeliveryBoard';
 import { getSupabase } from '@/lib/supabase/client';
-import { CADENCIAS, nextDelivery, cadenceLabel } from '@/lib/cadence';
+import { CADENCIAS } from '@/lib/cadence';
 
 const A1 = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const A2 = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -41,18 +42,9 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
   const [preset, setPreset] = useState(null);   // creadora preseleccionada al pedir desde la cola
   const [cadOpen, setCadOpen] = useState(false); // panel de cadencia (admin/dueño)
 
-  // Cola de trabajo CON FECHAS: cada creadora con cadencia muestra su PRÓXIMA
-  // entrega (última entrega + cadencia). Se ordena por urgencia (fecha más
-  // temprana primero) y se recalcula sola cuando entra una entrega nueva.
-  const board = useMemo(() => {
-    const rows = creators
-      .filter((c) => c.delivery_cadence)
-      .map((c) => ({ c, nd: nextDelivery(c.delivery_cadence, lastDeliv[c.id]) }))
-      .filter((x) => x.nd)
-      .sort((a, b) => a.nd.dueDay.getTime() - b.nd.dueDay.getTime());
-    const dueCount = rows.filter((x) => x.nd.due).length;
-    return { rows, dueCount, okCount: rows.length - dueCount, total: rows.length };
-  }, [creators, lastDeliv]);
+  // Cuántas creadoras tienen entregable definido (para el contador del editor de
+  // cadencia). El semáforo en sí lo pinta <DeliveryBoard/> con estos mismos datos.
+  const definedCount = useMemo(() => creators.filter((c) => c.delivery_cadence).length, [creators]);
 
   // Creadoras que YA tienen trabajo en curso (pedido pendiente o propuesta
   // borrador ya creada) → no invitar a pedir doble.
@@ -153,54 +145,26 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
         )}
       </div>
 
-      {/* ── Cola de trabajo CON FECHAS: próxima entrega por creadora (auto) ── */}
-      {board.total > 0 ? (
-        <div className="mb-5 rounded-2xl border border-line bg-card p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-paper">
-              <Clock size={15} className="text-brand" /> Entregas por fecha
-            </h3>
-            <span className="text-[12px] text-paper-dim">
-              {board.dueCount > 0
-                ? <><span className="text-rose-300/90">{board.dueCount} pendiente{board.dueCount === 1 ? '' : 's'}</span>{board.okCount > 0 && <> · {board.okCount} al día</>}</>
-                : <span className="text-emerald-300/80">Todas al día</span>}
+      {/* ── ENTREGABLES: semáforo Hoy / Esta semana / Atrasado (auto por cadencia) ── */}
+      <div className="mb-5">
+        <DeliveryBoard
+          creators={creators}
+          lastDeliv={lastDeliv}
+          title="Entregables"
+          canSetCadence={canSetCadence}
+          onSetCadence={onSetCadence}
+          emptyHint={canSetCadence ? <>Nadie tiene entregable todavía. Definí el <b className="text-paper">Entregable</b> de cada creadora (abajo, «Entregable por creadora», o en su ficha) para que salgan solas acá con fecha.</> : undefined}
+          action={(c) => inProgress.has(c.id) ? (
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12px] font-semibold text-paper-mute">
+              <Clock size={12} /> Pedido en curso
             </span>
-          </div>
-          <div className="space-y-2">
-            {board.rows.map(({ c, nd }) => {
-              const fecha = nd.dueAt.toLocaleDateString('es-US', { day: 'numeric', month: 'short' });
-              return (
-                <div key={c.id} className={`flex flex-col gap-2.5 rounded-xl border px-3.5 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 ${
-                  nd.tone === 'bad' ? 'border-rose-500/30 bg-rose-500/[0.05]' : 'border-line bg-ink-2/50'}`}>
-                  <span className="min-w-0 sm:flex-1">
-                    <span className="block truncate font-medium text-paper">{c.stage_name || c.full_name || c.email}</span>
-                    <span className="block truncate text-[11px] text-paper-dim">{c.handle ? `@${c.handle}` : c.email} · {cadenceLabel(c.delivery_cadence)}</span>
-                  </span>
-                  <div className="flex items-center justify-between gap-3 sm:justify-end">
-                    <span className="flex flex-col items-start sm:items-end">
-                      <StatusDot tone={nd.tone}>{nd.label}</StatusDot>
-                      <span className="mt-0.5 text-[10.5px] text-paper-dim">{nd.first ? 'aún sin entregas' : fecha}</span>
-                    </span>
-                    {inProgress.has(c.id) ? (
-                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12px] font-semibold text-paper-mute">
-                        <Clock size={12} /> Pedido en curso
-                      </span>
-                    ) : (!readOnly && (
-                      <button onClick={() => pedirPara(c)} className="btn3d inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold">
-                        <Plus size={13} /> Pedir
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (canSetCadence && (
-        <div className="mb-5 rounded-2xl border border-dashed border-line bg-card/40 px-4 py-4 text-sm text-paper-mute">
-          Nadie tiene entregable todavía. Definí el <b className="text-paper">Entregable</b> de cada creadora (abajo, «Entregable por creadora», o en su ficha) para que salgan solas acá con fecha.
-        </div>
-      ))}
+          ) : (!readOnly ? (
+            <button onClick={() => pedirPara(c)} className="btn3d inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold">
+              <Plus size={13} /> Pedir
+            </button>
+          ) : null)}
+        />
+      </div>
 
       <h3 className="mb-3 text-sm font-semibold text-paper">Pedidos</h3>
 
@@ -278,7 +242,7 @@ export default function AdminPeticiones({ creators = [], me, flash, readOnly = f
               <SlidersHorizontal size={15} className="text-brand" /> Entregable por creadora
             </span>
             <span className="flex items-center gap-2 text-[12px] text-paper-dim">
-              {board.total}/{creators.length} definidos
+              {definedCount}/{creators.length} definidos
               <ChevronDown size={16} className={`transition-transform ${cadOpen ? 'rotate-180' : ''}`} />
             </span>
           </button>

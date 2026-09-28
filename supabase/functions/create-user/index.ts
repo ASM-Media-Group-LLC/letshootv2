@@ -11,7 +11,9 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
-const VALID_ROLES = ['admin', 'supervisor', 'chatter', 'producer', 'creator', 'agency', 'agent'];
+const VALID_ROLES = ['admin', 'supervisor', 'chatter', 'producer', 'finance', 'creator', 'agency', 'agent'];
+// Roles internos que llevan capacidades + puesto (el admin ve todo por su rol).
+const STAFF_ROLES = ['supervisor', 'producer', 'chatter', 'finance'];
 const VALID_CAPS = ['datos', 'kyc', 'add_creators', 'content', 'requests', 'feedback', 'metrics', 'billing', 'agencies', 'team'];
 const VALID_AGENCY_CAPS = ['content', 'sales', 'requests', 'metrics']; // funciones del sub-equipo de agencia
 const APP = 'https://letshoot.ai';
@@ -74,10 +76,13 @@ Deno.serve(async (req) => {
     if (!password || !role) return reply({ ok: false, error: 'Contrasena y rol son obligatorios.' });
     if (password.length < 8) return reply({ ok: false, error: 'La contrasena debe tener al menos 8 caracteres.' });
     if (!VALID_ROLES.includes(role)) return reply({ ok: false, error: 'Rol invalido.' });
-    // A non-admin can create only the account types their accesses allow.
-    if (!isAdmin) {
-      const ok = (role === 'supervisor' && canTeam)
-        || (role === 'creator' && canAddCreators)
+    // Cuentas de EQUIPO (staff PR/Editor/Manager/Finanzas, admin y agente) → SOLO
+    // dueño/admin. La delegación por caps queda solo para dar de alta creadoras y
+    // agencias (onboarding), no para crear equipo.
+    if (STAFF_ROLES.includes(role) || role === 'admin' || role === 'agent') {
+      if (!isAdmin) return reply({ ok: false, error: 'Solo el dueño o un admin puede crear cuentas de equipo.' });
+    } else if (!isAdmin) {
+      const ok = (role === 'creator' && canAddCreators)
         || (role === 'agency' && canAddAgencies)
         || (role === 'agency' && isAgencyOwner && wantsAgencyMember);
       if (!ok) return reply({ ok: false, error: 'No tienes permiso para crear ese tipo de cuenta.' });
@@ -106,7 +111,7 @@ Deno.serve(async (req) => {
 
     const patch: Record<string, unknown> = { role, full_name, email };
     if (role !== 'creator') patch.onboarding_status = 'active';
-    if (role === 'supervisor') { patch.capabilities = capabilities; if (job_title) patch.job_title = job_title; }
+    if (STAFF_ROLES.includes(role)) { patch.capabilities = capabilities; if (job_title) patch.job_title = job_title; }
     // Empleado de agencia: nace aprobado (no espera revisión del admin como una agencia externa).
     const asAgencyMember = isAgencyOwner && wantsAgencyMember && role === 'agency';
     const isAdminInvitingAgencyMember = isAdmin && wantsAgencyMember && role === 'agency';

@@ -9,10 +9,10 @@ import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   LogOut, Users, Inbox, MessageSquare, Folder, FolderPlus, Upload, Loader2,
-  Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download,
-  BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft,
+  Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download, Eye,
+  BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft, Home,
   ImageIcon, Building2, Film, TrendingUp, TrendingDown,
-  CreditCard, ListChecks, ChevronDown, Trash2, Music, Send,
+  CreditCard, ListChecks, ChevronDown, Trash2, Music, Send, AlertTriangle,
 } from 'lucide-react';
 import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
@@ -20,6 +20,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { sendEmail } from '@/lib/notify';
 import { cleanImageToWebp } from '@/lib/cleanImage';
 import { CAPS, CAP_SECTIONS, ALL_CAP_VALUES } from '@/lib/caps';
+import { nextDelivery } from '@/lib/cadence';
 import { PACKS } from '@/lib/packs';
 import Logo from '@/components/Logo';
 import Avatar from '@/components/Avatar';
@@ -28,6 +29,7 @@ import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ProposalEditor from '@/components/ProposalEditor';
 import AlmacenPropuestas from '@/components/AlmacenPropuestas';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
+import DeliveryBoard from '@/components/DeliveryBoard';
 import AudioCard from '@/components/AudioCard';
 import WelcomeTour from '@/components/WelcomeTour';
 
@@ -103,6 +105,8 @@ function TrabajoPageInner() {
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
   const [almCount, setAlmCount] = useState(null); // "propuestas en juego" para la tarjeta Almacén
+  const [lastDeliv, setLastDeliv] = useState({}); // { creatorId → ISO última entrega } para el semáforo de Entregables
+  const [assignedIds, setAssignedIds] = useState(null); // ids de MIS modelos asignadas (null = sin cargar); [] = ninguna → veo todas
   const meRef = useRef(null);
 
   // Only the admin has every function; other staff have exactly the functions
@@ -115,7 +119,12 @@ function TrabajoPageInner() {
   const caps = !capsOwner ? [] : (capsOwner.role === 'admin' ? ALL_CAPS : (capsOwner.capabilities || []));
   const can = (c) => caps.includes(c);
   const asName = viewAs ? ((viewAs.full_name || '').trim().split(/\s+/)[0] || viewAs.stage_name || viewAs.full_name || 'empleado') : '';
-  function exitAsView() { window.close(); if (!window.closed) router.push('/admin'); }
+  function exitAsView() {
+    // Si «Ver como» se abrió en pestaña nueva (tiene opener), la cerramos y
+    // volvés a tu /admin original. Si se navegó directo, vamos a /admin.
+    if (window.opener) { try { window.close(); } catch {} }
+    router.push('/admin');
+  }
 
   // Conteo liviano para la tarjeta "Almacén": propuestas en juego (no internas,
   // no archivadas, sin entregar). Aproximado — sólo alimenta el número grande.
@@ -146,7 +155,7 @@ function TrabajoPageInner() {
       ? ['datos', 'kyc', 'add_creators', 'content', 'requests', 'feedback', 'metrics', 'agencies', 'billing', 'team']
       : (profile.capabilities || []);
     const monthKey = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
-    const [{ data: cr }, { data: st }, rq, fb, bk, myAssets, ag, bl, monthAssets] = await Promise.all([
+    const [{ data: cr }, { data: st }, rq, fb, bk, myAssets, ag, bl, monthAssets, ld, assign] = await Promise.all([
       supabase.rpc('team_creators'),
       supabase.rpc('team_staff'),
       pcaps.includes('requests') ? supabase.from('requests').select('id, status, title, creator_id, created_at, producer_id') : Promise.resolve({ data: [] }),
@@ -158,15 +167,31 @@ function TrabajoPageInner() {
       // Assets del mes en curso (todos los creadores accesibles) — para calcular
       // cuántas fotos faltan del paquete mensual de cada creadora.
       pcaps.includes('content') ? supabase.from('assets').select('id, type, creator_id, created_at').gte('created_at', `${monthKey}-01`) : Promise.resolve({ data: [] }),
+      // Última entrega por creadora (mueve el reloj del semáforo de Entregables) +
+      // MIS modelos asignadas (para que el editor vea solo las suyas).
+      pcaps.includes('content') ? supabase.rpc('last_delivery_by_creator') : Promise.resolve({ data: [] }),
+      pcaps.includes('content') ? supabase.from('staff_assignments').select('creator_id').eq('staff_id', profile.id) : Promise.resolve({ data: [] }),
     ]);
     setCreators(cr || []);
+    const ldMap = {};
+    (Array.isArray(ld?.data) ? ld.data : []).forEach((r) => { if (r?.creator_id) ldMap[r.creator_id] = r.last_at; });
+    setLastDeliv(ldMap);
+    setAssignedIds(Array.isArray(assign?.data) ? assign.data.map((a) => a.creator_id) : []);
     setStaff(st || []);
     setBooks(bk.data || null);
     setAgencies(ag.data || []);
     setBillRows(bl.data || []);
     setMine(myAssets.data || []);
     setMonthAssets(monthAssets.data || []);
-    const reqs = rq.data || [], fbs = fb.data || [];
+    // El Manager (chatter) solo ve pedidos/feedback de SUS modelos. team_creators()
+    // ya viene acotado por asignación, así que filtramos por ese roster. Para
+    // admin/PR/Editor el roster es todo → no descarta nada.
+    let reqs = rq.data || [], fbs = fb.data || [];
+    if (profile.role === 'chatter') {
+      const mine = new Set((cr || []).map((c) => c.id));
+      reqs = reqs.filter((r) => mine.has(r.creator_id));
+      fbs = fbs.filter((f) => mine.has(f.creator_id));
+    }
     setReqRows(reqs);
     setFbRows(fbs);
     setCounts({
@@ -182,7 +207,7 @@ function TrabajoPageInner() {
       const up = await getUserProfile();
       if (!up) { router.replace('/login'); return; }
       const role = up.profile?.role;
-      if (!['admin', 'supervisor', 'producer', 'chatter'].includes(role)) { router.replace('/panel'); return; }
+      if (!['admin', 'supervisor', 'producer', 'chatter', 'finance'].includes(role)) { router.replace('/panel'); return; }
       meRef.current = up.profile;
       setMe(up.profile);
       // ── Modo «ver como»: SOLO el dueño (admin) puede previsualizar /trabajo con
@@ -199,7 +224,25 @@ function TrabajoPageInner() {
     })();
   }, [router, load, asId]);
 
+  // En «ver como», "Lo que TÚ subiste" debe ser lo que subió ESE empleado (no el
+  // dueño), para que la vista sea fiel. Se recarga cuando cambia el objetivo.
+  useEffect(() => {
+    if (!asMode || !viewAs?.id) return;
+    getSupabase().from('assets').select('id, type, creator_id, created_at').eq('uploaded_by', viewAs.id)
+      .then(({ data }) => setMine(Array.isArray(data) ? data : []));
+  }, [asMode, viewAs?.id]);
+
   function flash(m) { setToast(m); setTimeout(() => setToast(''), 2600); }
+
+  // Cambiar el ritmo de entrega de una modelo desde el tablero de Entregables.
+  // Solo el dueño/admin (el selector no se le muestra al editor). Optimista + persiste.
+  async function setCadence(creatorId, cadenceId) {
+    setCreators((prev) => prev.map((u) => (u.id === creatorId ? { ...u, delivery_cadence: cadenceId } : u)));
+    if (readOnly) return;
+    try {
+      await getSupabase().from('profiles').update({ delivery_cadence: cadenceId }).eq('id', creatorId);
+    } catch { flash('No se pudo cambiar el ritmo.'); }
+  }
 
   // Permite abrir un tab directo via URL (?tab=pedidos, ?tab=feedback, etc).
   // Se usa desde /admin (banner de pedidos pendientes) y desde emails.
@@ -347,7 +390,51 @@ function TrabajoPageInner() {
     if (can('content')) { setFocusCreator(null); setTab('creadoras'); }
   }
 
+  // ── ENTREGABLES: qué toca entregar por modelo (semáforo). El editor con modelos
+  // asignadas ve solo las suyas; el admin o el editor sin asignar (hace todas) las ve
+  // todas. deliverBehind = cuántas están vencidas o de hoy (para la tarjeta).
+  const myDeliverables = (me?.role === 'admin' || !assignedIds || assignedIds.length === 0)
+    ? creators
+    : creators.filter((c) => assignedIds.includes(c.id));
+  const deliverBehind = myDeliverables.reduce((n, c) => {
+    if (!c.delivery_cadence) return n;
+    const nd = nextDelivery(c.delivery_cadence, lastDeliv[c.id]);
+    return nd && nd.due ? n + 1 : n;
+  }, 0);
+
+  // ── Cambios AGRUPADOS POR MODELO — no 13 comentarios sueltos, sino 1 entrada
+  // por modelo con su contador. Así no se fragmenta ni se confunde.
+  const changeByModel = {};
+  if (can('feedback')) fbRows.forEach((f) => {
+    if (f.kind !== 'change' || f.resolved) return;
+    changeByModel[f.creator_id] = (changeByModel[f.creator_id] || 0) + 1;
+  });
+  const changeModels = Object.entries(changeByModel)
+    .map(([creatorId, count]) => ({ creatorId, count }))
+    .sort((a, b) => b.count - a.count);
+
+  // Cola de prioridad para el hero "Lo siguiente": cambios por modelo primero,
+  // después las entregas vencidas/de hoy (más urgente arriba).
+  const focusItems = [
+    ...changeModels.map((m) => ({ key: 'c' + m.creatorId, kind: 'cambio', creatorId: m.creatorId, title: nameById[m.creatorId] || 'Modelo', sub: `${m.count} cambio${m.count === 1 ? '' : 's'} sin resolver` })),
+    ...(can('content') ? myDeliverables.filter((c) => c.delivery_cadence)
+      .map((c) => ({ c, nd: nextDelivery(c.delivery_cadence, lastDeliv[c.id]) }))
+      .filter((x) => x.nd && x.nd.due)
+      .sort((a, b) => a.nd.dueDay.getTime() - b.nd.dueDay.getTime())
+      .map((x) => ({ key: 'd' + x.c.id, kind: 'entrega', creatorId: x.c.id, title: `Entregar a ${x.c.stage_name || x.c.full_name || x.c.email}`, sub: 'toca ya' })) : []),
+  ];
+  const focusAction = (it) => {
+    if (it.kind === 'cambio') { setColaSeen(true); setTab('feedback'); }
+    else { setFocusCreator(it.creatorId); setTab('creadoras'); }
+  };
+  // Números high-level para el tablero de control del Inicio.
+  const totalChangesN = changeModels.reduce((n, m) => n + m.count, 0);
+  const overdueCount = myDeliverables.filter((c) => c.delivery_cadence)
+    .map((c) => nextDelivery(c.delivery_cadence, lastDeliv[c.id]))
+    .filter((nd) => nd && nd.bucket === 'atrasado').length;
+
   const OPS_CARDS = [
+    ...(can('content') ? [{ id: 'entregables', icon: Clock, label: 'Entregables', value: nf(deliverBehind), sub: deliverBehind ? 'por entregar o atrasadas' : 'todas al día', alert: deliverBehind > 0 }] : []),
     ...(can('content') ? [{ id: 'creadoras', icon: Users, label: 'Creadoras', value: nf(creators.length), sub: `${act} activas · ${proc} en proceso` }] : []),
     ...(can('add_creators') ? [{ id: 'altas', icon: UserPlus, label: can('content') ? 'Nueva creadora' : 'Creadoras', value: can('content') ? '+' : nf(creators.length), sub: 'Dar de alta una creadora' }] : []),
     ...(can('kyc') ? [{ id: 'verificaciones', icon: ShieldCheck, label: 'Verificaciones', value: nf(idPend), sub: idPend ? 'IDs esperando revisión' : 'nada por revisar', alert: idPend > 0 }] : []),
@@ -364,6 +451,14 @@ function TrabajoPageInner() {
         : can('metrics') ? [{ id: 'agencias', icon: Building2, label: 'Agencias', value: nf(books?.agencies || 0), sub: `${nf(books?.creators || 0)} creadoras en total` }] : []),
     ...(can('billing') ? [{ id: 'cobros', icon: CreditCard, label: 'Suscripciones', value: nf(bill.active), sub: `${nf(bill.active)} activas · ${nf(bill.soon)} por vencer`, alert: bill.soon > 0 }] : []),
     ...(can('team') ? [{ id: 'equipo', icon: UserCog, label: 'Equipo', value: nf(staff.length), sub: staffPend ? `${staffPend} por aprobar` : 'todos con acceso', alert: staffPend > 0 }] : []),
+  ];
+
+  // Menú lateral (lg+) — las MISMAS áreas que las tarjetas, más "Inicio". Le da
+  // al empleado (y al dueño en «ver como») una barra a la izquierda como /admin.
+  const sideNav = [
+    { id: null, icon: Home, label: 'Inicio' },
+    ...OPS_CARDS.map((k) => ({ id: k.id, icon: k.icon, label: k.label, alert: k.alert, href: k.href })),
+    ...BIZ_CARDS.map((k) => ({ id: k.id, icon: k.icon, label: k.label, alert: k.alert, href: k.href })),
   ];
 
   const cardBtn = (k) => {
@@ -390,18 +485,15 @@ function TrabajoPageInner() {
   return (
     <div className="min-h-[100svh] bg-ink text-paper">
       {asMode && (
-        /* Banner de «ver como» — estilo StatusDot (dot brand + texto), NO pill tinturado. */
-        <div className="sticky top-0 z-50 flex items-center justify-between gap-3 border-b border-line bg-ink/95 px-4 py-2 backdrop-blur">
-          <span className="inline-flex min-w-0 items-center gap-2 text-[13px] text-paper-mute">
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
-            </span>
-            <span className="truncate">Viendo como <b className="font-semibold text-paper">{viewAs?.full_name || viewAs?.stage_name || 'empleado'}</b> · solo lectura</span>
+        /* Barra de «ver como» — IMPOSIBLE de no ver (ámbar) + botón claro para volver a ser Owner. */
+        <div className="sticky top-0 z-50 flex items-center justify-between gap-3 border-b border-amber-500/40 bg-amber-500/15 px-4 py-2.5 backdrop-blur">
+          <span className="inline-flex min-w-0 items-center gap-2 text-[13px] font-medium text-amber-100">
+            <Eye size={15} className="shrink-0" />
+            <span className="truncate">Estás viendo como <b className="font-semibold">{viewAs?.full_name || viewAs?.stage_name || 'empleado'}</b> · solo mirás, no cambiás nada</span>
           </span>
           <button onClick={exitAsView}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-xs font-semibold text-paper-mute transition-colors hover:border-brand/40 hover:text-paper">
-            <X size={13} /> Salir de la vista
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-amber-400 px-3.5 py-1.5 text-xs font-bold text-[#2a1a00] transition-transform hover:scale-[1.04]">
+            <ArrowLeft size={13} /> Volver a ser Owner
           </button>
         </div>
       )}
@@ -430,12 +522,35 @@ function TrabajoPageInner() {
         maxW="max-w-6xl"
       />
 
-      <main className="mx-auto max-w-6xl px-5 py-8">
+      <main className="mx-auto max-w-6xl px-5 py-6">
+        <div className="lg:flex lg:items-start lg:gap-6">
+          {/* ── Menú lateral (lg+): las mismas áreas, como en /admin ── */}
+          <nav className="mb-1 hidden self-start lg:flex lg:w-52 lg:shrink-0 lg:flex-col lg:gap-0.5 lg:border-r lg:border-line lg:pr-3">
+            {sideNav.map((item) => (
+              <button key={item.id ?? 'inicio'} onClick={() => { if (item.href) return router.push(item.href); setFocusCreator(null); setTab(item.id); }}
+                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  tab === item.id ? 'bg-brand/10 text-brand' : 'text-paper-mute hover:bg-hair/[0.05] hover:text-paper'}`}>
+                <item.icon size={16} className="shrink-0" />
+                <span className="truncate">{item.label}</span>
+                {item.alert && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />}
+              </button>
+            ))}
+          </nav>
+          <div className="min-w-0 flex-1">
         {!tab ? (
           /* ── PANEL: solo las tarjetas. Tocar una cambia de pantalla al área ── */
           <>
             <h1 className="font-display text-2xl font-semibold sm:text-3xl">Espacio de trabajo</h1>
-            <p className="mt-1 text-sm text-paper-mute">Todo tu trabajo en un vistazo. Toca una tarjeta para entrar a esa área.</p>
+            <p className="mt-1 text-sm text-paper-mute">El panorama de hoy. Para trabajar, entrá a un área.</p>
+
+            {/* Tablero de control (high-level): estado + entrar al wizard */}
+            {(can('content') || can('feedback')) && (
+              <div className="mt-5">
+                <StatusHero cambios={totalChangesN} atrasadas={overdueCount} paquetes={creatorsPendingCount}
+                  onStart={() => { setFocusCreator(null); setTab('entregables'); }}
+                  onNav={(t) => { setFocusCreator(null); setTab(t); }} />
+              </div>
+            )}
 
             {/* ── Cola del día: viene colapsada; palpita si hay algo sin ver ── */}
             {(can('content') || can('requests') || can('feedback')) && (
@@ -582,6 +697,7 @@ function TrabajoPageInner() {
             {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} readOnly={readOnly} />}
             {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} pendingByCreator={pendingByCreator} readOnly={readOnly} />}
             {tab === 'almacen' && can('content') && <AlmacenPropuestas creators={creators} me={me} flash={flash} readOnly={readOnly} />}
+            {tab === 'entregables' && can('content') && <EntregablesTab creators={myDeliverables} lastDeliv={lastDeliv} canSetCadence={me?.role === 'admin' && !readOnly} onSetCadence={setCadence} onUpload={(id) => { setFocusCreator(id); setTab('creadoras'); }} changes={changeModels} nameById={nameById} onOpenFeedback={() => { setColaSeen(true); setTab('feedback'); }} focusItems={focusItems} focusAction={focusAction} />}
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
             {tab === 'verificaciones' && can('kyc') && <KycTab flash={flash} readOnly={readOnly} />}
             {tab === 'pedidos' && can('requests') && <PedidosTab creators={creators} staff={staff} me={me} flash={flash} ping={reqPing} readOnly={readOnly} />}
@@ -593,6 +709,8 @@ function TrabajoPageInner() {
             {tab === 'equipo' && can('team') && <EquipoTab staff={staff} me={me} flash={flash} reload={load} readOnly={readOnly} />}
           </>
         )}
+          </div>
+        </div>
       </main>
 
       {toast && (
@@ -1653,6 +1771,177 @@ function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
 }
 
 /* ── Mi producción: cuánto ha subido ESTE uploader (rango + por creadora) ── */
+// ── Hero "Lo siguiente": UNA cosa a la vez, con impulso. Toma la cola de
+// prioridad (cambios pedidos → entregas vencidas) y la presenta grande, con
+// progreso y un botón "Siguiente". Calma la pantalla y se siente premium.
+function FocusHero({ items = [], nameById = {}, onAction }) {
+  const [i, setI] = useState(0);
+  if (items.length === 0) {
+    return (
+      <div className="rounded-3xl border border-line bg-card p-8 text-center">
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-emerald-500/15 text-emerald-300"><Check size={22} /></div>
+        <h2 className="mt-3 font-display text-xl font-semibold text-paper">Todo al día</h2>
+        <p className="mt-1 text-sm text-paper-mute">No hay nada urgente ahora. Buen momento para adelantar contenido.</p>
+      </div>
+    );
+  }
+  const idx = Math.min(i, items.length - 1);
+  const it = items[idx];
+  const isCambio = it.kind === 'cambio';
+  const pct = Math.round((idx / items.length) * 100);
+  return (
+    <div className="rounded-3xl border border-line bg-card p-6 sm:p-7">
+      <div className="flex items-center justify-between">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand">
+          <Sparkles size={13} /> Lo siguiente
+        </span>
+        <span className="text-[12px] font-medium text-paper-dim">{idx + 1} de {items.length}</span>
+      </div>
+      <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-hair/10">
+        <div className="h-full rounded-full bg-brand transition-all duration-300" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="mt-6 flex items-start gap-3.5">
+        <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${isCambio ? 'bg-rose-500/15 text-rose-300' : 'bg-brand/15 text-brand'}`}>
+          {isCambio ? <MessageSquare size={22} /> : <Upload size={22} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">{isCambio ? 'Cambios pedidos' : 'Entrega'}</span>
+          <h2 className="font-display text-xl font-semibold leading-snug text-paper sm:text-2xl">{it.title}</h2>
+          <p className="mt-0.5 text-sm text-paper-mute">{it.sub || nameById[it.creatorId] || 'Modelo'}</p>
+        </div>
+      </div>
+      <div className="mt-6 flex items-center gap-2.5">
+        {idx > 0 && (
+          <button onClick={() => setI(idx - 1)} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-semibold">
+            <ChevronRight size={15} className="rotate-180" /> Atrás
+          </button>
+        )}
+        <button onClick={() => onAction?.(it)} className="btn3d inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold">
+          {isCambio ? <><MessageSquare size={15} /> Resolver</> : <><Upload size={15} /> Subir</>}
+        </button>
+        {idx < items.length - 1 && (
+          <button onClick={() => setI(idx + 1)} className="btn3d-ghost ml-auto inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold">
+            Siguiente <ChevronRight size={15} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── StatusHero: vista HIGH-LEVEL del Inicio (tablero de control). Da el panorama
+// —cuánto hay pendiente hoy, desglosado— y un botón que mete al wizard. NO trabaja
+// acá; para grindear se entra a Entregables. Cada tile salta a su área.
+function StatusHero({ cambios = 0, atrasadas = 0, paquetes = 0, onStart, onNav }) {
+  const pend = cambios + atrasadas;
+  const tiles = [
+    { label: 'Cambios', value: cambios, tone: 'rose', tab: 'feedback' },
+    { label: 'Atrasadas', value: atrasadas, tone: 'rose', tab: 'entregables' },
+    { label: 'Paquetes', value: paquetes, tone: 'amber', tab: 'creadoras' },
+  ];
+  return (
+    <div className="rounded-3xl border border-line bg-card p-6 sm:p-7">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand">Hoy</span>
+          <h2 className="font-display text-2xl font-semibold leading-tight text-paper sm:text-3xl">
+            {pend > 0 ? <>Tenés <span className="text-rose-300">{pend}</span> cosas por hacer</> : 'Todo al día'}
+          </h2>
+          <p className="mt-1 text-sm text-paper-mute">{pend > 0 ? 'Arrancá por lo más urgente — te las llevo una por una.' : 'Buen momento para adelantar contenido.'}</p>
+        </div>
+        {pend > 0 && (
+          <button onClick={onStart} className="btn3d inline-flex shrink-0 items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold">
+            Empezar a trabajar <ChevronRight size={16} />
+          </button>
+        )}
+      </div>
+      <div className="mt-5 grid grid-cols-3 gap-3">
+        {tiles.map((t) => (
+          <button key={t.label} onClick={() => onNav?.(t.tab)}
+            className="rounded-2xl border border-line bg-ink-2/40 p-3.5 text-left transition-colors hover:border-brand/40 hover:bg-ink-2/70">
+            <div className={`font-display text-2xl font-semibold leading-none ${t.value > 0 ? (t.tone === 'rose' ? 'text-rose-300' : 'text-amber-300') : 'text-paper-mute'}`}>{t.value}</div>
+            <div className="mt-1 text-[12px] text-paper-mute">{t.label}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Entregables (editor): semáforo de qué toca entregar por modelo. Reusa el
+// mismo <DeliveryBoard/> que el dueño ve en /admin › Peticiones. La acción de la
+// fila lleva a subir contenido — y subir cierra la entrega y mueve el reloj solo.
+function EntregablesTab({ creators, lastDeliv, onUpload, canSetCadence = false, onSetCadence, changes = [], nameById = {}, onOpenFeedback, focusItems = [], focusAction }) {
+  const [showList, setShowList] = useState(false);
+  const totalChanges = changes.reduce((n, m) => n + (m.count || 0), 0);
+  return (
+    <div className="space-y-4">
+      {/* ── WIZARD: una cosa a la vez, con Atrás/Siguiente. Sin scroll. ── */}
+      <FocusHero items={focusItems} nameById={nameById} onAction={focusAction} />
+
+      {focusItems.length > 0 && (() => {
+        const overdue = creators.filter((c) => c.delivery_cadence)
+          .map((c) => nextDelivery(c.delivery_cadence, lastDeliv[c.id]))
+          .filter((nd) => nd && nd.bucket === 'atrasado').length;
+        const pend = totalChanges + overdue;
+        return (
+          <button onClick={() => setShowList((v) => !v)}
+            className="flex w-full items-center gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/[0.08] px-4 py-3.5 text-left transition-colors hover:border-rose-400/60 hover:bg-rose-500/[0.12]">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-rose-500/20 text-rose-300"><AlertTriangle size={22} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-bold text-rose-100">Tenés {pend} cosas sin hacer</span>
+              <span className="block text-[12px] text-rose-200/80">{totalChanges} cambios · {overdue} entrega{overdue === 1 ? '' : 's'} atrasada{overdue === 1 ? '' : 's'} — no las dejes acumular</span>
+            </span>
+            <ChevronDown size={18} className={`shrink-0 text-rose-300/80 transition-transform ${showList ? 'rotate-180' : ''}`} />
+          </button>
+        );
+      })()}
+
+      {/* La lista completa, escondida por defecto (para quien prefiera el panorama) */}
+      {showList && (
+        <div className="space-y-5 pt-1">
+          {changes.length > 0 && (
+            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/[0.05] p-4">
+              <div className="mb-3 flex items-center gap-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-rose-500/15 text-rose-300"><MessageSquare size={16} /></span>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-rose-50">Cambios pedidos</h3>
+                  <p className="text-[11px] text-rose-200/70">{totalChanges} en {changes.length} modelo{changes.length === 1 ? '' : 's'}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {changes.map((m) => (
+                  <button key={m.creatorId} onClick={() => onOpenFeedback?.(m)}
+                    className="flex w-full items-center gap-3 rounded-xl border border-rose-500/20 bg-rose-500/[0.04] px-3.5 py-3 text-left transition-colors hover:border-rose-400/50 hover:bg-rose-500/[0.08]">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-paper">{nameById[m.creatorId] || 'Modelo'}</span>
+                      <span className="block truncate text-[11px] text-paper-dim">{m.count} cambio{m.count === 1 ? '' : 's'} sin resolver</span>
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-[12px] font-semibold text-rose-200">Resolver <ChevronRight size={13} /></span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <DeliveryBoard
+            creators={creators}
+            lastDeliv={lastDeliv}
+            title="Entregar contenido"
+            canSetCadence={canSetCadence}
+            onSetCadence={onSetCadence}
+            emptyHint="Todavía no hay entregables definidos para tus modelos. El dueño fija el ritmo de cada una."
+            action={(c) => (
+              <button onClick={() => onUpload(c.id)} className="btn3d inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold">
+                <Upload size={13} /> Subir
+              </button>
+            )}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MiProduccionTab({ mine, creators }) {
   const [range, setRange] = useState('week'); // week | month | all
   const nameById = {}; creators.forEach((c) => { nameById[c.id] = c.full_name || 'Creadora'; });
@@ -1824,7 +2113,10 @@ function PedidosTab({ creators, staff, me, flash, ping, readOnly }) {
         .order('created_at', { ascending: false }),
       supabase.from('request_messages').select('*').order('created_at'),
     ]);
-    const rows = data || [];
+    // Acotado al roster (para el Manager ya viene solo con SUS modelos; para
+    // admin/PR/Editor el roster es todo → no descarta nada).
+    const roster = new Set(creators.map((c) => c.id));
+    const rows = (data || []).filter((r) => roster.has(r.creator_id));
     // Sign reference photos so the worker can see the examples.
     const allPaths = rows.flatMap((r) => r.ref_images || []);
     let urlMap = {};
@@ -1835,7 +2127,7 @@ function PedidosTab({ creators, staff, me, flash, ping, readOnly }) {
     const byReq = {};
     (msgs || []).forEach((m) => { (byReq[m.request_id] = byReq[m.request_id] || []).push(m); });
     setRequests(rows.map((r) => ({ ...r, _refUrls: (r.ref_images || []).map((p) => urlMap[p]).filter(Boolean), _msgs: byReq[r.id] || [] })));
-  }, []);
+  }, [creators]);
 
   useEffect(() => { load(); }, [load, ping]);
 

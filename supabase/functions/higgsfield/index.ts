@@ -52,20 +52,110 @@ function imgUrlsOf(j: any): string[] {
   return [...new Set(urls)];
 }
 
+// ── Helpers del scraper: fotos/videos, costo real de Apify, registro de corrida ──
+const APIFY_HASHTAG = 'apify~instagram-hashtag-scraper';
+const APIFY_POSTS = 'apify~instagram-post-scraper';
+const isVideoItem = (it: any): boolean => !!(it?.videoUrl || it?.type === 'Video' || it?.productType === 'clips' || it?.isVideo);
+const scoreOf = (it: any): number => (Number(it?.videoViewCount || it?.videoPlayCount || 0) || 0) + (Number(it?.likesCount) || 0);
+const imgOf = (it: any): string | null => it?.displayUrl || it?.imageUrl || (Array.isArray(it?.images) ? it.images[0] : null) || null;
+// Baja el video de Instagram (sus links vencen) y lo re-hospeda en nuestro storage. Devuelve la URL pública o null.
+async function storeVideo(svc: any, creatorId: string, srcUrl: string): Promise<string | null> {
+  try {
+    const r = await fetch(srcUrl);
+    if (!r.ok) return null;
+    const ab = new Uint8Array(await r.arrayBuffer());
+    if (ab.length < 1000 || ab.length > 80_000_000) return null; // ni vacío ni gigante
+    const path = `vault/${creatorId}/video/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
+    const up = await svc.storage.from('proposal-photos').upload(path, ab, { contentType: 'video/mp4', upsert: true });
+    if (up.error) return null;
+    const { data: pub } = svc.storage.from('proposal-photos').getPublicUrl(path);
+    return (pub as any)?.publicUrl || null;
+  } catch { return null; }
+}
+// Costo REAL en USD de la última corrida exitosa de un actor de Apify (usageTotalUsd).
+async function apifyLastCost(actor: string, token: string): Promise<number | null> {
+  try {
+    const r = await fetch(`https://api.apify.com/v2/acts/${actor}/runs/last?token=${encodeURIComponent(token)}&status=SUCCEEDED`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const usd = (j as any)?.data?.usageTotalUsd;
+    return typeof usd === 'number' ? usd : null;
+  } catch { return null; }
+}
+async function ratePerPhoto(svc: any): Promise<number> {
+  const { data } = await svc.from('app_config').select('value').eq('key', 'scraper_cost_per_photo').maybeSingle();
+  const n = Number((data as any)?.value); return isNaN(n) || n <= 0 ? 0.0023 : n;
+}
+async function logRun(svc: any, row: Record<string, unknown>) {
+  try { await svc.from('scrape_runs').insert(row); } catch { /* noop */ }
+}
+// Guarda hasta nPhotos fotos + nVideos videos, eligiendo los MEJORES ÉXITOS (más views/likes). Videos → a storage.
+async function saveItems(svc: any, creatorId: string, items: any[], vibe: string | null, nPhotos: number, nVideos: number) {
+  // Videos: posts de video sueltos + videos DENTRO de carruseles (childPosts). Heredan números del post.
+  const vidItems: any[] = [];
+  for (const it of items) {
+    if (isVideoItem(it)) { vidItems.push(it); continue; }
+    if (Array.isArray(it?.childPosts)) {
+      it.childPosts.forEach((ch: any, i: number) => {
+        if (ch?.videoUrl) vidItems.push({ ...ch, ownerUsername: it?.ownerUsername, url: ch?.url || `${it?.url || ''}#v${i}`, likesCount: it?.likesCount, commentsCount: it?.commentsCount, caption: it?.caption, videoViewCount: ch?.videoViewCount || it?.videoViewCount, timestamp: it?.timestamp, shortCode: it?.shortCode });
+      });
+    }
+  }
+  const vids = vidItems.sort((a, b) => scoreOf(b) - scoreOf(a));
+  const pics = items.filter((it) => !isVideoItem(it)).sort((a, b) => scoreOf(b) - scoreOf(a));
+  let saved = 0, savedVideos = 0;
+  for (const it of pics.slice(0, nPhotos)) {
+    const imgUrl = imgOf(it); if (!imgUrl) continue;
+    const views = Number(it?.videoViewCount || it?.videoPlayCount || it?.viewsCount) || null;
+    const comments = Number(it?.commentsCount) || null;
+    const row: Record<string, unknown> = {
+      creator_id: creatorId, kind: 'ref', media_type: 'image', url: imgUrl, source_platform: 'instagram',
+      source_handle: it?.ownerUsername || null, source_url: it?.url || null,
+      likes: Number(it?.likesCount) || null, views, comments, score: scoreOf(it),
+      vibe, caption: it?.caption ? String(it.caption).slice(0, 200) : null,
+      meta: { likes: Number(it?.likesCount) || null, views, comments, type: it?.type || null, shortCode: it?.shortCode || null, timestamp: it?.timestamp || null, owner: it?.ownerUsername || null },
+    };
+    const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url', ignoreDuplicates: true });
+    if (!error) saved += 1;
+  }
+  for (const it of vids.slice(0, nVideos)) {
+    const vurl = it?.videoUrl; if (!vurl) continue;
+    // Solo NUEVOS: si ya tenemos ese post, no lo re-descargamos.
+    if (it?.url) { const { data: ex } = await svc.from('creator_vault').select('id').eq('creator_id', creatorId).eq('source_url', it.url).limit(1); if (ex && (ex as any).length) continue; }
+    const stored = await storeVideo(svc, creatorId, vurl);
+    if (!stored) continue;
+    const vviews = Number(it?.videoViewCount || it?.videoPlayCount || it?.viewsCount) || null;
+    const vcomments = Number(it?.commentsCount) || null;
+    const row: Record<string, unknown> = {
+      creator_id: creatorId, kind: 'ref', media_type: 'video', url: imgOf(it) || stored, video_url: stored, source_platform: 'instagram',
+      source_handle: it?.ownerUsername || null, source_url: it?.url || null,
+      likes: Number(it?.likesCount) || null, views: vviews, comments: vcomments, score: scoreOf(it),
+      vibe, caption: it?.caption ? String(it.caption).slice(0, 200) : null, duration: Number(it?.videoDuration) || null,
+      meta: { likes: Number(it?.likesCount) || null, views: vviews, comments: vcomments, type: 'Video', shortCode: it?.shortCode || null, timestamp: it?.timestamp || null, owner: it?.ownerUsername || null },
+    };
+    const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url', ignoreDuplicates: true });
+    if (!error) savedVideos += 1;
+  }
+  return { saved, savedVideos };
+}
+
 // Corre el scraper de Apify (Instagram por hashtag) y guarda en creator_vault. Reusado por acción staff y worker.
-async function runScrape(svc: any, creatorId: string, limit: number, override?: string[]) {
+async function runScrape(svc: any, creatorId: string, opts: any = {}) {
   if (!creatorId) return { ok: false, error: 'Falta la modelo.' };
+  const nPhotos = Math.min(Math.max(Number(opts.photos ?? 24), 0), 60);
+  const nVideos = Math.min(Math.max(Number(opts.videos ?? 0), 0), 12);
   const { data: tk } = await svc.from('app_config').select('value').eq('key', 'apify_token').maybeSingle();
   const apToken = clean((tk as any)?.value);
   if (!apToken) return { ok: false, error: 'Falta la llave de Apify. Pegala en /conexion.' };
-  let tags: string[] = Array.isArray(override) && override.length ? override : [];
+  let tags: string[] = Array.isArray(opts.niches) && opts.niches.length ? opts.niches : [];
   if (!tags.length) {
     const { data: sp } = await svc.from('creator_search_profile').select('niches, hashtags').eq('creator_id', creatorId).maybeSingle();
     tags = [...(((sp as any)?.hashtags) || []), ...(((sp as any)?.niches) || [])];
   }
   tags = tags.map((h: string) => String(h).trim().replace(/^#/, '')).filter(Boolean).slice(0, 5);
   if (!tags.length) return { ok: false, error: 'Configurá al menos un nicho o hashtag para esta modelo.' };
-  const runUrl = `https://api.apify.com/v2/acts/apify~instagram-hashtag-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
+  const limit = Math.min(nPhotos + nVideos + 12, 90);
+  const runUrl = `https://api.apify.com/v2/acts/${APIFY_HASHTAG}/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
   let items: any = [];
   try {
     const ar = await fetch(runUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hashtags: tags, resultsLimit: limit }) });
@@ -73,41 +163,34 @@ async function runScrape(svc: any, creatorId: string, limit: number, override?: 
     if (!ar.ok) return { ok: false, error: `Apify devolvió ${ar.status}.`, detail: items };
   } catch (e) { return { ok: false, error: `No se pudo llamar al scraper: ${(e as Error)?.message}` }; }
   if (!Array.isArray(items)) return { ok: false, error: 'El scraper no devolvió una lista.', detail: items };
-  let saved = 0;
-  for (const it of items) {
-    const imgUrl = it?.displayUrl || it?.imageUrl || (Array.isArray(it?.images) ? it.images[0] : null);
-    if (!imgUrl) continue;
-    const row: Record<string, unknown> = {
-      creator_id: creatorId, kind: 'ref', url: imgUrl, source_platform: 'instagram',
-      source_handle: it?.ownerUsername || null, source_url: it?.url || null,
-      likes: Number(it?.likesCount) || null, views: Number(it?.videoViewCount || it?.videoPlayCount || it?.viewsCount) || null,
-      vibe: tags[0] || null, caption: it?.caption ? String(it.caption).slice(0, 200) : null,
-    };
-    // ignoreDuplicates: si ya existe (aunque esté descartada), NO la pisa — tus descartes se respetan.
-    const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url', ignoreDuplicates: true });
-    if (!error) saved += 1;
-  }
-  // Filtro IA (visión): revisa las que están sin revisar y marca basura. Solo si hay llave de Anthropic.
+  const { saved, savedVideos } = await saveItems(svc, creatorId, items, tags[0] || null, nPhotos, nVideos);
   const reviewed = await aiReview(svc, creatorId);
-  return { ok: true, found: items.length, saved, tags, reviewed };
+  const rate = await ratePerPhoto(svc);
+  const cost_real = await apifyLastCost(APIFY_HASHTAG, apToken);
+  await logRun(svc, { creator_id: creatorId, kind: 'tema', query: tags.join(','), found: items.length, saved, cost_real, cost_est: items.length * rate, apify_status: 200, status: (saved + savedVideos) ? 'ok' : 'empty' });
+  return { ok: true, found: items.length, saved, savedVideos, tags, reviewed, cost_real };
 }
 
 // Trae los POSTS de las CUENTAS GUÍA (creadoras de referencia) de la modelo, vía Apify instagram-scraper.
 // Es lo que el dueño pidió: apuntar a cuentas modelo y bajar exactamente lo que ellas postean.
-async function runScrapeAccounts(svc: any, creatorId: string, limit: number, override?: string[]) {
+async function runScrapeAccounts(svc: any, creatorId: string, opts: any = {}) {
   if (!creatorId) return { ok: false, error: 'Falta la modelo.' };
+  const nPhotos = Math.min(Math.max(Number(opts.photos ?? 30), 0), 60);
+  const nVideos = Math.min(Math.max(Number(opts.videos ?? 0), 0), 12);
   const { data: tk } = await svc.from('app_config').select('value').eq('key', 'apify_token').maybeSingle();
   const apToken = clean((tk as any)?.value);
   if (!apToken) return { ok: false, error: 'Falta la llave de Apify. Pegala en /conexion.' };
-  let accts: string[] = Array.isArray(override) && override.length ? override : [];
+  let accts: string[] = Array.isArray(opts.accounts) && opts.accounts.length ? opts.accounts : [];
   if (!accts.length) {
     const { data: sp } = await svc.from('creator_search_profile').select('seed_accounts').eq('creator_id', creatorId).maybeSingle();
     accts = Array.isArray((sp as any)?.seed_accounts) ? (sp as any).seed_accounts : [];
   }
   accts = accts.map((a: string) => String(a).trim().replace(/^@/, '').replace(/\/+$/, '').split('/').pop() || '').filter(Boolean).slice(0, 8);
   if (!accts.length) return { ok: false, error: 'Agregá al menos una cuenta guía (ej: @creadora).' };
-  // Actor DEDICADO de posts por usuario (mismo publisher que el hashtag-scraper que SÍ funciona en esta cuenta).
-  const runUrl = `https://api.apify.com/v2/acts/apify~instagram-post-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
+  // Mantener la ficha (scrape_accounts) sincronizada con lo que se scrapea.
+  for (const h of accts) { try { await svc.from('scrape_accounts').upsert({ creator_id: creatorId, handle: h }, { onConflict: 'creator_id,handle', ignoreDuplicates: true }); } catch { /* noop */ } }
+  const limit = Math.min((nPhotos + nVideos + 12) * Math.max(1, Math.min(accts.length, 3)), 120);
+  const runUrl = `https://api.apify.com/v2/acts/${APIFY_POSTS}/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
   let items: any = [];
   let apifyStatus = 0;
   try {
@@ -117,25 +200,21 @@ async function runScrapeAccounts(svc: any, creatorId: string, limit: number, ove
     if (!ar.ok) return { ok: false, error: `Apify devolvió ${ar.status}.`, detail: items };
   } catch (e) { return { ok: false, error: `No se pudo llamar al scraper: ${(e as Error)?.message}` }; }
   if (!Array.isArray(items)) return { ok: false, error: 'El scraper no devolvió una lista.', detail: items, apify_status: apifyStatus };
-  let saved = 0;
-  for (const it of items) {
-    const imgUrl = it?.displayUrl || it?.imageUrl || (Array.isArray(it?.images) ? it.images[0] : null);
-    if (!imgUrl) continue;
-    const row: Record<string, unknown> = {
-      creator_id: creatorId, kind: 'ref', url: imgUrl, source_platform: 'instagram',
-      source_handle: it?.ownerUsername || null, source_url: it?.url || null,
-      likes: Number(it?.likesCount) || null, views: Number(it?.videoViewCount || it?.videoPlayCount || it?.viewsCount) || null,
-      vibe: null, caption: it?.caption ? String(it.caption).slice(0, 200) : null,
-    };
-    const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url', ignoreDuplicates: true });
-    if (!error) saved += 1;
-  }
-  const reviewed = saved > 0 ? await aiReview(svc, creatorId) : 0;
+  const { saved, savedVideos } = await saveItems(svc, creatorId, items, null, nPhotos, nVideos);
+  const reviewed = (saved > 0) ? await aiReview(svc, creatorId) : 0;
+  const nowIso = new Date().toISOString();
+  for (const h of accts) { try { await svc.from('scrape_accounts').update({ last_run_at: nowIso }).eq('creator_id', creatorId).eq('handle', h); } catch { /* noop */ } }
+  const rate = await ratePerPhoto(svc);
+  const cost_real = await apifyLastCost(APIFY_POSTS, apToken);
+  const single = accts.length === 1 ? accts[0] : null;
+  let account_id: string | null = null;
+  if (single) { const { data: sa } = await svc.from('scrape_accounts').select('id').eq('creator_id', creatorId).eq('handle', single).maybeSingle(); account_id = (sa as any)?.id || null; }
+  await logRun(svc, { creator_id: creatorId, account_id, kind: 'account', query: single || accts.join(','), found: items.length, saved, cost_real, cost_est: items.length * rate, apify_status: apifyStatus, status: (saved + savedVideos) ? 'ok' : 'empty' });
   // Diagnóstico: si Apify devolvió items de ERROR (cuenta privada/bloqueo), devolvemos el motivo textual.
   const sample_keys = Array.isArray(items) && items.length ? Object.keys(items[0] || {}).slice(0, 24) : [];
-  const error_items = (Array.isArray(items) ? items : []).filter((i: any) => i && (i.error || i.errorDescription)).slice(0, 2)
+  const error_items = (Array.isArray(items) ? items : []).filter((i: any) => i && (i.error || i.errorDescription)).slice(0, 3)
     .map((i: any) => ({ error: i.error || null, desc: i.errorDescription || null, msgs: Array.isArray(i.requestErrorMessages) ? i.requestErrorMessages.slice(0, 3) : null, input: i.inputUrl || i.url || null }));
-  return { ok: true, found: items.length, saved, accounts: accts, reviewed, apify_status: apifyStatus, sample_keys, error_items };
+  return { ok: true, found: items.length, saved, savedVideos, accounts: accts, reviewed, apify_status: apifyStatus, sample_keys, error_items, cost_real };
 }
 
 // Revisa con visión (Anthropic) las scrapeadas sin revisar de una modelo: ¿sirve como referencia de creadora o es basura?
@@ -167,7 +246,7 @@ async function aiReview(svc: any, creatorId: string, limit = 20) {
           model: 'claude-haiku-4-5-20251001', max_tokens: 120,
           messages: [{ role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
-            { type: 'text', text: `Mirá la foto. ¿Sirve como REFERENCIA para recrear una pose + outfit con una modelo mujer (estilo influencer${style ? `; estilo buscado: ${style}` : ''})? Decí ok:true SOLO si cumple TODO: es UNA sola mujer real, es claramente la protagonista, se le ve el cuerpo o medio cuerpo con una pose y un outfit útiles, y la foto es nítida y de buena calidad. Decí ok:false — y sé ESTRICTO, ante la MÍNIMA duda descartá — si: aparece algún hombre, hay 2 o más personas, es un producto / ropa sola / flatlay, comida, paisaje, animal, auto, meme, collage, captura de pantalla, dibujo o caricatura, tiene texto o logos encima, está borrosa, es muy chica, o está muy filtrada/editada. Respondé SOLO JSON: {"ok":true|false,"reason":"motivo corto en español"}` },
+            { type: 'text', text: `Mirá la foto. ¿Sirve como REFERENCIA para recrear una pose + outfit con una modelo mujer (estilo influencer)? Decí ok:true SOLO si cumple TODO: es UNA sola mujer real, es claramente la protagonista, se le ve el cuerpo o medio cuerpo con una pose y un outfit útiles, y la foto es nítida y de buena calidad.${style ? ` ADEMÁS — REQUISITO DURO: la mujer y la foto tienen que ENCAJAR con este estilo buscado: "${style}". Si el tipo de cuerpo, el vibe o el outfit NO encajan con ese estilo, decí ok:false con reason "no es el estilo".` : ''} Decí ok:false — y sé ESTRICTO, ante la MÍNIMA duda descartá — si: aparece algún hombre, hay 2 o más personas, es un producto / ropa sola / flatlay, comida, paisaje, animal, auto, meme, collage, captura de pantalla, dibujo o caricatura, tiene texto o logos encima, está borrosa, es muy chica, o está muy filtrada/editada. Respondé SOLO JSON: {"ok":true|false,"reason":"motivo corto en español"}` },
           ] }],
         }),
       });
@@ -335,11 +414,11 @@ Deno.serve(async (req) => {
       const secret = clean((body as any)?.worker_secret);
       if (!secret || !(sc as any)?.value || secret !== clean((sc as any).value)) return reply({ ok: false, error: 'Worker no autorizado.' });
       if (action === 'scrape_run') {
-        const r = await runScrape(svc, String((body as any)?.creator_id || ''), Math.min(Number((body as any)?.limit) || 24, 50), (body as any)?.niches);
+        const r = await runScrape(svc, String((body as any)?.creator_id || ''), { niches: (body as any)?.niches, photos: Number((body as any)?.photos ?? (body as any)?.limit) || 24, videos: Number((body as any)?.videos) || 0 });
         return reply(r);
       }
       if (action === 'scrape_accounts_run') {
-        const r = await runScrapeAccounts(svc, String((body as any)?.creator_id || ''), Math.min(Number((body as any)?.limit) || 30, 60), (body as any)?.accounts);
+        const r = await runScrapeAccounts(svc, String((body as any)?.creator_id || ''), { accounts: (body as any)?.accounts, photos: Number((body as any)?.photos ?? (body as any)?.limit) || 30, videos: Number((body as any)?.videos) || 0 });
         return reply(r);
       }
       if (action === 'sync_balance') {
@@ -353,15 +432,21 @@ Deno.serve(async (req) => {
         const { data: idrow } = await svc.from('creator_identity').select('character_id, engine').eq('creator_id', (job as any).creator_id).maybeSingle();
         await svc.from('generations').update({ status: 'in_progress' }).eq('id', (job as any).id);
         const note = String((job as any)?.note || '');
-        const isVar = note.startsWith('var:') || note.startsWith('varx:');
+        const isVar = note.startsWith('var:') || note.startsWith('varx:') || note.startsWith('varf:');
         // VARIACIÓN de carrusel — SIEMPRE con Soul 2.0 (único motor que mantiene la identidad real de la modelo).
         // Dos modos que elige el dueño: 'describe' (var:) = poses distintas: la IA describe outfit/lugar/luz + pose nueva
         // y Soul 2.0 genera SIN image-ref (cara garantizada + pose libre). 'copy' (varx:) = outfit/lugar idénticos vía
         // image-ref, pero copia la pose de la réplica.
         if (isVar && (job as any).reference_url) {
           const copyMode = note.startsWith('varx:');
-          const pose = note.replace(/^varx?:/, '').trim();
+          const freeMode = note.startsWith('varf:');
+          const pose = note.replace(/^var[xf]?:/, '').trim();
           const charId = (idrow as any)?.character_id || null;
+          if (freeMode) {
+            // SUELTA / SORPRÉNDEME: foto NUEVA y variada de ELLA (otro lugar/outfit), soul pura, SIN image-ref ni lock de escena.
+            const fp = `A candid amateur smartphone snapshot of the woman. ${pose || 'a natural everyday candid moment'} She wears her own casual everyday outfit in a natural setting that fits the moment — a DIFFERENT place and look from any other photo, her real life. Photorealistic, natural bare skin texture with pores and subtle imperfections, available natural light, slight handheld tilt, mild grain and soft focus — a real phone photo, NOT studio, NOT airbrushed, NOT AI-looking. Full natural body, correct hands. Keep her FULL curvy natural figure with rounded glutes and natural hips; do not slim or flatten her.`;
+            return reply({ ok: true, job: { ...(job as any), character_id: charId, prompt: fp, style_id: REALISTIC_STYLE } });
+          }
           if (copyMode) {
             const cp = `The SAME woman. Keep EXACTLY this photo: the same body pose, the same exact outfit, the same location and background, and the same lighting and framing. Do not change the composition or the garment. Photorealistic natural candid amateur phone photo, real skin texture, full natural body, correct hands.`;
             return reply({ ok: true, job: { ...(job as any), character_id: charId, soul_copy: true, image_ref: (job as any).reference_url, prompt: cp } });
@@ -523,7 +608,7 @@ Deno.serve(async (req) => {
       const src = (g as any).result_url || (g as any).reference_url;
       if (!src) return reply({ ok: false, error: 'Esa foto no tiene imagen para variar.' });
       const method = String((body as any)?.method || 'describe');
-      const prefix = method === 'copy' ? 'varx:' : 'var:';
+      const prefix = method === 'copy' ? 'varx:' : method === 'free' ? 'varf:' : 'var:';
       const rows = ideas.map((idea) => ({ creator_id: (g as any).creator_id, reference_url: src, status: 'queued', model: 'soul-v2', note: `${prefix}${idea}`, carousel_of: gid, created_by: user.id }));
       const { error } = await svc.from('generations').insert(rows);
       if (error) return reply({ ok: false, error: `No se pudo encolar: ${error.message}` });
@@ -569,12 +654,12 @@ Deno.serve(async (req) => {
 
     // ── Scraper de virales (Apify → Instagram por nicho/hashtag de la modelo) ──
     if (action === 'scrape') {
-      const r = await runScrape(svc, String(body?.creator_id || ''), Math.min(Number(body?.limit) || 24, 50), (body as any)?.niches);
+      const r = await runScrape(svc, String(body?.creator_id || ''), { niches: (body as any)?.niches, photos: Number((body as any)?.photos ?? (body as any)?.limit) || 24, videos: Number((body as any)?.videos) || 0 });
       return reply(r);
     }
     // Traer los posts de las CUENTAS GUÍA (creadoras de referencia) de la modelo.
     if (action === 'scrape_accounts') {
-      const r = await runScrapeAccounts(svc, String(body?.creator_id || ''), Math.min(Number(body?.limit) || 30, 60), (body as any)?.accounts);
+      const r = await runScrapeAccounts(svc, String(body?.creator_id || ''), { accounts: (body as any)?.accounts, photos: Number((body as any)?.photos ?? (body as any)?.limit) || 30, videos: Number((body as any)?.videos) || 0 });
       return reply(r);
     }
 
