@@ -89,6 +89,33 @@ async function ratePerPhoto(svc: any): Promise<number> {
 async function logRun(svc: any, row: Record<string, unknown>) {
   try { await svc.from('scrape_runs').insert(row); } catch { /* noop */ }
 }
+// ¿La imagen (portada de un reel) muestra a UNA sola mujer, SOLA? El dueño NO quiere videos donde la creadora
+// está acompañada. La visión (Anthropic) mira la portada. true=sola, false=acompañada/hombre/no se distingue, null=error.
+async function isSoloWoman(key: string, imageUrl: string): Promise<boolean | null> {
+  try {
+    const r = await fetch(imageUrl);
+    if (!r.ok) return null;
+    const ct = (r.headers.get('content-type') || 'image/jpeg').toLowerCase();
+    const media = ct.includes('png') ? 'image/png' : ct.includes('webp') ? 'image/webp' : 'image/jpeg';
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    let bin = ''; const CH = 0x8000; for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode(...bytes.subarray(i, i + CH));
+    const b64 = btoa(bin);
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 60,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
+          { type: 'text', text: 'Es la PORTADA de un video de Instagram. ¿Aparece UNA sola mujer, SOLA, sin ninguna otra persona? Respondé SOLO JSON {"solo":true|false}. Poné solo:false si hay 2 o más personas, si aparece algún hombre, o si no se distingue bien a una única protagonista femenina.' },
+        ] }] }),
+    });
+    const j = await res.json();
+    const txt = (j as any)?.content?.[0]?.text || '';
+    const m = txt.match(/\{[\s\S]*\}/);
+    const v = m ? JSON.parse(m[0]) : null;
+    return v && typeof v.solo === 'boolean' ? v.solo : null;
+  } catch { return null; }
+}
 // Guarda hasta nPhotos fotos + nVideos videos, eligiendo los MEJORES ÉXITOS (más views/likes). Videos → a storage.
 async function saveItems(svc: any, creatorId: string, items: any[], vibe: string | null, nPhotos: number, nVideos: number) {
   // Videos: posts de video sueltos + videos DENTRO de carruseles (childPosts). Heredan números del post.
@@ -118,11 +145,21 @@ async function saveItems(svc: any, creatorId: string, items: any[], vibe: string
     const { error } = await svc.from('creator_vault').upsert(row, { onConflict: 'creator_id,kind,url', ignoreDuplicates: true });
     if (!error) saved += 1;
   }
-  for (const it of vids.slice(0, nVideos)) {
+  // Filtro SOLA: bajamos solo videos donde la creadora está SOLA. La visión mira la portada; seguimos
+  // probando candidatos (mejores éxitos primero) hasta juntar nVideos que pasen, acotando el costo de visión.
+  let vkey = '';
+  if (nVideos > 0 && vids.length) { const { data: ak } = await svc.from('app_config').select('value').eq('key', 'anthropic_api_key').maybeSingle(); vkey = clean((ak as any)?.value); }
+  let vchecks = 0;
+  for (const it of vids) {
+    if (savedVideos >= nVideos) break;
+    if (vchecks >= nVideos + 14) break;
     const vurl = it?.videoUrl; if (!vurl) continue;
     // Solo NUEVOS: si ya tenemos ese post COMO VIDEO, no lo re-descargamos. (Si solo tenemos su
     // miniatura como FOTO, igual bajamos el video — por eso filtramos media_type='video'.)
     if (it?.url) { const { data: ex } = await svc.from('creator_vault').select('id').eq('creator_id', creatorId).eq('source_url', it.url).eq('media_type', 'video').limit(1); if (ex && (ex as any).length) continue; }
+    // ¿Está SOLA? Si la portada muestra 2+ personas o un hombre, la evitamos (no la bajamos).
+    const poster = imgOf(it);
+    if (vkey && poster) { vchecks += 1; const solo = await isSoloWoman(vkey, poster); if (solo === false) continue; }
     const stored = await storeVideo(svc, creatorId, vurl);
     if (!stored) continue;
     const vviews = Number(it?.videoViewCount || it?.videoPlayCount || it?.viewsCount) || null;

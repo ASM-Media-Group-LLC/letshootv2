@@ -1066,31 +1066,23 @@ export default function KitchenPage() {
                   </button>
                 </div>
 
-                {/* Filtros: Fotos/Videos + vibe + orden + buscador */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                {/* Filtros — MISMO layout que la vista global "Buscar en IG" (chips media + vibe + orden + buscador en una fila) */}
+                <div className="mb-3 flex flex-wrap items-center gap-2">
                   {scrapedVideoCount > 0 && (
-                    <div className="mr-1 inline-flex items-center gap-1 rounded-full border border-line bg-card p-0.5 text-xs font-semibold">
+                    <div className="inline-flex items-center gap-1 rounded-full border border-line bg-card p-0.5 text-xs font-semibold">
                       {[['todo', 'Todo'], ['fotos', 'Fotos'], ['videos', 'Videos']].map(([k, label]) => (
-                        <button key={k} type="button" onClick={() => setMediaFilter(k)}
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 transition-colors ${mediaFilter === k ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>
-                          {k === 'videos' && <Play size={10} className="fill-current" />}{label}{k === 'videos' && <span className="opacity-70">{scrapedVideoCount}</span>}
-                        </button>
+                        <button key={k} type="button" onClick={() => setMediaFilter(k)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 transition-colors ${mediaFilter === k ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>{k === 'videos' && <Play size={10} className="fill-current" />}{label}{k === 'videos' && <span className="opacity-70">{scrapedVideoCount}</span>}</button>
                       ))}
                     </div>
                   )}
                   {Object.keys(vibeCounts).length > 0 && ['Todos', ...VIBES.filter((v) => v !== 'Todos' && vibeCounts[v])].map((v) => (
-                    <button key={v} type="button" onClick={() => setVibe(v)}
-                      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${vibe === v ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-dim hover:text-paper'}`}>
-                      {v}{v !== 'Todos' && <span className="text-[10px] opacity-70">{vibeCounts[v]}</span>}
-                    </button>
+                    <button key={v} type="button" onClick={() => setVibe(v)} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${vibe === v ? 'border-brand/50 bg-brand/10 text-brand' : 'border-line text-paper-dim hover:text-paper'}`}>{v}{v !== 'Todos' && <span className="text-[10px] opacity-70">{vibeCounts[v]}</span>}</button>
                   ))}
-                  <button type="button" onClick={() => setBaulSort((s) => (s === 'likes' ? 'recientes' : 'likes'))} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-xs font-semibold text-paper-mute hover:text-paper">
-                    {baulSort === 'likes' ? <><Heart size={12} /> Más likes</> : <><Clock size={12} /> Últimas primero</>}
-                  </button>
-                </div>
-                <div className="relative">
-                  <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
-                  <input value={baulSearch} onChange={(e) => setBaulSearch(e.target.value)} placeholder="Buscar en lo scrapeado (@cuenta, tema…)" className="w-full rounded-full border border-line bg-ink-2 py-2 pl-9 pr-3 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                  <button type="button" onClick={() => setBaulSort((s) => (s === 'likes' ? 'recientes' : 'likes'))} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper">{baulSort === 'likes' ? <><Heart size={12} /> Más likes</> : <><Clock size={12} /> Últimas primero</>}</button>
+                  <div className="relative min-w-[180px] flex-1">
+                    <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+                    <input value={baulSearch} onChange={(e) => setBaulSearch(e.target.value)} placeholder="Buscar en lo scrapeado (@cuenta, tema…)" className="w-full rounded-full border border-line bg-ink-2 py-2 pl-9 pr-3 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                  </div>
                 </div>
 
                 {/* Resultados del scraping de ESTA modelo, agrupados por día (últimas primero) */}
