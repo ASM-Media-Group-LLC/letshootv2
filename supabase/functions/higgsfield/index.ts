@@ -120,8 +120,9 @@ async function saveItems(svc: any, creatorId: string, items: any[], vibe: string
   }
   for (const it of vids.slice(0, nVideos)) {
     const vurl = it?.videoUrl; if (!vurl) continue;
-    // Solo NUEVOS: si ya tenemos ese post, no lo re-descargamos.
-    if (it?.url) { const { data: ex } = await svc.from('creator_vault').select('id').eq('creator_id', creatorId).eq('source_url', it.url).limit(1); if (ex && (ex as any).length) continue; }
+    // Solo NUEVOS: si ya tenemos ese post COMO VIDEO, no lo re-descargamos. (Si solo tenemos su
+    // miniatura como FOTO, igual bajamos el video — por eso filtramos media_type='video'.)
+    if (it?.url) { const { data: ex } = await svc.from('creator_vault').select('id').eq('creator_id', creatorId).eq('source_url', it.url).eq('media_type', 'video').limit(1); if (ex && (ex as any).length) continue; }
     const stored = await storeVideo(svc, creatorId, vurl);
     if (!stored) continue;
     const vviews = Number(it?.videoViewCount || it?.videoPlayCount || it?.viewsCount) || null;
@@ -200,7 +201,27 @@ async function runScrapeAccounts(svc: any, creatorId: string, opts: any = {}) {
     if (!ar.ok) return { ok: false, error: `Apify devolvió ${ar.status}.`, detail: items };
   } catch (e) { return { ok: false, error: `No se pudo llamar al scraper: ${(e as Error)?.message}` }; }
   if (!Array.isArray(items)) return { ok: false, error: 'El scraper no devolvió una lista.', detail: items, apify_status: apifyStatus };
-  const { saved, savedVideos } = await saveItems(svc, creatorId, items, null, nPhotos, nVideos);
+  // Fotos: del post-scraper. Videos: de un actor de REELS aparte (el de posts da la portada, no el videoUrl).
+  const { saved } = await saveItems(svc, creatorId, items, null, nPhotos, 0);
+  let savedVideos = 0;
+  let reel_debug: any = null;
+  if (nVideos > 0) {
+    try {
+      const reelUrl = `https://api.apify.com/v2/acts/apify~instagram-reel-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(apToken)}`;
+      const rr = await fetch(reelUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: accts, resultsLimit: nVideos + 8 }) });
+      const reels = await rr.json();
+      reel_debug = { http: rr.status, is_array: Array.isArray(reels), count: Array.isArray(reels) ? reels.length : null };
+      if (Array.isArray(reels)) {
+        reel_debug.sample_keys = reels.length ? Object.keys(reels[0] || {}).slice(0, 26) : [];
+        reel_debug.with_video = reels.filter((x: any) => x?.videoUrl).length;
+        reel_debug.types = [...new Set(reels.map((x: any) => x?.type || x?.productType || '?'))].slice(0, 6);
+        const rv = await saveItems(svc, creatorId, reels, null, 0, nVideos);
+        savedVideos = rv.savedVideos;
+      } else {
+        reel_debug.error = (reels as any)?.error || (reels as any)?.message || JSON.stringify(reels).slice(0, 200);
+      }
+    } catch (e) { reel_debug = { threw: (e as Error)?.message }; }
+  }
   const reviewed = (saved > 0) ? await aiReview(svc, creatorId) : 0;
   const nowIso = new Date().toISOString();
   for (const h of accts) { try { await svc.from('scrape_accounts').update({ last_run_at: nowIso }).eq('creator_id', creatorId).eq('handle', h); } catch { /* noop */ } }
@@ -214,7 +235,7 @@ async function runScrapeAccounts(svc: any, creatorId: string, opts: any = {}) {
   const sample_keys = Array.isArray(items) && items.length ? Object.keys(items[0] || {}).slice(0, 24) : [];
   const error_items = (Array.isArray(items) ? items : []).filter((i: any) => i && (i.error || i.errorDescription)).slice(0, 3)
     .map((i: any) => ({ error: i.error || null, desc: i.errorDescription || null, msgs: Array.isArray(i.requestErrorMessages) ? i.requestErrorMessages.slice(0, 3) : null, input: i.inputUrl || i.url || null }));
-  return { ok: true, found: items.length, saved, savedVideos, accounts: accts, reviewed, apify_status: apifyStatus, sample_keys, error_items, cost_real };
+  return { ok: true, found: items.length, saved, savedVideos, accounts: accts, reviewed, apify_status: apifyStatus, sample_keys, error_items, cost_real, reel_debug };
 }
 
 // Revisa con visión (Anthropic) las scrapeadas sin revisar de una modelo: ¿sirve como referencia de creadora o es basura?
@@ -414,11 +435,11 @@ Deno.serve(async (req) => {
       const secret = clean((body as any)?.worker_secret);
       if (!secret || !(sc as any)?.value || secret !== clean((sc as any).value)) return reply({ ok: false, error: 'Worker no autorizado.' });
       if (action === 'scrape_run') {
-        const r = await runScrape(svc, String((body as any)?.creator_id || ''), { niches: (body as any)?.niches, photos: Number((body as any)?.photos ?? (body as any)?.limit) || 24, videos: Number((body as any)?.videos) || 0 });
+        const r = await runScrape(svc, String((body as any)?.creator_id || ''), { niches: (body as any)?.niches, photos: Number((body as any)?.photos ?? (body as any)?.limit ?? 24), videos: Number((body as any)?.videos) || 0 });
         return reply(r);
       }
       if (action === 'scrape_accounts_run') {
-        const r = await runScrapeAccounts(svc, String((body as any)?.creator_id || ''), { accounts: (body as any)?.accounts, photos: Number((body as any)?.photos ?? (body as any)?.limit) || 30, videos: Number((body as any)?.videos) || 0 });
+        const r = await runScrapeAccounts(svc, String((body as any)?.creator_id || ''), { accounts: (body as any)?.accounts, photos: Number((body as any)?.photos ?? (body as any)?.limit ?? 30), videos: Number((body as any)?.videos) || 0 });
         return reply(r);
       }
       if (action === 'sync_balance') {
@@ -654,12 +675,12 @@ Deno.serve(async (req) => {
 
     // ── Scraper de virales (Apify → Instagram por nicho/hashtag de la modelo) ──
     if (action === 'scrape') {
-      const r = await runScrape(svc, String(body?.creator_id || ''), { niches: (body as any)?.niches, photos: Number((body as any)?.photos ?? (body as any)?.limit) || 24, videos: Number((body as any)?.videos) || 0 });
+      const r = await runScrape(svc, String(body?.creator_id || ''), { niches: (body as any)?.niches, photos: Number((body as any)?.photos ?? (body as any)?.limit ?? 24), videos: Number((body as any)?.videos) || 0 });
       return reply(r);
     }
     // Traer los posts de las CUENTAS GUÍA (creadoras de referencia) de la modelo.
     if (action === 'scrape_accounts') {
-      const r = await runScrapeAccounts(svc, String(body?.creator_id || ''), { accounts: (body as any)?.accounts, photos: Number((body as any)?.photos ?? (body as any)?.limit) || 30, videos: Number((body as any)?.videos) || 0 });
+      const r = await runScrapeAccounts(svc, String(body?.creator_id || ''), { accounts: (body as any)?.accounts, photos: Number((body as any)?.photos ?? (body as any)?.limit ?? 30), videos: Number((body as any)?.videos) || 0 });
       return reply(r);
     }
 

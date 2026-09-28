@@ -174,7 +174,7 @@ export default function KitchenPage() {
     // Aparte, de la modelo abierta traemos sus fotos REALES y su SCRAPING (pestaña Buscar).
     // No traemos la basura del scraping (ai_ok=false). Fusionamos por id (una guía subida
     // a la propia modelo aparece en ambos lados → dedup).
-    const cols = 'id, url, caption, creator_id, kind, vibe, likes, views, source_handle, source_url, source_platform, interest, ai_ok, ai_reason, created_at';
+    const cols = 'id, url, caption, creator_id, kind, vibe, likes, views, comments, source_handle, source_url, source_platform, interest, ai_ok, ai_reason, media_type, video_url, duration, created_at';
     const [g, mineRows] = await Promise.all([
       sb.from('creator_vault').select(cols).eq('kind', 'ref').is('source_handle', null).is('source_platform', null).or('ai_ok.is.null,ai_ok.eq.true').order('created_at', { ascending: false }).limit(6000),
       sel ? sb.from('creator_vault').select(cols).eq('creator_id', sel).or('ai_ok.is.null,ai_ok.eq.true').order('created_at', { ascending: false }).limit(4000) : Promise.resolve({ data: [] }),
@@ -325,8 +325,9 @@ export default function KitchenPage() {
     vault.forEach((r) => {
       if (r.kind !== 'ref' || !r.source_handle || r.creator_id !== sel) return;
       const h = String(r.source_handle).replace(/^@/, '');
-      const rec = m[h] || (m[h] = { fotos: 0, enMesa: 0, lastAt: 0, days: {} });
+      const rec = m[h] || (m[h] = { fotos: 0, enMesa: 0, videos: 0, lastAt: 0, days: {} });
       rec.fotos += 1;
+      if (r.media_type === 'video') rec.videos += 1;
       if (r.interest !== 'descartada' && r.ai_ok !== false) rec.enMesa += 1;
       if (r.created_at) {
         const t = new Date(r.created_at).getTime(); if (t > rec.lastAt) rec.lastAt = t;
