@@ -136,7 +136,8 @@ export default function KitchenPage() {
   const [scrapingAcc, setScrapingAcc] = useState(false);
   const [checkingAcct, setCheckingAcct] = useState(null); // handle que se está re-chequeando (una sola)
   const [privateAccts, setPrivateAccts] = useState(() => new Set()); // cuentas detectadas privadas (aviso)
-  const [acctView, setAcctView] = useState(false); // dashboard de cuentas guía a pantalla completa
+  const [acctView, setAcctView] = useState(false); // dashboard de cuentas guía de UNA modelo (pantalla completa)
+  const [acctGlobal, setAcctGlobal] = useState(false); // dashboard de cuentas guía de TODAS las modelos (desde la vista global)
   const [balance, setBalance] = useState(null); // saldo real de Higgsfield (créditos)
   const [wiz, setWiz] = useState(null); // pop-up "agregar fuente": null | { step: 0..4, mode: 'cuenta'|'tema'|null }
   const [wizType, setWizType] = useState('fotos'); // en el wizard: fotos | videos | ambos
@@ -387,8 +388,10 @@ export default function KitchenPage() {
   // Scraping (pestaña Buscar en IG): éxitos (más likes) arriba, filtrable por vibe.
   const scrapedPhotos = useMemo(() => {
     let rows = scrapedRows.filter((r) => r.interest !== 'descartada');
-    if (mediaFilter === 'fotos') rows = rows.filter((r) => r.media_type !== 'video');
-    else if (mediaFilter === 'videos') rows = rows.filter((r) => r.media_type === 'video');
+    // Filtro efectivo: si esta vista no tiene videos, ignoramos el chip (así no queda trabada en 'videos' con la grilla vacía).
+    const eff = rows.some((r) => r.media_type === 'video') ? mediaFilter : 'todo';
+    if (eff === 'fotos') rows = rows.filter((r) => r.media_type !== 'video');
+    else if (eff === 'videos') rows = rows.filter((r) => r.media_type === 'video');
     if (vibe !== 'Todos' && vibeCounts[vibe]) rows = rows.filter((r) => (r.vibe || '').toLowerCase() === vibe.toLowerCase());
     const term = baulSearch.trim().toLowerCase();
     if (term) rows = rows.filter((r) => `${r.source_handle || ''} ${r.caption || ''} ${r.vibe || ''}`.toLowerCase().includes(term));
@@ -422,8 +425,9 @@ export default function KitchenPage() {
   }, [scrapGlobalDeduped, nameById]);
   const scrapGlobalRows = useMemo(() => {
     let rows = scrapGlobalDeduped;
-    if (mediaFilter === 'fotos') rows = rows.filter((r) => r.media_type !== 'video');
-    else if (mediaFilter === 'videos') rows = rows.filter((r) => r.media_type === 'video');
+    const eff = rows.some((r) => r.media_type === 'video') ? mediaFilter : 'todo';
+    if (eff === 'fotos') rows = rows.filter((r) => r.media_type !== 'video');
+    else if (eff === 'videos') rows = rows.filter((r) => r.media_type === 'video');
     if (baulModel) rows = rows.filter((r) => r.creator_id === baulModel);
     const term = baulSearch.trim().toLowerCase();
     if (term) rows = rows.filter((r) => `${nameById[r.creator_id] || ''} ${r.source_handle || ''} ${r.caption || ''} ${r.vibe || ''}`.toLowerCase().includes(term));
@@ -432,6 +436,30 @@ export default function KitchenPage() {
       : [...rows].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
   }, [scrapGlobalDeduped, mediaFilter, baulModel, baulSearch, baulSort, nameById]);
   const scrapGlobalGroups = useMemo(() => dayGroups(scrapGlobalRows.slice(0, visN)), [scrapGlobalRows, visN]);
+  // Dashboard GLOBAL de cuentas guía: agrupa TODAS las cuentas de TODAS las modelos (desde lo ya scrapeado).
+  const globalGuideModels = useMemo(() => {
+    const models = new Map();
+    scrapedGlobal.forEach((r) => {
+      if (!r.source_handle || r.interest === 'descartada' || r.ai_ok === false) return;
+      const h = String(r.source_handle).replace(/^@/, ''); if (!h) return;
+      const mid = r.creator_id || '?';
+      let mod = models.get(mid);
+      if (!mod) { mod = { id: mid, name: nameById[mid] || 'Modelo', accts: new Map(), totalFotos: 0 }; models.set(mid, mod); }
+      let rec = mod.accts.get(h);
+      if (!rec) { rec = { handle: h, fotos: 0, videos: 0, lastAt: 0, rows: [] }; mod.accts.set(h, rec); }
+      rec.fotos += 1; mod.totalFotos += 1;
+      if (r.media_type === 'video') rec.videos += 1;
+      if (r.created_at) { const t = new Date(r.created_at).getTime(); if (t > rec.lastAt) rec.lastAt = t; }
+      rec.rows.push(r);
+    });
+    return [...models.values()].map((mod) => ({
+      id: mod.id, name: mod.name, totalFotos: mod.totalFotos,
+      accounts: [...mod.accts.values()].map((a) => ({
+        handle: a.handle, fotos: a.fotos, videos: a.videos, lastAt: a.lastAt,
+        tops: [...a.rows].sort((x, y) => (Number(y.likes) || 0) - (Number(x.likes) || 0)).slice(0, 5),
+      })).sort((a, b) => b.fotos - a.fotos),
+    })).sort((a, b) => b.totalFotos - a.totalFotos);
+  }, [scrapedGlobal, nameById]);
 
   // Agrupado por DÍA (Hoy · Ayer · fecha) para la biblioteca.
   const pickGroups = useMemo(() => {
@@ -1322,7 +1350,7 @@ export default function KitchenPage() {
                 <div className="mt-0.5 text-[11px] text-paper-dim">De Instagram, filtrado solo (mujeres/cuerpo). Lo mejor de lo mejor.</div>
               </div>
               <button type="button" onClick={() => setWiz({ step: 0, mode: null })} className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-bold text-on-accent hover:opacity-90"><Plus size={15} /> Agregar (cuenta o tema)</button>
-              <button type="button" onClick={() => setWiz({ step: 0, mode: 'cuentas' })} className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-500/40 bg-fuchsia-500/[0.06] px-3.5 py-2 text-sm font-semibold text-fuchsia-200 hover:bg-fuchsia-500/[0.12]"><Compass size={15} /> Cuentas guía</button>
+              <button type="button" onClick={() => { loadScrapedGlobal(); loadScraperGlobal(); setAcctGlobal(true); }} className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-500/40 bg-fuchsia-500/[0.06] px-3.5 py-2 text-sm font-semibold text-fuchsia-200 hover:bg-fuchsia-500/[0.12]"><Compass size={15} /> Cuentas guía</button>
             </div>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               {scrapGlobalVideoCount > 0 && (
@@ -1362,6 +1390,80 @@ export default function KitchenPage() {
                 {visN < scrapGlobalRows.length && <div ref={sentinelRef} className="h-8" />}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── CUENTAS GUÍA GLOBAL (dashboard de TODAS las modelos, desde la vista global — sin pop-up) ── */}
+      {acctGlobal && (
+        <div className="fixed inset-0 z-40 overflow-y-auto bg-ink">
+          <div className="sticky top-0 z-10 border-b border-line bg-ink/95 backdrop-blur">
+            <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 lg:px-6">
+              <button type="button" onClick={() => setAcctGlobal(false)} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-sm font-semibold text-paper-mute hover:text-paper"><ArrowLeft size={16} /> Volver</button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 font-display text-base font-bold text-paper"><Compass size={16} className="text-fuchsia-300" /> Cuentas guía <span className="text-paper-dim">· todas las modelos</span></div>
+                <div className="truncate text-[11px] text-paper-dim">Todas las cuentas que alimentan a cada modelo. Tocá una para ver todo lo suyo.</div>
+              </div>
+            </div>
+          </div>
+          <div className="mx-auto max-w-5xl px-4 py-6 lg:px-6">
+            <div className="mb-4 rounded-2xl border border-line bg-card p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Total del scraper · todas las modelos</div>
+              <div className="mt-1.5 flex flex-wrap items-end gap-x-5 gap-y-2">
+                <div><div className="text-xl font-bold tabular-nums text-paper">{scraperGlobal.photos}</div><div className="text-[10px] text-paper-dim">fotos bajadas</div></div>
+                <div><div className="text-xl font-bold tabular-nums text-amber-300">{scraperMoney(scraperGlobal.photos)}</div><div className="text-[10px] text-paper-dim">gasto estimado</div></div>
+                <div><div className="text-xl font-bold tabular-nums text-paper">{scraperGlobal.accounts}</div><div className="text-[10px] text-paper-dim">cuentas</div></div>
+                <div><div className="text-xl font-bold tabular-nums text-paper">{globalGuideModels.length}</div><div className="text-[10px] text-paper-dim">modelos</div></div>
+              </div>
+            </div>
+            <div className="relative mb-4">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+              <input value={acctSearch} onChange={(e) => setAcctSearch(e.target.value)} placeholder="Buscar cuenta o modelo…" className="w-full rounded-full border border-line bg-ink-2 py-2 pl-9 pr-3 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
+            </div>
+            {globalGuideModels.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-line bg-card/40 p-10 text-center text-sm text-paper-dim">Todavía no trajiste nada de Instagram. Entrá a una modelo, tocá «Buscar en IG» y agregá cuentas guía.</p>
+            ) : globalGuideModels.map((mod) => {
+              const term = acctSearch.trim().toLowerCase();
+              const accts = mod.accounts.filter((a) => !term || a.handle.toLowerCase().includes(term) || mod.name.toLowerCase().includes(term));
+              if (accts.length === 0) return null;
+              return (
+                <div key={mod.id} className="mb-6">
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="font-display text-sm font-bold text-paper">{mod.name}</span>
+                    <span className="text-[11px] text-paper-dim">{accts.length} cuenta{accts.length === 1 ? '' : 's'} · {mod.totalFotos} fotos</span>
+                    <span className="h-px flex-1 bg-line/60" />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {accts.map((a) => (
+                      <button key={a.handle} type="button" onClick={() => { setAcctGlobal(false); setScrapView(false); setSel(mod.id); setSubtab('buscar'); setAcctDetail(a.handle); setAcctView(true); }}
+                        className="overflow-hidden rounded-2xl border border-line bg-card text-left transition-colors hover:border-fuchsia-400/40">
+                        <div className="flex items-center gap-2 p-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-bold text-paper">@{a.handle} <span className="text-[10px] font-semibold text-fuchsia-300">ver todas →</span></div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                              <span className="text-paper-dim"><b className="text-paper">{a.fotos}</b> bajadas</span>
+                              {a.videos > 0 && <span className="inline-flex items-center gap-1 text-sky-300"><Play size={9} className="fill-current" /> {a.videos}</span>}
+                              <span className="text-paper-dim">gasto <b className="text-amber-300">{scraperMoney(a.fotos)}</b> <span className="text-paper-dim/60">est</span></span>
+                              <span className="text-paper-dim/70">· {agoLabel(a.lastAt)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        {a.tops.length > 0 && (
+                          <div className="grid grid-cols-5 gap-0.5 border-t border-line/60 bg-ink-2">
+                            {a.tops.map((r) => (
+                              <div key={r.id} className="relative aspect-square overflow-hidden">
+                                <img src={r.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                                {r.media_type === 'video' && <span className="absolute inset-0 grid place-items-center"><span className="grid h-6 w-6 place-items-center rounded-full bg-black/55"><Play size={11} className="fill-white text-white" /></span></span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1538,7 +1640,8 @@ export default function KitchenPage() {
               const dayList = Object.entries(st.days || {}).sort((x, y) => String(y[0]).localeCompare(String(x[0])));
               const allA = vault.filter((r) => r.kind === 'ref' && String(r.source_handle || '').replace(/^@/, '') === a && r.creator_id === sel);
               const vidCount = allA.filter((r) => r.media_type === 'video').length;
-              const photos = allA.filter((r) => (mediaFilter === 'fotos' ? r.media_type !== 'video' : mediaFilter === 'videos' ? r.media_type === 'video' : true)).sort((x, y) => (Number(y.likes) || 0) - (Number(x.likes) || 0));
+              const effF = vidCount > 0 ? mediaFilter : 'todo';
+              const photos = allA.filter((r) => (effF === 'fotos' ? r.media_type !== 'video' : effF === 'videos' ? r.media_type === 'video' : true)).sort((x, y) => (Number(y.likes) || 0) - (Number(x.likes) || 0));
               return (
                 <div>
                   <button type="button" onClick={() => setAcctDetail(null)} className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-sm font-semibold text-paper-mute hover:text-paper"><ArrowLeft size={15} /> Todas las cuentas</button>

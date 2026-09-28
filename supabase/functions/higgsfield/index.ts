@@ -72,6 +72,23 @@ async function storeVideo(svc: any, creatorId: string, srcUrl: string): Promise<
     return (pub as any)?.publicUrl || null;
   } catch { return null; }
 }
+// Re-hospeda una imagen (la PORTADA de un video) en nuestro storage: así la miniatura NO vence (los links de IG
+// caducan) y la url queda ÚNICA (no choca con la foto del mismo carrusel en el índice único de creator_vault).
+async function storeImg(svc: any, creatorId: string, srcUrl: string): Promise<string | null> {
+  try {
+    const r = await fetch(srcUrl);
+    if (!r.ok) return null;
+    const ab = new Uint8Array(await r.arrayBuffer());
+    if (ab.length < 200 || ab.length > 20_000_000) return null;
+    const ct = (r.headers.get('content-type') || 'image/jpeg').toLowerCase();
+    const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg';
+    const path = `vault/${creatorId}/video/poster-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const up = await svc.storage.from('proposal-photos').upload(path, ab, { contentType: ct.startsWith('image/') ? ct : 'image/jpeg', upsert: true });
+    if (up.error) return null;
+    const { data: pub } = svc.storage.from('proposal-photos').getPublicUrl(path);
+    return (pub as any)?.publicUrl || null;
+  } catch { return null; }
+}
 // Costo REAL en USD de la última corrida exitosa de un actor de Apify (usageTotalUsd).
 async function apifyLastCost(actor: string, token: string): Promise<number | null> {
   try {
@@ -157,15 +174,18 @@ async function saveItems(svc: any, creatorId: string, items: any[], vibe: string
     // Solo NUEVOS: si ya tenemos ese post COMO VIDEO, no lo re-descargamos. (Si solo tenemos su
     // miniatura como FOTO, igual bajamos el video — por eso filtramos media_type='video'.)
     if (it?.url) { const { data: ex } = await svc.from('creator_vault').select('id').eq('creator_id', creatorId).eq('source_url', it.url).eq('media_type', 'video').limit(1); if (ex && (ex as any).length) continue; }
+    // Sin portada no podemos verificar 'sola' ni mostrar miniatura → la saltamos.
+    const poster = imgOf(it); if (!poster) continue;
     // ¿Está SOLA? Si la portada muestra 2+ personas o un hombre, la evitamos (no la bajamos).
-    const poster = imgOf(it);
-    if (vkey && poster) { vchecks += 1; const solo = await isSoloWoman(vkey, poster); if (solo === false) continue; }
+    if (vkey) { vchecks += 1; const solo = await isSoloWoman(vkey, poster); if (solo === false) continue; }
     const stored = await storeVideo(svc, creatorId, vurl);
     if (!stored) continue;
+    // Re-hospedamos la PORTADA: miniatura que no vence + url ÚNICA (no choca con la foto del mismo post).
+    const posterStored = await storeImg(svc, creatorId, poster) || poster;
     const vviews = Number(it?.videoViewCount || it?.videoPlayCount || it?.viewsCount) || null;
     const vcomments = Number(it?.commentsCount) || null;
     const row: Record<string, unknown> = {
-      creator_id: creatorId, kind: 'ref', media_type: 'video', url: imgOf(it) || stored, video_url: stored, source_platform: 'instagram',
+      creator_id: creatorId, kind: 'ref', media_type: 'video', url: posterStored, video_url: stored, source_platform: 'instagram',
       source_handle: it?.ownerUsername || null, source_url: it?.url || null,
       likes: Number(it?.likesCount) || null, views: vviews, comments: vcomments, score: scoreOf(it),
       vibe, caption: it?.caption ? String(it.caption).slice(0, 200) : null, duration: Number(it?.videoDuration) || null,
@@ -284,6 +304,7 @@ async function aiReview(svc: any, creatorId: string, limit = 20) {
   const style = String((sp as any)?.style_desc || '').slice(0, 200);
   const { data: rows } = await svc.from('creator_vault').select('id, url')
     .eq('creator_id', creatorId).eq('kind', 'ref').eq('source_platform', 'instagram').is('ai_ok', null)
+    .neq('media_type', 'video')
     .order('created_at', { ascending: false }).limit(limit);
   if (!Array.isArray(rows) || rows.length === 0) return 0;
   let n = 0;
