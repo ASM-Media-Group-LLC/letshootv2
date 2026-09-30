@@ -41,7 +41,38 @@ const CREDITS = 0.12, USD = 0.011;
 const LOOKS = {
   // Julia Parker: pelo castaño (no rubio, no negro), con mechas caramelo suaves enmarcando la cara.
   '4014e339-ead8-4fb7-bcda-82fee2c7926e': 'long warm CHESTNUT-BROWN hair (castaño, natural medium brown) with a few subtle lighter caramel face-framing strands, NEVER platinum blonde and NEVER black',
+  // Cuenta 2 — leídos de sus fotos reales (color exacto para que el motor no la despinte con la referencia).
+  // ALEMIA ROJAS: rubia con raíz oscura (balayage), muy largo — SÍ es rubia.
+  'bb6cb184-4bc4-4cb9-923f-269c712a2f61': 'long straight ROOTED BLONDE hair, dark brown roots melting into warm honey/golden-blonde lengths (balayage), very long past the chest, NEVER solid platinum-white and NEVER dark all over',
+  // Berenaa: castaño muy oscuro casi negro.
+  'd730ed0d-b02f-4372-9ccb-d54a639cc627': 'very long straight VERY DARK BROWN, almost black brunette hair, NEVER blonde and NEVER light',
+  // CAROLANE: castaño oscuro espresso — NO rubia.
+  'e5edf9d3-8ef5-424d-a4ab-27762a1e07ff': 'dark espresso BROWN hair (deep near-black brunette), long, NEVER blonde and NEVER light',
+  // Celia: castaño oscuro — NO rubia.
+  '50384f75-14b1-4b76-86dc-e3fd9a314aef': 'deep DARK BROWN brunette hair, NEVER blonde and NEVER light',
+  // DANIK MICHELL: castaño oscuro, muy largo.
+  '0c49507f-44cb-4135-8212-c3fcb24c18ec': 'very long straight DARK BROWN brunette hair with subtle warm highlights, NEVER blonde',
+  // DANYANCAT: castaño caramelo con flequillo.
+  '7bf99ff0-d091-4627-824a-6dba4707246c': 'long wavy warm CARAMEL LIGHT-BROWN hair with a blunt FRINGE (bangs) across the forehead, NEVER blonde and NEVER jet black',
+  // Gabbielondon: castaño medio natural — NO rubia.
+  '4f4d707e-f1e1-40bf-b29d-41367aa3886a': 'long straight natural MEDIUM WARM BROWN (light chestnut) hair, center-parted, NEVER blonde and NEVER platinum',
+  // Julieta: rubia balayage con raíz — SÍ es rubia.
+  '8d1806e7-47b5-4c04-a356-bc203a33bdc9': 'shoulder-length wavy ROOTED BLONDE hair, dark roots into soft ash/honey blonde (balayage), NEVER solid platinum-white and NEVER dark brunette',
+  // Msmartinasmith1: negro azabache, bob con flequillo.
+  '67d3634b-0f58-4339-88c5-16889e3bd1d2': 'JET-BLACK straight chin-length BOB with a blunt FRINGE (bangs), NEVER long flowing hair and NEVER blonde',
+  // Saritac: negro largo con flequillo.
+  'b4a7d6df-ecfe-49b2-b960-48a2be302824': 'long straight JET-BLACK hair with soft wispy BANGS, NEVER blonde and NEVER light',
+  // steph.torres: negro/castaño muy oscuro, largo.
+  '0b033679-8d8e-4e50-a834-2204b3f22700': 'long straight near-BLACK very dark hair, center-parted, NEVER blonde and NEVER light brown',
 };
+// La visión guarda en el prompt el PELO del viral (ej: "long straight light blonde hair") y ese texto le gana al
+// Soul y al candado → sale rubia. Acá le sacamos cualquier descripción de color/estilo de pelo del prompt: la
+// identidad (incluido el pelo) la ponen SOLO el Soul + el candado LOOKS, nunca la referencia. No toca "black bikini",
+// "brown eyes", etc. (solo lo pegado a "hair" y las palabras blonde/brunette, que casi siempre son pelo).
+const stripHair = (s) => String(s || '')
+  .replace(/\b(?:(?:very|super|long|short|medium|shoulder|mid|chin|length|and|with|straight|wavy|curly|sleek|silky|light|dark|deep|bright|golden|honey|ash|dirty|jet|platinum|blonde|blond|brunette|brown|black|auburn|red|ginger|copper|caramel|chestnut|silver|gr[ae]y)[-,\s]+)+hair\b/gi, 'hair')
+  .replace(/\b(?:platinum[- ]?)?(?:blonde|blond|brunette)\b/gi, '')
+  .replace(/\s{2,}/g, ' ').replace(/\s+([,.;])/g, '$1').trim();
 if (!SB_URL || !SB_ANON || !SECRET) { console.error('Falta SB_URL / SB_ANON / WORKER_SECRET.'); process.exit(1); }
 const FN = `${SB_URL}/functions/v1/higgsfield`;
 // Cliente Supabase (anon) SOLO para subir el video ya limpio a un cupo firmado (uploadToSignedUrl). No escribe DB.
@@ -301,15 +332,38 @@ async function cookOne(job) {
       : '';
     // Ajuste del dueño al REHACER (note='tweak:...'): lo que escribió (ej: "más glúteo") pisa por encima de todo.
     const tweak = String(job.note || '').startsWith('tweak:') ? String(job.note).slice(6).trim() : '';
-    const rprompt = poseLock + (look ? `${job.prompt} IMPORTANT: the woman has ${look} — this exact hair, regardless of the reference.` : job.prompt) + ' Keep her FULL curvy natural figure with rounded full glutes and thighs and natural hips; do NOT slim, shrink, snatch or flatten her body or her butt.' + (tweak ? ` USER ADJUSTMENT — apply exactly this change the user asked for, prioritise it over the reference: ${tweak}.` : '');
+    // Candado de pelo: con look propio se fija el color exacto (como Julia); sin look, si hay referencia (la viral),
+    // instrucción genérica para que NO se despinte con el pelo de la foto (rubia/negra) y conserve el de su Soul.
+    // ¿El viral (descrito en el prompt) tiene OTRO color de pelo que el candado de la modelo? En Soul 2.0 la imagen-
+    // referencia le copia el pelo y NO hay perilla para bajarle el peso (probado: ni el texto más fuerte le gana).
+    // Entonces, si hay CONFLICTO, NO pegamos la imagen: copiamos pose + outfit + escena por la DESCRIPCIÓN de texto
+    // → sale con SU pelo (probado, receta ganadora). Si el pelo matchea (o no hay candado) usamos la imagen exacta.
+    // Julia no se afecta: su castaño matchea el de sus virales; y si alguna vez no, cae en descripción y sigue bien.
+    const refBlonde = /\bblondes?\b|\bblond\b|\bplatinum\b|\brubi[ao]s?\b/i.test(job.prompt || '');
+    const refDark = /\bhair\b/i.test(job.prompt || '') && /\b(dark|black|jet[- ]?black|brunette|dark[- ]haired)\b/i.test(job.prompt || '');
+    const modelBlonde = /blonde|blond|platinum|rubi[ao]/i.test(look || '');
+    const hairConflict = !!look && ((refBlonde && !modelBlonde) || (refDark && modelBlonde));
+    // La imagen-referencia SOLO se usa con souls FUERTES (LoRA real entrenada = Julia): aguanta el pelo aunque el viral
+    // sea de otro color. Las demás usan Soul 2.0 (soul más débil) → la imagen les PISA el pelo sí o sí (probado: ni el
+    // texto más fuerte le gana, y detectar el color del viral por el prompt no es confiable — gorra, etc.). Por eso las
+    // demás copian pose+outfit+escena por DESCRIPCIÓN (sin imagen) → salen con SU pelo (receta ganadora). Réplica buena.
+    const JULIA = '4014e339-ead8-4fb7-bcda-82fee2c7926e';
+    const useImage = !!job.image_ref && job.creator_id === JULIA && !hairConflict;
+    // El pelo, adelante Y atrás (así quedó ganadora la prueba), para que el Soul no se despinte.
+    const hairFront = look ? `HER HAIR IS FIXED — the woman has ${look}, NOT the hair of any reference. ` : '';
+    const hairLock = look
+      ? ` IMPORTANT: the woman has ${look} — this exact hair, regardless of the reference.`
+      : (job.image_ref ? " IMPORTANT: keep the woman's OWN natural hair colour, length and hairstyle exactly as defined by her trained Soul model — do NOT copy, borrow, lighten, darken or blend the hair colour or hairstyle from the reference photo; the reference is only for pose, outfit and scene, never for hair." : '');
+    const rprompt = hairFront + poseLock + stripHair(job.prompt) + hairLock + ' Keep her FULL curvy natural figure with rounded full glutes and thighs and natural hips; do NOT slim, shrink, snatch or flatten her body or her butt.' + (tweak ? ` USER ADJUSTMENT — apply exactly this change the user asked for, prioritise it over the reference: ${tweak}.` : '');
     args = ['generate', 'create', MODEL, '--custom_reference_id', job.character_id, '--prompt', rprompt, '--aspect_ratio', '3:4', '--quality', '2k'];
-    if (job.image_ref) {
-      // Réplica: la viral como referencia (outfit exacto). Con image_reference NO va style_id.
+    if (useImage) {
+      // Réplica pixel-exacta: la viral como referencia (el pelo matchea). Con image_reference NO va style_id.
       const ext = (String(job.image_ref).split('?')[0].split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
       const refPath = join(dir, `${job.id}-ref.${ext}`);
       try { const r = await fetch(job.image_ref); writeFileSync(refPath, Buffer.from(await r.arrayBuffer())); args.push('--image-references', refPath); }
       catch (e) { if (job.style_id) args.push('--style_id', job.style_id); }
-    } else if (job.style_id) { args.push('--style_id', job.style_id); }
+    } else if (job.style_id && !job.image_ref) { args.push('--style_id', job.style_id); }
+    if (hairConflict) console.log(`  · pelo del viral ≠ modelo → copio por descripción (sin imagen) para respetar su pelo`);
     args.push('--wait', '--wait-timeout', '5m', '--wait-interval', '5s', '--json');
   } else {
     // Fallback sin Anthropic: modo imagen con la referencia.

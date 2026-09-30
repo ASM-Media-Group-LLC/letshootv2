@@ -137,10 +137,10 @@ const STATE_RANK = { descartada: 3, mesa: 2, ia: 1 };
 const rowState = (r) => (r.ai_ok === false ? 'ia' : r.interest === 'descartada' ? 'descartada' : 'mesa');
 // Lo que está EN LA MESA, sin repetidas por (modelo, foto) y con la misma regla de estado que los números → las grillas,
 // las miniaturas y «en la mesa» cuentan lo mismo. Devuelve una copia usable por foto (la primera, en el orden recibido).
-const mesaMedia = (rows) => {
+const mesaMedia = (rows, global = false) => {
   const groups = new Map();
   for (const r of rows) {
-    const k = `${r.creator_id}|${mediaKeyT(r)}`; const st = rowState(r);
+    const k = global ? mediaKeyT(r) : `${r.creator_id}|${mediaKeyT(r)}`; const st = rowState(r);
     const g = groups.get(k);
     if (!g) { groups.set(k, { st, rep: st === 'mesa' ? r : null }); continue; }
     if (STATE_RANK[st] > STATE_RANK[g.st]) g.st = st;
@@ -766,7 +766,9 @@ export default function KitchenPage() {
   // Scraping (IG) de la modelo abierta — vive en su propia pestaña.
   // (lo de la MESA: sin lo que la IA sacó ni lo descartado, sin repetidas → mismo número que «en la mesa»)
   // Primero se juntan las copias de la misma foto y DESPUÉS se deja lo de la mesa: si una copia se descartó, la foto no vuelve.
-  const scrapedRows = useMemo(() => mesaMedia(vault.filter((r) => r.kind === 'ref' && isScraped(r) && r.creator_id === sel)), [vault, sel]);
+  // COMPARTIDO: todo lo scrapeado de TODAS las modelos, deduplicado por foto (no por modelo). Todo lo buscado aparece
+  // para todas al cocinar. Un descarte tapa la foto para todas (ver copyIdsOf global). scrapedGlobal se carga al abrir «Buscar».
+  const scrapedRows = useMemo(() => mesaMedia(scrapedGlobal.filter((r) => r.kind === 'ref' && isScraped(r)), true), [scrapedGlobal]);
   // Vibes que realmente tienen fotos etiquetadas (para no mostrar chips que dan grilla vacía).
   const vibeCounts = useMemo(() => {
     const m = {}; scrapedRows.forEach((r) => { const v = (r.vibe || '').trim(); if (v) m[v] = (m[v] || 0) + 1; }); return m;
@@ -1217,12 +1219,12 @@ export default function KitchenPage() {
   };
 
   // Curación de la mesa
-  // Una foto de IG puede estar repetida (la misma foto con otra URL): el cambio va a TODAS sus copias de esa modelo,
-  // así la copia de al lado no «vuelve» a la mesa y los números bajan de verdad.
+  // COMPARTIDO: una foto de IG puede estar repetida (otra URL) y estar bajada para varias modelos. El descarte/reacción
+  // va a TODAS sus copias de TODAS las modelos (agrupamos por foto sola, sin creator_id), así se tapa para todas.
   const copyIdsOf = (rows) => {
     const ids = new Set(rows.map((r) => r.id));
-    const keys = new Set(rows.filter(isScraped).map((r) => `${r.creator_id}|${mediaKeyT(r)}`));
-    if (keys.size) [...vault, ...scrapedGlobal].forEach((r) => { if (isScraped(r) && keys.has(`${r.creator_id}|${mediaKeyT(r)}`)) ids.add(r.id); });
+    const keys = new Set(rows.filter(isScraped).map((r) => mediaKeyT(r)));
+    if (keys.size) [...vault, ...scrapedGlobal].forEach((r) => { if (isScraped(r) && keys.has(mediaKeyT(r))) ids.add(r.id); });
     return [...ids];
   };
   const markInterest = async (row, val) => {

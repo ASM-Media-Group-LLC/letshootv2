@@ -76,7 +76,7 @@ export default function ConexionPage() {
 
   const saveAccount = async () => {
     if (!acctForm.label.trim()) { setAcctMsg('Ponle un nombre a la cuenta.'); return; }
-    if (!acctForm.id && (!acctForm.key_id.trim() || !acctForm.key_secret.trim())) { setAcctMsg('Pegá las dos partes de la llave.'); return; }
+    if (!acctForm.id && !acctForm.key_id.trim()) { setAcctMsg('Pegá tu llave de Higgsfield.'); return; }
     setAcctBusy(true); setAcctMsg('');
     const out = await callHf('save', { id: acctForm.id || undefined, label: acctForm.label, key_id: acctForm.key_id, key_secret: acctForm.key_secret, is_default: acctForm.is_default });
     setAcctBusy(false);
@@ -362,10 +362,9 @@ export default function ConexionPage() {
             <div className="grid gap-2 sm:grid-cols-2">
               <input value={acctForm.label} onChange={(e) => setAcctForm((f) => ({ ...f, label: e.target.value }))} placeholder="Nombre (ej. Cuenta 2)"
                 className="rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60 sm:col-span-2" />
-              <input value={acctForm.key_id} onChange={(e) => setAcctForm((f) => ({ ...f, key_id: e.target.value }))} placeholder={acctForm.id ? 'KEY_ID nuevo (vacío = no cambiar)' : 'Pegá el KEY_ID'}
-                className="rounded-xl border border-line bg-ink-2 px-3 py-2.5 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
-              <div className="relative">
-                <input value={acctForm.key_secret} onChange={(e) => setAcctForm((f) => ({ ...f, key_secret: e.target.value }))} type={showFormKey ? 'text' : 'password'} placeholder={acctForm.id ? 'KEY_SECRET nuevo (opcional)' : 'Pegá el KEY_SECRET'}
+              {/* Higgsfield ahora da UNA sola llave (antes eran dos partes). Un solo campo. */}
+              <div className="relative sm:col-span-2">
+                <input value={acctForm.key_id} onChange={(e) => setAcctForm((f) => ({ ...f, key_id: e.target.value }))} type={showFormKey ? 'text' : 'password'} placeholder={acctForm.id ? 'Pegá la llave nueva (vacío = no cambiar)' : 'Pegá tu llave de Higgsfield'}
                   className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 pr-10 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
                 <button type="button" onClick={() => setShowFormKey((s) => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-lg text-paper-dim hover:text-paper">{showFormKey ? <EyeOff size={15} /> : <Eye size={15} />}</button>
               </div>
