@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, ArrowRight, Check, ChevronUp, ChevronDown, Trash2, Plus,
   ImagePlus, Search, X, Copy, Eye, ExternalLink, Link as LinkIcon,
-  Smartphone, Mail, User, Users,
+  Smartphone, Mail, User, Users, Play, AudioLines, Mic, RefreshCw, Wand2,
 } from 'lucide-react';
 import { useProp, propDict, PROP_LANGS, PROP_LANG_LABELS, PROP_LANG_FLAG } from '@/lib/propuesta-i18n';
 import { PROPOSAL_LOGOS, DEFAULT_PROPOSAL_LOGOS } from '@/lib/proposal-logos';
@@ -85,18 +85,74 @@ const BAUL = [
 ];
 
 const KIND_DOT = { ref: 'bg-amber-400', selfie: 'bg-emerald-400', real: 'bg-emerald-400', ia: 'bg-brand' };
-// Las 3 secciones del baúl, en el MISMO orden que los recuadros en pantalla
-// (Inspiración · Real de la modelo · IA). Herramienta interna → siempre español.
+// Las 3 secciones del baúl. COCINA primero: es de donde sale el look (su foto trae pegada la viral), y en
+// "Todos" tiene que verse arriba. Herramienta interna → siempre español.
 const VAULT_KINDS = [
-  { kind: 'ref',  label: 'Inspiración',       dot: 'bg-amber-400'   },
+  { kind: 'ia',   label: 'Cocina',            dot: 'bg-brand'       },
   { kind: 'real', label: 'Real de la modelo', dot: 'bg-emerald-400' },
-  { kind: 'ia',   label: 'IA · Higgsfield',   dot: 'bg-brand'       },
+  { kind: 'ref',  label: 'Inspiración',       dot: 'bg-amber-400'   },
 ];
+// Orden del dueño: MODELO REAL + INSPIRACIÓN = RESULTADO (igual que la vista de la creadora).
 const SLOTS = [
-  { key: 'inspiration', tKey: 'inspiration', dot: 'bg-amber-400',   kind: 'ref'  },
   { key: 'real',        tKey: 'realModel',   dot: 'bg-emerald-400', kind: 'real' },
+  { key: 'inspiration', tKey: 'inspiration', dot: 'bg-amber-400',   kind: 'ref'  },
   { key: 'result',      tKey: 'aiResult',    dot: 'bg-brand',       kind: 'ia'   },
 ];
+
+// Voces (ElevenLabs): mismas etiquetas e idiomas que /kitchen y la cartilla.
+// Los audios aprobados en /kitchen caen en la carpeta "Cocina" del baúl
+// (kind 'ia', media_type 'audio', meta { type, lang, text, voice_name }).
+const VOICE_TYPES = [
+  { id: 'bienvenida',    label: 'Bienvenida',    dot: 'bg-brand' },
+  { id: 'ppv',           label: 'PPV',           dot: 'bg-emerald-400' },
+  { id: 'coqueto',       label: 'Coqueto',       dot: 'bg-amber-400' },
+  { id: 'explicito',     label: 'Explícito',     dot: 'bg-rose-500' },
+  { id: 'personalizado', label: 'Personalizado', dot: 'bg-paper-mute' },
+];
+const VOICE_LANGS = [
+  { id: 'es', flag: '🇪🇸', label: 'ES' }, { id: 'en', flag: '🇺🇸', label: 'EN' }, { id: 'pt', flag: '🇧🇷', label: 'PT' },
+  { id: 'fr', flag: '🇫🇷', label: 'FR' }, { id: 'de', flag: '🇩🇪', label: 'DE' }, { id: 'it', flag: '🇮🇹', label: 'IT' },
+];
+// Idioma de voz válido para el motor (los del link están todos; fallback 'es').
+const toVoiceLang = (l) => (VOICE_LANGS.some((v) => v.id === l) ? l : 'es');
+
+// Edge function 'voice' (ElevenLabs) — mismo patrón que callFn de /kitchen.
+// Siempre devuelve { ok, ... } o { ok: false, error, needsKey?/needsVoice? }.
+async function callVoice(action, extra) {
+  const { data, error } = await getSupabase().functions.invoke('voice', { body: { action, ...(extra || {}) } });
+  let out = data;
+  if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+  return out || {};
+}
+
+const isVaultAudio = (p) => p?.mediaType === 'audio' || /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac)(\?|#|$)/i.test(String(p?.src || ''));
+// URL de VIDEO (reel de la cocina, mp4 del baúl) → se dibuja con <video>, no con <img>.
+// Ojo: las PORTADAS de reels viven en vault/{cid}/video/poster-*.jpg → con extensión de imagen NUNCA es video.
+const isVideoSrc = (s) => {
+  const u = String(s || '');
+  if (/\.(jpe?g|png|webp|gif|avif)(\?|#|$)/i.test(u)) return false;
+  return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u) || /\/video\//.test(u);
+};
+// Salida de la cocina (foto o video aprobado en /kitchen) → tiene su viral de origen.
+const isKitchenOutput = (p) => p?.kind === 'ia' && /kitchen/i.test(String(p?.caption || '')) && !isVaultAudio(p);
+// Fotos de cocina aprobadas (entrega limpia): proposal-photos/vault/{creatorId}/ia/{generationId}.{ext}
+const KITCHEN_VAULT_GEN_RE = /\/vault\/[^/]+\/ia\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.[a-z0-9]+(?:[?#]|$)/i;
+// Etiqueta/idioma/duración de un audio del baúl (para la tarjeta y el nombre en "voces").
+const audioInfo = (p) => {
+  const meta = p?.meta && typeof p.meta === 'object' ? p.meta : {};
+  const type = VOICE_TYPES.find((v) => v.id === meta.type) || null;
+  const langId = String(meta.lang || '').toLowerCase();
+  const lang = VOICE_LANGS.find((l) => l.id === langId) || null;
+  const secs = Math.round(Number(p?.duration));
+  return {
+    typeLabel: type?.label || 'Audio',
+    dot: type?.dot || 'bg-brand',
+    flag: lang?.flag || (langId ? '🌐' : ''),
+    langLabel: lang?.label || langId.toUpperCase(),
+    dur: Number.isFinite(secs) && secs > 0 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : '',
+    text: typeof meta.text === 'string' && meta.text.trim() ? meta.text.trim() : String(p?.caption || ''),
+  };
+};
 
 const isComplete = (l) => Boolean(l.inspiration && l.real && l.result);
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -109,6 +165,8 @@ export default function PropuestaAdmin() {
 
   // Acceso: admin, o empleado con la capability 'proposals' (Crear propuestas).
   const [access, setAccess] = useState('loading'); // 'loading' | 'ok' | 'denied'
+  // Lista de propuestas a la que se vuelve: admin → /admin; PR (supervisor) → su pestaña en /trabajo (no entra a /admin).
+  const [listHref, setListHref] = useState('/admin?tab=propuestas');
   // Nombre del empleado logueado — se sella en cada propuesta como createdBy
   // (así el dueño ve en /admin › Propuestas quién armó cada una).
   const [authorName, setAuthorName] = useState('');
@@ -123,6 +181,7 @@ export default function PropuestaAdmin() {
         // Crear propuestas es función base de todo el equipo: admin o empleado.
         const ok = !!p && (p.role === 'admin' || p.role === 'supervisor');
         setAccess(ok ? 'ok' : 'denied');
+        setListHref(p?.role === 'supervisor' ? '/trabajo?tab=propuestas' : '/admin?tab=propuestas');
         if (p) {
           setAuthorName(p.full_name || p.stage_name || p.email || '');
           setAuthorId(p.id || '');
@@ -210,13 +269,14 @@ export default function PropuestaAdmin() {
     });
     setCcInput('');
   };
-  // Copia INTERNA (equipo): se elige del equipo; su correo sale de su ficha.
+  // Copia INTERNA (equipo): se elige del equipo; su correo sale de su ficha vía la RPC staff_email (mig 0127) —
+  // la PR no puede leer perfiles del equipo directo (son privados), solo el correo del que elige.
   const addCcStaff = async (staffId) => {
     if (!staffId) return;
     const m = staff.find((x) => x.id === staffId);
     try {
-      const { data } = await getSupabase().from('profiles').select('email').eq('id', staffId).maybeSingle();
-      const email = String(data?.email || '').trim().toLowerCase();
+      const { data } = await getSupabase().rpc('staff_email', { sid: staffId });
+      const email = String(data || '').trim().toLowerCase();
       if (!EMAIL_RE.test(email)) { setCcStaffErr(`${m?.full_name || 'Ese integrante'} no tiene un correo válido en su ficha.`); return; }
       setCcStaffErr('');
       setCcList((s) => (s.some((r) => r.email === email) ? s : [...s, { email, role: 'viewer', internal: true, name: m?.full_name || '' }]));
@@ -253,12 +313,72 @@ export default function PropuestaAdmin() {
   const removeAudio = (id) => setAudios((s) => s.filter((a) => a.id !== id));
   const wantsVisual = proposalType === 'visual' || proposalType === 'both';
   const wantsAudio = proposalType === 'audio' || proposalType === 'both';
+  // Avisos cortos (se borran solos): al agregar una voz del baúl a una propuesta
+  // solo-visual, y cuando se autocompleta la inspiración de un look.
+  const [voiceNote, setVoiceNote] = useState('');
+  // Aviso por look al elegir una foto de la cocina: { id, found } (found = se encontró su viral).
+  const [inspoNote, setInspoNote] = useState(null);
+  const noteTimersRef = useRef({});
+  const flashNote = (key, setter, value, ms) => {
+    setter(value);
+    clearTimeout(noteTimersRef.current[key]);
+    noteTimersRef.current[key] = setTimeout(() => setter(key === 'inspo' ? null : ''), ms);
+  };
+  useEffect(() => () => { Object.values(noteTimersRef.current).forEach((id) => clearTimeout(id)); }, []);
+  // Voz aprobada en /kitchen (baúl → Cocina) → a la bóveda de audios de la propuesta.
+  // NO pasa por assign(): un audio nunca va a un recuadro de foto.
+  const addVaultAudio = (p) => {
+    if (!p?.src) return;
+    const info = audioInfo(p);
+    const label = info.langLabel ? `${info.typeLabel} · ${info.langLabel}` : info.typeLabel;
+    setAudios((prev) => (prev.some((a) => a?.src === p.src) ? prev : [...prev, { id: `vault-${p.id}`, label, src: p.src }]));
+    if (proposalType === 'visual') {
+      setProposalType('both');
+      flashNote('voice', setVoiceNote, 'Pasé la propuesta a Visual + Audio para que la creadora escuche las voces.', 9000);
+    }
+  };
 
   const [name, setName] = useState(presetFor('es').name);
   const [subtitle, setSubtitle] = useState(presetFor('es').subtitle);
   const [intro, setIntro] = useState(presetFor('es').intro);
   const [days, setDays] = useState(30);
   const [lang, setLang] = useState('es');
+
+  // ── Comparativo de voz (real vs IA) ── bloque arriba de los audios: su voz
+  // REAL al lado de un saludo corto con su voz IA (se genera solo, se puede
+  // cambiar). Se guarda como foto en photo_proposals.voice_compare.
+  const [voiceCompare, setVoiceCompare] = useState({ real: null, ia: null, include: true });
+  const [vcVoice, setVcVoice] = useState(null);      // item del summary de ESTA creadora (null = sin voz)
+  const [vcState, setVcState] = useState('idle');    // 'idle' | 'loading' | 'ready' | 'error'
+  const [vcErr, setVcErr] = useState('');
+  const [vcNeedsKey, setVcNeedsKey] = useState(false);
+  const [vcBusy, setVcBusy] = useState(false);       // generando el saludo IA
+  const [vcGreetErr, setVcGreetErr] = useState('');
+  const [vcEditing, setVcEditing] = useState(false); // "Cambiar saludo" abierto
+  const [vcText, setVcText] = useState('');
+  // Comparativo RESTAURADO de una propuesta guardada (+ de qué creadora era):
+  // se respeta tal cual, sin regenerar el saludo.
+  const [vcRestored, setVcRestored] = useState(false);
+  const [vcRestoredOwner, setVcRestoredOwner] = useState('');
+  const vcOwnerRef = useRef('');     // creadora dueña del comparativo actual
+  const vcIaLangRef = useRef('');    // idioma del saludo IA actual
+  const vcAutoRef = useRef('');      // `${creadora}|${idioma}` ya generado solo (no reintenta en loop)
+  const vcLoadedForRef = useRef(''); // creadora cuyo summary ya se leyó
+  // Propuesta cargada para editar que se publicó SIN comparativo (voice_compare null):
+  // para ESA creadora vuelve destildado (no se regenera ni se vuelve a sumar solo).
+  const vcUntickedForRef = useRef('');
+  // Para QUÉ creadora es la propuesta: activa elegida o el sujeto de la interna
+  // (creadora nueva = no se sabe → sin comparativo, salvo uno restaurado).
+  const propCreatorId = recipient.kind === 'active' ? creatorId : recipient.kind === 'internal' ? subjectCreatorId : '';
+  const vcCreatorId = propCreatorId || vcRestoredOwner;
+  const voiceLang = toVoiceLang(lang);
+  const vcCreatorRef = useRef('');
+  vcCreatorRef.current = vcCreatorId;
+  const vcLangRef = useRef('es');
+  vcLangRef.current = voiceLang;
+  const vcRef = useRef(voiceCompare);
+  vcRef.current = voiceCompare;
+
   // CODE de la última publicación (vacío hasta publicar; se rehidrata de
   // 'ls_prop_last' para que el header y las respuestas apunten al último link).
   const [code, setCode] = useState('');
@@ -283,7 +403,54 @@ export default function PropuestaAdmin() {
     { id: 'lk3', caption: '', inspiration: null, real: null, result: null },
   ];
   const [looks, setLooks] = useState(INITIAL_LOOKS.map((l) => ({ ...l })));
+  // Espejo de looks para las búsquedas async (auto-inspiración) sin closures viejos.
+  const looksRef = useRef(looks);
+  looksRef.current = looks;
   const [selectedId, setSelectedId] = useState(INITIAL_LOOKS[0].id);
+
+  // ── "Modelo real" por defecto = la ÚLTIMA foto real subida de la creadora ──
+  // Se llena sola en todo look con el recuadro Real VACÍO (y en los que se
+  // agreguen después). Marcas en el look (no se publican: buildProposal no las lleva):
+  //   realAuto    = la puso esto (se puede reemplazar si cambia la creadora)
+  //   realTouched = el dueño la eligió/quitó a mano → nunca se pisa.
+  const [autoReal, setAutoReal] = useState({ cid: '', src: '' });
+  useEffect(() => {
+    const cid = propCreatorId;
+    if (!cid) { setAutoReal({ cid: '', src: '' }); return; }
+    let cancelled = false;
+    (async () => {
+      let src = '';
+      try {
+        const q = (withMedia) => {
+          let b = getSupabase().from('creator_vault').select('url').eq('creator_id', cid).eq('kind', 'real');
+          if (withMedia) b = b.or('media_type.is.null,media_type.eq.image');
+          return b.order('created_at', { ascending: false }).limit(withMedia ? 1 : 10);
+        };
+        let { data, error } = await q(true);
+        if (error) ({ data } = await q(false)); // base sin media_type todavía
+        const rows = Array.isArray(data) ? data : [];
+        src = String(rows.find((r) => r?.url && !isVideoSrc(r.url) && !isVaultAudio({ src: r.url }))?.url || '');
+      } catch {}
+      if (!cancelled) setAutoReal({ cid, src });
+    })();
+    return () => { cancelled = true; };
+  }, [propCreatorId]);
+  // Solo vale si es de la creadora ACTUAL (mientras llega la nueva, no se usa la vieja).
+  const autoRealSrc = autoReal.cid && autoReal.cid === propCreatorId ? autoReal.src : '';
+  useEffect(() => {
+    const want = autoRealSrc || null;
+    setLooks((s) => {
+      let changed = false;
+      const next = s.map((l) => {
+        if (l.realTouched) return l;           // la tocó el dueño a mano → no se pisa
+        if (l.real && !l.realAuto) return l;   // ya traía una (edición / puesta a mano)
+        if ((l.real || null) === want) return l;
+        changed = true;
+        return { ...l, real: want, realAuto: !!want };
+      });
+      return changed ? next : s;
+    });
+  }, [autoRealSrc]);
 
   const [picker, setPicker] = useState(null);
   const [pickerQ, setPickerQ] = useState('');
@@ -351,6 +518,24 @@ export default function PropuestaAdmin() {
         if (Array.isArray(data.logos)) setLogos(data.logos);
         if (['visual', 'audio', 'both'].includes(data.proposal_type)) setProposalType(data.proposal_type);
         if (Array.isArray(data.audios)) setAudios(data.audios.filter((a) => a?.src).map((a) => ({ id: a.id || `au-${Math.random().toString(36).slice(2, 9)}`, label: a.label || 'Audio', src: a.src })));
+        // Comparativo de voz guardado → se restaura TAL CUAL (NO se regenera el saludo).
+        const vc = data.voice_compare;
+        if (vc && typeof vc === 'object' && vc.real?.src && vc.ia?.src) {
+          const owner = data.recipient_user_id || '';
+          vcOwnerRef.current = owner;
+          vcIaLangRef.current = toVoiceLang(PROP_LANGS.includes(data.lang) ? data.lang : 'es');
+          setVcRestoredOwner(owner);
+          setVcRestored(true);
+          setVoiceCompare({
+            real: { src: vc.real.src, label: vc.real.label || 'Tu voz real' },
+            ia: { src: vc.ia.src, label: vc.ia.label || 'Tu voz con IA', text: typeof vc.ia.text === 'string' ? vc.ia.text : '' },
+            include: true,
+          });
+        } else if ((data.proposal_type === 'audio' || data.proposal_type === 'both') && data.recipient_user_id) {
+          // Se publicó con audio pero SIN comparativo → lo destildaron: vuelve destildado
+          // (sin gastar un saludo nuevo ni re-sumarlo al republicar).
+          vcUntickedForRef.current = data.recipient_user_id;
+        }
         if (data.expires_at) {
           const rem = Math.ceil((new Date(data.expires_at).getTime() - Date.now()) / 86400000);
           const snap = [3, 7, 10, 14, 30].reduce((a, b) => (Math.abs(b - rem) < Math.abs(a - rem) ? b : a), 30);
@@ -396,6 +581,120 @@ export default function PropuestaAdmin() {
     })();
   }, []);
 
+  // ── Comparativo de voz: lógica ──
+  // Si cambia la creadora de la propuesta, el comparativo anterior ya no vale
+  // (era la voz de otra) → se arranca de cero para la nueva.
+  useEffect(() => {
+    if (!vcCreatorId || vcOwnerRef.current === vcCreatorId) return;
+    vcOwnerRef.current = vcCreatorId;
+    vcIaLangRef.current = '';
+    vcAutoRef.current = '';
+    vcLoadedForRef.current = '';
+    setVoiceCompare({ real: null, ia: null, include: vcUntickedForRef.current !== vcCreatorId });
+    setVcVoice(null); setVcState('idle'); setVcErr(''); setVcNeedsKey(false);
+    setVcGreetErr(''); setVcEditing(false); setVcText('');
+    setVcRestored(false); setVcRestoredOwner('');
+  }, [vcCreatorId]);
+
+  // Lee la voz de la creadora (summary): voz fija, su voz REAL y el saludo guardado.
+  // force = "Recargar" (re-lee y pisa la voz real con la de la cartilla).
+  const loadVoiceSummary = async (force = false) => {
+    const cid = vcCreatorRef.current;
+    if (!cid) return;
+    setVcState('loading'); setVcErr(''); setVcNeedsKey(false);
+    let out = {};
+    try { out = await callVoice('summary'); } catch (e) { out = { ok: false, error: e?.message || '' }; }
+    if (vcCreatorRef.current !== cid) return; // cambió la creadora mientras tanto
+    if (!out?.ok) {
+      setVcVoice(null); setVcState('error');
+      setVcErr(out?.error || 'No pude leer las voces. Reintentá.');
+      setVcNeedsKey(!!out?.needsKey);
+      return;
+    }
+    if (out.configured === false) {
+      setVcVoice(null); setVcState('error');
+      setVcErr('ElevenLabs no está configurado todavía.');
+      setVcNeedsKey(true);
+      return;
+    }
+    const item = (Array.isArray(out.voices) ? out.voices : []).find((v) => v?.creator_id === cid) || null;
+    if (item) {
+      const cur = vcRef.current;
+      let next = cur;
+      if (item.real_url && (force || !cur.real?.src)) next = { ...next, real: { src: item.real_url, label: 'Tu voz real' } };
+      // Ya hay un saludo guardado en ESTE idioma → se usa directo (sin generar).
+      if (!cur.ia?.src && item.greeting_url && toVoiceLang(item.greeting_lang) === vcLangRef.current) {
+        vcIaLangRef.current = vcLangRef.current;
+        next = { ...next, ia: { src: item.greeting_url, label: 'Tu voz con IA', text: String(item.greeting_text || '') } };
+      }
+      if (next !== cur) setVoiceCompare(next);
+    }
+    setVcVoice(item);
+    setVcState('ready');
+  };
+
+  // Saludo con su voz IA. opts: {} (el automático/cacheado), { text } o { force: true }.
+  const makeGreeting = async (opts = {}) => {
+    const cid = vcCreatorRef.current;
+    const lg = vcLangRef.current;
+    if (!cid) return;
+    setVcBusy(true); setVcGreetErr('');
+    let out = {};
+    try { out = await callVoice('make_greeting', { creator_id: cid, lang: lg, ...opts }); } catch (e) { out = { ok: false, error: e?.message || '' }; }
+    setVcBusy(false);
+    if (vcCreatorRef.current !== cid) return; // cambió la creadora mientras generaba
+    if (!out?.ok || !out.url) {
+      setVcGreetErr(out?.error || 'No se pudo generar el saludo. Reintentá.');
+      if (out?.needsKey) setVcNeedsKey(true);
+      if (out?.needsVoice) {
+        // Le desvincularon la voz: el bloque se oculta → el saludo IA viejo tampoco se guarda.
+        setVcVoice(null);
+        setVoiceCompare((s) => ({ ...s, ia: null }));
+      }
+      return;
+    }
+    vcIaLangRef.current = toVoiceLang(out.lang || lg);
+    setVoiceCompare((s) => ({ ...s, ia: { src: out.url, label: 'Tu voz con IA', text: String(out.text || opts.text || '') } }));
+    setVcEditing(false);
+  };
+  const submitGreeting = () => {
+    const tx = vcText.trim();
+    makeGreeting(tx ? { text: tx } : { force: true });
+  };
+
+  // Al llegar a los audios (paso 3) con una creadora conocida → leer su voz (una vez por creadora).
+  useEffect(() => {
+    if (step !== 3 || !wantsAudio || !vcCreatorId) return;
+    if (vcLoadedForRef.current === vcCreatorId) return;
+    vcLoadedForRef.current = vcCreatorId;
+    loadVoiceSummary(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, wantsAudio, vcCreatorId]);
+
+  // Saludo IA automático: una vez cuando aparece el bloque y no hay saludo, o
+  // si cambió el idioma de la propuesta. Uno restaurado NO se regenera. Destildado
+  // = no se genera nada (recién al tildarlo el equipo).
+  useEffect(() => {
+    if (step !== 3 || !wantsAudio || !vcCreatorId || !vcVoice || vcState !== 'ready' || vcBusy || !voiceCompare.include) return;
+    if (voiceCompare.ia?.src && vcIaLangRef.current === voiceLang) return;
+    const key = `${vcCreatorId}|${voiceLang}`;
+    if (vcAutoRef.current === key) return;
+    vcAutoRef.current = key;
+    makeGreeting();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, wantsAudio, vcCreatorId, vcVoice, vcState, vcBusy, voiceCompare.ia?.src, voiceLang, voiceCompare.include]);
+
+  const vcHasBoth = !!(voiceCompare.real?.src && voiceCompare.ia?.src);
+  const showVcBlock = wantsAudio && ((!!vcCreatorId && !!vcVoice) || (vcRestored && vcHasBoth));
+  // Lo que se GUARDA: solo con audio, las dos voces y el chulito prendido — y SOLO
+  // si el bloque está a la vista (lo guardado = lo que ve el equipo).
+  const vcForSave = (showVcBlock && voiceCompare.include && vcHasBoth && (vcCreatorId || vcRestored))
+    ? {
+        real: { src: voiceCompare.real.src, label: 'Tu voz real' },
+        ia: { src: voiceCompare.ia.src, label: 'Tu voz con IA', text: voiceCompare.ia.text || '' },
+      }
+    : null;
+
   useEffect(() => {
     if (!picker) return;
     const onKey = (e) => { if (e.key === 'Escape') setPicker(null); };
@@ -425,7 +724,8 @@ export default function PropuestaAdmin() {
   const moveDown = (i) => setLooks((s) => { if (i === s.length - 1) return s; const a = [...s]; [a[i + 1], a[i]] = [a[i], a[i + 1]]; return a; });
   const addLook = () => {
     const id = `lk-${Math.random().toString(36).slice(2, 8)}`;
-    setLooks((s) => [...s, { id, caption: '', inspiration: null, real: null, result: null }]);
+    // Arranca con la última real subida de la creadora (si hay) en "Modelo real".
+    setLooks((s) => [...s, { id, caption: '', inspiration: null, real: autoRealSrc || null, realAuto: !!autoRealSrc, result: null }]);
     setSelectedId(id);
   };
 
@@ -447,7 +747,7 @@ export default function PropuestaAdmin() {
   const defaultVaultCreator = () => creatorId || subjectCreatorId || '';
   const openPicker = (lookId, slot) => {
     setPicker({ target: 'look', lookId, slotKey: slot.key, slotLabel: t[slot.tKey] });
-    setPickerKind('all'); // SIEMPRE arranca en "Todos" (no pre-filtra por slot)
+    setPickerKind(slot.key === 'real' ? 'real' : 'ia'); // arranca en COCINA (en Modelo real: sus fotos reales)
     setPickerQ('');
     setVaultCreatorQ('');
     setVaultCreatorId((cur) => cur || defaultVaultCreator());
@@ -459,13 +759,84 @@ export default function PropuestaAdmin() {
     setVaultCreatorQ('');
     setVaultCreatorId((cur) => cur || defaultVaultCreator());
   };
-  const assign = (src) => {
+  // item (opcional) = la tarjeta del baúl elegida; con ella sabemos si es una
+  // salida de /kitchen. Una foto de la cocina va SIEMPRE al Resultado (nunca es
+  // inspiración ni "modelo real"), desde cualquier recuadro del look, y su viral
+  // se pone sola como Inspiración → las dos fotos de una.
+  const assign = (src, item) => {
     if (picker) {
       if (picker.target === 'cover') setCoverUrl(src);
       else if (picker.target === 'closing') setClosingUrl(src);
-      else setLook(picker.lookId, { [picker.slotKey]: src });
+      else {
+        const lookId = picker.lookId;
+        const prevInspo = looksRef.current.find((l) => l.id === lookId)?.inspiration ?? null;
+        if (isKitchenOutput(item)) {
+          setLook(lookId, { result: src });
+          autoInspiration(lookId, src, prevInspo);
+        } else if (picker.slotKey === 'real') {
+          setLook(lookId, { real: src, realAuto: false, realTouched: true }); // elegida a mano
+        } else {
+          setLook(lookId, { [picker.slotKey]: src });
+        }
+      }
     }
     setPicker(null);
+  };
+
+  // La VIRAL de la que salió un resultado de cocina (generations.reference_url).
+  // approve_gen reescribe result_url a la URL limpia del baúl → matchea directo;
+  // si no, sacamos el id de la ruta vault/{creadora}/ia/{generationId}.{ext}.
+  // Las variaciones (carousel_of) tienen de referencia la foto madre → subimos
+  // hasta la original para llegar a la viral de verdad. '' = no se encontró.
+  const findKitchenViral = async (src) => {
+    const sb = getSupabase();
+    const cols = 'id, reference_url, carousel_of';
+    let row = null;
+    try {
+      const { data } = await sb.from('generations').select(cols).eq('result_url', src).limit(1);
+      row = Array.isArray(data) ? data[0] || null : null;
+    } catch {}
+    if (!row) {
+      const m = KITCHEN_VAULT_GEN_RE.exec(String(src || ''));
+      if (m) {
+        try {
+          const { data } = await sb.from('generations').select(cols).eq('id', m[1]).maybeSingle();
+          row = data || null;
+        } catch {}
+      }
+    }
+    for (let hops = 0; row?.carousel_of && hops < 6; hops++) {
+      try {
+        const { data } = await sb.from('generations').select(cols).eq('id', row.carousel_of).maybeSingle();
+        row = data || null;
+      } catch { row = null; }
+    }
+    const ref = String(row?.reference_url || '');
+    // Si la viral era un REEL (mp4), la Inspiración se dibuja con <img> → usamos su PORTADA del baúl
+    // (las filas 'ref' de video guardan url = portada, video_url = el mp4). Sin portada, no tocamos nada.
+    if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(ref) || /\/video\//.test(ref)) {
+      try {
+        const { data } = await sb.from('creator_vault').select('url').eq('video_url', ref).limit(1);
+        const poster = Array.isArray(data) ? data[0]?.url || '' : '';
+        return poster && poster !== ref ? poster : '';
+      } catch { return ''; }
+    }
+    return ref;
+  };
+
+  // AUTO-INSPIRACIÓN: al elegir una foto de /kitchen (va al Resultado), se pone
+  // sola la viral original en la Inspiración de ESE look. Se aplica solo si el
+  // look sigue existiendo, sigue con ese resultado y nadie tocó la inspiración a
+  // mano mientras tanto (si cambió algo, ni se toca ni se avisa). Sin viral →
+  // aviso para elegir la inspiración a mano.
+  const autoInspiration = async (lookId, src, prevInspo) => {
+    const ref = await findKitchenViral(src);
+    const still = (l) => l.id === lookId && l.result === src && (l.inspiration ?? null) === prevInspo;
+    const cur = looksRef.current.find((l) => l.id === lookId);
+    if (!cur || !still(cur)) return;
+    if (!ref) { flashNote('inspo', setInspoNote, { id: lookId, found: false }, 9000); return; }
+    setLooks((s) => s.map((l) => (still(l) ? { ...l, inspiration: ref } : l)));
+    flashNote('inspo', setInspoNote, { id: lookId, found: true }, 6000);
   };
 
   // Cargar el baúl de la creadora elegida (cacheado por creadora).
@@ -478,11 +849,14 @@ export default function PropuestaAdmin() {
     setVaultLoading(true);
     (async () => {
       try {
-        const { data } = await getSupabase()
+        // duration + meta: los AUDIOS de la cocina traen ahí etiqueta/idioma/guion.
+        const load = (cols) => getSupabase()
           .from('creator_vault')
-          .select('id, kind, url, caption, created_at')
+          .select(cols)
           .eq('creator_id', vaultCreatorId)
           .order('created_at', { ascending: false });
+        let { data, error } = await load('id, kind, url, caption, created_at, media_type, video_url, duration, meta');
+        if (error && !cancelled) ({ data } = await load('id, kind, url, caption, created_at, media_type, video_url'));
         if (cancelled) return;
         const rows = Array.isArray(data) ? data : [];
         vaultCacheRef.current[vaultCreatorId] = rows;
@@ -558,6 +932,7 @@ export default function PropuestaAdmin() {
     // distinto de "Todos", ese; si no, el del recuadro desde donde se abrió.
     const slotKind = picker?.target === 'look' ? (SLOTS.find((s) => s.key === picker.slotKey)?.kind || 'ia') : 'ia';
     const uploadKind = (pickerKind && pickerKind !== 'all') ? pickerKind : slotKind;
+    if (uploadKind === 'ia') { setUploadErr('La Cocina se llena sola al aprobar en /kitchen. Para subir a mano, elegí «Inspiración» o «Real de la modelo».'); return; }
     const cid = vaultCreatorId;
     setUploadBusy(true);
     setUploadErr('');
@@ -707,7 +1082,11 @@ export default function PropuestaAdmin() {
   // globales locales (fallback para creadora "nueva" sin cuenta todavía).
   const baulSource = useMemo(() => (
     vaultCreatorId
-      ? vaultRows.map((r) => ({ id: r.id, src: r.url, kind: r.kind, caption: r.caption || '' }))
+      ? vaultRows
+          // COCINA = SOLO lo aprobado con ❤️ desde /kitchen (caption "Generada en /kitchen" / "Video generado en /kitchen").
+          // El resto de kind='ia' (imports viejos con nombre "hf ...", que el dueño NUNCA aprobó) NO se muestra en la propuesta.
+          .filter((r) => r.kind !== 'ia' || /kitchen/i.test(String(r.caption || '')))
+          .map((r) => ({ id: r.id, src: r.url, kind: r.kind, caption: r.caption || '', mediaType: r.media_type, videoUrl: r.video_url, duration: r.duration, meta: r.meta }))
       : uploads.map((u) => ({ id: u.id, src: u.src, kind: u.kind, caption: u.caption || '' }))
   ), [vaultCreatorId, vaultRows, uploads]);
 
@@ -715,7 +1094,12 @@ export default function PropuestaAdmin() {
     const q = pickerQ.trim().toLowerCase();
     return baulSource.filter((p) => {
       if (pickerKind !== 'all' && p.kind !== pickerKind) return false;
-      if (q && !(p.caption || '').toLowerCase().includes(q)) return false;
+      if (q) {
+        // Audios: también por el guion (meta.text) y la etiqueta (Bienvenida, PPV…).
+        const hay = [p.caption, typeof p.meta?.text === 'string' ? p.meta.text : '', isVaultAudio(p) ? audioInfo(p).typeLabel : '']
+          .join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
   }, [baulSource, pickerKind, pickerQ]);
@@ -735,6 +1119,8 @@ export default function PropuestaAdmin() {
     ? ((pickerKind && pickerKind !== 'all') ? pickerKind : (picker.target === 'look' ? (SLOTS.find((s) => s.key === picker.slotKey)?.kind || 'ia') : 'ia'))
     : 'ia';
   const uploadKindLabel = (VAULT_KINDS.find((v) => v.kind === uploadKindNow) || {}).label || 'el baúl';
+  // La Cocina se llena SOLA al aprobar en /kitchen: no se sube a mano ahí (se escondería por el filtro de Cocina).
+  const uploadBlocked = uploadKindNow === 'ia';
 
   const creatorAvatar = (c, px = 24) => {
     const initials = (c?.full_name || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
@@ -755,15 +1141,65 @@ export default function PropuestaAdmin() {
     try { await getSupabase().from('creator_vault').delete().eq('id', id); } catch {}
   };
 
+  // Tarjeta de AUDIO del baúl (voz aprobada en /kitchen): se escucha acá mismo y
+  // se agrega a la bóveda de audios. NUNCA llama a assign() (no va a un recuadro de foto).
+  const stopEv = (e) => e.stopPropagation();
+  const renderVaultAudio = (p) => {
+    const info = audioInfo(p);
+    const inVoces = Array.isArray(audios) && audios.some((a) => a?.src === p.src);
+    return (
+      <div className="flex w-full flex-col gap-1 p-1.5 text-left sm:aspect-[9/16]">
+        <div className="flex min-w-0 items-center gap-1 pr-6">
+          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-brand/15 text-brand"><AudioLines size={11} /></span>
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${info.dot}`} />
+          <span className="min-w-0 truncate text-[10px] font-semibold text-paper">{info.typeLabel}</span>
+        </div>
+        {(info.flag || info.dur) && (
+          <div className="flex items-center gap-1 font-mono text-[9px] text-paper-mute">
+            {info.flag && <span>{info.flag} {info.langLabel}</span>}
+            {info.dur && <span className="text-paper-dim">{info.flag ? '· ' : ''}{info.dur}</span>}
+          </div>
+        )}
+        <p className="line-clamp-3 min-h-0 flex-1 overflow-hidden text-[9px] leading-snug text-paper-mute">{info.text}</p>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <audio
+          controls
+          preload="none"
+          src={p.src}
+          onClick={stopEv}
+          onPointerDown={stopEv}
+          onMouseDown={stopEv}
+          className="h-8 w-full"
+        />
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); if (!inVoces) addVaultAudio(p); }}
+          disabled={inVoces}
+          className={inVoces
+            ? 'w-full rounded-md border border-brand/40 bg-brand/10 px-1.5 py-1 text-[9px] font-semibold text-brand'
+            : 'btn3d w-full rounded-md px-1.5 py-1 text-[9px] font-semibold'}
+          title={inVoces ? 'Ya está en los audios de la propuesta' : 'Agregar a los audios de la propuesta'}
+        >
+          {inVoces ? 'En voces ✓' : 'Agregar a voces'}
+        </button>
+      </div>
+    );
+  };
+
+  // Tiles VERTICALES (9:16) con la foto ENTERA (object-contain sobre fondo oscuro):
+  // los reels y las fotos verticales se ven completas, con la cara.
   const renderVaultGrid = (items) => (
-    <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 md:grid-cols-6">
       {items.map((p) => (
         <div
           key={p.id}
           className="group relative overflow-hidden rounded-xl border border-line bg-ink-2 transition-colors hover:border-brand/60"
         >
-          <button type="button" onClick={() => assign(p.src)} className="block w-full">
-            <img src={p.src} alt="" className="aspect-[4/5] w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+          {isVaultAudio(p) ? renderVaultAudio(p) : (
+          <button type="button" onClick={() => assign(p.src, p)} className="block w-full">
+            {(p.mediaType === 'video' || isVideoSrc(p.src))
+              ? <><video src={`${String(p.videoUrl || p.src).split('#')[0]}#t=0.1`} muted playsInline preload="metadata" className="aspect-[9/16] w-full bg-black/40 object-contain" /><span className="pointer-events-none absolute inset-0 grid place-items-center"><span className="grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white backdrop-blur"><Play size={14} className="fill-current" /></span></span><span className="pointer-events-none absolute left-1 top-1 rounded-full bg-black/65 px-1.5 py-0.5 text-[8px] font-bold tracking-wide text-white">VIDEO</span></>
+              : <img src={p.src} alt="" className="aspect-[9/16] w-full bg-black/40 object-contain transition-transform duration-300 group-hover:scale-105" />}
             <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-1.5">
               <div className="flex items-center gap-1">
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${KIND_DOT[p.kind] || 'bg-white/40'}`} />
@@ -771,6 +1207,7 @@ export default function PropuestaAdmin() {
               </div>
             </div>
           </button>
+          )}
           {/* Botón borrar (aparece al pasar el mouse). */}
           <button
             type="button"
@@ -783,7 +1220,7 @@ export default function PropuestaAdmin() {
           {/* Confirmación de borrado (tapa la tarjeta para no asignar sin querer). */}
           {confirmDeleteId === p.id && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-1.5 bg-black/85 p-2 text-center">
-              <span className="text-[10px] font-medium text-white">¿Borrar esta foto?</span>
+              <span className="text-[10px] font-medium text-white">{isVaultAudio(p) ? '¿Borrar este audio?' : '¿Borrar esta foto?'}</span>
               <div className="flex gap-1.5">
                 <button type="button" onClick={(e) => { e.stopPropagation(); deleteVaultPhoto(p.id); }} className="rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold text-white transition-colors hover:bg-rose-500">Sí, borrar</button>
                 <button type="button" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }} className="rounded-full border border-line px-2.5 py-1 text-[10px] font-semibold text-paper-mute transition-colors hover:text-paper">No</button>
@@ -823,6 +1260,9 @@ export default function PropuestaAdmin() {
     logos,
     proposalType,
     audios: audios.filter((a) => a?.src).map(({ id, label, src }) => ({ id, label, src })),
+    // Comparativo de voz para el preview /p/demo (mismo nombre que la columna + camelCase).
+    voice_compare: vcForSave,
+    voiceCompare: vcForSave,
     createdBy: authorName || '',
     looks: (includeIncomplete ? looks : looks.filter(isComplete))
       .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
@@ -859,6 +1299,8 @@ export default function PropuestaAdmin() {
       logos,
       proposal_type: proposalType,
       audios: audios.filter((a) => a?.src).map(({ id, label, src }) => ({ id, label, src })),
+      // Comparativo de voz (real vs IA): null si es solo visual, falta una voz o se destildó.
+      voice_compare: vcForSave,
       looks: looks
         .filter(isComplete)
         .map(({ id, caption, inspiration, real, result }) => ({ id, caption, inspiration, real, result })),
@@ -890,20 +1332,32 @@ export default function PropuestaAdmin() {
     };
     try {
       const sb = getSupabase();
+      // Si la base todavía no tiene la columna voice_compare (migración sin
+      // aplicar), se reintenta sin ella para que publicar NUNCA se trabe.
+      const missingVcCol = (err) => !!err && /voice_compare/i.test(String(err.message || '')) && 'voice_compare' in content;
       if (editing) {
         // EDITAR: actualiza la MISMA propuesta (mismo link, mismo autor).
-        const { error } = await sb.from('photo_proposals').update(content).eq('link_id', editCode);
+        let { error } = await sb.from('photo_proposals').update(content).eq('link_id', editCode);
+        if (missingVcCol(error)) {
+          delete content.voice_compare;
+          ({ error } = await sb.from('photo_proposals').update(content).eq('link_id', editCode));
+        }
         if (error) throw error;
         const { data: idRow } = await sb.from('photo_proposals').select('id, approval_token').eq('link_id', editCode).maybeSingle();
         setProposalId(idRow?.id ?? null);
         setApprovalToken(idRow?.approval_token || '');
       } else {
         // CREAR: link_id nuevo + autor.
-        const { data, error } = await sb
+        const insertRow = () => sb
           .from('photo_proposals')
           .insert({ link_id: newCode, created_by: authorId || null, created_by_name: authorName || '', ...content })
           .select('id, approval_token')
           .single();
+        let { data, error } = await insertRow();
+        if (missingVcCol(error)) {
+          delete content.voice_compare;
+          ({ data, error } = await insertRow());
+        }
         if (error) throw error;
         setProposalId(data?.id ?? null);
         setApprovalToken(data?.approval_token || '');
@@ -1090,7 +1544,7 @@ export default function PropuestaAdmin() {
           <div className="flex min-w-0 items-center gap-4">
             <button
               type="button"
-              onClick={() => { if (step > 1) setStep((s) => Math.max(1, s - 1)); else router.push('/admin?tab=propuestas'); }}
+              onClick={() => { if (step > 1) setStep((s) => Math.max(1, s - 1)); else router.push(listHref); }}
               className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper"
               title={step > 1 ? 'Paso anterior' : 'Volver a Propuestas'}
             >
@@ -1644,15 +2098,20 @@ export default function PropuestaAdmin() {
                           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${slot.dot}`} />
                           <span className="truncate font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-paper-mute">{t[slot.tKey]}</span>
                         </div>
+                        {/* Recuadro VERTICAL con la foto ENTERA (object-contain): se ve la cara y los reels completos. */}
                         {l[slot.key] ? (
-                          <div className="group relative h-28 overflow-hidden rounded-xl border border-line bg-ink-2 sm:h-32">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={l[slot.key]} alt="" className="h-full w-full object-cover" />
+                          <div className="group relative aspect-[3/4] max-h-[300px] w-full overflow-hidden rounded-xl border border-line bg-black/40">
+                            <LookMedia src={l[slot.key]} className="h-full w-full object-contain" />
+                            {slot.key === 'real' && l.realAuto && (
+                              <span className="pointer-events-none absolute inset-x-1 bottom-1 truncate rounded-md bg-black/60 px-1 py-0.5 text-center text-[8px] font-medium text-white/60">
+                                Última real subida
+                              </span>
+                            )}
                             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                               <button type="button" onClick={(e) => { e.stopPropagation(); openPicker(l.id, slot); }} className="rounded-full bg-white/95 px-2.5 py-0.5 text-[10px] font-semibold text-ink">
                                 {t.change}
                               </button>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); setLook(l.id, { [slot.key]: null }); }} className="rounded-full bg-black/60 px-2.5 py-0.5 text-[10px] font-semibold text-white/85">
+                              <button type="button" onClick={(e) => { e.stopPropagation(); setLook(l.id, slot.key === 'real' ? { real: null, realAuto: false, realTouched: true } : { [slot.key]: null }); }} className="rounded-full bg-black/60 px-2.5 py-0.5 text-[10px] font-semibold text-white/85">
                                 {t.remove}
                               </button>
                             </div>
@@ -1661,7 +2120,7 @@ export default function PropuestaAdmin() {
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); openPicker(l.id, slot); }}
-                            className="grid h-28 w-full place-items-center rounded-xl border-2 border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-paper-mute sm:h-32"
+                            className="grid aspect-[3/4] max-h-[300px] w-full place-items-center rounded-xl border-2 border-dashed border-line text-paper-dim transition-colors hover:border-brand/50 hover:text-paper-mute"
                           >
                             <span className="flex flex-col items-center gap-1 px-2 text-center">
                               <ImagePlus size={15} />
@@ -1673,6 +2132,15 @@ export default function PropuestaAdmin() {
                     ))}
                   </div>
 
+                  {inspoNote?.id === l.id && (inspoNote.found ? (
+                    <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-emerald-300">
+                      ✓ Resultado + su viral como inspiración
+                    </div>
+                  ) : (
+                    <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-amber-300">
+                      Puse tu foto como Resultado — no encontré su viral, elegí la inspiración a mano
+                    </div>
+                  ))}
                   {!isComplete(l) && (
                     <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-paper-mute">
                       <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> {t.lookEmpty}
@@ -1705,6 +2173,169 @@ export default function PropuestaAdmin() {
                   {pad2(audios.length)} audios
                 </span>
               </div>
+              {voiceNote && <p className="mb-3 rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-xs text-paper">{voiceNote}</p>}
+
+              {/* ── Comparativo de voz: su voz REAL al lado de su voz con IA. En la
+                   propuesta sale ARRIBA de todo, antes de las voces. ── */}
+              {vcCreatorId && !showVcBlock && vcState === 'loading' && (
+                <p className="mb-4 flex items-center gap-2 rounded-2xl border border-line bg-ink-2/60 px-3.5 py-2.5 text-[12px] text-paper-mute">
+                  <RefreshCw size={12} className="shrink-0 animate-spin" /> Buscando la voz de la modelo…
+                </p>
+              )}
+              {vcCreatorId && !showVcBlock && vcState === 'error' && (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-rose-500/30 bg-rose-500/[0.06] px-3.5 py-2.5 text-[12px] text-rose-200">
+                  <span className="min-w-0 flex-1">
+                    Comparativo de voz: {vcErr}
+                    {vcNeedsKey && <> <Link href="/conexion" className="font-semibold text-paper underline underline-offset-2">Configurar en Conexión</Link></>}
+                  </span>
+                  <button type="button" onClick={() => loadVoiceSummary(true)} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold">
+                    <RefreshCw size={12} /> Reintentar
+                  </button>
+                </div>
+              )}
+              {vcCreatorId && !showVcBlock && vcState === 'ready' && !vcVoice && (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-ink-2/60 px-3.5 py-2.5 text-[12px] text-paper-mute">
+                  <Mic size={13} className="shrink-0 text-paper-dim" />
+                  <span className="min-w-0 flex-1">Esta modelo no tiene voz todavía — configurala en su cartilla (Admin → Creadoras → Voz)</span>
+                  <button type="button" onClick={() => loadVoiceSummary(true)} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold">
+                    <RefreshCw size={12} /> Recargar
+                  </button>
+                </div>
+              )}
+              {showVcBlock && (
+                <section className="card3d mb-4 rounded-3xl border border-line bg-card p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand/15 text-brand"><AudioLines size={13} /></span>
+                        <h3 className="font-display text-base font-bold text-paper">Comparativo de voz</h3>
+                      </div>
+                      <p className="mt-1 text-[12px] leading-relaxed text-paper-mute">La creadora escucha su voz real al lado de su voz con IA. Sale arriba de todo, antes de los audios.</p>
+                    </div>
+                    {vcVoice?.voice_name && <span className="mt-1 max-w-[40%] shrink-0 truncate font-mono text-[10px] text-paper-dim">{vcVoice.voice_name}</span>}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {/* Su voz real */}
+                    <div className="flex min-w-0 flex-col rounded-2xl border border-line bg-ink-2 p-3">
+                      <div className="mb-2 flex items-center gap-1.5">
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">Su voz real</span>
+                      </div>
+                      {voiceCompare.real?.src ? (
+                        // eslint-disable-next-line jsx-a11y/media-has-caption
+                        <audio controls preload="none" src={voiceCompare.real.src} className="h-9 w-full" />
+                      ) : (
+                        <div className="flex flex-col items-start gap-2">
+                          <p className="text-[12px] leading-snug text-paper-mute">Cargá su voz real en la cartilla → Voz → Voz real</p>
+                          {vcCreatorId && (
+                            <button
+                              type="button"
+                              onClick={() => loadVoiceSummary(true)}
+                              disabled={vcState === 'loading'}
+                              className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold disabled:opacity-50"
+                            >
+                              <RefreshCw size={12} className={vcState === 'loading' ? 'animate-spin' : ''} /> {vcState === 'loading' ? 'Recargando…' : 'Recargar'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Su voz con IA (saludo corto, se genera solo) */}
+                    <div className="flex min-w-0 flex-col rounded-2xl border border-line bg-ink-2 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+                          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">Su voz con IA</span>
+                        </span>
+                        {vcCreatorId && vcVoice && voiceCompare.ia?.src && !vcEditing && !vcBusy && (
+                          <button
+                            type="button"
+                            onClick={() => { setVcText(String(voiceCompare.ia?.text || '').slice(0, 300)); setVcGreetErr(''); setVcEditing(true); }}
+                            className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-paper-mute transition-colors hover:text-paper"
+                          >
+                            <Wand2 size={12} /> Cambiar saludo
+                          </button>
+                        )}
+                      </div>
+                      {vcBusy ? (
+                        <p className="flex items-center gap-1.5 text-[12px] text-paper-mute">
+                          <RefreshCw size={12} className="shrink-0 animate-spin" /> Generando saludo…
+                        </p>
+                      ) : voiceCompare.ia?.src ? (
+                        <>
+                          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                          <audio controls preload="none" src={voiceCompare.ia.src} className="h-9 w-full" />
+                          {voiceCompare.ia.text && <p className="mt-2 text-[12px] italic leading-snug text-paper-mute">“{voiceCompare.ia.text}”</p>}
+                        </>
+                      ) : (vcCreatorId && vcVoice) ? (
+                        <button
+                          type="button"
+                          onClick={() => makeGreeting()}
+                          className="btn3d-ghost inline-flex items-center gap-1.5 self-start rounded-full px-3 py-1 text-[11px] font-semibold"
+                        >
+                          <Wand2 size={12} /> Generar saludo
+                        </button>
+                      ) : null}
+                      {vcGreetErr && !vcBusy && (
+                        <p className="mt-2 text-[11px] leading-snug text-rose-300">
+                          {vcGreetErr}
+                          {vcNeedsKey && <> <Link href="/conexion" className="font-semibold text-paper underline underline-offset-2">Configurar en Conexión</Link></>}
+                        </p>
+                      )}
+                      {vcEditing && !vcBusy && (
+                        <div className="mt-2.5 space-y-2">
+                          <input
+                            value={vcText}
+                            onChange={(e) => setVcText(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitGreeting(); } }}
+                            maxLength={300}
+                            autoFocus
+                            placeholder="Escribí el saludo (vacío = uno nuevo automático)"
+                            className="w-full rounded-xl border border-line bg-ink px-3 py-2 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60"
+                          />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button type="button" onClick={submitGreeting} className="btn3d inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold">
+                              <Wand2 size={12} /> Generar
+                            </button>
+                            <button type="button" onClick={() => setVcEditing(false)} className="btn3d-ghost rounded-full px-3.5 py-1.5 text-xs font-semibold">
+                              Cancelar
+                            </button>
+                            {/* El motor corta los saludos a 300 caracteres. */}
+                            <span className="ml-auto font-mono text-[10px] tabular-nums text-paper-dim">{vcText.length} / 300</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Incluir o no el comparativo (prendido por defecto cuando están las dos voces).
+                      Destildado se puede volver a tildar aunque falte el saludo: al tildarlo se genera. */}
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={vcHasBoth && voiceCompare.include}
+                    onClick={() => { if (vcHasBoth || !voiceCompare.include) setVoiceCompare((s) => ({ ...s, include: !s.include })); }}
+                    disabled={!vcHasBoth && voiceCompare.include}
+                    className="mt-3 flex w-full items-start gap-3 rounded-xl border border-line bg-ink-2/40 p-3 text-left disabled:opacity-60"
+                  >
+                    <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${vcHasBoth && voiceCompare.include ? 'border-brand bg-brand text-on-accent' : 'border-line'}`}>
+                      {vcHasBoth && voiceCompare.include && <Check size={13} />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-paper">Incluir el comparativo en la propuesta</span>
+                      <span className="mt-0.5 block text-[11px] leading-relaxed text-paper-mute">
+                        {vcHasBoth
+                          ? 'Sale arriba de los audios: «Tu voz real» al lado de «Tu voz con IA».'
+                          : !voiceCompare.include
+                            ? 'Destildado: no sale en la propuesta. Tildalo para generar el saludo con su voz IA.'
+                            : 'Necesita las dos voces (real + IA) para salir en la propuesta.'}
+                      </span>
+                    </span>
+                  </button>
+                </section>
+              )}
 
               <div className="space-y-3">
                 {audios.map((a, i) => (
@@ -1766,12 +2397,11 @@ export default function PropuestaAdmin() {
                           <span className="truncate font-mono text-[7px] font-semibold uppercase tracking-[0.18em] text-white/45">{t[slot.tKey]}</span>
                         </div>
                         {selected?.[slot.key] ? (
-                          <div className="h-14 overflow-hidden rounded-lg bg-white/5">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={selected[slot.key]} alt="" className="h-full w-full object-cover" />
+                          <div className="h-20 overflow-hidden rounded-lg bg-white/5">
+                            <LookMedia src={selected[slot.key]} className="h-full w-full object-contain" />
                           </div>
                         ) : (
-                          <div className="grid h-14 place-items-center rounded-lg bg-white/5 text-white/20">
+                          <div className="grid h-20 place-items-center rounded-lg bg-white/5 text-white/20">
                             <ImagePlus size={12} />
                           </div>
                         )}
@@ -1782,8 +2412,7 @@ export default function PropuestaAdmin() {
 
                 <div className="mt-3 overflow-hidden rounded-2xl bg-white/5">
                   {selected?.result ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={selected.result} alt="" className="aspect-[4/5] w-full object-cover" />
+                    <LookMedia src={selected.result} className="aspect-[4/5] w-full object-contain" />
                   ) : (
                     <div className="grid aspect-[4/5] w-full place-items-center text-white/20">
                       <ImagePlus size={22} />
@@ -2008,8 +2637,7 @@ export default function PropuestaAdmin() {
                 <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
                   {fbItems.map((it) => (
                     <div key={it.id} className="flex items-start gap-3 rounded-xl border border-line bg-ink-2 p-2.5">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={it.result} alt="" className="h-12 w-10 shrink-0 rounded-md object-cover" />
+                      <LookMedia src={it.result} className="h-12 w-10 shrink-0 rounded-md bg-black/40 object-contain" />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-semibold text-paper">{it.caption || '—'}</div>
                         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-paper-mute">
@@ -2033,6 +2661,7 @@ export default function PropuestaAdmin() {
             <div className="space-y-2">
               {wantsVisual && <StatRow dot="bg-brand" label={t.looks} value={String(completeCount)} />}
               {wantsAudio && <StatRow dot="bg-brand" label="Audios" value={String(audioCount)} />}
+              {wantsAudio && <StatRow dot="bg-emerald-400" label="Comparativo de voz" value={vcForSave ? 'Sí' : 'No'} />}
               <StatRow dot="bg-amber-400" label={t.expiresField} value={`${days}d · ${new Date(Date.now() + days * 86400000).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`} />
               <StatRow dot="bg-zinc-400" label={t.langField} value={`${PROP_LANG_FLAG[lang]} ${PROP_LANG_LABELS[lang]}`} />
             </div>
@@ -2069,7 +2698,7 @@ export default function PropuestaAdmin() {
               </span>
               <button
                 type="button"
-                onClick={() => router.push('/admin?tab=propuestas')}
+                onClick={() => router.push(listHref)}
                 className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold"
               >
                 <Check size={15} /> Terminar
@@ -2111,7 +2740,11 @@ export default function PropuestaAdmin() {
                 </div>
                 <div className="text-[11px] text-paper-mute">
                   {vaultCreatorId
-                    ? `${baulSource.length} ${baulSource.length === 1 ? 'foto' : 'fotos'}${vaultCreator ? ` · ${vaultCreator.full_name}` : ''}`
+                    ? (() => {
+                        const nAudio = baulSource.filter(isVaultAudio).length;
+                        const nFoto = baulSource.length - nAudio;
+                        return `${nFoto} ${nFoto === 1 ? 'foto' : 'fotos'}${nAudio ? ` · ${nAudio} ${nAudio === 1 ? 'audio' : 'audios'}` : ''}${vaultCreator ? ` · ${vaultCreator.full_name}` : ''}`;
+                      })()
                     : 'Elegí una creadora para ver su baúl'}
                 </div>
               </div>
@@ -2171,23 +2804,31 @@ export default function PropuestaAdmin() {
                 />
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
+                {VAULT_KINDS.slice(0, 1).map((v) => (
+                  <Chip key={v.kind} active={pickerKind === v.kind} onClick={() => setPickerKind(v.kind)} dot={v.dot}>{v.label}</Chip>
+                ))}
                 <Chip active={pickerKind === 'all'} onClick={() => setPickerKind('all')}>Todos</Chip>
-                {VAULT_KINDS.map((v) => (
+                {VAULT_KINDS.slice(1).map((v) => (
                   <Chip key={v.kind} active={pickerKind === v.kind} onClick={() => setPickerKind(v.kind)} dot={v.dot}>{v.label}</Chip>
                 ))}
               </div>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploadBusy}
+                disabled={uploadBusy || uploadBlocked}
                 className="btn3d inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
-                title={vaultCreatorId ? `Se guarda en “${uploadKindLabel}” de ${vaultCreator?.full_name || 'la creadora'}` : 'Subir foto'}
+                title={uploadBlocked ? 'La Cocina se llena sola al aprobar en /kitchen. Para subir a mano, elegí «Inspiración» o «Real de la modelo».' : vaultCreatorId ? `Se guarda en “${uploadKindLabel}” de ${vaultCreator?.full_name || 'la creadora'}` : 'Subir foto'}
               >
                 <ImagePlus size={13} /> {uploadBusy ? 'Subiendo…' : 'Subir'}
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={onFilesPicked} />
             </div>
 
+            {voiceNote && (
+              <div className="flex items-center gap-2 border-b border-line bg-brand/10 px-5 py-2 text-xs text-paper">
+                <AudioLines size={13} className="shrink-0 text-brand" /> {voiceNote}
+              </div>
+            )}
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {uploadErr && <p className="mb-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{uploadErr}</p>}
               {!vaultCreatorId ? (
@@ -2227,6 +2868,15 @@ export default function PropuestaAdmin() {
       )}
     </div>
   );
+}
+
+// Foto o video de un look (un resultado de la cocina puede ser un reel mp4).
+function LookMedia({ src, className }) {
+  if (isVideoSrc(src)) {
+    return <video src={`${String(src).split('#')[0]}#t=0.1`} muted playsInline preload="metadata" className={className} />;
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="" className={className} />;
 }
 
 function FrameSlot({ label, url, changeLbl, removeLbl, pickLbl, onPick, onClear }) {

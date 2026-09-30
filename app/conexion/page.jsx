@@ -3,19 +3,43 @@
 // /conexion — Área de conexión con el motor de imágenes (Higgsfield).
 // Fase 1: verificar la conexión al API y generar una foto de prueba.
 // La llave vive SOLO en el servidor (edge function 'higgsfield'); acá nunca se ve.
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { getUserProfile } from '@/lib/supabase/session';
 import { getSupabase } from '@/lib/supabase/client';
 import {
   ArrowLeft, Plug, Zap, CheckCircle2, XCircle, Loader2, Sparkles, KeyRound, ImageIcon, IdCard, Eye, EyeOff,
+  Copy, Check, Laptop, Lock, AlertTriangle, RefreshCw,
 } from 'lucide-react';
 
 const JULIA_ID = '4014e339-ead8-4fb7-bcda-82fee2c7926e';
+const LEGACY_HF_ACCOUNT = '06efe22b-68f2-4cfd-b9ca-8a2849d37933'; // Cuenta 1 = login de siempre del cocinero (solo Julia)
+// "hace 3 min" / "hace 2 h" / "hace 4 d" (para el saldo y el último latido del cocinero).
+const ago = (ts) => {
+  if (!ts) return '';
+  const s = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
+  if (s < 60) return 'recién';
+  if (s < 3600) return `hace ${Math.round(s / 60)} min`;
+  if (s < 86400) return `hace ${Math.round(s / 3600)} h`;
+  return `hace ${Math.round(s / 86400)} d`;
+};
+// El cocinero manda su latido ~cada minuto: más de 15 min sin verlo = el cocinero está apagado (o esa cuenta dejó de andar).
+const STALE_MS = 15 * 60 * 1000;
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); return true; } catch { /* fallback abajo */ }
+  try { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return true; } catch { return false; }
+}
 
 // Rescata el JSON de una edge function tanto en éxito como en error (patrón del repo).
 async function callFn(action, extra) {
   const { data, error } = await getSupabase().functions.invoke('higgsfield', { body: { action, ...(extra || {}) } });
+  let out = data;
+  if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+  return out || {};
+}
+// Voz clonada (ElevenLabs): su propia edge function 'voice'; la llave también vive solo en el servidor.
+async function callVoice(action, extra) {
+  const { data, error } = await getSupabase().functions.invoke('voice', { body: { action, ...(extra || {}) } });
   let out = data;
   if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
   return out || {};
@@ -68,10 +92,40 @@ export default function ConexionPage() {
     loadAccounts(); loadModels();
   };
   const editAccount = (a) => { setAcctForm({ id: a.id, label: a.label, key_id: '', key_secret: '', is_default: a.is_default }); setAcctMsg(''); };
+  const [modelMsg, setModelMsg] = useState({}); // creator_id → { kind: 'ok'|'err'|'warn', text }
+  const [soulDraft, setSoulDraft] = useState({}); // creator_id → ID de Soul pegado a mano
+  const [soulBusy, setSoulBusy] = useState('');   // creator_id guardando
+  const [copied, setCopied] = useState('');       // account_id cuyo comando se copió
   const setModelAccount = async (creator_id, account_id) => {
+    const prev = models;
     setModels((m) => m.map((x) => (x.id === creator_id ? { ...x, account_id } : x)));
-    await callHf('set_model_account', { creator_id, account_id: account_id || null });
-    loadAccounts();
+    const out = await callHf('set_model_account', { creator_id, account_id: account_id || null });
+    if (!out.ok) { setModels(prev); setModelMsg((s) => ({ ...s, [creator_id]: { kind: 'err', text: out.error || 'No se pudo cambiar la cuenta.' } })); return; }
+    setModelMsg((s) => ({ ...s, [creator_id]: out.soul_cleared ? { kind: 'warn', text: 'Cambió de cuenta: su Soul vieja era de la otra cuenta, así que la desenlacé. Elegí su Soul de esta cuenta.' } : { kind: 'ok', text: 'Cuenta guardada ✓' } }));
+    loadAccounts(); loadModels();
+  };
+  const setModelSoul = async (m, character_id) => {
+    const cid = String(character_id || '').trim();
+    setSoulBusy(m.id);
+    const out = await callHf('set_model_soul', { creator_id: m.id, character_id: cid, account_id: m.account_id || undefined });
+    setSoulBusy('');
+    if (!out.ok) { setModelMsg((s) => ({ ...s, [m.id]: { kind: 'err', text: out.error || 'No se pudo enlazar la Soul.' } })); return; }
+    setSoulDraft((d) => ({ ...d, [m.id]: '' }));
+    setModelMsg((s) => ({ ...s, [m.id]: out.warn ? { kind: 'warn', text: out.warn } : { kind: 'ok', text: cid ? 'Soul enlazada ✓ — ya se puede cocinar.' : 'Soul desenlazada.' } }));
+    loadModels();
+  };
+  const juliaHasSoul = !!models.find((m) => m.id === JULIA_ID)?.has_soul;
+  const copyCmd = async (a) => { if (a.login_cmd && await copyText(a.login_cmd)) { setCopied(a.id); setTimeout(() => setCopied((c) => (c === a.id ? '' : c)), 1800); } };
+  // Estado del login del CLI de una cuenta en la Mac del cocinero.
+  const cliState = (a) => {
+    if (a.tracked === undefined) return { tone: 'dim', text: 'Sin dato todavía (falta desplegar la edge hf-accounts nueva).' };
+    if (!a.tracked) return { tone: 'dim', text: 'Sin dato todavía (falta aplicar la migración 0130).' };
+    const seen = a.cli_seen_at ? new Date(a.cli_seen_at).getTime() : 0;
+    const stale = seen && Date.now() - seen > STALE_MS;
+    if (a.legacy) return { tone: seen && !stale ? 'ok' : 'dim', text: `el de siempre (Julia)${seen ? ` · visto ${ago(a.cli_seen_at)}` : ''}${stale ? ' — ¿el cocinero está apagado?' : ''}` };
+    if (a.cli_error) return { tone: 'err', text: a.cli_error };
+    if (!seen) return { tone: 'err', text: 'falta — esta cuenta todavía no está conectada en la Mac del cocinero.' };
+    return { tone: stale ? 'warn' : 'ok', text: `listo · visto ${ago(a.cli_seen_at)}${stale ? ' — ¿el cocinero está apagado?' : ''}` };
   };
 
   // ── Otras llaves: Apify (scraper) y Anthropic (visión del cocinero) ──
@@ -93,6 +147,32 @@ export default function ConexionPage() {
     setCfgBusy('');
     if (!out.ok) { setCfgMsg(out.error || 'No se pudo guardar.'); return; }
     setVal(''); setCfg((c) => ({ ...c, [k === 'apify_token' ? 'apify' : 'anthropic']: true })); setCfgMsg('Guardada ✓');
+  };
+
+  // ── ElevenLabs (voz clonada) — se valida contra ElevenLabs antes de guardarla ──
+  const [elStatus, setElStatus] = useState(null);
+  const [elVal, setElVal] = useState('');
+  const [showEl, setShowEl] = useState(false);
+  const [elBusy, setElBusy] = useState(false);
+  const [elMsg, setElMsg] = useState('');
+  const elInputRef = useRef(null);
+  useEffect(() => {
+    if (access !== 'ok') return;
+    (async () => {
+      const out = await callVoice('status');
+      if (out.ok) setElStatus(out);
+      // Sin key todavía → el cursor ya queda en el campo: solo pegar (Cmd+V) y Enter.
+      if (out.ok && !out.configured) setTimeout(() => elInputRef.current?.focus(), 50);
+    })();
+  }, [access]);
+  const saveEl = async () => {
+    if (!elVal.trim()) { setElMsg('Pegá la API key primero.'); return; }
+    setElBusy(true); setElMsg('');
+    const out = await callVoice('set_key', { api_key: elVal });
+    setElBusy(false);
+    if (!out.ok) { setElMsg(out.error || 'No se pudo guardar.'); return; }
+    setElVal(''); setElMsg('Guardada ✓');
+    const st = await callVoice('status'); if (st.ok) setElStatus(st);
   };
 
   // ── Conexión ──
@@ -187,28 +267,94 @@ export default function ConexionPage() {
       </header>
 
       <main className="mx-auto w-full max-w-3xl space-y-4 px-4 py-8 lg:px-6">
+        {/* ElevenLabs — voz clonada. ARRIBA de todo: se pega una vez y listo (el dueño no la encontraba abajo). */}
+        <section className={`card3d rounded-3xl border ${elStatus?.configured ? 'border-line' : 'border-brand/50'} bg-card p-6 sm:p-7`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 font-display text-lg font-bold text-paper"><KeyRound size={18} className="text-brand" /> ElevenLabs — la voz clonada</h2>
+              <p className="mt-1 text-sm text-paper-mute">Para que cada modelo hable con SU voz (siempre la misma) desde la cocina. Pegá acá la key <b className="text-paper">LetShoot</b> de ElevenLabs y tocá Guardar — se prueba sola antes de guardarse.</p>
+            </div>
+            {elStatus?.configured && <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-300">✓ conectada {elStatus.masked}</span>}
+          </div>
+          {elStatus?.configured && (
+            <p className="mt-2 text-xs text-paper-mute">
+              Motor: <b className="text-paper">{elStatus.model_label}</b>
+              {elStatus.sub && <> · te quedan <b className="text-paper">{Number(elStatus.sub.remaining).toLocaleString('es')}</b> de {Number(elStatus.sub.limit).toLocaleString('es')} créditos{elStatus.sub.tier ? ` (plan ${elStatus.sub.tier})` : ''}</>}
+            </p>
+          )}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[260px] flex-1">
+              <input ref={elInputRef} value={elVal} onChange={(e) => setElVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEl(); }}
+                type={showEl ? 'text' : 'password'} placeholder={elStatus?.configured ? 'Pegá una key nueva para reemplazarla' : 'Pegá acá la key de ElevenLabs (sk_…)'}
+                className="w-full rounded-xl border border-line bg-ink-2 px-3 py-3 pr-10 font-mono text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+              <button type="button" onClick={() => setShowEl((s) => !s)} title={showEl ? 'Ocultar' : 'Mostrar'}
+                className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-lg text-paper-dim hover:text-paper">{showEl ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+            </div>
+            <button type="button" onClick={saveEl} disabled={elBusy}
+              className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-3 text-sm font-semibold disabled:opacity-50">
+              {elBusy ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />} {elBusy ? 'Verificando…' : 'Guardar'}
+            </button>
+          </div>
+          {elMsg && <p className={`mt-2 text-xs ${elMsg.includes('✓') ? 'text-emerald-300' : 'text-rose-300'}`}>{elMsg}</p>}
+        </section>
+
         {/* Cuentas de Higgsfield — multi-cuenta, solo dueño/admin */}
         <section className="card3d rounded-3xl border border-brand/30 bg-card p-6 sm:p-7">
           <h2 className="flex items-center gap-2 font-display text-lg font-bold text-paper"><KeyRound size={18} className="text-brand" /> Cuentas de Higgsfield</h2>
-          <p className="mt-1 text-sm text-paper-mute">Tus cuentas y sus llaves. La marcada <b className="text-paper">por defecto</b> es la que usa el motor. Las llaves se guardan en el servidor — <b>nunca</b> quedan en el navegador.</p>
+          <p className="mt-1 text-sm text-paper-mute">Tus cuentas y sus llaves. El cocinero cocina a <b className="text-paper">cada modelo con SU cuenta</b> (la que le elegís abajo en «Modelos → cuenta»), usando el login del CLI de esa cuenta en la Mac. La marcada <b className="text-paper">por defecto</b> solo se usa para las pruebas de esta página. Las llaves se guardan en el servidor — <b>nunca</b> quedan en el navegador.</p>
 
           <div className="mt-4 space-y-2">
-            {accounts.map((a) => (
-              <div key={a.id} className="flex flex-col gap-2 rounded-2xl border border-line bg-ink-2/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate font-semibold text-paper">{a.label}</span>
-                    {a.is_default && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">Por defecto</span>}
+            {accounts.map((a) => {
+              const cs = cliState(a);
+              const toneCls = cs.tone === 'ok' ? 'text-emerald-300' : cs.tone === 'err' ? 'text-rose-300' : cs.tone === 'warn' ? 'text-amber-300' : 'text-paper-dim';
+              const needsLogin = !a.legacy && a.tracked && cs.tone !== 'ok';
+              return (
+              <div key={a.id} className="rounded-2xl border border-line bg-ink-2/40 px-4 py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate font-semibold text-paper">{a.label}</span>
+                      {a.is_default && <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">Por defecto</span>}
+                      {a.legacy && <span className="rounded-full bg-paper/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-paper-mute">Solo Julia</span>}
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-paper-dim">Llave {a.has_key ? a.key_hint : '— sin llave'} · {a.models} modelo{a.models === 1 ? '' : 's'}</p>
                   </div>
-                  <p className="mt-0.5 text-[11px] text-paper-dim">Llave {a.has_key ? a.key_hint : '— sin llave'} · {a.models} modelo{a.models === 1 ? '' : 's'}</p>
+                  <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    {!a.is_default && <button onClick={() => setDefaultAccount(a.id)} className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-paper-mute hover:text-paper" title="Solo cambia la llave de las pruebas de esta página: no mueve a ninguna modelo ni cambia el saldo que ve cada cuenta (Julia sigue en la Cuenta 1)">Hacer default</button>}
+                    <button onClick={() => editAccount(a)} className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-paper-mute hover:text-paper">Cambiar llave</button>
+                    {!a.is_default && !a.legacy && <button onClick={() => deleteAccount(a.id, a.label)} className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-rose-300/80 hover:text-rose-200">Borrar</button>}
+                  </div>
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                  {!a.is_default && <button onClick={() => setDefaultAccount(a.id)} className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-paper-mute hover:text-paper">Hacer default</button>}
-                  <button onClick={() => editAccount(a)} className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-paper-mute hover:text-paper">Cambiar llave</button>
-                  {!a.is_default && <button onClick={() => deleteAccount(a.id, a.label)} className="rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-rose-300/80 hover:text-rose-200">Borrar</button>}
+                {/* Saldo real + login del CLI en la Mac del cocinero */}
+                <div className="mt-2.5 grid gap-1.5 border-t border-line/60 pt-2.5 text-[12px] sm:grid-cols-[auto_1fr] sm:gap-x-4">
+                  <span className="text-paper-dim">Saldo</span>
+                  <span className="text-paper">
+                    {a.balance != null ? <><b className="tabular-nums text-emerald-300">{Number(a.balance).toFixed(1)}</b> créd</> : <span className="text-paper-dim">— sin dato</span>}
+                    {a.balance_at && <span className="text-paper-dim"> · {ago(a.balance_at)}</span>}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-paper-dim"><Laptop size={12} /> Login en la Mac</span>
+                  <span className={`min-w-0 break-words ${toneCls}`}>
+                    {cs.text}
+                    {a.cli_email && <span className="text-paper-dim"> · {a.cli_email}</span>}
+                  </span>
                 </div>
+                {!a.legacy && a.login_cmd && (
+                  <div className="mt-2">
+                    {needsLogin && <p className="mb-1 text-[11px] text-paper-mute">Para conectarla, en la Mac del cocinero (en la carpeta del proyecto) corré esto y entrá con <b className="text-paper">la cuenta nueva</b> (no la de Julia):</p>}
+                    <div className="flex items-center gap-1.5">
+                      <code className="min-w-0 flex-1 truncate rounded-lg border border-line bg-ink px-2.5 py-1.5 font-mono text-[11px] text-paper" title={a.login_cmd}>{a.login_cmd}</code>
+                      <button type="button" onClick={() => copyCmd(a)} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-[11px] font-semibold text-paper-mute hover:text-paper" title="Copiar el comando">
+                        {copied === a.id ? <><Check size={12} className="text-emerald-300" /> Copiado</> : <><Copy size={12} /> Copiar</>}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
+          </div>
+          <div className="mt-2 flex justify-end">
+            <button type="button" onClick={() => { loadAccounts(); loadModels(); }} className="inline-flex items-center gap-1 text-[11px] text-paper-dim hover:text-paper"><RefreshCw size={11} /> Actualizar estado</button>
           </div>
 
           <div className="mt-4 rounded-2xl border border-line bg-ink-2/30 p-4">
@@ -226,7 +372,7 @@ export default function ConexionPage() {
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-3">
               <label className="inline-flex items-center gap-2 text-[12px] text-paper-mute">
-                <input type="checkbox" checked={acctForm.is_default} onChange={(e) => setAcctForm((f) => ({ ...f, is_default: e.target.checked }))} className="accent-brand" /> Usar esta como la del motor (default)
+                <input type="checkbox" checked={acctForm.is_default} onChange={(e) => setAcctForm((f) => ({ ...f, is_default: e.target.checked }))} className="accent-brand" /> Usar esta para las pruebas de esta página (default — no mueve a ninguna modelo ni cambia saldos; dejala sin marcar)
               </label>
               <button onClick={saveAccount} disabled={acctBusy} className="btn3d inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50">
                 {acctBusy ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />} {acctForm.id ? 'Guardar cambios' : 'Agregar cuenta'}
@@ -240,22 +386,63 @@ export default function ConexionPage() {
         {/* Modelos → cuenta */}
         <section className="card3d rounded-3xl border border-line bg-card p-6 sm:p-7">
           <h2 className="flex items-center gap-2 font-display text-lg font-bold text-paper"><IdCard size={18} className="text-brand" /> Modelos → cuenta</h2>
-          <p className="mt-1 text-sm text-paper-mute">Elegí en qué cuenta de Higgsfield vive cada modelo. Ej.: Julia en una, las demás en otra.</p>
+          <p className="mt-1 text-sm text-paper-mute">Elegí en qué cuenta de Higgsfield vive cada modelo y enlazá <b className="text-paper">su Soul de ESA cuenta</b>. Julia queda fija en la Cuenta 1; todas las demás van a la cuenta nueva. Sin cuenta o sin Soul, la modelo no se cocina (nunca se le cobra a otra cuenta).</p>
           <div className="mt-4 space-y-2">
             {models.length === 0 && <p className="text-sm text-paper-dim">No hay modelos todavía.</p>}
-            {models.map((m) => (
-              <div key={m.id} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-ink-2/40 px-4 py-2.5">
-                <div className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-paper">{m.name}{m.has_soul && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-300/80">soul ✓</span>}</span>
-                  {m.handle && <span className="block truncate text-[11px] text-paper-dim">@{m.handle}</span>}
+            {models.map((m) => {
+              const acc = accounts.find((a) => a.id === m.account_id) || null;
+              const souls = Array.isArray(acc?.souls) ? acc.souls : [];
+              const known = m.character_id ? souls.find((s) => s.id === m.character_id) : null;
+              const mm = modelMsg[m.id];
+              const draft = soulDraft[m.id] ?? '';
+              const locked = !!m.locked || m.id === JULIA_ID; // Julia fija en la Cuenta 1 (también si el servidor es viejo)
+              return (
+              <div key={m.id} className="rounded-2xl border border-line bg-ink-2/40 px-4 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-paper">{m.name}{m.has_soul && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-300/80">soul ✓</span>}</span>
+                    {m.handle && <span className="block truncate text-[11px] text-paper-dim">@{m.handle}</span>}
+                  </div>
+                  {locked ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-semibold text-paper-mute" title="Julia queda fija en la Cuenta 1 (su Soul vive ahí)">
+                      <Lock size={12} /> {acc?.label || 'Cuenta 1'}
+                    </span>
+                  ) : (
+                    <select value={m.account_id || ''} onChange={(e) => setModelAccount(m.id, e.target.value)}
+                      className="shrink-0 rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-[12px] font-semibold text-paper outline-none focus:border-brand/60">
+                      <option value="" className="bg-ink">— sin asignar</option>
+                      {accounts.filter((a) => !(a.legacy || a.id === LEGACY_HF_ACCOUNT) || a.id === m.account_id).map((a) => <option key={a.id} value={a.id} className="bg-ink">{a.label}</option>)}
+                    </select>
+                  )}
                 </div>
-                <select value={m.account_id || ''} onChange={(e) => setModelAccount(m.id, e.target.value)}
-                  className="shrink-0 rounded-lg border border-line bg-ink-2 px-2.5 py-1.5 text-[12px] font-semibold text-paper outline-none focus:border-brand/60">
-                  <option value="" className="bg-ink">— sin asignar</option>
-                  {accounts.map((a) => <option key={a.id} value={a.id} className="bg-ink">{a.label}</option>)}
-                </select>
+                {locked && <p className="mt-1 text-[11px] text-paper-dim">Fija en {acc?.label || 'la Cuenta 1'} con su Soul de siempre. No se cambia desde acá.</p>}
+                {!locked && m.account_id && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-paper-dim">Soul:</span>
+                    {souls.length > 0 && (
+                      <select value={known ? m.character_id : ''} disabled={soulBusy === m.id} onChange={(e) => { if (e.target.value) setModelSoul(m, e.target.value); }}
+                        className="min-w-0 max-w-full rounded-lg border border-line bg-ink-2 px-2 py-1 text-[11px] text-paper outline-none focus:border-brand/60 disabled:opacity-50">
+                        <option value="" className="bg-ink">{m.character_id && !known ? 'otra (pegada a mano)' : '— elegí su Soul —'}</option>
+                        {souls.map((s) => <option key={s.id} value={s.id} className="bg-ink">{s.name || s.id.slice(0, 8)}{s.status && s.status !== 'completed' ? ` (${s.status})` : ''}</option>)}
+                      </select>
+                    )}
+                    <input value={draft} onChange={(e) => setSoulDraft((d) => ({ ...d, [m.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter' && draft.trim()) setModelSoul(m, draft); }}
+                      placeholder={m.character_id ? m.character_id : (souls.length ? 'o pegá el ID de su Soul' : 'pegá el ID de su Soul (de esta cuenta)')}
+                      className="min-w-[160px] flex-1 rounded-lg border border-line bg-ink-2 px-2 py-1 font-mono text-[11px] text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                    <button type="button" onClick={() => setModelSoul(m, draft)} disabled={!draft.trim() || soulBusy === m.id}
+                      className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-[11px] font-semibold text-paper-mute hover:text-paper disabled:opacity-40">
+                      {soulBusy === m.id ? <Loader2 size={11} className="animate-spin" /> : null} Enlazar
+                    </button>
+                    {m.character_id && <button type="button" onClick={() => { if (confirm(`¿Desenlazar la Soul de ${m.name}? No se va a poder cocinar hasta enlazar otra.`)) setModelSoul(m, ''); }} className="text-[11px] text-paper-dim hover:text-rose-300">Quitar</button>}
+                  </div>
+                )}
+                {!locked && m.account_id && souls.length === 0 && acc && acc.tracked && !acc.legacy && (
+                  <p className="mt-1 text-[11px] text-paper-dim">La lista de Souls de «{acc.label}» aparece sola cuando esa cuenta esté conectada en la Mac (el cocinero la trae).</p>
+                )}
+                {mm && <p className={`mt-1.5 inline-flex items-start gap-1 text-[11px] ${mm.kind === 'ok' ? 'text-emerald-300' : mm.kind === 'warn' ? 'text-amber-300' : 'text-rose-300'}`}>{mm.kind !== 'ok' && <AlertTriangle size={11} className="mt-0.5 shrink-0" />}{mm.text}</p>}
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
@@ -404,11 +591,12 @@ export default function ConexionPage() {
               <h2 className="flex items-center gap-2 font-display text-lg font-bold text-paper"><IdCard size={18} className="text-brand" /> 3 · Identidad de Julia (para hacer SU cara)</h2>
               <p className="mt-1 text-sm text-paper-mute">La Julia entrenada en la web NO la ve el API. Esto crea un personaje <b>nuevo, API-nativo</b> con sus fotos reales — ese sí sirve para generar su cara en automático.</p>
             </div>
-            <button type="button" onClick={createJuliaIdentity} disabled={idn?.state === 'working'} className="btn3d-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50">
+            <button type="button" onClick={createJuliaIdentity} disabled={idn?.state === 'working' || juliaHasSoul} title={juliaHasSoul ? 'Julia ya tiene su Soul real enlazada: no se pisa' : undefined} className="btn3d-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50">
               {idn?.state === 'working' ? <Loader2 size={14} className="animate-spin" /> : <IdCard size={14} />}
               {idn?.state === 'working' ? 'Creando…' : 'Crear identidad de Julia'}
             </button>
           </div>
+          {juliaHasSoul && <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-emerald-300/90"><Lock size={11} /> Julia ya tiene su Soul real enlazada (Cuenta 1). Este botón queda bloqueado para no pisarla.</p>}
           {idn?.state === 'working' && <p className="mt-3 text-xs text-paper-mute">{idn.step}</p>}
           {idn?.state === 'done' && (
             <div className="mt-4 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4">

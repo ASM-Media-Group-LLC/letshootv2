@@ -12,7 +12,7 @@ import {
   Check, RefreshCw, Sparkles, ChevronRight, ShieldCheck, X, Download, Eye,
   BarChart3, UserCog, Plus, UserPlus, Clock, Search, ArrowLeft, Home,
   ImageIcon, Building2, Film, TrendingUp, TrendingDown,
-  CreditCard, ListChecks, ChevronDown, Trash2, Music, Send, AlertTriangle,
+  CreditCard, ListChecks, ChevronDown, Trash2, Music, Send, AlertTriangle, Images, IdCard,
 } from 'lucide-react';
 import MediaThumb, { MediaLightbox } from '@/components/MediaThumb';
 import { getUserProfile, signOut } from '@/lib/supabase/session';
@@ -28,6 +28,7 @@ import PortalHeader from '@/components/PortalHeader';
 import ImpersonateMenu from '@/components/ImpersonateMenu';
 import ProposalEditor from '@/components/ProposalEditor';
 import AlmacenPropuestas from '@/components/AlmacenPropuestas';
+import PropuestasHistorial from '@/components/PropuestasHistorial';
 import ReactionsDashboard from '@/components/ReactionsDashboard';
 import DeliveryBoard from '@/components/DeliveryBoard';
 import AudioCard from '@/components/AudioCard';
@@ -105,6 +106,7 @@ function TrabajoPageInner() {
   const [reqPing, setReqPing] = useState(0); // bumps when a new request notification arrives
   const [toast, setToast] = useState('');
   const [almCount, setAlmCount] = useState(null); // "propuestas en juego" para la tarjeta Almacén
+  const [propCount, setPropCount] = useState(null); // propuestas (no archivadas) de la persona efectiva — tarjeta Propuestas
   const [lastDeliv, setLastDeliv] = useState({}); // { creatorId → ISO última entrega } para el semáforo de Entregables
   const [assignedIds, setAssignedIds] = useState(null); // ids de MIS modelos asignadas (null = sin cargar); [] = ninguna → veo todas
   const meRef = useRef(null);
@@ -118,6 +120,10 @@ function TrabajoPageInner() {
   const capsOwner = asMode ? viewAs : me;
   const caps = !capsOwner ? [] : (capsOwner.role === 'admin' ? ALL_CAPS : (capsOwner.capabilities || []));
   const can = (c) => caps.includes(c);
+  // «Propuestas» (historial + lo aprobado) es por ROL, no por capability: la PR
+  // (supervisor) y el dueño. En «ver como» manda el rol de la persona mirada.
+  const effRole = (asMode ? viewAs?.role : me?.role) || null;
+  const canPropuestas = effRole === 'supervisor' || effRole === 'admin';
   const asName = viewAs ? ((viewAs.full_name || '').trim().split(/\s+/)[0] || viewAs.stage_name || viewAs.full_name || 'empleado') : '';
   function exitAsView() {
     // Si «Ver como» se abrió en pestaña nueva (tiene opener), la cerramos y
@@ -145,6 +151,28 @@ function TrabajoPageInner() {
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
+
+  // Conteo liviano para la tarjeta "Propuestas": cuántas armó la persona
+  // efectiva (en «ver como», la mirada), sin archivadas ni borradores.
+  useEffect(() => {
+    const person = asMode ? viewAs : me;
+    if (!person?.id || !['supervisor', 'admin'].includes(person.role)) return;
+    let cancel = false;
+    setPropCount(null);
+    (async () => {
+      try {
+        const { count, error } = await getSupabase()
+          .from('photo_proposals')
+          .select('id', { count: 'exact', head: true })
+          .eq('created_by', person.id)
+          .neq('status', 'archived')
+          .neq('status', 'draft');
+        if (!cancel) setPropCount(error ? null : (count || 0));
+      } catch { if (!cancel) setPropCount(null); }
+    })();
+    return () => { cancel = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.id, viewAs?.id]);
 
   // One load for everything the cards summarize, guarded by the puesto's caps.
   const load = useCallback(async () => {
@@ -209,17 +237,23 @@ function TrabajoPageInner() {
       const role = up.profile?.role;
       if (!['admin', 'supervisor', 'producer', 'chatter', 'finance'].includes(role)) { router.replace('/panel'); return; }
       meRef.current = up.profile;
-      setMe(up.profile);
       // ── Modo «ver como»: SOLO el dueño (admin) puede previsualizar /trabajo con
       // los accesos de un empleado concreto. Si el id no existe o el viewer no es
       // admin, se ignora ?as y /trabajo funciona normal.
+      // Se resuelve ANTES de setMe: si no, en un deep-link (?as=…&tab=…) la página
+      // pinta un instante como el dueño (sin solo-lectura, con «Crear/Editar») y
+      // las pestañas montan y cargan dos veces (primero con el dueño, después con
+      // la persona mirada).
       if (asId && role === 'admin') {
-        const { data: tp } = await getSupabase()
-          .from('profiles')
-          .select('id, full_name, stage_name, role, capabilities, email')
-          .eq('id', asId).maybeSingle();
-        if (tp) setViewAs(tp);
+        try {
+          const { data: tp } = await getSupabase()
+            .from('profiles')
+            .select('id, full_name, stage_name, role, capabilities, email')
+            .eq('id', asId).maybeSingle();
+          if (tp) setViewAs(tp);
+        } catch { /* id inválido / red: /trabajo normal */ }
       }
+      setMe(up.profile);
       load();
     })();
   }, [router, load, asId]);
@@ -248,7 +282,7 @@ function TrabajoPageInner() {
   // Se usa desde /admin (banner de pedidos pendientes) y desde emails.
   useEffect(() => {
     const t = searchParams?.get('tab');
-    if (t && ['creadoras', 'almacen', 'pedidos', 'feedback', 'altas', 'cobros', 'equipo', 'gestagencias'].includes(t)) setTab(t);
+    if (t && ['propuestas', 'creadoras', 'almacen', 'pedidos', 'feedback', 'altas', 'cobros', 'equipo', 'gestagencias'].includes(t)) setTab(t);
   }, [searchParams]);
 
   // Live pop-up: when a new request notification lands for me, toast it.
@@ -393,7 +427,7 @@ function TrabajoPageInner() {
   // ── ENTREGABLES: qué toca entregar por modelo (semáforo). El editor con modelos
   // asignadas ve solo las suyas; el admin o el editor sin asignar (hace todas) las ve
   // todas. deliverBehind = cuántas están vencidas o de hoy (para la tarjeta).
-  const myDeliverables = (me?.role === 'admin' || !assignedIds || assignedIds.length === 0)
+  const myDeliverables = (me?.role === 'admin' || me?.role === 'supervisor' || !assignedIds || assignedIds.length === 0)
     ? creators
     : creators.filter((c) => assignedIds.includes(c.id));
   const deliverBehind = myDeliverables.reduce((n, c) => {
@@ -434,6 +468,8 @@ function TrabajoPageInner() {
     .filter((nd) => nd && nd.bucket === 'atrasado').length;
 
   const OPS_CARDS = [
+    // PRIMERA: lo que más le importa a la PR — su historial de propuestas y todo lo aprobado.
+    ...(canPropuestas ? [{ id: 'propuestas', icon: Images, label: 'Propuestas', value: propCount === null ? '·' : nf(propCount), sub: 'Tu historial y lo aprobado' }] : []),
     ...(can('content') ? [{ id: 'entregables', icon: Clock, label: 'Entregables', value: nf(deliverBehind), sub: deliverBehind ? 'por entregar o atrasadas' : 'todas al día', alert: deliverBehind > 0 }] : []),
     ...(can('content') ? [{ id: 'creadoras', icon: Users, label: 'Creadoras', value: nf(creators.length), sub: `${act} activas · ${proc} en proceso` }] : []),
     ...(can('add_creators') ? [{ id: 'altas', icon: UserPlus, label: can('content') ? 'Nueva creadora' : 'Creadoras', value: can('content') ? '+' : nf(creators.length), sub: 'Dar de alta una creadora' }] : []),
@@ -694,8 +730,9 @@ function TrabajoPageInner() {
                 </>
               );
             })()}
+            {tab === 'propuestas' && canPropuestas && <PropuestasHistorial key={(asMode ? viewAs?.id : me?.id) || 'me'} me={me} viewAs={viewAs} readOnly={readOnly} />}
             {tab === 'altas' && can('add_creators') && <AltasTab creators={creators} flash={flash} reload={load} readOnly={readOnly} />}
-            {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} pendingByCreator={pendingByCreator} readOnly={readOnly} />}
+            {tab === 'creadoras' && can('content') && <CreadorasTab key={focusCreator || 'all'} initialCreatorId={focusCreator} creators={creators} me={me} flash={flash} pendingByCreator={pendingByCreator} readOnly={readOnly} canDatos={can('datos')} />}
             {tab === 'almacen' && can('content') && <AlmacenPropuestas creators={creators} me={me} flash={flash} readOnly={readOnly} />}
             {tab === 'entregables' && can('content') && <EntregablesTab creators={myDeliverables} lastDeliv={lastDeliv} canSetCadence={me?.role === 'admin' && !readOnly} onSetCadence={setCadence} onUpload={(id) => { setFocusCreator(id); setTab('creadoras'); }} changes={changeModels} nameById={nameById} onOpenFeedback={() => { setColaSeen(true); setTab('feedback'); }} focusItems={focusItems} focusAction={focusAction} />}
             {tab === 'miproduccion' && can('content') && <MiProduccionTab mine={mine} creators={creators} />}
@@ -912,13 +949,13 @@ function AltasTab({ creators, flash, reload, readOnly }) {
   );
 }
 
-function CreadorasTab({ creators, me, flash, initialCreatorId, pendingByCreator = {}, readOnly }) {
+function CreadorasTab({ creators, me, flash, initialCreatorId, pendingByCreator = {}, readOnly, canDatos = false }) {
   const [sel, setSel] = useState(() => (initialCreatorId ? creators.find((c) => c.id === initialCreatorId) || null : null));
   const [q, setQ] = useState('');
   const [fCat, setFCat] = useState('all');
 
   // Inside a creator you get her full-width library; back returns to the roster.
-  if (sel) return <CreatorDetail key={sel.id} creator={sel} me={me} flash={flash} onBack={() => setSel(null)} readOnly={readOnly} />;
+  if (sel) return <CreatorDetail key={sel.id} creator={sel} me={me} flash={flash} onBack={() => setSel(null)} readOnly={readOnly} canDatos={canDatos} />;
 
   const catOf = (c) => CREATOR_CAT[c.onboarding_status] || 'registered';
   const view = creators.filter((c) => {
@@ -992,8 +1029,25 @@ function CreadorasTab({ creators, me, flash, initialCreatorId, pendingByCreator 
   );
 }
 
-function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
+function CreatorDetail({ creator, me, flash, onBack, readOnly, canDatos = false }) {
   const [folders, setFolders] = useState(null);
+  // Datos de la ficha (solo lectura) para quien tiene el acceso 'datos' (la PR). La RPC creator_profile ya tapa
+  // lo que el rol no puede ver; editar la ficha sigue siendo en /admin.
+  const [showDatos, setShowDatos] = useState(false);
+  const [datos, setDatos] = useState(null);      // fila de creator_profile | null
+  const [datosErr, setDatosErr] = useState('');
+  const toggleDatos = async () => {
+    const next = !showDatos; setShowDatos(next);
+    if (!next || datos) return;
+    setDatosErr('');
+    try {
+      const { data, error } = await getSupabase().rpc('creator_profile', { target: creator.id });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row) { setDatosErr('No encontré la ficha de esta modelo.'); return; }
+      setDatos(row);
+    } catch (e) { setDatosErr(e?.message || 'No se pudo cargar la ficha.'); }
+  };
   const [folderSel, setFolderSel] = useState(null); // null = biblioteca (carpetas); id = dentro de la carpeta
   const [urls, setUrls] = useState({});             // storage_path -> signed url (miniaturas)
   const [newName, setNewName] = useState('');
@@ -1390,12 +1444,48 @@ function CreatorDetail({ creator, me, flash, onBack, readOnly }) {
             <Sparkles size={14} /> Propuesta
           </button>
           )}
+          {canDatos && (
+          <button onClick={toggleDatos}
+            className="btn3d-ghost inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold">
+            <IdCard size={14} /> Datos {showDatos ? '▴' : '▾'}
+          </button>
+          )}
           <button onClick={toggleLora}
             className="btn3d-ghost inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-semibold">
             <Sparkles size={14} /> Fotos LoRA {showLora ? '▴' : '▾'}
           </button>
         </div>
       </div>
+
+      {/* Ficha de la modelo — solo lectura (acceso 'datos'). */}
+      {canDatos && showDatos && (
+        <div className="mt-3 rounded-2xl border border-line bg-ink-2 p-4">
+          <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-paper"><IdCard size={13} className="text-brand" /> Datos de {creator.full_name}</div>
+          {datosErr ? <p className="text-xs text-rose-300">{datosErr}</p> : !datos ? (
+            <p className="inline-flex items-center gap-1.5 text-xs text-paper-mute"><Loader2 size={12} className="animate-spin" /> Cargando ficha…</p>
+          ) : (() => {
+            const fmtD = (v) => { if (!v) return '—'; const d = new Date(v); return isNaN(d) ? String(v) : d.toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' }); };
+            const legal = [datos.legal_first_name, datos.legal_last_name].filter(Boolean).join(' ');
+            const rows = [
+              ['Correo', datos.email], ['Nombre artístico', datos.stage_name], ['Nombre legal', legal],
+              ['Nacimiento', datos.date_of_birth ? fmtD(datos.date_of_birth) : ''], ['País', datos.country], ['Teléfono', datos.phone],
+              ['Consentimiento', datos.consent_at ? `Firmado · ${fmtD(datos.consent_at)}` : 'Sin firmar'],
+              ['Documento de identidad', datos.has_id_docs ? (datos.id_reviewed_at ? 'Cargado y revisado' : 'Cargado · por revisar') : 'No cargado'],
+            ];
+            return (
+              <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                {rows.map(([k, v]) => (
+                  <div key={k} className="min-w-0">
+                    <dt className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-paper-dim">{k}</dt>
+                    <dd className="truncate text-paper">{v || '—'}</dd>
+                  </div>
+                ))}
+              </dl>
+            );
+          })()}
+          <p className="mt-3 text-[11px] text-paper-dim">Solo lectura. Para corregir algo, pedíselo a un admin.</p>
+        </div>
+      )}
 
       {/* Editor de propuesta — a pantalla completa dentro del detalle. Si está
           activo, oculta la galería / LoRA para dar todo el ancho al editor. */}

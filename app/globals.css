@@ -235,10 +235,11 @@ button:focus-visible,
   color: #06101a;
   border: none;
   box-shadow: none;
-  transition: background 0.14s ease, opacity 0.14s ease;
+  transition: background 0.14s ease, opacity 0.14s ease, transform 0.08s ease;
 }
 .btn3d:hover { background: #1cbcff; }
-.btn3d:active { opacity: 0.88; }
+/* Hundido corto al clic: plano igual, pero se SIENTE que le diste. */
+.btn3d:active { opacity: 0.88; transform: scale(0.96); }
 .btn3d:disabled {
   opacity: 0.45;
   filter: grayscale(0.25);
@@ -252,10 +253,10 @@ button:focus-visible,
   color: #00b1f6;
   border: 1px solid rgba(0, 177, 246, 0.35);
   box-shadow: none;
-  transition: background 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
+  transition: background 0.14s ease, border-color 0.14s ease, opacity 0.14s ease, transform 0.08s ease;
 }
 .btn3d-ghost:hover { background: rgba(0, 177, 246, 0.10); border-color: rgba(0, 177, 246, 0.55); }
-.btn3d-ghost:active { opacity: 0.85; }
+.btn3d-ghost:active { opacity: 0.85; transform: scale(0.96); }
 .btn3d-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Card con profundidad SOBRIA (tipo Linear/Notion, no Fortnite) ──

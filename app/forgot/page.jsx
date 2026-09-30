@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Mail, ArrowRight, MailCheck } from 'lucide-react';
 import { getSupabase } from '@/lib/supabase/client';
@@ -13,6 +13,13 @@ export default function ForgotPage() {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Viene de la puerta (/login "¿Olvidaste tu contraseña?") con ?email= → correo ya puesto.
+  useEffect(() => {
+    try { const em = new URLSearchParams(window.location.search).get('email'); if (em) setEmail(em.trim()); } catch {}
+  }, []);
+  // "Volver" regresa a la puerta con el mismo correo (no lo tiene que escribir otra vez).
+  const clean = String(email).trim().toLowerCase();
+  const backHref = clean ? `/login?email=${encodeURIComponent(clean)}` : '/login';
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -40,7 +47,7 @@ export default function ForgotPage() {
               <p className="mt-2 text-sm text-paper-mute">
                 {t.forgot.sentBody1} <span className="break-all text-paper">{email}</span> {t.forgot.sentBody2}
               </p>
-              <Link href="/login" className="mt-6 text-sm font-semibold text-brand hover:underline">{t.forgot.backLogin}</Link>
+              <Link href={backHref} className="mt-6 text-sm font-semibold text-brand hover:underline">{t.forgot.backLogin}</Link>
             </>
           ) : (
             <>
@@ -70,7 +77,7 @@ export default function ForgotPage() {
               </button>
             </form>
             <p className="mt-5 text-center text-sm text-paper-mute">
-              <Link href="/login" className="font-semibold text-brand hover:underline">{t.forgot.backLogin}</Link>
+              <Link href={backHref} className="font-semibold text-brand hover:underline">{t.forgot.backLogin}</Link>
             </p>
           </>
         )}

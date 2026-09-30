@@ -14,16 +14,47 @@ import {
   ArrowLeft, ChefHat, Loader2, CheckCircle2, Sparkles, IdCard, Coins, RefreshCw,
   Heart, Trash2, Flame, Images, ArrowRight, AlertTriangle, X, Search,
   FolderHeart, Compass, Upload, Check, ChefHat as Pot, LayoutGrid, Plus, Clock, ChevronDown, Star, Play, Download, Info,
+  AudioLines, Wand2, Mic, Pencil,
 } from 'lucide-react';
 
 async function callFn(action, extra) {
   const { data, error } = await getSupabase().functions.invoke('higgsfield', { body: { action, ...(extra || {}) } });
   let out = data;
   if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+  // El navegador dejó de esperar (504 del servidor o se cortó la conexión): la función puede seguir trabajando allá.
+  const st = Number(error?.context?.status) || 0;
+  if (error && (st === 504 || st === 546 || error?.name === 'FunctionsFetchError' || /timeout|timed out/i.test(String(error?.message || '')))) out = { ...(out || {}), ok: false, timeout: true };
+  return out || {};
+}
+// Motor de VOZ (ElevenLabs): misma forma que callFn, contra la edge function `voice`.
+async function callVoice(action, extra) {
+  const { data, error } = await getSupabase().functions.invoke('voice', { body: { action, ...(extra || {}) } });
+  let out = data;
+  if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
   return out || {};
 }
 
 const VIBES = ['Todos', 'Casual', 'Sensual', 'Editorial', 'Playa', 'Fitness', 'Fiesta'];
+// Voz: etiquetas (con su dot de color) e idiomas de los audios — mismos que el mock /preview/voz-admin.
+const VOICE_TYPES = [
+  { id: 'bienvenida',    label: 'Bienvenida',    dot: 'bg-brand' },
+  { id: 'ppv',           label: 'PPV',           dot: 'bg-emerald-400' },
+  { id: 'coqueto',       label: 'Coqueto',       dot: 'bg-amber-400' },
+  { id: 'explicito',     label: 'Explícito',     dot: 'bg-rose-500' },
+  { id: 'personalizado', label: 'Personalizado', dot: 'bg-paper-mute' },
+];
+const VOICE_LANGS = [
+  { id: 'es', flag: '🇪🇸', label: 'ES' }, { id: 'en', flag: '🇺🇸', label: 'EN' }, { id: 'pt', flag: '🇧🇷', label: 'PT' },
+  { id: 'fr', flag: '🇫🇷', label: 'FR' }, { id: 'de', flag: '🇩🇪', label: 'DE' }, { id: 'it', flag: '🇮🇹', label: 'IT' },
+];
+const VOICE_TYPE_MAP = Object.fromEntries(VOICE_TYPES.map((t) => [t.id, t]));
+const VOICE_MAX_CHARS = 5000;
+const voiceType = (g) => VOICE_TYPE_MAP[g?.params?.type] || VOICE_TYPE_MAP.personalizado;
+const voiceLang = (g) => VOICE_LANGS.find((l) => l.id === g?.params?.lang) || { id: g?.params?.lang || '', flag: '🌐', label: String(g?.params?.lang || '—').toUpperCase() };
+// Tipo de una generación: audio (ElevenLabs) · video (Genjutsu) · foto (media_type 'image' o vacío, las viejas).
+const isAudioGen = (g) => g?.media_type === 'audio';
+const isPhotoGen = (g) => !g?.media_type || g.media_type === 'image';
+const fmtWhen = (iso) => { try { return new Date(iso).toLocaleString('es-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
 
 // La misma foto de IG llega con URL firmada distinta cada scrape → se duplica.
 // Dedup por su ID de media estable (del path .../<a>_<mediaid>_<b>_n) o ig_cache_key.
@@ -35,9 +66,11 @@ const mediaKey = (r) => {
   if (m) return 'c:' + m[1];
   return 'u:' + u.split('?')[0];
 };
+// Con el TIPO: el motor guarda a propósito la foto Y el video del mismo post (son dos cosas distintas) → no se funden.
+const mediaKeyT = (r) => (r?.media_type === 'video' ? 'v|' : 'p|') + mediaKey(r);
 const dedupeByMedia = (rows) => {
   const seen = new Set(); const out = [];
-  for (const r of rows) { const k = mediaKey(r); if (seen.has(k)) continue; seen.add(k); out.push(r); }
+  for (const r of rows) { const k = mediaKeyT(r); if (seen.has(k)) continue; seen.add(k); out.push(r); }
   return out;
 };
 // Momentos de la vida real para el carrusel "Sorpréndeme": actividad + expresión + ENCUADRE + prop DISTINTOS en cada foto. Se barajan.
@@ -66,11 +99,189 @@ const shuffle = (arr) => { const b = [...arr]; for (let i = b.length - 1; i > 0;
 // Valor aprox del crédito Higgsfield (Soul 2.0 ≈ 0.12 créd ≈ US$0.011/foto). Ajustable.
 const USD_PER_CREDIT = 0.09;
 const money = (credits) => `US$${(Number(credits || 0) * USD_PER_CREDIT).toFixed(2)}`;
-// Costo estimado del scraper por foto bajada (Apify IG ≈ US$2.3/1000). El costo REAL de cada
-// corrida se guarda en scrape_runs desde el motor; esto es el estimado inmediato para lo ya bajado.
-const SCRAPER_USD_PER_PHOTO = 0.0023;
-const scraperMoney = (photos) => `US$${(Number(photos || 0) * SCRAPER_USD_PER_PHOTO).toFixed(2)}`;
+// Un video Genjutsu cuesta ~7 créd/seg (8s ≈ 56). Abajo de esto avisamos y NO dejamos cocinar video (evita el fallo `not_enough_credits`).
+const VIDEO_MIN_CREDITS = 50;
+// Cuentas de Higgsfield: cada modelo cocina (y gasta) en SU cuenta. Julia queda fija en la Cuenta 1 (el login de siempre).
+const JULIA_ID = '4014e339-ead8-4fb7-bcda-82fee2c7926e';
+const LEGACY_HF_ACCOUNT = '06efe22b-68f2-4cfd-b9ca-8a2849d37933';
 const usd = (n) => `US$${(Number(n) || 0).toFixed(2)}`;
+// Montos chicos del scraper (centavos): con 3 decimales para que no aparezca "US$0.00" cuando sí hubo gasto.
+const usdS = (n) => { const x = Number(n) || 0; return x > 0 && x < 0.1 ? `US$${x.toFixed(3)}` : usd(x); };
+
+// ── NÚMEROS DEL SCRAPER DE INSTAGRAM: UNA sola definición para TODAS las vistas ──
+// (cabecera de «Buscar en IG», página «Cuentas guía» de una modelo y de «Todas las modelos», tarjetas y ficha de cada cuenta).
+// Fotos/videos — fuente: creator_vault kind='ref' con origen de IG (source_handle/source_platform), TODAS las filas
+// (también las que la IA sacó), sin repetidas (la misma foto de IG llega con otra URL → se cuenta una vez, ver mediaKey):
+//   · bajadas      = todo lo que el scraper guardó (fotos + videos), aunque después se haya sacado.
+//   · en la mesa   = bajadas que siguen usables: ni la IA la sacó (ai_ok=false) ni se descartó a mano (interest='descartada').
+//   · la IA sacó   = ai_ok=false.   · descartadas = sacadas a mano (y la IA no las había sacado).
+//   · cuentas guía = creator_search_profile.seed_accounts (las activas del panel). «Todas» = suma de todas las modelos.
+//   · fuera de las cuentas guía = bajadas cuyo @ no es una cuenta guía (temas/hashtags, reels por link, cuentas quitadas).
+// Gasto — fuente: scrape_runs (una fila por búsqueda), partido en Fotos (Apify) · Videos (Apify) · Filtro IA:
+//   · real (Apify) = lo que Apify cobró por ESA corrida (usageTotalUsd leído por su run id → cost_breakdown.*.usd).
+//   · estimado     = corrida sin costo verificado (las de antes de la migración 0131, o Apify no respondió):
+//                    resultados que trajo Apify × US$2.30/1000. El cost_real viejo NO se usa (salía de "la última corrida").
+//                    Si la corrida arrancó y no se llegó a leer nada → «falta el costo real» (nunca US$0 «real»).
+//   · videos       = las búsquedas viejas de cuentas guía corrían el actor de reels sin registrarlo → «sin dato».
+//   · filtro IA    = tokens reales de Anthropic × precio público de Haiku 4.5. Las corridas viejas no lo tienen (sin dato).
+//                    Cada búsqueda paga SOLO la revisión de sus fotos; las pendientes de antes van en su propio renglón.
+//   · una búsqueda por TEMA trae fotos y videos juntos: su costo va a «Fotos».
+//   · lo bajado antes del 28 sep no tiene corrida registrada → no suma gasto (sí aparece en la factura de Apify del mes).
+const SCRAPER_USD_PER_RESULT = 0.0023;
+const normH = (h) => String(h || '').trim().replace(/^@/, '').toLowerCase();
+const EMPTY_STAT = Object.freeze({ bajadas: 0, fotos: 0, videos: 0, enMesa: 0, mesaFotos: 0, mesaVideos: 0, iaSaco: 0, descartadas: 0, lastAt: 0, days: {} });
+const newStat = () => ({ bajadas: 0, fotos: 0, videos: 0, enMesa: 0, mesaFotos: 0, mesaVideos: 0, iaSaco: 0, descartadas: 0, lastAt: 0, days: {} });
+// Estado de una foto con copias repetidas: si CUALQUIER copia se descartó a mano → descartada (manda lo que hizo el
+// dueño); si no, alcanza con UNA copia usable → en la mesa; si todas las sacó la IA → la IA sacó.
+const STATE_RANK = { descartada: 3, mesa: 2, ia: 1 };
+const rowState = (r) => (r.ai_ok === false ? 'ia' : r.interest === 'descartada' ? 'descartada' : 'mesa');
+// Lo que está EN LA MESA, sin repetidas por (modelo, foto) y con la misma regla de estado que los números → las grillas,
+// las miniaturas y «en la mesa» cuentan lo mismo. Devuelve una copia usable por foto (la primera, en el orden recibido).
+const mesaMedia = (rows) => {
+  const groups = new Map();
+  for (const r of rows) {
+    const k = `${r.creator_id}|${mediaKeyT(r)}`; const st = rowState(r);
+    const g = groups.get(k);
+    if (!g) { groups.set(k, { st, rep: st === 'mesa' ? r : null }); continue; }
+    if (STATE_RANK[st] > STATE_RANK[g.st]) g.st = st;
+    if (!g.rep && st === 'mesa') g.rep = r;
+  }
+  const out = []; groups.forEach((g) => { if (g.st === 'mesa' && g.rep) out.push(g.rep); });
+  return out;
+};
+const addMedia = (s, m) => {
+  s.bajadas += 1; if (m.video) s.videos += 1; else s.fotos += 1;
+  if (m.st === 'mesa') { s.enMesa += 1; if (m.video) s.mesaVideos += 1; else s.mesaFotos += 1; } else if (m.st === 'ia') s.iaSaco += 1; else s.descartadas += 1;
+  if (m.tLast > s.lastAt) s.lastAt = m.tLast;
+  if (m.day) s.days[m.day] = (s.days[m.day] || 0) + 1;
+};
+// Costo de UNA corrida (scrape_runs), partido. Cada parte de Apify (fotos / videos) es:
+//   · real → Apify dio el costo de ESA corrida (usd leído por su run id).
+//   · est  → sin costo verificado: corrida vieja, o la corrida arrancó y su costo todavía no se leyó (se muestra el
+//            estimado; si ni eso hay, «falta el costo real» — NUNCA un US$0 «real»).
+// La etiqueta sale de CUÁNTAS partes son reales o no (no de los montos). Videos: las corridas viejas de cuentas guía
+// también corrían el actor de reels y no lo registraban → «sin dato», no US$0.
+const runCostOf = (r) => {
+  const b = r && r.cost_breakdown && typeof r.cost_breakdown === 'object' ? r.cost_breakdown : null;
+  const part = (p) => {
+    if (!p) return { usd: 0, real: 0, est: 0, n: 0, r: 0 };
+    const u = p.usd != null && Number.isFinite(Number(p.usd)) ? Number(p.usd) : null;
+    const e = Number(p.est) || 0;
+    return u != null ? { usd: u, real: u, est: 0, n: 1, r: 1 } : { usd: e, real: 0, est: e, n: 1, r: 0 };
+  };
+  const est0 = Number(r?.cost_est) || 0;
+  const noApify = r?.kind === 'ia_pendientes'; // pasada aparte del filtro IA: no usa Apify
+  const ph = noApify ? part(null) : b ? part(b.photos) : { usd: est0, real: 0, est: est0, n: 1, r: 0 }; // corrida vieja: solo el estimado (aunque sea 0)
+  const vi = noApify ? part(null) : b ? part(b.videos) : { usd: 0, real: 0, est: 0, n: 0, r: 0 };
+  const aiKnown = !!(b && b.ai && b.ai.usd != null);
+  const ai = aiKnown ? Number(b.ai.usd) || 0 : 0;
+  // ¿Se sabe cuánto costaron los videos? Tema/reel por link: sí (van en su parte). Cuenta guía: solo si la corrida es
+  // nueva, o si al completarla se encontró su corrida de reels (o se comprobó que no hubo).
+  const videosKnown = r?.kind !== 'account' || !!(b && (b.videos || !b.backfill || b.videos_checked));
+  const status = String(r?.status || '');
+  const t = r?.run_at ? Date.parse(r.run_at) || 0 : 0;
+  // Búsqueda en segundo plano (requested ≠ null): en curso = en cola / corriendo y con un paso hace < 3 min; si no, en
+  // pausa (nadie la está manejando: sigue cuando se abre la cocina o se prende el cocinero). Nunca «se cortó».
+  const isJob = !!(r && r.requested);
+  const jobAct = isJob && (status === 'queued' || status === 'running');
+  const jobStale = jobAct && Date.now() - (Date.parse(r.updated_at || r.created_at || r.run_at) || 0) > 3 * 60 * 1000;
+  const running = isJob ? jobAct && !jobStale : status === 'running' && Date.now() - t < 10 * 60 * 1000;
+  const paused = jobStale;
+  const cut = isJob ? false : status === 'running' && !running;
+  return {
+    fotos: ph.usd, videos: vi.usd, ai, real: ph.real + vi.real, est: ph.est + vi.est,
+    realParts: ph.r + vi.r, estParts: (ph.n - ph.r) + (vi.n - vi.r), vidPend: vi.n - vi.r,
+    found: Number(r?.found) || 0, saved: Number(r?.saved) || 0, savedVideos: Number(r?.videos) || 0,
+    aiKnown, videosKnown, search: r?.kind !== 'ia_pendientes', running, paused, cut,
+  };
+};
+// ── BÚSQUEDAS EN SEGUNDO PLANO (motor nuevo: scrape_start / scrape_step / scrape_jobs) ──
+// Cada búsqueda es una fila del servidor que avanza sola de a pasos cortos: la mueve esta página (mientras esté abierta,
+// aunque la pestaña quede de fondo) y/o el cocinero de la Mac. Estas funciones arman lo que se ve en tarjetas y avisos.
+const JOB_ACTIVE = new Set(['queued', 'running']);
+const isActiveJob = (j) => !!j && JOB_ACTIVE.has(String(j.status));
+const APIFY_END = new Set(['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT', 'NOT_STARTED']);
+const jobGood = (j) => Math.max(0, (Number(j?.got?.photos) || 0) - (Number(j?.got?.ai_rejected) || 0)); // fotos que quedan (la IA no las sacó)
+const jobWho = (j) => (j?.handle ? `@${j.handle}` : j?.kind === 'tema' ? String(j?.query || '').split(',').filter(Boolean).map((t) => `#${t}`).join(' ') : 'El reel');
+const jobCounts = (j) => {
+  const w = j?.want || {}; const g = j?.got || {};
+  return [w.photos ? `fotos ${Math.min(jobGood(j), w.photos)}/${w.photos}` : '', w.videos ? `videos ${Math.min(Number(g.videos) || 0, w.videos)}/${w.videos}` : ''].filter(Boolean).join(' · ');
+};
+const jobPct = (j) => {
+  const w = j?.want || {}; const tp = Number(w.photos) || 0, tv = Number(w.videos) || 0;
+  if (!tp && !tv) return 0;
+  const got = Math.min(jobGood(j), tp) + Math.min(Number(j?.got?.videos) || 0, tv);
+  const pct = Math.round((got / (tp + tv)) * 100);
+  return pct > 0 ? Math.max(4, Math.min(100, pct)) : j?.status === 'running' ? 8 : 3;
+};
+const jobPhaseText = (j) => {
+  if (!j) return '';
+  if (j.cancel_requested) return 'Cancelando…';
+  if (j.stale) return 'En pausa · sigue cuando abras la cocina o prendas el cocinero';
+  if (j.status === 'queued') {
+    if (j.wait_reason === 'apify_memory' || j.wait_reason === 'apify_busy') return 'En cola · Apify ocupado, reintento en unos segundos';
+    return j.queue_pos ? `En cola · hay ${j.queue_pos} búsqueda${j.queue_pos === 1 ? '' : 's'} antes` : 'En cola · arranca enseguida';
+  }
+  const L = j.progress?.lanes || {};
+  const runP = j.apify?.photos && !APIFY_END.has(j.apify.photos.status); const runV = j.apify?.videos && !APIFY_END.has(j.apify.videos.status);
+  if (j.wait_reason === 'apify_memory' || j.wait_reason === 'apify_busy') return 'Apify ocupado, reintento en unos segundos';
+  if (L.videos && !L.videos.done && !runV && (Number(L.videos.pending_video_items) || 0) > 0) return `Bajando videos ${Number(j.got?.videos) || 0}/${j.want?.videos || 0}`;
+  if (L.photos && !L.photos.done && !runP) return 'Guardando fotos · la IA filtra';
+  if (L.videos && !L.videos.done && !runV) return j.kind === 'reel_link' ? 'Bajando el reel' : `Filtrando videos «sola» · ${Number(j.got?.videos) || 0}/${j.want?.videos || 0} listos`;
+  const n = Math.max(Number(j.apify?.photos?.items) || 0, Number(j.apify?.videos?.items) || 0);
+  return `Apify trayendo posts…${n ? ` (${n})` : ''}`;
+};
+// Aviso al terminar UNA búsqueda (el gasto sale de runCostOf: la única definición de costo de la página).
+const jobDoneText = (j) => {
+  const c = runCostOf(j); const who = jobWho(j);
+  const money = `gasto ${usdS(c.fotos + c.videos + c.ai)} (fotos ${usdS(c.fotos)} · videos ${usdS(c.videos)} · IA ${usdS(c.ai)})`;
+  const g = jobGood(j), v = Number(j?.got?.videos) || 0;
+  if (j.kind === 'reel_link') {
+    if (j.status === 'ok') return `Reel traído${j.progress?.cook?.cooking ? ' y mandado a cocinar' : ''}. ${j.note ? `${j.note} ` : ''}Está en «Videos».`;
+    return `${j.note || j.error || 'No se pudo traer el reel.'}`;
+  }
+  if (j.status === 'canceled') return `${who}: búsqueda cancelada (no se guardó nada nuevo) · ${money}.`;
+  const got = [j.want?.photos ? `${g} foto${g === 1 ? '' : 's'}` : '', j.want?.videos ? `${v} video${v === 1 ? '' : 's'}` : ''].filter(Boolean).join(' y ');
+  if (j.status === 'ok') return `${who} listo: ${got} nuevo${g + v === 1 ? '' : 's'} · ${money}.`;
+  if (j.note) return `${j.note} · ${money}.`;
+  if (j.status === 'error') return `${who}: ${j.error || 'la búsqueda falló'} · ${money}.`;
+  return `${who}: ${got ? `${got} nuevo${g + v === 1 ? '' : 's'}` : 'nada nuevo usable por ahora'} · ${money}.`;
+};
+// Un aviso para todo un «Buscar en todas» cuando termina la última: totales + las que quedaron cortas.
+const batchDoneText = (all) => {
+  let fotos = 0, vids = 0, money = 0; const short = [];
+  all.forEach((j) => {
+    const c = runCostOf(j); money += c.fotos + c.videos + c.ai; fotos += jobGood(j); vids += Number(j.got?.videos) || 0;
+    if (j.status === 'ok') return;
+    short.push(j.issue === 'private' ? `${jobWho(j)} privada` : j.issue === 'not_found' ? `${jobWho(j)} no existe` : j.issue ? `${jobWho(j)} sin posts usables` : j.status === 'canceled' ? `${jobWho(j)} cancelada` : `${jobWho(j)} (${jobCounts(j)})`);
+  });
+  return `Listas las ${all.length} cuentas: ${fotos} foto${fotos === 1 ? '' : 's'} y ${vids} video${vids === 1 ? '' : 's'} nuevos · gasto ${usdS(money)}.${short.length ? ` Quedaron cortas: ${short.join(', ')}.` : ''}`;
+};
+const ISSUE_CARD = { private: 'Privada — Instagram no la deja ver sin login.', not_found: 'No existe o mal escrita — revisá el @.', no_posts: 'Sin posts públicos usables.', blocked: 'Instagram la bloqueó o la restringió.' };
+const newCost = () => ({ fotos: 0, videos: 0, ai: 0, total: 0, real: 0, est: 0, realParts: 0, estParts: 0, vidPend: 0, runs: 0, searches: 0, found: 0, saved: 0, savedVideos: 0, aiRuns: 0, videosRuns: 0 });
+const EMPTY_COST = Object.freeze(newCost());
+const addCost = (acc, c) => {
+  acc.fotos += c.fotos; acc.videos += c.videos; acc.ai += c.ai; acc.total += c.fotos + c.videos + c.ai;
+  acc.real += c.real; acc.est += c.est; acc.realParts += c.realParts; acc.estParts += c.estParts; acc.vidPend += c.vidPend;
+  acc.runs += 1; if (c.search) acc.searches += 1;
+  acc.found += c.found; acc.saved += c.saved; acc.savedVideos += c.savedVideos;
+  if (c.aiKnown) acc.aiRuns += 1;
+  if (c.videosKnown) acc.videosRuns += 1;
+};
+// Etiqueta del gasto de Apify: real · estimado · mezcla (con cuánto de cada uno). Por conteo de partes, no por montos.
+const costTag = (c) => {
+  if (!c || c.runs === 0) return { t: 'sin corridas registradas', cls: 'text-paper-dim' };
+  if (c.realParts + c.estParts === 0) return { t: 'sin cobro de Apify', cls: 'text-paper-dim' };
+  if (c.estParts === 0) return c.videosRuns < c.runs ? { t: 'real (Apify) · videos viejos sin dato', cls: 'bg-amber-500/10 text-amber-200' } : { t: 'real (Apify)', cls: 'bg-emerald-500/15 text-emerald-300' };
+  if (c.realParts === 0) return c.est > 0.000001 ? { t: 'estimado', cls: 'bg-amber-500/15 text-amber-300' } : { t: 'falta el costo real', cls: 'bg-amber-500/15 text-amber-300' };
+  return { t: c.est > 0.000001 ? `${usdS(c.real)} real · ${usdS(c.est)} estimado` : `${usdS(c.real)} real · falta el costo de ${c.estParts}`, cls: 'bg-amber-500/10 text-amber-200' };
+};
+// Videos de un bucket: '—' si ninguna corrida lo sabe; nota si algunas viejas no lo tienen o si falta leer su costo.
+const videosCell = (c) => (c.runs && (!c.videosRuns || (c.videosRuns < c.runs && c.videos <= 0.000001)) ? '—' : c.vidPend && c.videos <= 0.000001 ? 'pendiente' : usdS(c.videos));
+const videosNote = (c) => [
+  c.runs && !c.videosRuns ? ' · sin dato (viejas)' : c.videosRuns && c.runs > c.videosRuns ? ` · ${c.runs - c.videosRuns} viejas sin dato` : '',
+  c.vidPend ? (c.videos <= 0.000001 ? ' · Apify todavía no dio el costo' : ` · falta el costo real de ${c.vidPend}`) : '',
+].join('');
 const fmtDay = (d) => { try { return new Date(String(d) + 'T12:00:00').toLocaleDateString('es-US', { day: 'numeric', month: 'short' }); } catch { return String(d); } };
 // Agrupa filas (ya cortadas) por DÍA: Hoy · Ayer · fecha.
 const dayGroups = (rows) => {
@@ -94,7 +305,10 @@ const fmtLikes = (n) => { const x = Math.max(0, Number(n || 0)); return x >= 1e6
 
 export default function KitchenPage() {
   const [access, setAccess] = useState('loading');
-  useEffect(() => { (async () => { try { const up = await getUserProfile(); const p = up?.profile; setAccess(p && (p.role === 'admin' || p.role === 'supervisor') ? 'ok' : 'denied'); } catch { setAccess('denied'); } })(); }, []);
+  // A dónde vuelve cada rol: la PR (supervisor) NO entra a /admin → su casa es /trabajo.
+  const [myRole, setMyRole] = useState('');
+  const homeHref = myRole === 'supervisor' ? '/trabajo' : '/admin';
+  useEffect(() => { (async () => { try { const up = await getUserProfile(); const p = up?.profile; setMyRole(p?.role || ''); setAccess(p && (p.role === 'admin' || p.role === 'supervisor') ? 'ok' : 'denied'); } catch { setAccess('denied'); } })(); }, []);
 
   const [creators, setCreators] = useState([]);
   const [sel, setSel] = useState('');              // modelo elegida (si vacío → pantalla de elegir modelo)
@@ -125,7 +339,6 @@ export default function KitchenPage() {
   const [enq, setEnq] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [costOpen, setCostOpen] = useState(() => new Set()); // ids con el precio por foto desplegado
   // Perfil de búsqueda por modelo (nichos) + scraper
   const [niches, setNiches] = useState([]);
   const [newNiche, setNewNiche] = useState('');
@@ -136,9 +349,22 @@ export default function KitchenPage() {
   const [scrapingAcc, setScrapingAcc] = useState(false);
   const [checkingAcct, setCheckingAcct] = useState(null); // handle que se está re-chequeando (una sola)
   const [privateAccts, setPrivateAccts] = useState(() => new Set()); // cuentas detectadas privadas (aviso)
-  const [acctView, setAcctView] = useState(false); // dashboard de cuentas guía de UNA modelo (pantalla completa)
-  const [acctGlobal, setAcctGlobal] = useState(false); // dashboard de cuentas guía de TODAS las modelos (desde la vista global)
-  const [balance, setBalance] = useState(null); // saldo real de Higgsfield (créditos)
+  const [acctView, setAcctView] = useState(false); // página «Cuentas guía» (pantalla completa): una modelo o «Todas las modelos»
+  const [acctBack, setAcctBack] = useState(null); // de dónde se abrió la página → «Volver» deja todo como estaba { sel, subtab, scrapView }
+  const [acctsFor, setAcctsFor] = useState(''); // modelo cuyas cuentas guía ya se leyeron (hasta entonces NO se guarda → no pisa la lista)
+  const [acctsErr, setAcctsErr] = useState(''); // no se pudieron leer las cuentas guía de la modelo abierta (con «Reintentar»)
+  const [seedsReload, setSeedsReload] = useState(0); // «Reintentar» → vuelve a leerlas
+  const [allSeeds, setAllSeeds] = useState({}); // creator_id → cuentas guía (seed_accounts) de TODAS las modelos
+  const [addFor, setAddFor] = useState(''); // «Todas las modelos» → a qué modelo se le agrega la cuenta
+  const [bulkProg, setBulkProg] = useState(null); // «Buscar en todas»: { i, n } (una cuenta por vez)
+  const [apifyBill, setApifyBill] = useState(null); // factura real de Apify del mes (acción apify_usage)
+  const [backfilling, setBackfilling] = useState(false); // completando el costo real de corridas viejas
+  const [videoEnq, setVideoEnq] = useState(null); // id del reel que se está encolando a video (Genjutsu)
+  const [reelLink, setReelLink] = useState(''); // link de un reel puntual para traerlo por URL
+  const [reelBusy, setReelBusy] = useState(false);
+  const [resMedia, setResMedia] = useState('todo'); // filtro Fotos/Videos/Audios en Resultados: todo | fotos | videos | audios
+  const [balance, setBalance] = useState(null); // saldo real de Higgsfield (créditos) — global de siempre (Cuenta 1)
+  const [hfAccts, setHfAccts] = useState({}); // id → { label, balance, balance_at, legacy, cli, cli_error } (saldo y login POR cuenta)
   const [wiz, setWiz] = useState(null); // pop-up "agregar fuente": null | { step: 0..4, mode: 'cuenta'|'tema'|null }
   const [wizType, setWizType] = useState('fotos'); // en el wizard: fotos | videos | ambos
   const [acctDetail, setAcctDetail] = useState(null); // handle abierto en el panel de cuentas → ver TODAS sus fotos
@@ -147,13 +373,46 @@ export default function KitchenPage() {
   const [acctSearch, setAcctSearch] = useState(''); // buscar cuenta guía por nombre en el panel
   const [acctDate, setAcctDate] = useState('todas'); // filtro por actividad: todas | hoy | ayer | semana
   const [scrapView, setScrapView] = useState(false); // desde el selector: TODO lo scrapeado de IG (todas las modelos)
-  const [scrapedGlobal, setScrapedGlobal] = useState([]); // filas scrapeadas de todas las modelos
+  const [scrapedGlobal, setScrapedGlobal] = useState([]); // TODO lo scrapeado de IG de todas las modelos (también lo que la IA sacó) → números únicos
   const [qtyPhotos, setQtyPhotos] = useState(10); // cuántas FOTOS traer por búsqueda (las mejores 10 por default)
   const [qtyVideos, setQtyVideos] = useState(0);  // cuántos VIDEOS traer (se bajan a nuestro storage)
   const [mediaFilter, setMediaFilter] = useState('todo'); // grilla de scraping/ficha: todo | fotos | videos
   const [videoPlay, setVideoPlay] = useState(null); // {url, poster} para reproducir un video en grande
-  const [scraperGlobal, setScraperGlobal] = useState({ photos: 0, accounts: 0 }); // total global del scraper (todas las modelos)
-  const [scrapeRuns, setScrapeRuns] = useState([]); // corridas registradas de la modelo abierta (costo real, cuando el motor las escribe)
+  const [redoNote, setRedoNote] = useState(''); // ajuste opcional que se mete al prompt al Rehacer (ej: "más glúteo")
+  const [spendOpen, setSpendOpen] = useState(false); // pop-up de detalle de gasto/saldo de la modelo
+  const [scrapeRuns, setScrapeRuns] = useState([]); // corridas registradas del scraper (TODAS las modelos) → gasto real/estimado
+  // Búsquedas en segundo plano (motor nuevo): id → vista que manda el servidor. asyncMode: null = todavía no se sabe ·
+  // true = el motor las tiene · false = motor viejo o sin la migración → se busca como antes (una request larga).
+  const [jobs, setJobs] = useState(() => new Map());
+  const jobsRef = useRef(new Map());
+  const [asyncMode, setAsyncMode] = useState(null);
+  const asyncRef = useRef(null);
+  const [workerOnline, setWorkerOnline] = useState(null); // ¿el cocinero de la Mac está dando pasos? (sigue aunque cierres)
+  const mineRef = useRef(new Set());   // búsquedas que arrancó ESTA pestaña (para avisar aunque terminen enseguida)
+  const driverRef = useRef(false);     // un solo «motor de pasos» por pestaña
+  const aliveRef = useRef(true);
+  const selRef = useRef('');
+  const endedRef = useRef(() => {});   // qué hacer cuando una búsqueda termina (se actualiza en cada render)
+  const doneQRef = useRef({ list: [], timer: null });
+  const reloadTRef = useRef(null);
+  // Voz (ElevenLabs): cada modelo tiene UNA voz fija → guion → audio → revisar → aprobar (cae al baúl "Cocina").
+  const [voiceSum, setVoiceSum] = useState(null);       // { configured, voices, consent, error? } (acción 'summary')
+  const [voiceStatus, setVoiceStatus] = useState(null); // { configured, model_label, sub } (acción 'status')
+  const [vType, setVType] = useState('bienvenida');
+  const [vText, setVText] = useState('');
+  const [vLang, setVLang] = useState('es');
+  const [vBusy, setVBusy] = useState(false);
+  const [vMsg, setVMsg] = useState(null);     // aviso del compositor { kind, text, needsKey?, needsConsent?, needsVoice? }
+  const [vRow, setVRow] = useState({});       // id -> 'regen' mientras se rehace ese audio (spinner en su tarjeta)
+  const [vRowErr, setVRowErr] = useState({}); // id -> error visible en la tarjeta de ese audio
+  const [vFocus, setVFocus] = useState(null); // audio a resaltar/scrollear al venir desde Resultados
+  const vComposerRef = useRef(null);
+  const vTextRef = useRef(null);
+  // APROBAR/DESCARTAR OPTIMISTA: la tarjeta cambia al instante y el server confirma de fondo.
+  const [deciding, setDeciding] = useState({}); // id -> 'approve' | 'reject' mientras el server confirma
+  const decideRef = useRef({});                 // id -> status optimista (loadGens lo respeta hasta que el server confirme)
+  const [decideErr, setDecideErr] = useState({}); // id -> error del aprobar/descartar, visible JUNTO a esa foto/audio (pop-up y grillas)
+  const genSeqRef = useRef(0);                  // descarta respuestas viejas de loadGens que lleguen tarde
 
   const sb = getSupabase();
 
@@ -163,12 +422,27 @@ export default function KitchenPage() {
 
   const loadSummary = useCallback(async () => {
     const out = await callFn('kitchen_summary');
-    if (out.ok) { const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m); setBalance(out.balance ?? null); }
+    if (out.ok) { const m = {}; (out.identities || []).forEach((i) => { m[i.creator_id] = i; }); setIdent(m); setBalance(out.balance ?? null); setHfAccts(out.accounts && typeof out.accounts === 'object' ? out.accounts : {}); }
   }, []);
   const loadGens = useCallback(async () => {
-    const { data } = await sb.from('generations').select('id, creator_id, reference_url, result_url, status, credits, note, created_at, done_at, carousel_of, engine_label').order('created_at', { ascending: false }).limit(200);
-    setGens(Array.isArray(data) ? data : []);
+    const seq = ++genSeqRef.current;
+    const base = 'id, creator_id, reference_url, result_url, status, credits, note, created_at, done_at, carousel_of, engine_label, media_type';
+    let { data, error } = await sb.from('generations').select(`${base}, prompt, params`).order('created_at', { ascending: false }).limit(200);
+    // Si la columna params todavía no existe (migración de voz sin aplicar) no rompemos la cocina: traemos lo de siempre.
+    if (error) { const r2 = await sb.from('generations').select(base).order('created_at', { ascending: false }).limit(200); data = r2.data; }
+    if (seq !== genSeqRef.current) return; // llegó tarde una respuesta vieja (ya hay una más nueva en camino) → ignorar
+    const ov = decideRef.current; // aprobaciones/descartes optimistas que el server todavía no confirmó
+    setGens(Array.isArray(data) ? data.map((g) => (ov[g.id] ? { ...g, status: ov[g.id] } : g)) : []);
   }, [sb]);
+  // Voz: estado de la conexión ElevenLabs + voces asignadas + consentimientos (se carga al entrar a la pestaña Voz).
+  const loadVoice = useCallback(async () => {
+    const [s, st] = await Promise.all([callVoice('summary'), callVoice('status')]);
+    setVoiceSum(s?.ok
+      ? { configured: !!s.configured, voices: Array.isArray(s.voices) ? s.voices : [], consent: s.consent || {}, error: null }
+      : { configured: s?.needsKey ? false : null, voices: [], consent: {}, error: s?.needsKey ? null : (s?.error || 'No se pudo leer el motor de voz.') });
+    setVoiceStatus(st?.ok ? st : null);
+  }, []);
+  const loadVoiceStatus = useCallback(async () => { const st = await callVoice('status'); if (st?.ok) setVoiceStatus(st); }, []);
   const loadVault = useCallback(async () => {
     // La BIBLIOTECA DE GUÍAS es COMPARTIDA: las fotos subidas a mano (sin scraping) de
     // TODAS las modelos forman un solo pool del que se elige para cualquier modelo.
@@ -190,37 +464,187 @@ export default function KitchenPage() {
     const { data } = await sb.from('creator_vault').select('creator_id').eq('kind', 'real');
     const rc = {}; (data || []).forEach((r) => { if (r.creator_id) rc[r.creator_id] = (rc[r.creator_id] || 0) + 1; }); setRealCount(rc);
   }, [sb]);
-  // Total GLOBAL del scraper (todas las modelos): fotos bajadas + cuentas guía guardadas.
-  const loadScraperGlobal = useCallback(async () => {
-    const [ph, ac] = await Promise.all([
-      sb.from('creator_vault').select('id', { count: 'exact', head: true }).eq('kind', 'ref').not('source_handle', 'is', null),
-      sb.from('scrape_accounts').select('id', { count: 'exact', head: true }),
-    ]);
-    setScraperGlobal({ photos: ph.count || 0, accounts: ac.count || 0 });
-  }, [sb]);
-  // TODO lo scrapeado de Instagram de TODAS las modelos (para el botón global "Buscar en IG" del selector).
+  // Lee TODAS las filas de una consulta de a 1000 (el servidor corta cada respuesta en 1000 filas, aunque se pida más).
+  const fetchAll = useCallback(async (build, max = 20000) => {
+    const out = [];
+    for (let from = 0; from < max; from += 1000) {
+      const { data, error } = await build().range(from, from + 999);
+      if (error) return { data: out, error };
+      const rows = Array.isArray(data) ? data : [];
+      out.push(...rows);
+      if (rows.length < 1000) break;
+    }
+    return { data: out, error: null };
+  }, []);
+  // TODO lo scrapeado de Instagram de TODAS las modelos, TAMBIÉN lo que la IA sacó: de acá salen TODOS los números
+  // del scraper (ver «NÚMEROS DEL SCRAPER» arriba) y la grilla global de «Buscar en IG» (que muestra solo lo de la mesa).
   const loadScrapedGlobal = useCallback(async () => {
     const cols = 'id, url, caption, creator_id, kind, vibe, likes, views, source_handle, source_url, source_platform, interest, ai_ok, media_type, video_url, created_at';
-    const { data } = await sb.from('creator_vault').select(cols).eq('kind', 'ref').not('source_handle', 'is', null).or('ai_ok.is.null,ai_ok.eq.true').order('created_at', { ascending: false }).limit(6000);
+    const { data } = await fetchAll(() => sb.from('creator_vault').select(cols).eq('kind', 'ref').or('source_handle.not.is.null,source_platform.not.is.null').order('created_at', { ascending: false }).order('id', { ascending: true }));
     setScrapedGlobal(Array.isArray(data) ? data : []);
-  }, [sb]);
-  // Corridas registradas de la modelo abierta (costo REAL de Apify, cuando el motor las escribe).
+  }, [sb, fetchAll]);
+  // Corridas registradas del scraper (TODAS las modelos): gasto real de Apify + filtro IA por corrida.
+  // Sin la migración 0131 las columnas nuevas no existen → se leen las de siempre (y todo se muestra como estimado).
+  const runsLegacyRef = useRef(false); // true = la base todavía no tiene las columnas de 0131 (no reintentar en cada apertura)
   const loadScrapeRuns = useCallback(async () => {
-    if (!sel) { setScrapeRuns([]); return; }
-    const { data } = await sb.from('scrape_runs').select('id, account_id, kind, query, run_at, found, saved, kept, cost_real, cost_est, status').eq('creator_id', sel).order('run_at', { ascending: false }).limit(500);
-    setScrapeRuns(Array.isArray(data) ? data : []);
-  }, [sb, sel]);
+    const base = 'id, creator_id, account_id, kind, query, run_at, found, saved, kept, cost_est, status, error';
+    const q = (cols) => fetchAll(() => sb.from('scrape_runs').select(cols).order('run_at', { ascending: false }).order('id', { ascending: true }));
+    // Solo se pasa a las columnas viejas si FALTA una columna (migración sin aplicar). Cualquier otro error (red, sesión)
+    // deja los números que ya había, sin marcar nada (si no, todo quedaba «estimado» hasta recargar).
+    const missingCol = (e) => !!e && (String(e.code) === '42703' || /column .* does not exist/i.test(String(e.message || '')));
+    const c0131 = `${base}, videos, cost_apify, cost_ai, cost_breakdown, cost_source, apify_run_ids`;
+    // + columnas de las búsquedas en segundo plano (el motivo de una cuenta que no jaló va liviano: solo progress->>issue).
+    let r = runsLegacyRef.current ? { error: { code: '42703' } } : await q(`${c0131}, requested, updated_at, created_at, finished_at, note, progress_issue:progress->>issue`);
+    if (r.error && !runsLegacyRef.current && missingCol(r.error)) r = await q(c0131);
+    if (r.error) {
+      if (!missingCol(r.error)) return;
+      runsLegacyRef.current = true; r = await q(base);
+      if (r.error) return;
+    }
+    setScrapeRuns(Array.isArray(r.data) ? r.data : []);
+  }, [sb, fetchAll]);
+  // Cuentas guía de TODAS las modelos (para «Todas las modelos» y el total global de cuentas guía).
+  const loadAllSeeds = useCallback(async () => {
+    const { data, error } = await sb.from('creator_search_profile').select('creator_id, seed_accounts');
+    if (error) return;
+    const m = {}; (data || []).forEach((r) => { if (r?.creator_id) m[r.creator_id] = Array.isArray(r.seed_accounts) ? r.seed_accounts : []; });
+    setAllSeeds(m);
+  }, [sb]);
+  // Lo que Apify cobró DE VERDAD este mes (factura del ciclo). Nunca pasa por el navegador el token.
+  const loadApifyBill = useCallback(async () => {
+    const out = await callFn('apify_usage');
+    setApifyBill(out?.ok ? out : { error: /desconocida/i.test(String(out?.error || '')) ? 'Falta actualizar el motor (función higgsfield) para leer la factura de Apify.' : (out?.error || 'No se pudo leer Apify.') });
+  }, []);
+
+  // ── Búsquedas en segundo plano: estado, avisos, «motor de pasos» ──
+  const setAsync = useCallback((v) => { asyncRef.current = v; setAsyncMode(v); }, []);
+  // ¿El motor no tiene búsquedas en segundo plano? (edge viejo: «Acción desconocida» · sin la migración: needs_migration)
+  const noJobs = (out) => !!(out?.needs_migration || /desconocida/i.test(String(out?.error || '')));
+  const mergeJobs = useCallback((list) => {
+    if (!Array.isArray(list) || !list.length) return;
+    const prev = jobsRef.current; const next = new Map(prev); const ended = [];
+    for (const j of list) {
+      if (!j || !j.id) continue;
+      const old = prev.get(j.id);
+      if (!isActiveJob(j) && ((old && isActiveJob(old)) || (!old && mineRef.current.has(j.id)))) { ended.push(j); mineRef.current.delete(j.id); }
+      next.set(j.id, j);
+    }
+    jobsRef.current = next; setJobs(next);
+    if (ended.length) endedRef.current(ended);
+  }, []);
+  const refreshJobs = useCallback(async () => {
+    if (asyncRef.current === false) return;
+    const out = await callFn('scrape_jobs', { since_ms: 600000 });
+    if (noJobs(out)) { setAsync(false); return; }
+    if (!out?.ok) return;
+    if (asyncRef.current == null) setAsync(true);
+    if (typeof out.worker_online === 'boolean') setWorkerOnline(out.worker_online);
+    const list = Array.isArray(out.jobs) ? out.jobs : [];
+    mergeJobs(list);
+    // Activas que ya no vienen (terminaron hace más de 10 min, ej. la compu durmió): se piden por id para cerrarlas bien.
+    const got = new Set(list.map((j) => j.id));
+    const missing = [...jobsRef.current.values()].filter((j) => isActiveJob(j) && !got.has(j.id)).map((j) => j.id).slice(0, 100);
+    if (missing.length) { const o2 = await callFn('scrape_jobs', { ids: missing }); if (o2?.ok) mergeJobs(o2.jobs || []); }
+  }, [mergeJobs, setAsync]);
+  const hasActiveJobs = useMemo(() => [...jobs.values()].some(isActiveJob), [jobs]);
+  const activeJobFor = useCallback((cid, h) => { const k = normH(h); for (const j of jobs.values()) if (isActiveJob(j) && j.creator_id === cid && j.kind === 'account' && normH(j.handle) === k) return j; return null; }, [jobs]);
+  // Un solo loop por pestaña: pide pasos mientras haya búsquedas activas (sigue con la pestaña de fondo; nunca arranca
+  // búsquedas nuevas). Con el cocinero de la Mac prendido, cada uno toma búsquedas distintas (el candado del servidor).
+  const runDriver = useCallback(async () => {
+    if (driverRef.current) return;
+    driverRef.current = true;
+    try {
+      while (aliveRef.current && asyncRef.current !== false && [...jobsRef.current.values()].some(isActiveJob)) {
+        const out = await callFn('scrape_step', { prefer_creator_id: selRef.current || null, budget_ms: 90000 });
+        if (!aliveRef.current) break;
+        if (noJobs(out)) { setAsync(false); break; }
+        if (Array.isArray(out?.jobs)) mergeJobs(out.jobs); else if (out?.job) mergeJobs([out.job]);
+        if (typeof out?.worker_online === 'boolean') setWorkerOnline(out.worker_online);
+        const wait = !out?.ok ? 10000 : (out.stepped || out.more_due) ? 1500 : Math.max(3000, Math.min(15000, Number(out.next_in_ms) || 5000));
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    } finally { driverRef.current = false; }
+  }, [mergeJobs, setAsync]);
+  const workerLine = (on) => (on ? 'Podés cerrar la página: el cocinero de la Mac lo termina.' : 'Dejá la cocina abierta hasta que termine: el cocinero de la Mac está apagado.');
+  // Arranca búsquedas en el servidor. { legacy:true } = el motor no las tiene → la función que llamó busca como antes.
+  const startSearch = useCallback(async (payload) => {
+    if (asyncRef.current === false) return { legacy: true };
+    const out = await callFn('scrape_start', payload);
+    if (noJobs(out)) { setAsync(false); return { legacy: true }; }
+    if (!out?.ok) return { ok: false, error: out?.error || (out?.timeout ? 'El servidor no respondió: probá de nuevo en un momento.' : 'No se pudo empezar la búsqueda.') };
+    setAsync(true);
+    (out.jobs || []).forEach((x) => { if (x?.job_id && !x.dedup && !x.skipped) mineRef.current.add(x.job_id); });
+    mergeJobs((out.jobs || []).map((x) => x?.job).filter(Boolean));
+    if (typeof out.worker_online === 'boolean') setWorkerOnline(out.worker_online);
+    return { ok: true, out };
+  }, [mergeJobs, setAsync]);
+  const cancelJob = async (j) => {
+    const out = await callFn('scrape_cancel', { job_id: j.id });
+    if (out?.job) mergeJobs([out.job]);
+    else if (!out?.ok) setMsg({ kind: 'err', text: out?.error || 'No se pudo cancelar la búsqueda.' });
+  };
 
   useEffect(() => {
     if (access !== 'ok') return;
     (async () => {
       try { const { data } = await sb.rpc('team_creators'); if (Array.isArray(data)) setCreators(data.filter((c) => c?.id && c?.full_name && c.onboarding_status === 'active')); } catch {}
-      loadRealCounts(); loadSummary(); loadGens(); loadScraperGlobal();
+      loadRealCounts(); loadSummary(); loadGens();
     })();
-  }, [access, sb, loadRealCounts, loadSummary, loadGens, loadScraperGlobal]);
+  }, [access, sb, loadRealCounts, loadSummary, loadGens]);
   // El baúl se recarga solo cada vez que cambia la modelo abierta (sel).
   useEffect(() => { if (access === 'ok') loadVault(); }, [access, loadVault]);
-  useEffect(() => { if (access === 'ok') loadScrapeRuns(); }, [access, loadScrapeRuns]);
+  // Números del scraper: se leen al abrir «Buscar en IG» (de una modelo o global) o la página «Cuentas guía».
+  const scrapeOpen = access === 'ok' && ((!!sel && subtab === 'buscar') || acctView || scrapView);
+  useEffect(() => { if (scrapeOpen) { loadScrapedGlobal(); loadScrapeRuns(); } }, [scrapeOpen, loadScrapedGlobal, loadScrapeRuns]);
+  // Búsquedas en segundo plano: al entrar se descubren las de otras pestañas / de antes de recargar; mientras haya alguna
+  // activa se mira cada 5 s (si no, cada 60 s) y el «motor de pasos» de esta pestaña las va avanzando.
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
+  useEffect(() => { selRef.current = sel; }, [sel]);
+  const jobsOff = asyncMode === false;
+  useEffect(() => {
+    if (access !== 'ok' || jobsOff) return undefined;
+    let alive = true; let t = null;
+    const loop = async () => {
+      if (!alive) return;
+      await refreshJobs();
+      if (!alive || asyncRef.current === false) return;
+      t = setTimeout(loop, [...jobsRef.current.values()].some(isActiveJob) ? 5000 : 60000);
+    };
+    loop();
+    return () => { alive = false; if (t) clearTimeout(t); };
+  }, [access, jobsOff, hasActiveJobs, refreshJobs]);
+  useEffect(() => { if (access === 'ok' && hasActiveJobs && !jobsOff) runDriver(); }, [access, hasActiveJobs, jobsOff, runDriver]);
+  // Cuando una búsqueda termina: aviso (juntando las que terminen en 3 s; un lote avisa una vez, al final) + recargar lo bajado.
+  const loadersRef = useRef({});
+  loadersRef.current = { loadVault, loadScrapedGlobal, loadScrapeRuns, loadGens };
+  endedRef.current = (ended) => {
+    const q = doneQRef.current; q.list.push(...ended);
+    if (q.timer) clearTimeout(q.timer);
+    q.timer = setTimeout(() => {
+      q.timer = null;
+      const list = q.list.splice(0); if (!list.length) return;
+      const texts = []; const batches = new Set();
+      list.forEach((j) => { if (j.batch_id) batches.add(j.batch_id); else texts.push(jobDoneText(j)); });
+      batches.forEach((bid) => {
+        const all = [...jobsRef.current.values()].filter((x) => x.batch_id === bid);
+        if (all.length && !all.some(isActiveJob)) texts.push(batchDoneText(all)); // el lote sigue → avisa al final
+      });
+      if (!texts.length) return;
+      setMsg({ kind: texts.length === 1 && list.length === 1 && list[0].status === 'error' ? 'err' : 'ok', text: texts.join(' ') });
+    }, 3000);
+    if (reloadTRef.current) clearTimeout(reloadTRef.current);
+    reloadTRef.current = setTimeout(() => { reloadTRef.current = null; const L = loadersRef.current; L.loadVault?.(); L.loadScrapedGlobal?.(); L.loadScrapeRuns?.(); L.loadGens?.(); }, 1500);
+  };
+  useEffect(() => { if (access === 'ok' && acctView) { loadAllSeeds(); loadApifyBill(); } }, [access, acctView, loadAllSeeds, loadApifyBill]);
+  // Voz: se lee al entrar a la pestaña Voz (y al cambiar de modelo estando ahí).
+  useEffect(() => { if (access === 'ok' && sel && subtab === 'voz') loadVoice(); }, [access, sel, subtab, loadVoice]);
+  // Al venir desde Resultados (tocaste un audio): scrollear a ese clip en el catálogo y resaltarlo un rato.
+  useEffect(() => {
+    if (subtab !== 'voz' || !vFocus) return;
+    const t = setTimeout(() => { try { document.getElementById(`voz-clip-${vFocus}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch { /* noop */ } }, 80);
+    const t2 = setTimeout(() => setVFocus(null), 3500);
+    return () => { clearTimeout(t); clearTimeout(t2); };
+  }, [subtab, vFocus]);
 
   // Auto-refresco: mientras haya algo cocinándose, recargar solo cada 6s (para que el resultado aparezca sin apretar nada).
   useEffect(() => {
@@ -255,18 +679,23 @@ export default function KitchenPage() {
     const justFailed = gens.filter((g) => g.status === 'failed' && prev.has(g.id));
     const nameOf = (id) => (creators.find((c) => c.id === id)?.full_name) || 'una modelo';
     if (justDone.length > 0) {
+      const nVid = justDone.filter((g) => g.media_type === 'video').length;
+      const allVid = nVid === justDone.length; // todo lo que terminó fueron videos
       const byC = {}; justDone.forEach((g) => { byC[g.creator_id] = (byC[g.creator_id] || 0) + 1; });
       const parts = Object.entries(byC).map(([cid, n]) => `${n} de ${nameOf(cid)}`);
-      const text = `Listas para revisar: ${parts.join(', ')}.${justFailed.length ? ` (${justFailed.length} fallaron)` : ''} Entrá a Resultados a verlas.`;
+      const text = allVid
+        ? `¡${nVid > 1 ? `${nVid} videos listos` : 'Video listo'}! Ya se cocinó: ${parts.join(', ')}.${justFailed.length ? ` (${justFailed.length} no salieron)` : ''} Entrá a Resultados a verlo${nVid > 1 ? 's' : ''}.`
+        : `Listas para revisar: ${parts.join(', ')}.${nVid ? ` (incluye ${nVid} video${nVid > 1 ? 's' : ''})` : ''}${justFailed.length ? ` (${justFailed.length} no salieron)` : ''} Entrá a Resultados a verlas.`;
       setMsg({ kind: 'ok', text });
       try {
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          const n = new Notification('Kitchen — fotos listas 🍳', { body: text, tag: 'kitchen-ready', renotify: true });
+          const n = new Notification(allVid ? 'Kitchen — video listo 🎬' : 'Kitchen — listas 🍳', { body: text, tag: 'kitchen-ready', renotify: true });
           n.onclick = () => { try { window.focus(); } catch { /* noop */ } };
         }
       } catch { /* noop */ }
     } else if (justFailed.length > 0) {
-      setMsg({ kind: 'info', text: `${justFailed.length} foto(s) fallaron al cocinarse. Mirá "No salieron" para reintentar.` });
+      const nVid = justFailed.filter((g) => g.media_type === 'video').length;
+      setMsg({ kind: 'info', text: `${justFailed.length} ${nVid === justFailed.length ? `video(s)` : 'cosa(s)'} no salieron al cocinarse. Mirá "No salieron" para reintentar.` });
     }
   }, [gens, access, creators]);
 
@@ -281,16 +710,47 @@ export default function KitchenPage() {
 
   const selCreator = creators.find((c) => c.id === sel) || null;
   const selReady = ident[sel]?.status === 'ready';
+  // ── Cuenta de Higgsfield de cada modelo (su saldo y si su login anda en la Mac del cocinero) ──
+  const hasAcctInfo = Object.keys(hfAccts).length > 0; // false = servidor viejo → todo como antes (saldo global)
+  const acctOf = (cid) => {
+    const id = cid === JULIA_ID ? LEGACY_HF_ACCOUNT : ident[cid]?.account_id;
+    return id ? (hfAccts[id] || null) : null;
+  };
+  // Saldo de la cuenta de ESA modelo (Julia / servidor viejo → el global de siempre). null = sin dato / sin cuenta.
+  const balFor = (cid) => {
+    if (!hasAcctInfo) return balance;
+    const a = acctOf(cid);
+    if (!a) return cid === JULIA_ID ? balance : null;
+    return a.balance ?? null;
+  };
+  // Motivo por el que NO se puede cocinar a esta modelo por su cuenta ('' = se puede). Julia nunca se frena acá.
+  const acctBlock = (cid) => {
+    if (!hasAcctInfo || !cid || cid === JULIA_ID) return '';
+    const who = creators.find((c) => c.id === cid)?.full_name || 'Esta modelo';
+    const a = acctOf(cid);
+    if (!a) return `${who} no tiene cuenta de Higgsfield asignada. Asignala en /conexion → «Modelos → cuenta» (las modelos van a la cuenta nueva).`;
+    if (a.legacy) return `La Cuenta 1 es solo de Julia: pasá a ${who} a la cuenta nueva en /conexion → «Modelos → cuenta».`;
+    if (a.cli === 'missing') return `La cuenta «${a.label}» de ${who} todavía no está conectada en la Mac del cocinero. Conectala desde /conexion (en la Mac: node scripts/hf-login.mjs ${a.id}).`;
+    if (a.cli === 'error') return `La cuenta «${a.label}» de ${who} no anda en la Mac del cocinero: ${a.cli_error || 'revisalo en /conexion'}`;
+    return '';
+  };
+  const selAcct = sel ? acctOf(sel) : null;
+  const selBal = sel ? balFor(sel) : balance;
+  const selBlock = sel ? acctBlock(sel) : '';
 
   // Métricas por modelo (de las generaciones cargadas).
   const statsFor = useCallback((cid) => {
     const rows = gens.filter((g) => g.creator_id === cid);
     return {
-      credits: rows.filter((g) => g.status !== 'failed').reduce((a, g) => a + Number(g.credits || 0), 0),
+      // Créditos = SOLO Higgsfield (fotos/videos). Los audios se cobran en créditos de ElevenLabs (params.chars), no suman acá.
+      credits: rows.filter((g) => g.status !== 'failed' && !isAudioGen(g)).reduce((a, g) => a + Number(g.credits || 0), 0),
       review: rows.filter((g) => g.status === 'done').length,
       approved: rows.filter((g) => g.status === 'approved').length,
       pending: rows.filter((g) => ['queued', 'in_progress'].includes(g.status)).length,
       total: rows.filter((g) => g.status !== 'failed').length,
+      photos: rows.filter((g) => g.status !== 'failed' && isPhotoGen(g)).length,
+      videos: rows.filter((g) => g.status !== 'failed' && g.media_type === 'video').length,
+      audios: rows.filter((g) => g.status !== 'failed' && isAudioGen(g)).length,
     };
   }, [gens]);
   const mine = statsFor(sel);
@@ -304,63 +764,77 @@ export default function KitchenPage() {
   // Fotos REALES de la modelo abierta (su identidad).
   const realRows = useMemo(() => vault.filter((r) => r.kind === 'real' && r.creator_id === sel), [vault, sel]);
   // Scraping (IG) de la modelo abierta — vive en su propia pestaña.
-  const scrapedRows = useMemo(() => dedupeByMedia(vault.filter((r) => r.kind === 'ref' && isScraped(r) && r.creator_id === sel && r.ai_ok !== false)), [vault, sel]);
+  // (lo de la MESA: sin lo que la IA sacó ni lo descartado, sin repetidas → mismo número que «en la mesa»)
+  // Primero se juntan las copias de la misma foto y DESPUÉS se deja lo de la mesa: si una copia se descartó, la foto no vuelve.
+  const scrapedRows = useMemo(() => mesaMedia(vault.filter((r) => r.kind === 'ref' && isScraped(r) && r.creator_id === sel)), [vault, sel]);
   // Vibes que realmente tienen fotos etiquetadas (para no mostrar chips que dan grilla vacía).
   const vibeCounts = useMemo(() => {
     const m = {}; scrapedRows.forEach((r) => { const v = (r.vibe || '').trim(); if (v) m[v] = (m[v] || 0) + 1; }); return m;
   }, [scrapedRows]);
-  // Cuántas fotos BUENAS (en la mesa, no descartadas) trajo cada cuenta guía — para el panel de administración.
-  const acctCounts = useMemo(() => {
+  // ── Números del scraper (UNA definición, ver «NÚMEROS DEL SCRAPER» arriba) ──
+  const acctsReady = !!sel && acctsFor === sel; // ya se leyeron las cuentas guía de la modelo abierta (recién ahí se puede guardar)
+  // Cuentas guía de una modelo: la abierta = su lista viva; las demás = lo leído de creator_search_profile.
+  const seedsFor = useCallback((cid) => (cid && cid === sel && acctsReady ? accounts : (allSeeds[cid] || [])), [sel, acctsReady, accounts, allSeeds]);
+  const scrapeStats = useMemo(() => {
+    // 1) sin repetidas: una entrada por (modelo, foto o video de IG — con su tipo). Estado de sus copias: ver STATE_RANK.
+    const media = new Map();
+    for (const r of scrapedGlobal) {
+      const cid = r.creator_id; if (!cid) continue;
+      const k = `${cid}|${mediaKeyT(r)}`;
+      const st = rowState(r);
+      const t = r.created_at ? new Date(r.created_at).getTime() : 0;
+      const cur = media.get(k);
+      if (!cur) { media.set(k, { cid, h: normH(r.source_handle), st, video: r.media_type === 'video', t0: t, tLast: t, day: String(r.created_at || '').slice(0, 10) }); continue; }
+      if (STATE_RANK[st] > STATE_RANK[cur.st]) cur.st = st;
+      if (!cur.h && r.source_handle) cur.h = normH(r.source_handle);
+      if (t && (!cur.t0 || t < cur.t0)) { cur.t0 = t; cur.day = String(r.created_at || '').slice(0, 10); }
+      if (t > cur.tLast) cur.tLast = t;
+    }
+    // 2) sumas: todas · por modelo · por cuenta guía · fuera de las cuentas guía (temas, reels por link, cuentas quitadas)
+    const seedSets = {};
+    const seedSet = (cid) => seedSets[cid] || (seedSets[cid] = new Set(seedsFor(cid).map(normH)));
+    // rest = modelos que NO están en la lista (inactivas / de prueba): siguen en el total → se muestran aparte para que sume.
+    const active = new Set(creators.map((c) => c.id));
+    const all = newStat(); const byModel = {}; const byAcct = {}; const other = {}; const rest = newStat();
+    for (const m of media.values()) {
+      addMedia(all, m);
+      if (creators.length && !active.has(m.cid)) addMedia(rest, m);
+      addMedia(byModel[m.cid] || (byModel[m.cid] = newStat()), m);
+      if (m.h && seedSet(m.cid).has(m.h)) { const ba = byAcct[m.cid] || (byAcct[m.cid] = {}); addMedia(ba[m.h] || (ba[m.h] = newStat()), m); }
+      else addMedia(other[m.cid] || (other[m.cid] = newStat()), m);
+    }
+    return { all, byModel, byAcct, other, rest };
+  }, [scrapedGlobal, seedsFor, creators]);
+  // Gasto por corrida → todas · por modelo · por cuenta guía · búsquedas viejas en varias cuentas a la vez · fuera de las cuentas guía.
+  const costStats = useMemo(() => {
+    const all = newCost(); const byModel = {}; const byAcct = {}; const multi = {}; const other = {}; const rest = newCost();
+    const active = new Set(creators.map((c) => c.id));
+    const seedSets = {};
+    const seedSet = (cid) => seedSets[cid] || (seedSets[cid] = new Set(seedsFor(cid).map(normH)));
+    const bucket = (map, cid) => map[cid] || (map[cid] = newCost());
+    for (const r of scrapeRuns) {
+      const cid = r.creator_id; if (!cid) continue;
+      const c = runCostOf(r);
+      addCost(all, c); addCost(bucket(byModel, cid), c);
+      if (creators.length && !active.has(cid)) addCost(rest, c);
+      const hs = String(r.query || '').split(',').map(normH).filter(Boolean);
+      if (r.kind === 'account' && hs.length > 1) addCost(bucket(multi, cid), c);
+      else if (r.kind === 'account' && hs.length === 1 && seedSet(cid).has(hs[0])) { const ba = byAcct[cid] || (byAcct[cid] = {}); addCost(ba[hs[0]] || (ba[hs[0]] = newCost()), c); }
+      else addCost(bucket(other, cid), c);
+    }
+    return { all, byModel, byAcct, multi, other, rest };
+  }, [scrapeRuns, seedsFor, creators]);
+  // Corridas de UNA cuenta guía (para la ficha): encontrados vs guardados + costo de cada búsqueda.
+  const runsOfAcct = useCallback((cid, h) => scrapeRuns.filter((r) => r.creator_id === cid && r.kind === 'account' && normH(r.query) === normH(h)), [scrapeRuns]);
+  // Mejores 5 de la mesa (por likes) de cada cuenta — miniaturas de las tarjetas (de cualquier modelo).
+  const acctTops = useMemo(() => {
     const m = {};
-    vault.forEach((r) => {
-      if (r.kind !== 'ref' || !r.source_handle) return;
-      if (r.interest === 'descartada' || r.ai_ok === false) return;
-      const h = String(r.source_handle).replace(/^@/, '');
-      m[h] = (m[h] || 0) + 1;
+    mesaMedia(scrapedGlobal).filter((r) => r.source_handle && r.url).forEach((r) => {
+      const k = `${r.creator_id}|${normH(r.source_handle)}`; (m[k] || (m[k] = [])).push(r);
     });
+    Object.keys(m).forEach((k) => { m[k] = m[k].sort((a, b) => (Number(b.likes) || 0) - (Number(a.likes) || 0)).slice(0, 5); });
     return m;
-  }, [vault]);
-  // FICHA por cuenta guía: fotos bajadas (total) · en mesa (usables) · última · por día (calendario).
-  const scrapeByAcct = useMemo(() => {
-    const m = {};
-    vault.forEach((r) => {
-      if (r.kind !== 'ref' || !r.source_handle || r.creator_id !== sel) return;
-      const h = String(r.source_handle).replace(/^@/, '');
-      const rec = m[h] || (m[h] = { fotos: 0, enMesa: 0, videos: 0, lastAt: 0, days: {} });
-      rec.fotos += 1;
-      if (r.media_type === 'video') rec.videos += 1;
-      if (r.interest !== 'descartada' && r.ai_ok !== false) rec.enMesa += 1;
-      if (r.created_at) {
-        const t = new Date(r.created_at).getTime(); if (t > rec.lastAt) rec.lastAt = t;
-        const d = String(r.created_at).slice(0, 10); rec.days[d] = (rec.days[d] || 0) + 1;
-      }
-    });
-    return m;
-  }, [vault, sel]);
-  // Corridas REALES registradas por cuenta (costo real de Apify) — vacío hasta que el motor las escriba.
-  const runsByAcct = useMemo(() => {
-    const m = {};
-    scrapeRuns.forEach((r) => { if (!r.account_id) return; (m[r.account_id] = m[r.account_id] || []).push(r); });
-    return m;
-  }, [scrapeRuns]);
-  // Total del scraper para la MODELO abierta (todas sus fotos scrapeadas, cualquier cuenta/tema).
-  const scrapeModelTotal = useMemo(() => {
-    let fotos = 0;
-    vault.forEach((r) => { if (r.kind === 'ref' && r.creator_id === sel && (r.source_platform || r.source_handle)) fotos += 1; });
-    const real = scrapeRuns.reduce((a, r) => a + (Number(r.cost_real) || 0), 0);
-    return { fotos, costEst: fotos * SCRAPER_USD_PER_PHOTO, costReal: real };
-  }, [vault, sel, scrapeRuns]);
-  // Top fotos (por likes) de una cuenta guía — para las miniaturas del dashboard.
-  const acctTopPhotos = useCallback((handle) => vault
-    .filter((r) => r.kind === 'ref' && String(r.source_handle || '').replace(/^@/, '') === handle && r.interest !== 'descartada' && r.ai_ok !== false && r.url)
-    .sort((a, b) => (Number(b.likes) || 0) - (Number(a.likes) || 0))
-    .slice(0, 5), [vault]);
-  // Cuándo se trajo la foto MÁS RECIENTE de esa cuenta (proxy de "última actualización").
-  const acctLastAt = useCallback((handle) => {
-    let max = 0;
-    vault.forEach((r) => { if (r.kind === 'ref' && String(r.source_handle || '').replace(/^@/, '') === handle && r.created_at) { const t = new Date(r.created_at).getTime(); if (t > max) max = t; } });
-    return max || null;
-  }, [vault]);
+  }, [scrapedGlobal]);
   const agoLabel = (ms) => {
     if (!ms) return 'nunca';
     const s = Math.floor((Date.now() - ms) / 1000);
@@ -417,7 +891,9 @@ export default function KitchenPage() {
   }, [guideRows, nameById]);
 
   // TODO lo scrapeado de IG (todas las modelos) — para el botón global "Buscar en IG" del selector.
-  const scrapGlobalDeduped = useMemo(() => dedupeByMedia(scrapedGlobal.filter((r) => r.interest !== 'descartada')), [scrapedGlobal]);
+  // Grilla global = lo de la MESA (sin lo que la IA sacó ni lo descartado), sin repetidas → mismo número que «en la mesa».
+  // Sin repetidas POR MODELO (misma regla que «en la mesa»): si dos modelos comparten una foto, cuenta en las dos.
+  const scrapGlobalDeduped = useMemo(() => mesaMedia(scrapedGlobal), [scrapedGlobal]);
   const scrapGlobalVideoCount = useMemo(() => scrapGlobalDeduped.filter((r) => r.media_type === 'video').length, [scrapGlobalDeduped]);
   const scrapGlobalModels = useMemo(() => {
     const m = new Map(); scrapGlobalDeduped.forEach((r) => { if (r.creator_id) m.set(r.creator_id, (m.get(r.creator_id) || 0) + 1); });
@@ -436,31 +912,6 @@ export default function KitchenPage() {
       : [...rows].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
   }, [scrapGlobalDeduped, mediaFilter, baulModel, baulSearch, baulSort, nameById]);
   const scrapGlobalGroups = useMemo(() => dayGroups(scrapGlobalRows.slice(0, visN)), [scrapGlobalRows, visN]);
-  // Dashboard GLOBAL de cuentas guía: agrupa TODAS las cuentas de TODAS las modelos (desde lo ya scrapeado).
-  const globalGuideModels = useMemo(() => {
-    const models = new Map();
-    scrapedGlobal.forEach((r) => {
-      if (!r.source_handle || r.interest === 'descartada' || r.ai_ok === false) return;
-      const h = String(r.source_handle).replace(/^@/, ''); if (!h) return;
-      const mid = r.creator_id || '?';
-      let mod = models.get(mid);
-      if (!mod) { mod = { id: mid, name: nameById[mid] || 'Modelo', accts: new Map(), totalFotos: 0 }; models.set(mid, mod); }
-      let rec = mod.accts.get(h);
-      if (!rec) { rec = { handle: h, fotos: 0, videos: 0, lastAt: 0, rows: [] }; mod.accts.set(h, rec); }
-      rec.fotos += 1; mod.totalFotos += 1;
-      if (r.media_type === 'video') rec.videos += 1;
-      if (r.created_at) { const t = new Date(r.created_at).getTime(); if (t > rec.lastAt) rec.lastAt = t; }
-      rec.rows.push(r);
-    });
-    return [...models.values()].map((mod) => ({
-      id: mod.id, name: mod.name, totalFotos: mod.totalFotos,
-      accounts: [...mod.accts.values()].map((a) => ({
-        handle: a.handle, fotos: a.fotos, videos: a.videos, lastAt: a.lastAt,
-        tops: [...a.rows].sort((x, y) => (Number(y.likes) || 0) - (Number(x.likes) || 0)).slice(0, 5),
-      })).sort((a, b) => b.fotos - a.fotos),
-    })).sort((a, b) => b.totalFotos - a.totalFotos);
-  }, [scrapedGlobal, nameById]);
-
   // Agrupado por DÍA (Hoy · Ayer · fecha) para la biblioteca.
   const pickGroups = useMemo(() => {
     const startOf = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -513,8 +964,16 @@ export default function KitchenPage() {
         </div>
         <div className="absolute inset-x-0 bottom-8 z-10 flex items-center justify-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
           {isVid ? (
-            <a href={r.video_url} download target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1.5 text-[11px] font-bold text-black hover:bg-white"><Download size={12} /> Descargar</a>
+            <>
+              {sel && (r.source_platform || r.source_handle) && (
+                <button type="button" title="Hacer este video con la cara de la modelo (Genjutsu)" onClick={(e) => { e.stopPropagation(); cookVideo(r); }} disabled={videoEnq === r.id}
+                  className="btn3d inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold disabled:opacity-50">
+                  {videoEnq === r.id ? <Loader2 size={12} className="animate-spin" /> : <Flame size={12} />} Cocinar
+                </button>
+              )}
+              <a href={r.video_url} download target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 rounded-full border border-white/50 bg-black/65 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-black/80"><Download size={12} /> Descargar</a>
+            </>
           ) : (
             <>
               <button type="button" title="Cocinar réplica (Soul 2.0)" onClick={(e) => { e.stopPropagation(); cookDetail(r, 1); }}
@@ -538,10 +997,25 @@ export default function KitchenPage() {
   };
 
   // Cargar el perfil de búsqueda (nichos) de la modelo elegida.
+  // acctsFor marca de QUÉ modelo es la lista cargada: hasta que llega, agregar/quitar cuentas queda frenado
+  // (si no, se guardaría una lista vacía o la de otra modelo encima de sus cuentas guía).
   useEffect(() => {
-    if (!sel) { setNiches([]); setStyleDesc(''); setAccounts([]); return; }
-    (async () => { const { data } = await sb.from('creator_search_profile').select('niches, style_desc, seed_accounts').eq('creator_id', sel).maybeSingle(); setNiches(Array.isArray(data?.niches) ? data.niches : []); setStyleDesc(data?.style_desc || ''); setAccounts(Array.isArray(data?.seed_accounts) ? data.seed_accounts : []); })();
-  }, [sel, sb]);
+    let alive = true;
+    setAcctsFor(''); setAcctsErr('');
+    if (!sel) { setNiches([]); setStyleDesc(''); setAccounts([]); return undefined; }
+    (async () => {
+      let res;
+      try { res = await sb.from('creator_search_profile').select('niches, style_desc, seed_accounts').eq('creator_id', sel).maybeSingle(); } catch (e) { res = { error: { message: e?.message || String(e) } }; }
+      if (!alive) return;
+      // Si falla la lectura NO se guarda nada (seguimos frenados), pero se avisa con «Reintentar» en vez de girar para siempre.
+      if (res.error) { setAcctsErr(res.error.message || 'error de conexión'); return; }
+      const data = res.data;
+      const seeds = Array.isArray(data?.seed_accounts) ? data.seed_accounts : [];
+      setNiches(Array.isArray(data?.niches) ? data.niches : []); setStyleDesc(data?.style_desc || ''); setAccounts(seeds);
+      setAllSeeds((m) => ({ ...m, [sel]: seeds })); setAcctsFor(sel);
+    })();
+    return () => { alive = false; };
+  }, [sel, sb, seedsReload]);
 
   const saveNiches = async (list) => {
     setNiches(list);
@@ -551,18 +1025,49 @@ export default function KitchenPage() {
   const addNiche = () => { const v = newNiche.trim(); if (!v) return; if (!niches.includes(v)) saveNiches([...niches, v].slice(0, 8)); setNewNiche(''); };
   const doScrape = async () => {
     if (niches.length === 0) { setMsg({ kind: 'info', text: 'Agregá al menos un nicho (ej: gótica, playa) para buscar.' }); return; }
+    if (asyncRef.current !== false) {
+      setScraping(true);
+      const r = await startSearch({ kind: 'tema', creator_id: sel, photos: qtyPhotos, videos: qtyVideos });
+      setScraping(false);
+      if (!r.legacy) {
+        if (!r.ok) { setMsg({ kind: 'err', text: r.error }); return; }
+        const x = (r.out.jobs || [])[0] || {};
+        const who = x.job ? jobWho(x.job) : niches.map((n) => `#${n}`).join(' ');
+        setMsg({ kind: 'info', text: x.dedup ? `Ya se está buscando ${who}${x.job ? ` (${jobCounts(x.job)})` : ''}.` : `Lo busco en el servidor: ${who}${x.job ? ` (${jobCounts(x.job)})` : ''}. ${workerLine(r.out.worker_online)}` });
+        return;
+      }
+    }
+    return doScrapeLegacy();
+  };
+  const doScrapeLegacy = async () => {
     setScraping(true); setMsg({ kind: 'info', text: 'Buscando virales en Instagram… (puede tardar 1-2 min)' });
     const out = await callFn('scrape', { creator_id: sel, photos: qtyPhotos, videos: qtyVideos });
     setScraping(false);
     if (!out.ok) { setMsg({ kind: 'err', text: out.error || 'No se pudo buscar.' }); return; }
-    await loadVault();
+    await loadVault(); loadScrapedGlobal(); loadScrapeRuns();
     setMsg({ kind: 'ok', text: `Encontré ${out.saved} virales para ${selCreator?.full_name}.${out.reviewed ? ` La IA revisó ${out.reviewed} y sacó la basura.` : ''} Aparecen abajo, éxitos arriba.` });
   };
 
   // Cuentas guía (creadoras de referencia de IG): guardar + traer sus posts.
   const saveAccounts = async (list) => {
-    setAccounts(list);
+    if (!sel || acctsFor !== sel) { setMsg({ kind: 'info', text: 'Esperá un segundo: todavía estoy leyendo las cuentas guía de esta modelo.' }); return false; }
+    setAccounts(list); setAllSeeds((m) => ({ ...m, [sel]: list }));
     await sb.from('creator_search_profile').upsert({ creator_id: sel, seed_accounts: list, updated_at: new Date().toISOString() }, { onConflict: 'creator_id' });
+    return true;
+  };
+  // Quitar una cuenta guía de CUALQUIER modelo (también desde «Todas las modelos»). Para otra modelo se relee su lista
+  // actual antes de guardar (así no se pisa con una copia vieja).
+  const removeAccount = async (cid, h) => {
+    if (cid === sel) { if (!acctsReady) return; await saveAccounts(accounts.filter((x) => x !== h)); }
+    else {
+      const { data, error } = await sb.from('creator_search_profile').select('seed_accounts').eq('creator_id', cid).maybeSingle();
+      if (error) { setMsg({ kind: 'err', text: `No se pudo quitar @${h}: ${error.message}` }); return; }
+      const list = (Array.isArray(data?.seed_accounts) ? data.seed_accounts : []).filter((x) => normH(x) !== normH(h));
+      const { error: e2 } = await sb.from('creator_search_profile').upsert({ creator_id: cid, seed_accounts: list, updated_at: new Date().toISOString() }, { onConflict: 'creator_id' });
+      if (e2) { setMsg({ kind: 'err', text: `No se pudo quitar @${h}: ${e2.message}` }); return; }
+      setAllSeeds((m) => ({ ...m, [cid]: list }));
+    }
+    setPrivateAccts((p) => { const q2 = new Set(p); q2.delete(h); return q2; });
   };
   // Acepta pegar VARIAS de una (separadas por coma, espacio o salto de línea). Limpia @ y URLs.
   const addAccount = () => {
@@ -605,75 +1110,300 @@ export default function KitchenPage() {
       return next;
     });
   };
+  // UNA búsqueda de UNA cuenta. Fotos y videos van en llamadas SEPARADAS: cada una entra en el tiempo del servidor
+  // (juntas se cortaban) y el costo de los videos queda en su propio renglón, a la vista.
+  // (camino VIEJO) ¿una búsqueda sincrónica de esta cuenta sigue en el servidor? Las del motor nuevo se ven por activeJobFor.
+  const recentRunning = (cid, h) => runsOfAcct(cid, h).some((r) => !r.requested && r.status === 'running' && Date.now() - (Date.parse(r.run_at) || 0) < 10 * 60 * 1000);
+  const refreshLater = () => { setTimeout(() => { loadVault(); loadScrapeRuns(); loadScrapedGlobal(); }, 120000); };
+  const scrapeOne = async (cid, h) => {
+    const calls = [];
+    if (qtyPhotos > 0) calls.push({ photos: qtyPhotos, videos: 0 });
+    if (qtyVideos > 0) calls.push({ photos: 0, videos: qtyVideos });
+    const agg = { ok: false, saved: 0, savedVideos: 0, reviewed: 0, cost: 0, error_items: [], errors: [], timeout: false, videosSkipped: false };
+    for (const p of calls) {
+      const out = await callFn('scrape_accounts', { creator_id: cid, accounts: [h], ...p });
+      if (out.timeout) { agg.timeout = true; continue; }
+      if (!out.ok) { agg.errors.push(out.error || 'error'); continue; }
+      agg.ok = true;
+      agg.saved += Number(out.saved) || 0; agg.savedVideos += Number(out.savedVideos) || 0; agg.reviewed += Number(out.reviewed) || 0;
+      agg.cost += (Number(out.cost_real ?? out.cost_est) || 0) + (Number(out.cost_ai) || 0);
+      (Array.isArray(out.error_items) ? out.error_items : []).forEach((e) => agg.error_items.push(e));
+      if (out.videos_skipped) agg.videosSkipped = true;
+    }
+    return agg;
+  };
+  const timeoutText = (h) => `@${h}: el navegador dejó de esperar, pero la búsqueda puede seguir en el servidor (Apify ya la está cobrando). En 2-3 min aparece sola: no la vuelvas a buscar todavía.`;
+  // Motor nuevo: UNA llamada crea una búsqueda por cuenta (fotos y videos juntos, cada una con su gasto real) y el
+  // servidor las corre de a pocas (cupo de Apify) aunque cierres la página. { legacy:true } = hay que buscar como antes.
+  const startAccounts = async (cid, handles) => {
+    const busyNow = handles.filter((h) => activeJobFor(cid, h));
+    const list = handles.filter((h) => !activeJobFor(cid, h));
+    if (!list.length) { setMsg({ kind: 'info', text: `Ya se está buscando ${busyNow.map((h) => { const j = activeJobFor(cid, h); return `@${h}${j ? ` (${jobCounts(j)})` : ''}`; }).join(', ')}.` }); return { ok: true }; }
+    setCheckingAcct(list.length === 1 ? list[0] : null);
+    const r = await startSearch({ kind: 'account', creator_id: cid, accounts: list, photos: qtyPhotos, videos: qtyVideos });
+    setCheckingAcct(null);
+    if (r.legacy) return r;
+    if (!r.ok) { setMsg({ kind: 'err', text: r.error }); return r; }
+    const js = r.out.jobs || [];
+    const fresh = js.filter((x) => x.job_id && !x.dedup && !x.skipped);
+    const dups = js.filter((x) => x.dedup); const skipped = js.filter((x) => x.skipped);
+    const parts = [];
+    if (fresh.length === 1) { const x = fresh[0]; parts.push(`Lo busco en el servidor: @${x.handle}${x.job ? ` (${jobCounts(x.job)})` : ''}.`); }
+    else if (fresh.length > 1) { const run = fresh.filter((x) => x.status === 'running').length; parts.push(`Busco ${fresh.length} cuentas en el servidor (${run} a la vez, ${fresh.length - run} en cola). Ves el avance en cada tarjeta.`); }
+    if (dups.length || busyNow.length) parts.push(`Ya se estaban buscando: ${[...dups.map((x) => '@' + x.handle), ...busyNow.map((h) => '@' + h)].join(', ')} (no las repetí).`);
+    if (skipped.length) parts.push(`Salteé ${skipped.map((x) => '@' + x.handle).join(', ')}: ${skipped.length === 1 ? 'está marcada' : 'están marcadas'} como privada${skipped.length === 1 ? '' : 's'} o inexistente${skipped.length === 1 ? '' : 's'}.`);
+    if (fresh.length) parts.push(workerLine(r.out.worker_online));
+    setMsg({ kind: fresh.length ? 'info' : skipped.length ? 'err' : 'info', text: parts.join(' ') });
+    return r;
+  };
+  // «Buscar en todas»: motor nuevo → todas de una (el servidor respeta el cupo) · motor viejo → una cuenta por vez.
   const doScrapeAccounts = async () => {
+    if (!acctsReady) { setMsg({ kind: 'info', text: 'Esperá un segundo: todavía estoy leyendo las cuentas guía de esta modelo.' }); return; }
+    const cid = sel;
     // Si escribió una cuenta y no la agregó con Enter, la tomamos igual (no lo hacemos renegar).
     const pending = parseHandle(newAccount);
     let list = accounts;
-    if (pending && !accounts.includes(pending)) { list = [...new Set([...accounts, pending])].slice(0, 20); await saveAccounts(list); setNewAccount(''); }
+    if (pending && !accounts.includes(pending)) { list = [...new Set([...accounts, pending])].slice(0, 20); if (!(await saveAccounts(list))) return; setNewAccount(''); }
     if (list.length === 0) { setMsg({ kind: 'info', text: 'Agregá al menos una cuenta guía (ej: @creadora) arriba.' }); return; }
-    setScrapingAcc(true); setMsg({ kind: 'info', text: `Chequeando ${list.map((a) => '@' + a).join(', ')}… (puede tardar 1-2 min, no cierres)` });
-    const out = await callFn('scrape_accounts', { creator_id: sel, accounts: list, photos: qtyPhotos, videos: qtyVideos });
-    setScrapingAcc(false);
-    if (!out.ok) { setMsg({ kind: 'err', text: `${out.error || 'No se pudo traer de esas cuentas.'}${out.detail ? ` · Apify: ${(typeof out.detail === 'string' ? out.detail : JSON.stringify(out.detail)).slice(0, 400)}` : ''}` }); return; }
-    await loadVault();
-    const bad = flagPrivate(out, list); noteIssues(out, list); loadScrapeRuns(); loadScraperGlobal();
-    setMsg({ kind: out.saved ? 'ok' : 'info', text: out.saved ? `Traje ${out.saved} fotos de tus cuentas guía.${out.reviewed ? ` La IA revisó ${out.reviewed} y sacó la basura.` : ''} Aparecen abajo (filtro "Scraping").` : bad.size ? `⚠️ ${[...bad].map((h) => '@' + h).join(', ')} es privada/vacía (Instagram no la deja ver). Probá con una cuenta PÚBLICA.` : `Instagram devolvió ${out.found ?? 0} items y 0 fotos usables. Probá con otra cuenta.` });
+    if (qtyPhotos + qtyVideos <= 0) { setMsg({ kind: 'info', text: 'Pedí al menos 1 foto o 1 video.' }); return; }
+    if (asyncRef.current !== false) { const r = await startAccounts(cid, list); if (!r.legacy) return; }
+    return doScrapeAccountsLegacy(cid, list);
+  };
+  // (camino VIEJO) UNA cuenta por vez (así el gasto real de cada búsqueda queda en SU tarjeta, y no se salta ninguna:
+  // el motor corta en 8 cuentas por llamada).
+  const doScrapeAccountsLegacy = async (cid, list) => {
+    setScrapingAcc(true);
+    let savedP = 0, savedV = 0, cost = 0, okN = 0; const failed = []; const privs = []; const slow = []; const busyNow = [];
+    for (let i = 0; i < list.length; i++) {
+      const h = list[i];
+      if (recentRunning(cid, h)) { busyNow.push(h); continue; } // ya se está buscando en el servidor → no pagar dos veces
+      setBulkProg({ i: i + 1, n: list.length }); setCheckingAcct(h);
+      setMsg({ kind: 'info', text: `Buscando @${h} (${i + 1} de ${list.length})… una cuenta por vez${qtyPhotos > 0 && qtyVideos > 0 ? ', primero fotos y después videos' : ''}. Puede tardar varios minutos, no cierres.` });
+      const out = await scrapeOne(cid, h);
+      if (out.timeout) slow.push(h);
+      if (!out.ok) { if (!out.timeout) failed.push(h); continue; }
+      okN += 1; savedP += out.saved; savedV += out.savedVideos; cost += out.cost;
+      const bad = flagPrivate(out, [h]); noteIssues(out, [h]); if (bad.has(h)) privs.push(h);
+    }
+    setCheckingAcct(null); setBulkProg(null); setScrapingAcc(false);
+    await loadVault(); loadScrapeRuns(); loadScrapedGlobal();
+    if (slow.length) refreshLater();
+    const parts = [`Listo: ${okN} de ${list.length} cuentas. Traje ${savedP} foto${savedP === 1 ? '' : 's'}${savedV ? ` y ${savedV} video${savedV === 1 ? '' : 's'}` : ''} (gasto ≈ ${usdS(cost)}).`];
+    if (privs.length) parts.push(`Privadas/vacías: ${privs.map((h) => '@' + h).join(', ')}.`);
+    if (slow.length) parts.push(`Siguen en el servidor: ${slow.map((h) => '@' + h).join(', ')} — aparecen en 2-3 min, no las vuelvas a buscar todavía.`);
+    if (busyNow.length) parts.push(`Ya se estaban buscando: ${busyNow.map((h) => '@' + h).join(', ')} (no las repetí).`);
+    if (failed.length) parts.push(`No se pudo: ${failed.map((h) => '@' + h).join(', ')} — probá «Buscar más» en esa tarjeta.`);
+    setMsg({ kind: savedP + savedV ? 'ok' : 'info', text: parts.join(' ') });
   };
   // Re-chequear UNA sola cuenta (traer su último contenido) sin tocar las demás.
   const checkOneAccount = async (handle) => {
-    setCheckingAcct(handle); setMsg({ kind: 'info', text: `Chequeando @${handle}… (puede tardar 1-2 min)` });
-    const out = await callFn('scrape_accounts', { creator_id: sel, accounts: [handle], photos: qtyPhotos, videos: qtyVideos });
+    if (qtyPhotos + qtyVideos <= 0) { setMsg({ kind: 'info', text: 'Pedí al menos 1 foto o 1 video.' }); return; }
+    if (asyncRef.current !== false) { const r = await startAccounts(sel, [handle]); if (!r.legacy) return; }
+    return checkOneAccountLegacy(handle);
+  };
+  const checkOneAccountLegacy = async (handle) => {
+    if (recentRunning(sel, handle)) { setMsg({ kind: 'info', text: `@${handle} ya se está buscando en el servidor. Esperá 2-3 min antes de volver a buscarla (si no, Apify cobra dos veces).` }); return; }
+    if (qtyPhotos + qtyVideos <= 0) { setMsg({ kind: 'info', text: 'Pedí al menos 1 foto o 1 video.' }); return; }
+    setCheckingAcct(handle); setMsg({ kind: 'info', text: `Chequeando @${handle}…${qtyPhotos > 0 && qtyVideos > 0 ? ' primero fotos y después videos,' : ''} (puede tardar 1-3 min)` });
+    const out = await scrapeOne(sel, handle);
     setCheckingAcct(null);
-    if (!out.ok) { setMsg({ kind: 'err', text: out.error || `No se pudo chequear @${handle}.` }); return; }
+    if (out.timeout) refreshLater();
+    if (!out.ok) { setMsg(out.timeout ? { kind: 'info', text: timeoutText(handle) } : { kind: 'err', text: out.errors[0] || `No se pudo chequear @${handle}.` }); loadScrapeRuns(); return; }
     await loadVault();
-    const bad = flagPrivate(out, [handle]); noteIssues(out, [handle]); loadScrapeRuns(); loadScraperGlobal();
-    setMsg({ kind: out.saved ? 'ok' : 'info', text: out.saved ? `@${handle}: ${out.saved} fotos nuevas.${out.reviewed ? ` (IA revisó ${out.reviewed})` : ''}` : bad.has(handle) ? `⚠️ @${handle} es privada/vacía — Instagram no la deja ver. Quitala y probá otra pública.` : `@${handle}: sin fotos nuevas usables por ahora.` });
+    const bad = flagPrivate(out, [handle]); noteIssues(out, [handle]); loadScrapeRuns(); loadScrapedGlobal();
+    const got = [out.saved ? `${out.saved} foto${out.saved === 1 ? '' : 's'} nueva${out.saved === 1 ? '' : 's'}` : '', out.savedVideos ? `${out.savedVideos} video${out.savedVideos === 1 ? '' : 's'} nuevo${out.savedVideos === 1 ? '' : 's'}` : ''].filter(Boolean).join(' y ');
+    const extra = [out.reviewed ? ` (la IA revisó ${out.reviewed})` : '', out.timeout ? ` Una parte sigue en el servidor: aparece en 2-3 min.` : '', out.errors.length ? ` No se pudo una parte: ${out.errors[0]}` : '', out.videosSkipped ? ' No alcanzó el tiempo para los videos: buscalos aparte.' : ''].join('');
+    setMsg({ kind: got ? 'ok' : 'info', text: got ? `@${handle}: ${got}.${extra}` : bad.has(handle) ? `@${handle} es privada o está vacía: Instagram no la deja ver. Quitala y probá otra pública.` : `@${handle}: sin nada nuevo usable por ahora.${extra}` });
   };
 
   // Curación de la mesa
+  // Una foto de IG puede estar repetida (la misma foto con otra URL): el cambio va a TODAS sus copias de esa modelo,
+  // así la copia de al lado no «vuelve» a la mesa y los números bajan de verdad.
+  const copyIdsOf = (rows) => {
+    const ids = new Set(rows.map((r) => r.id));
+    const keys = new Set(rows.filter(isScraped).map((r) => `${r.creator_id}|${mediaKeyT(r)}`));
+    if (keys.size) [...vault, ...scrapedGlobal].forEach((r) => { if (isScraped(r) && keys.has(`${r.creator_id}|${mediaKeyT(r)}`)) ids.add(r.id); });
+    return [...ids];
+  };
   const markInterest = async (row, val) => {
-    await sb.from('creator_vault').update({ interest: val }).eq('id', row.id);
-    setVault((v) => v.map((r) => (r.id === row.id ? { ...r, interest: val } : r)));
+    const ids = copyIdsOf([row]); const idSet = new Set(ids);
+    await sb.from('creator_vault').update({ interest: val }).in('id', ids);
+    setVault((v) => v.map((r) => (idSet.has(r.id) ? { ...r, interest: val } : r)));
+    setScrapedGlobal((v) => v.map((r) => (idSet.has(r.id) ? { ...r, interest: val } : r)));
     if (val === 'descartada') { setDetail(null); setQueue((k) => k.filter((u) => u !== row.url)); }
   };
   // Sacar la basura EN LOTE: descarta todas las seleccionadas (desaparecen de la mesa) de una.
   const bulkDiscard = async () => {
-    const ids = vault.filter((r) => queue.includes(r.url)).map((r) => r.id);
-    if (!ids.length) { setMsg({ kind: 'info', text: 'No hay fotos seleccionadas.' }); return; }
+    const picked = vault.filter((r) => queue.includes(r.url));
+    if (!picked.length) { setMsg({ kind: 'info', text: 'No hay fotos seleccionadas.' }); return; }
+    const ids = copyIdsOf(picked); const idSet = new Set(ids);
     await sb.from('creator_vault').update({ interest: 'descartada' }).in('id', ids);
-    setVault((v) => v.map((r) => (ids.includes(r.id) ? { ...r, interest: 'descartada' } : r)));
+    setVault((v) => v.map((r) => (idSet.has(r.id) ? { ...r, interest: 'descartada' } : r)));
+    setScrapedGlobal((v) => v.map((r) => (idSet.has(r.id) ? { ...r, interest: 'descartada' } : r)));
     setQueue([]);
-    setMsg({ kind: 'ok', text: `${ids.length} foto(s) fuera de la mesa (basura).` });
+    setMsg({ kind: 'ok', text: `${picked.length} foto(s) fuera de la mesa (basura).` });
   };
   const moreLikeThis = async (row) => {
     const niche = row.vibe || '';
     if (!niche) { setMsg({ kind: 'info', text: 'Esta foto no tiene nicho para buscar similares.' }); return; }
-    setDetail(null); setScraping(true); setMsg({ kind: 'info', text: `Buscando más como esta (#${niche})…` });
+    setDetail(null);
+    if (asyncRef.current !== false) {
+      setScraping(true);
+      const r = await startSearch({ kind: 'tema', creator_id: sel, niches: [niche], photos: 24, videos: 0 });
+      setScraping(false);
+      if (!r.legacy) {
+        if (!r.ok) { setMsg({ kind: 'err', text: r.error }); return; }
+        const x = (r.out.jobs || [])[0] || {};
+        setMsg({ kind: 'info', text: x.dedup ? `Ya se está buscando #${niche}.` : `Busco más como esta en el servidor (#${niche}, fotos 0/24). ${workerLine(r.out.worker_online)}` });
+        return;
+      }
+    }
+    setScraping(true); setMsg({ kind: 'info', text: `Buscando más como esta (#${niche})…` });
     const out = await callFn('scrape', { creator_id: sel, niches: [niche] });
     setScraping(false);
     if (!out.ok) { setMsg({ kind: 'err', text: out.error || 'No se pudo buscar.' }); return; }
-    await loadVault();
+    await loadVault(); loadScrapedGlobal(); loadScrapeRuns();
     setMsg({ kind: 'ok', text: `Traje ${out.saved} similares a "#${niche}".` });
   };
   const cookFromDetail = (row) => { if (!queue.includes(row.url)) setQueue((k) => [...k, row.url]); setDetail(null); setMsg({ kind: 'info', text: 'Agregada a la selección. Dale "Cocinar" abajo (o elegí más).' }); };
   // Cocina directo desde la ficha. Si total>1: cocina la réplica + (total-1) variaciones automáticas (mismo lugar/outfit, otras poses).
   const cookDetail = async (row, total) => {
     if (!selReady) { setMsg({ kind: 'err', text: `${selCreator?.full_name || 'Esta modelo'} todavía no tiene su soul enlazada. Avisame y la enlazo.` }); return; }
+    if (selBlock) { setMsg({ kind: 'err', text: selBlock }); return; }
     askNotify();
     setEnq(true);
     const { error } = await sb.from('generations').insert({ creator_id: sel, reference_url: row.url, status: 'queued', engine: 'soul2', model: 'text2image_soul_v2', auto_carousel: Math.max(0, total - 1) });
     setEnq(false);
     if (error) { setMsg({ kind: 'err', text: `No se pudo encolar: ${error.message}` }); return; }
-    setDetail(null); setDetailN(1); loadGens(); setSubtab('resultados');
-    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
-    setMsg({ kind: 'ok', text: total > 1 ? `Cocinando carrusel: la réplica + ${total - 1} variaciones. Miralas en Resultados (aparecen ahí al terminar).` : 'Cocinando la réplica. Miralas en Resultados (aparece ahí al terminar).' });
+    setDetail(null); setDetailN(1); loadGens();
+    setMsg({ kind: 'ok', text: total > 1 ? `🍳 Cocinando carrusel (réplica + ${total - 1} variaciones). Seguí eligiendo — mirá «Cocinando» abajo a la derecha.` : '🍳 Cocinando. Seguí eligiendo las que quieras — mirá «Cocinando» abajo a la derecha; tocalo cuando quieras ir a verlas.' });
   };
 
-  const enterModel = (id) => { setSel(id); setSubtab('cocinar'); setQueue([]); setMsg(null); setBaulFilter('guias'); setBaulModel(''); setShowUpload(false); setVibe('Todos'); };
+  // Cocinar un REEL con la cara de la modelo (video, Genjutsu motion transfer). Encola un job de video.
+  const cookVideo = async (row) => {
+    const ref = row.video_url || row.url;
+    if (!sel) { setMsg({ kind: 'err', text: 'Entrá a una modelo primero.' }); return; }
+    if (!ref) { setMsg({ kind: 'err', text: 'Ese video no tiene archivo para cocinar.' }); return; }
+    if (selBlock) { setMsg({ kind: 'err', text: selBlock }); return; }
+    if (selBal != null && selBal < VIDEO_MIN_CREDITS) { setMsg({ kind: 'err', text: `Higgsfield casi sin créditos${selAcct?.label ? ` en «${selAcct.label}»` : ''}: quedan ${selBal.toFixed(1)} y un video necesita ~${VIDEO_MIN_CREDITS}. Recargá créditos antes de cocinar video.` }); return; }
+    askNotify();
+    setVideoEnq(row.id);
+    const out = await callFn('make_video', { creator_id: sel, reference_url: ref });
+    setVideoEnq(null);
+    if (!out?.ok) { setMsg({ kind: 'err', text: out?.error || 'No se pudo encolar el video.' }); return; }
+    loadGens();
+    setMsg({ kind: 'ok', text: `🎬 Cocinando el video con ${selCreator?.stage_name || selCreator?.full_name || 'la modelo'} (Genjutsu). Tarda unos minutos — seguí acá; mirá «Cocinando» abajo a la derecha y te aviso al terminar.` });
+  };
+  // Traer un REEL puntual por su LINK (no por cuenta). cook=true lo cocina de una con la modelo.
+  const fetchReelLink = async (cook) => {
+    if (!sel) { setMsg({ kind: 'err', text: 'Entrá a una modelo primero.' }); return; }
+    const link = reelLink.trim();
+    if (!/instagram\.com/i.test(link)) { setMsg({ kind: 'err', text: 'Pegá el link de un reel de Instagram.' }); return; }
+    setReelBusy(true);
+    const out = await callFn('fetch_reel', { creator_id: sel, url: link, cook: !!cook });
+    setReelBusy(false);
+    if (!out?.ok) { setMsg({ kind: 'err', text: out?.error || 'No se pudo traer el reel.' }); return; }
+    setReelLink('');
+    // Apify tardó más que lo que espera el servidor: la búsqueda sigue sola (y lo cocina si se pidió).
+    if (out.pending) {
+      if (out.job_id && !out.dedup) mineRef.current.add(out.job_id);
+      if (asyncRef.current == null) setAsync(true);
+      refreshJobs();
+      setMsg({ kind: 'info', text: `Apify sigue bajando el reel. Aparece solo en «Videos»${cook ? ' y se manda a cocinar solo' : ''}.` });
+      return;
+    }
+    await loadVault(); loadGens(); loadScrapedGlobal(); loadScrapeRuns();
+    if (cook && out.cooking) { setMsg({ kind: 'ok', text: `🎬 Reel traído y cocinando con ${selCreator?.stage_name || selCreator?.full_name || 'la modelo'} (Genjutsu). Seguí acá; mirá «Cocinando» abajo a la derecha y te aviso al terminar.` }); }
+    else { setMediaFilter('videos'); setMsg({ kind: out.warn ? 'info' : 'ok', text: out.warn || 'Reel traído. Está en Videos, tocá «Cocinar».' }); }
+  };
+  // Miniatura que sirve para FOTO o VIDEO: si es video, muestra su PRIMER FRAME (no un <img> negro).
+  // El `#t=0.1` fuerza al navegador a pintar el frame de 0.1s como portada aunque no esté corriendo.
+  const isVidUrl = (u) => /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(u || '') || /\/video\//.test(u || '');
+  const mediaTile = (url, cls) => (
+    !url ? <div className={`${cls} bg-hair/10`} />
+      : isVidUrl(url) ? <video src={`${String(url).split('#')[0]}#t=0.1`} muted playsInline preload="metadata" className={cls} />
+        : <img src={url} alt="" loading="lazy" decoding="async" className={cls} />
+  );
+  // Tarjeta de AUDIO (voz) para las grillas de Resultados: etiqueta + guion corto + reproductor.
+  // Los clicks del <audio> NO suben a la tarjeta (si no, al darle play te abriría la pestaña Voz).
+  const audioTile = (g, cls) => {
+    const t = voiceType(g);
+    return (
+      <div className={`${cls} relative flex flex-col gap-1.5 bg-gradient-to-b from-brand/[0.08] to-transparent p-2.5 pb-7 text-left`}>
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-paper">
+          <AudioLines size={14} className="shrink-0 text-brand" />
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.dot}`} />
+          <span className="truncate">{t.label}</span>
+          <span className="ml-auto shrink-0 font-mono text-[9px] text-paper-dim">{voiceLang(g).flag} {voiceLang(g).label}</span>
+        </div>
+        <p className="line-clamp-2 text-[11px] leading-snug text-paper-mute">{g.prompt || 'Audio de voz'}</p>
+        <div className="grid flex-1 place-items-center">
+          {vRow[g.id] === 'regen'
+            ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-200"><Loader2 size={14} className="animate-spin" /> Generando…</span>
+            : <AudioLines size={34} className="text-brand/25" />}
+        </div>
+        {g.result_url && (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <audio controls preload="none" src={g.result_url} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} className="h-8 w-full" />
+        )}
+      </div>
+    );
+  };
+  // Media de una generación (foto, video o audio) para las tarjetas de Resultados.
+  const genMedia = (g, cls) => (
+    isAudioGen(g) ? audioTile(g, cls)
+      : !g.result_url ? <div className={`${cls} bg-hair/10`} />
+        : g.media_type === 'video' ? <video src={`${String(g.result_url).split('#')[0]}#t=0.1`} muted playsInline preload="metadata" className={cls} />
+          : <img src={g.result_url} alt="" loading="lazy" decoding="async" className={cls} />
+  );
+  // Audio → no hay Antes/Después: te llevo a la pestaña Voz, a ESE clip.
+  const openGen = (g) => {
+    if (isAudioGen(g)) { setSubtab('voz'); setVFocus(g.id); return; }
+    if (g.media_type === 'video' && g.result_url) setVideoPlay({ url: g.result_url, poster: null, refUrl: (g.reference_url && /\.mp4|video/i.test(g.reference_url)) ? g.reference_url : null }); else setCompare({ root: rootOf(g), creator_id: g.creator_id });
+  };
+
+  const enterModel = (id) => { setSel(id); setSubtab('cocinar'); setQueue([]); setMsg(null); setBaulFilter('guias'); setBaulModel(''); setShowUpload(false); setVibe('Todos'); setVMsg(null); setVFocus(null); };
+
+  // ── Página «Cuentas guía» (UNA sola, para las dos entradas: el selector de modelos y «Buscar en IG» de una modelo) ──
+  // opts.model: '' = «Todas las modelos» · id = esa modelo · undefined = la que esté abierta. «Volver» deja todo como estaba.
+  const openAcctPage = (opts = {}) => {
+    setAcctBack({ sel, subtab, scrapView });
+    setAcctDetail(opts.detail || null); setAcctSearch(''); setAcctDate('todas');
+    if (opts.model !== undefined && opts.model !== sel) { setSel(opts.model); if (opts.model) setSubtab('buscar'); }
+    setAcctView(true);
+  };
+  const closeAcctPage = () => {
+    const b = acctBack;
+    setAcctView(false); setAcctDetail(null); setAcctBack(null);
+    if (!b) return;
+    if (b.sel !== sel) setSel(b.sel);
+    if (b.sel) setSubtab(b.subtab || 'buscar');
+    setScrapView(!!b.scrapView);
+  };
+  // Selector de arriba: «Todas las modelos» o una modelo (la misma página, con sus cuentas, agregar, buscar e historial).
+  const pickAcctModel = (id) => { setAcctDetail(null); setAcctSearch(''); if (id !== sel) { setSel(id); if (id) setSubtab('buscar'); if (!scrapingAcc && !checkingAcct && !backfilling) setMsg(null); } };
+  const openAcctDetail = (cid, h) => { if (cid !== sel) pickAcctModel(cid); setAcctDetail(h); };
+  // «Buscar más» de una tarjeta: abre el paso de cantidades (fotos/videos) para ESA cuenta (y esa modelo).
+  const buscarMas = (cid, h) => { if (cid !== sel) pickAcctModel(cid); setNewAccount(h); setWiz({ step: 3, mode: 'cuenta' }); };
+  // Admin: completar el costo REAL de corridas viejas desde la lista de corridas de Apify (acción scrape_cost_backfill).
+  const runBackfill = async () => {
+    setBackfilling(true); setMsg({ kind: 'info', text: 'Buscando en Apify el costo real de cada búsqueda registrada…' });
+    const out = await callFn('scrape_cost_backfill');
+    setBackfilling(false);
+    if (!out.ok) { setMsg({ kind: 'err', text: /desconocida/i.test(String(out.error || '')) ? 'Falta actualizar el motor (función higgsfield) para traer el costo real.' : (out.error || 'No se pudo traer el costo real.') }); return; }
+    runsLegacyRef.current = false; // la migración ya está (el motor la usó) → volver a leer las columnas de costo real
+    loadScrapeRuns(); loadApifyBill();
+    const t = [`Listo: ${out.matched || 0} búsqueda${out.matched === 1 ? '' : 's'} vieja${out.matched === 1 ? '' : 's'} con su costo real de Apify (${usdS(out.matched_usd)}).`];
+    if (out.rechecked) t.push(`${out.rechecked} corrida(s) nueva(s) completada(s).`);
+    if (out.unmatched_rows?.length) t.push(`${out.unmatched_rows.length} no se pudieron atar con seguridad a su corrida de Apify (misma cuenta y hora): siguen como estimado.`);
+    if (out.unclaimed_count) t.push(`Apify tiene ${out.unclaimed_count} corrida(s) que la app no registró (${usdS(out.unclaimed_usd)}): pruebas, lo de antes del 28 sep o búsquedas cortadas.`);
+    setMsg({ kind: 'ok', text: t.join(' ') });
+  };
   const toggleQueue = (url) => setQueue((k) => k.includes(url) ? k.filter((u) => u !== url) : [...k, url]);
 
   const enqueue = async () => {
     if (!selReady) { setMsg({ kind: 'err', text: `${selCreator?.full_name || 'Esta modelo'} todavía no tiene su soul enlazada. Avisame y la enlazo.` }); return; }
+    if (selBlock) { setMsg({ kind: 'err', text: selBlock }); return; }
     if (queue.length === 0) { setMsg({ kind: 'info', text: 'Tocá al menos una foto para seleccionarla.' }); return; }
     askNotify();
     setEnq(true);
@@ -683,9 +1413,7 @@ export default function KitchenPage() {
     if (error) { setMsg({ kind: 'err', text: `No se pudo encolar: ${error.message}` }); return; }
     const n = queue.length;
     setQueue([]); loadGens();
-    setMsg({ kind: 'ok', text: `${n} foto(s) en la cola de ${selCreator?.full_name || 'la modelo'}. Se cocinan con su soul real; miralas en Resultados.` });
-    setSubtab('resultados');
-    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
+    setMsg({ kind: 'ok', text: `🍳 ${n} foto(s) a cocinar con la soul de ${selCreator?.full_name || 'la modelo'}. Seguí eligiendo — mirá «Cocinando» abajo a la derecha; tocalo cuando quieras verlas.` });
   };
 
   const onUpload = async (files) => {
@@ -708,18 +1436,129 @@ export default function KitchenPage() {
     setUploading(false);
   };
 
-  const decide = async (g, approve, keepOpen = false) => {
-    await callFn('approve_gen', { generation_id: g.id, approve });
+  // APROBAR / DESCARTAR — OPTIMISTA: la tarjeta (y el pop-up) cambian AL INSTANTE; el server (que tarda:
+  // limpia metadata y re-hospeda) confirma de fondo. Si falla, vuelvo esa fila a como estaba y aviso.
+  // Audio → motor de voz (approve_audio), NUNCA approve_gen.
+  const dropDecideErr = (id) => setDecideErr((m) => { if (!m[id]) return m; const n = { ...m }; delete n[id]; return n; });
+  const decide = (g, approve, keepOpen = false) => {
+    if (!g?.id || decideRef.current[g.id]) return; // ya se está aprobando/descartando: ignoro el doble clic
+    if (isAudioGen(g) && vRow[g.id]) return;       // ese audio se está rehaciendo: esperá la toma nueva
+    const prevStatus = g.status;
+    const nextStatus = approve ? 'approved' : 'rejected';
+    const isAud = isAudioGen(g);
+    decideRef.current = { ...decideRef.current, [g.id]: nextStatus };
+    setDeciding((d) => ({ ...d, [g.id]: approve ? 'approve' : 'reject' }));
+    setGens((list) => list.map((x) => (x.id === g.id ? { ...x, status: nextStatus } : x)));
+    if (isAud) setVRowErr((m) => { if (!m[g.id]) return m; const n = { ...m }; delete n[g.id]; return n; });
+    dropDecideErr(g.id);
     if (!keepOpen) setCompare(null);
-    loadGens();
-    setMsg({ kind: approve ? 'ok' : 'info', text: approve ? 'Aprobada — foto limpia (sin metadata) al baúl ✓' : 'Descartada.' });
+    setMsg({ kind: approve ? 'ok' : 'info', text: approve ? (isAud ? 'Aprobado — audio limpio (sin metadata) al baúl ✓' : 'Aprobada — foto limpia (sin metadata) al baúl ✓') : (isAud ? 'Audio descartado.' : 'Descartada.') });
+    (async () => {
+      let out;
+      try {
+        out = isAud
+          ? await callVoice('approve_audio', { generation_id: g.id, approve })
+          : await callFn('approve_gen', { generation_id: g.id, approve });
+      } catch (e) { out = { ok: false, error: e?.message || String(e) }; }
+      const clear = () => {
+        const n = { ...decideRef.current }; delete n[g.id]; decideRef.current = n;
+        setDeciding((d) => { const m = { ...d }; delete m[g.id]; return m; });
+      };
+      if (!out?.ok) {
+        clear();
+        setGens((list) => list.map((x) => (x.id === g.id ? { ...x, status: prevStatus } : x)));
+        const err = `No se pudo ${approve ? 'aprobar' : 'descartar'}: ${out?.error || 'error del servidor'}. La dejé como estaba.`;
+        if (isAud) setVRowErr((m) => ({ ...m, [g.id]: err }));
+        setDecideErr((m) => ({ ...m, [g.id]: err })); // también junto a la foto: el banner de arriba queda tapado por el pop-up / fuera de pantalla
+        setMsg({ kind: 'err', text: err });
+        loadGens(); // releo la verdad del server por si llegó a aplicar algo a medias
+        return;
+      }
+      try { await loadGens(); } catch { /* noop */ } finally { clear(); } // refresco callado (la fila ya muestra el estado nuevo; el override la cubre hasta acá)
+    })();
   };
 
-  // Reintentar una rechazada: la vuelve a la cola.
+  // AUDIO: rehacer / reintentar = nueva toma EN EL LUGAR (mismo id) con el motor de voz. Nunca a la cola del worker.
+  const mergeGen = (row) => {
+    if (!row?.id) return;
+    setGens((list) => (list.some((x) => x.id === row.id) ? list.map((x) => (x.id === row.id ? { ...x, ...row } : x)) : [row, ...list]));
+  };
+  const regenRef = useRef(new Set()); // ids que se están rehaciendo (guard contra doble clic antes del re-render)
+  const regenAudio = async (g) => {
+    if (!g?.id || regenRef.current.has(g.id) || decideRef.current[g.id]) return;
+    regenRef.current.add(g.id);
+    setVRow((m) => ({ ...m, [g.id]: 'regen' }));
+    setVRowErr((m) => { if (!m[g.id]) return m; const n = { ...m }; delete n[g.id]; return n; });
+    dropDecideErr(g.id);
+    let out;
+    try { out = await callVoice('make_audio', { regen_of: g.id, creator_id: g.creator_id }); } catch (e) { out = { ok: false, error: e?.message || String(e) }; }
+    regenRef.current.delete(g.id);
+    setVRow((m) => { const n = { ...m }; delete n[g.id]; return n; });
+    if (out?.generation) mergeGen(out.generation);
+    if (!out?.ok) {
+      const err = out?.error || 'No se pudo rehacer el audio.';
+      setVRowErr((m) => ({ ...m, [g.id]: err }));
+      setMsg({ kind: 'err', text: `Audio: ${err}` });
+      return;
+    }
+    setMsg({ kind: 'ok', text: '🔄 Audio rehecho — nueva toma lista para escuchar y aprobar.' });
+    loadVoiceStatus();
+  };
+
+  // Reintentar una rechazada: la vuelve a la cola. (Audio → nueva toma con el motor de voz, NO a la cola.)
   const retry = async (g) => {
+    if (isAudioGen(g)) { regenAudio(g); return; }
+    const rb = acctBlock(g.creator_id); if (rb) { setMsg({ kind: 'err', text: rb }); return; }
+    dropDecideErr(g.id);
     await sb.from('generations').update({ status: 'queued', note: null, result_url: null }).eq('id', g.id);
     loadGens();
     setMsg({ kind: 'info', text: 'La mandé de nuevo a la cola.' });
+  };
+  // REHACER: cocina de nuevo ESTA misma (mismo viral de referencia) → sale otra versión y reemplaza la actual.
+  // tweak = ajuste opcional en palabras (ej: "más glúteo", "más sonrisa"); viaja como note='tweak:...' y el worker lo mete al prompt.
+  // Audio: el ajuste se ignora (para cambiar el guion está «Editar» en la pestaña Voz).
+  const redo = async (g, tweak = '') => {
+    if (isAudioGen(g)) { regenAudio(g); return; }
+    const isVid = g.media_type === 'video';
+    const rb = acctBlock(g.creator_id); if (rb) { setMsg({ kind: 'err', text: rb }); return; }
+    const gBal = balFor(g.creator_id);
+    if (isVid && gBal != null && gBal < VIDEO_MIN_CREDITS) { setMsg({ kind: 'err', text: `Sin créditos para rehacer el video${acctOf(g.creator_id)?.label ? ` en «${acctOf(g.creator_id).label}»` : ''} (quedan ${gBal.toFixed(1)}, se necesitan ~${VIDEO_MIN_CREDITS}). Recargá.` }); return; }
+    const t = String(tweak || '').trim().slice(0, 200);
+    const note = t ? `tweak:${t}` : null;
+    dropDecideErr(g.id);
+    await sb.from('generations').update({ status: 'queued', note, result_url: null }).eq('id', g.id);
+    setCompare(null); setDetail(null); setLightbox(null); setRedoNote('');
+    loadGens();
+    setMsg({ kind: 'ok', text: `🔄 Rehaciendo ${isVid ? 'este video' : 'esta foto'}${t ? ` con tu ajuste: “${t}”` : ''} — aparece cocinándose (mirá «Cocinando» abajo) y cae lista al terminar.` });
+  };
+
+  // VOZ — generar un audio con la voz fija de la modelo (sincrónico: tarda unos segundos).
+  const genAudio = async () => {
+    const text = vText.trim();
+    const hasVoice = !!(voiceSum?.voices || []).find((v) => v.creator_id === sel);
+    if (!sel || vBusy || !voiceSum?.configured || !hasVoice || !voiceSum?.consent?.[sel] || !text || text.length > VOICE_MAX_CHARS) return;
+    setVBusy(true); setVMsg(null);
+    let out;
+    try { out = await callVoice('make_audio', { creator_id: sel, text, type: vType, lang: vLang }); } catch (e) { out = { ok: false, error: e?.message || String(e) }; }
+    setVBusy(false);
+    if (out?.generation) mergeGen(out.generation); // aunque falle, si vino la fila (status failed) la muestro con su motivo
+    if (!out?.ok) {
+      setVMsg({ kind: 'err', text: out?.error || 'No se pudo generar el audio.', needsKey: !!out?.needsKey, needsConsent: !!out?.needsConsent, needsVoice: !!out?.needsVoice });
+      if (out?.needsKey || out?.needsConsent || out?.needsVoice) loadVoice();
+      return;
+    }
+    setVText('');
+    setVMsg({ kind: 'ok', text: 'Audio listo ✓ — escuchalo abajo y aprobalo si va (cae al baúl de la modelo, carpeta Cocina).' });
+    loadVoiceStatus();
+  };
+  // Editar: devuelve guion/etiqueta/idioma de un audio al compositor (sale como toma nueva al generar).
+  const editAudio = (g) => {
+    setVText(g?.prompt || '');
+    if (g?.params?.type && VOICE_TYPE_MAP[g.params.type]) setVType(g.params.type);
+    if (g?.params?.lang && VOICE_LANGS.some((l) => l.id === g.params.lang)) setVLang(g.params.lang);
+    setVMsg({ kind: 'info', text: 'Guion cargado arriba. Cambiá lo que quieras y tocá «Generar audio» (sale como una toma nueva).' });
+    try { vComposerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* noop */ }
+    setTimeout(() => { try { vTextRef.current?.focus({ preventScroll: true }); } catch { /* noop */ } }, 350);
   };
 
   // Carrusel: variaciones (mismo lugar + mismo outfit, otras poses) sobre la foto raíz.
@@ -732,6 +1571,9 @@ export default function KitchenPage() {
   const [detailN, setDetailN] = useState(1); // ficha: 1 = normal, >1 = carrusel al cocinar
   const makeVariations = async (rootId) => {
     if (!rootId) return;
+    // Mismo candado de cuenta que cocinar/reintentar/rehacer (Julia nunca se frena acá).
+    const vb = acctBlock(gens.find((x) => x.id === rootId)?.creator_id || sel);
+    if (vb) { setMsg({ kind: 'err', text: vb }); return; }
     askNotify();
     // 3 modos (todo Soul 2.0 con su soul = se parece a ella):
     //  · 'carrusel' (describe): MISMO lugar + outfit, otras poses → set coherente para UN post.
@@ -752,8 +1594,7 @@ export default function KitchenPage() {
     setVarBusy(false);
     if (r?.ok) {
       if (varMode === 'custom') setVarIdeas(['', '']);
-      setMsg({ kind: 'ok', text: `${r.queued} foto(s) en la cola. Miralas en Resultados.` });
-      setSubtab('resultados');
+      setMsg({ kind: 'ok', text: `🍳 ${r.queued} variación(es) cocinándose — aparecen acá abajo al terminar.` });
       loadGens();
     } else setMsg({ kind: 'err', text: r?.error || 'No se pudo.' });
   };
@@ -769,22 +1610,32 @@ export default function KitchenPage() {
       <div className="grid min-h-screen place-items-center bg-ink px-6 text-paper">
         <div className="card3d w-full max-w-md rounded-3xl border border-line bg-card p-8 text-center">
           <h1 className="font-display text-xl font-bold text-paper">Solo admin o supervisor</h1>
-          <Link href="/admin" className="btn3d-ghost mt-6 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"><ArrowLeft size={15} /> Volver</Link>
+          <Link href={homeHref} className="btn3d-ghost mt-6 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold"><ArrowLeft size={15} /> Volver</Link>
         </div>
       </div>
     );
   }
 
   const filteredCreators = creators.filter((c) => c.full_name.toLowerCase().includes(q.trim().toLowerCase()));
-  const totalCredits = gens.filter((g) => g.status !== 'failed').reduce((a, g) => a + Number(g.credits || 0), 0);
+  const totalCredits = gens.filter((g) => g.status !== 'failed' && !isAudioGen(g)).reduce((a, g) => a + Number(g.credits || 0), 0); // solo Higgsfield (el audio no suma)
   const doneTs = (g) => new Date(g.done_at || g.created_at).getTime();
   const mineGens = gens.filter((g) => g.creator_id === sel);
   const isRoot = (g) => !g.carousel_of; // réplica (no es variación de carrusel)
+  // Filtro Fotos/Videos/Audios de Resultados: el chip solo aparece si esta modelo tiene videos o audios; si el tipo elegido no existe, cae a 'todo'.
+  const resHasVideo = mineGens.some((g) => g.media_type === 'video');
+  const resHasAudio = mineGens.some(isAudioGen);
+  const resEff = (resMedia === 'videos' && !resHasVideo) || (resMedia === 'audios' && !resHasAudio) || (!resHasVideo && !resHasAudio) ? 'todo' : resMedia;
+  const mediaOk = (g) => resEff === 'todo' || (resEff === 'videos' ? g.media_type === 'video' : resEff === 'audios' ? isAudioGen(g) : isPhotoGen(g));
+  // VOZ de la modelo abierta: su voz fija (si tiene), consentimiento y su catálogo de audios (la última primero).
+  const selVoice = (voiceSum?.voices || []).find((v) => v.creator_id === sel) || null;
+  const selConsent = !!voiceSum?.consent?.[sel];
+  const audioRows = mineGens.filter(isAudioGen).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+  const audioReviewN = audioRows.filter((g) => g.status === 'done').length;
   // Grid principal: solo réplicas. Las variaciones se ven/aprueban dentro del pop-up del carrusel.
-  const reviewRows = mineGens.filter((g) => g.status === 'done' && (reviewFlat || isRoot(g))).sort((a, b) => doneTs(b) - doneTs(a));
-  const approvedRows = mineGens.filter((g) => g.status === 'approved').sort((a, b) => doneTs(b) - doneTs(a)); // baúl: réplicas + variaciones
+  const reviewRows = mineGens.filter((g) => g.status === 'done' && mediaOk(g) && (reviewFlat || isRoot(g))).sort((a, b) => doneTs(b) - doneTs(a));
+  const approvedRows = mineGens.filter((g) => g.status === 'approved' && mediaOk(g)).sort((a, b) => doneTs(b) - doneTs(a)); // baúl: réplicas + variaciones
   const pendingRows = mineGens.filter((g) => ['queued', 'in_progress'].includes(g.status) && isRoot(g));
-  const failedRows = mineGens.filter((g) => g.status === 'failed' && isRoot(g));
+  const failedRows = mineGens.filter((g) => g.status === 'failed' && mediaOk(g) && isRoot(g));
   // Hijos de un carrusel (todas las fotos cuya raíz es rootId, sin la raíz), ordenadas por cocinado.
   const rootOf = (g) => g.carousel_of || g.id;
   const carouselKids = (rootId) => mineGens.filter((g) => g.carousel_of === rootId).sort((a, b) => doneTs(b) - doneTs(a)); // más nuevas ARRIBA (las que se están creando primero)
@@ -793,11 +1644,13 @@ export default function KitchenPage() {
   const cmpRoot = compare ? mineGens.find((x) => x.id === compare.root) : null;
   const cmpKids = compare ? carouselKids(compare.root) : [];
   // Motor real de una foto (honesto): lo que reportó el worker; si es viejo sin dato, la réplica fue Soul 2.0 y la variación fue Nano.
-  const engineOf = (g) => (g?.engine_label ? g.engine_label : (g?.carousel_of ? 'Nano' : 'Soul 2.0'));
+  const engineOf = (g) => (g?.engine_label ? g.engine_label : isAudioGen(g) ? 'ElevenLabs' : (g?.carousel_of ? 'Nano' : 'Soul 2.0'));
+  // Costo de un audio = créditos de ElevenLabs (header character-cost) (NO créditos Higgsfield).
+  const charsOf = (g) => { const n = Number(g?.params?.chars ?? (g?.prompt ? String(g.prompt).length : 0)); return Number.isFinite(n) ? n : 0; };
 
   // Listas para las pestañas nuevas.
   const cookingRows = mineGens.filter((g) => ['queued', 'in_progress'].includes(g.status)).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)); // cocinándose (réplicas + carrusel) TODAS juntas de esta modelo
-  const allRows = mineGens.filter((g) => g.status !== 'failed').sort((a, b) => doneTs(b) - doneTs(a)); // "Todo": todas menos rechazadas, la última primero
+  const allRows = mineGens.filter((g) => g.status !== 'failed' && mediaOk(g)).sort((a, b) => doneTs(b) - doneTs(a)); // "Todo": todas menos rechazadas, la última primero
   // Contador de tiempo de una foto cocinándose (+ marca "trabada" si pasa mucho).
   const fmtElapsed = (g) => {
     const min = Math.max(0, Math.floor((tick - new Date(g.created_at).getTime()) / 60000));
@@ -806,23 +1659,34 @@ export default function KitchenPage() {
     return { txt: `${h} h${m ? ` ${m}m` : ''}`, stuck: true };
   };
   // Motor + precio por foto (créditos + US$), desplegable con una flechita.
+  // Motor + PRECIO visible de una vez (foto o video): "Motor: X · N créd · US$Y". El costo real lo reporta el worker.
   const motorLine = (g) => {
-    const open = costOpen.has(g.id);
+    if (isAudioGen(g)) {
+      const eng = g.engine_label || 'ElevenLabs';
+      const chTxt = `${charsOf(g).toLocaleString('es')} créditos ElevenLabs`;
+      return (
+        <div className="flex w-full items-center gap-1.5 px-2 pt-1 text-[10px] text-paper-dim" title={`Motor: ${eng} · ${chTxt}`}>
+          <span className="truncate">Motor: <span className="font-semibold text-brand">{eng}</span></span>
+          <span className="ml-auto shrink-0 font-semibold text-paper-mute">{chTxt}</span>
+        </div>
+      );
+    }
     const cr = Number(g.credits || 0);
+    const eng = engineOf(g);
+    const engCls = eng === 'Nano' ? 'text-rose-300' : eng === 'Genjutsu' ? 'text-violet-300' : 'text-brand';
+    const crTxt = cr > 0 ? `${cr % 1 === 0 ? cr : cr.toFixed(2)} créd · ${money(cr)}` : 'sin costo';
     return (
-      <button type="button" onClick={(e) => { e.stopPropagation(); setCostOpen((s) => { const n = new Set(s); n.has(g.id) ? n.delete(g.id) : n.add(g.id); return n; }); }}
-        className="flex w-full items-center gap-1 px-2 pt-1 text-left text-[10px] text-paper-dim hover:text-paper" title="Ver el precio de esta foto">
-        <span>Motor: <span className={`font-semibold ${engineOf(g) === 'Nano' ? 'text-rose-300' : 'text-brand'}`}>{engineOf(g)}</span></span>
-        {open && <span className="text-amber-300">· {cr > 0 ? `${cr.toFixed(2)} créd · ${money(cr)}` : 'sin costo registrado'}</span>}
-        <ChevronDown size={11} className={`ml-auto shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+      <div className="flex w-full items-center gap-1.5 px-2 pt-1 text-[10px] text-paper-dim" title={`Motor y precio: ${eng} · ${crTxt}`}>
+        <span>Motor: <span className={`font-semibold ${engCls}`}>{eng}</span></span>
+        <span className="ml-auto shrink-0 font-semibold text-amber-300">{crTxt}</span>
+      </div>
     );
   };
   const cookingTile = (g) => {
     const e = fmtElapsed(g);
     return (
       <div key={g.id} className="relative overflow-hidden rounded-xl border border-amber-400/30 bg-ink-2">
-        {g.reference_url ? <img src={g.reference_url} alt="" className="aspect-[3/4] w-full scale-105 object-cover blur-md brightness-[0.4]" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+        {mediaTile(g.reference_url, "aspect-[3/4] w-full scale-105 object-cover blur-md brightness-[0.4]")}
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-white">
           <Loader2 size={24} className="animate-spin text-amber-300" />
           <span className="text-[11px] font-semibold tracking-wide">cocinándose…</span>
@@ -843,12 +1707,58 @@ export default function KitchenPage() {
     try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
   };
 
+  // Aviso de la cocina. Se dibuja en la página Y dentro de las pantallas completas («Cuentas guía», «Buscar en IG»):
+  // si no, esas pantallas lo tapaban y nada de lo que se hacía ahí mostraba respuesta.
+  const msgBanner = (cls = '') => (msg ? (
+    <div className={`${cls} flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm ${msg.kind === 'ok' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' : msg.kind === 'err' ? 'border-rose-500/40 bg-rose-500/10 text-rose-200' : 'border-line bg-card text-paper-mute'}`}>
+      {msg.kind === 'ok' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : msg.kind === 'err' ? <AlertTriangle size={16} className="mt-0.5 shrink-0" /> : <Sparkles size={16} className="mt-0.5 shrink-0" />}
+      <span className="min-w-0 flex-1 break-words">{msg.text}</span>
+      <button type="button" onClick={() => setMsg(null)} className="shrink-0 opacity-70 hover:opacity-100" title="Cerrar aviso"><X size={14} /></button>
+    </div>
+  ) : null);
+
+  // Avance de UNA búsqueda en segundo plano (tarjeta de cuenta, ficha y «Búsquedas en curso»): línea + barra plana + fase.
+  const jobProgress = (j, withWho = false) => (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+        <span className={`inline-flex items-center gap-1.5 font-bold ${j.stale ? 'text-paper-mute' : 'text-amber-300'}`}>
+          {j.stale ? <Clock size={11} /> : <Loader2 size={11} className="animate-spin" />} {withWho ? `${jobWho(j)} · ` : ''}Buscando… {jobCounts(j)}
+        </span>
+        <button type="button" onClick={(e) => { e.stopPropagation(); cancelJob(j); }} disabled={!!j.cancel_requested}
+          className="ml-auto rounded-md border border-line px-2 py-0.5 text-[10px] font-semibold text-paper-mute hover:border-rose-400 hover:text-rose-300 active:translate-y-px disabled:opacity-40">Cancelar</button>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-2"><div className="h-full rounded-full bg-fuchsia-400 transition-[width] duration-500" style={{ width: `${jobPct(j)}%` }} /></div>
+      <div className="text-[10px] text-paper-dim">{jobPhaseText(j)}</div>
+    </div>
+  );
+  // Por qué NO jaló una cuenta según su última búsqueda terminada del motor nuevo (queda aunque recargues la página).
+  // undefined = no hay búsqueda nueva terminada de esa cuenta (se usa el aviso de antes, si hay).
+  const lastJobIssue = (cid, h) => {
+    const k = normH(h); let best = null;
+    const see = (r, issue) => {
+      if (!r || r.creator_id !== cid || !r.requested || JOB_ACTIVE.has(String(r.status)) || r.kind !== 'account' || normH(r.handle || r.query) !== k) return;
+      const t = Date.parse(r.finished_at || r.run_at) || 0; if (!best || t > best.t) best = { t, issue: issue || null };
+    };
+    scrapeRuns.forEach((r) => see(r, r.progress_issue));
+    jobs.forEach((j) => see(j, j.issue));
+    return best ? best.issue : undefined;
+  };
+  // «Buscar en todas» en curso de una modelo (el lote más nuevo con alguna activa): { n, done } o null.
+  const activeBatchOf = (cid) => {
+    let bid = null, bt = 0;
+    jobs.forEach((j) => { if (j.creator_id === cid && j.batch_id && isActiveJob(j)) { const t = Date.parse(j.created_at) || 0; if (t >= bt) { bt = t; bid = j.batch_id; } } });
+    if (!bid) return null;
+    const all = [...jobs.values()].filter((j) => j.batch_id === bid);
+    return { n: all.length, done: all.filter((j) => !isActiveJob(j)).length };
+  };
+  const selActiveJobs = sel ? [...jobs.values()].filter((j) => j.creator_id === sel && isActiveJob(j)) : [];
+
   return (
     <div className="min-h-screen bg-ink text-paper">
       <header className="sticky top-0 z-30 border-b border-line bg-ink/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3.5 lg:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <Link href="/admin" className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper" title="Volver al admin"><ArrowLeft size={17} /></Link>
+            <Link href={homeHref} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper" title={myRole === 'supervisor' ? 'Volver a mi trabajo' : 'Volver al admin'}><ArrowLeft size={17} /></Link>
             <div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.24em] text-paper-mute"><ChefHat size={13} className="text-brand" /> Kitchen</div>
           </div>
           {selCreator && (
@@ -860,13 +1770,25 @@ export default function KitchenPage() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6">
-        {msg && (
-          <div className={`mb-4 flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm ${msg.kind === 'ok' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' : msg.kind === 'err' ? 'border-rose-500/40 bg-rose-500/10 text-rose-200' : 'border-line bg-card text-paper-mute'}`}>
-            {msg.kind === 'ok' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : msg.kind === 'err' ? <AlertTriangle size={16} className="mt-0.5 shrink-0" /> : <Sparkles size={16} className="mt-0.5 shrink-0" />}
-            <span className="min-w-0 flex-1 break-words">{msg.text}</span>
-            <button type="button" onClick={() => setMsg(null)} className="shrink-0 opacity-70 hover:opacity-100"><X size={14} /></button>
-          </div>
-        )}
+        {msgBanner('mb-4')}
+
+        {/* AVISO: créditos bajos → no alcanza para cocinar VIDEO. Con una modelo abierta: SU cuenta; en el selector: cualquier cuenta baja. */}
+        {(() => {
+          const low = sel
+            ? (selBal != null && selBal < VIDEO_MIN_CREDITS ? [{ label: selAcct?.label || '', balance: selBal }] : [])
+            : hasAcctInfo
+              ? Object.values(hfAccts).filter((a) => a && a.balance != null && a.balance < VIDEO_MIN_CREDITS).map((a) => ({ label: a.label, balance: a.balance }))
+              : (balance != null && balance < VIDEO_MIN_CREDITS ? [{ label: '', balance }] : []);
+          if (!low.length) return null;
+          return (
+            <div className="mb-4 flex items-start gap-2 rounded-2xl border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span className="min-w-0 flex-1 break-words">
+                <b>Higgsfield casi sin créditos: {low.map((x) => `${x.label ? `«${x.label}» ` : ''}quedan ${Number(x.balance).toFixed(1)}`).join(' · ')}.</b> Un video necesita ~{VIDEO_MIN_CREDITS} créditos → <b>no vas a poder cocinar video</b>{hasAcctInfo ? ' con esa cuenta' : ''} hasta recargar. (Las fotos sí funcionan con menos.)
+              </span>
+            </div>
+          );
+        })()}
 
         {/* ══════════ PASO 1 — ELEGÍ LA MODELO ══════════ */}
         {!sel && (
@@ -881,7 +1803,14 @@ export default function KitchenPage() {
                   <div className="text-base font-bold tabular-nums text-amber-300">{money(totalCredits)}</div>
                   <div className="text-[10px] text-paper-dim">gastado (app)</div>
                 </div>
-                {balance != null && (
+                {hasAcctInfo
+                  ? Object.values(hfAccts).filter((a) => a && a.balance != null).map((a) => (
+                    <div key={a.id} className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3.5 py-2 text-center" title={`Saldo real de «${a.label}» en Higgsfield${a.balance_at ? ` (actualizado ${new Date(a.balance_at).toLocaleString('es-US')})` : ''}`}>
+                      <div className={`text-base font-bold tabular-nums ${a.balance < VIDEO_MIN_CREDITS ? 'text-rose-300' : 'text-emerald-300'}`}>{Number(a.balance).toFixed(1)}</div>
+                      <div className="max-w-[120px] truncate text-[10px] text-paper-dim">{a.label}</div>
+                    </div>
+                  ))
+                  : balance != null && (
                   <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3.5 py-2 text-center" title="Saldo real de tu cuenta Higgsfield (en vivo)">
                     <div className="text-base font-bold tabular-nums text-emerald-300">{balance.toFixed(1)}</div>
                     <div className="text-[10px] text-paper-dim">saldo real (créd)</div>
@@ -899,7 +1828,8 @@ export default function KitchenPage() {
                 className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-4 py-2 text-sm font-semibold text-paper-mute hover:text-paper">
                 <LayoutGrid size={15} /> Biblioteca <span className="text-paper-dim">{guideRows.length}</span>
               </button>
-              <button type="button" onClick={() => { setMediaFilter('todo'); setBaulModel(''); setBaulSearch(''); loadScrapedGlobal(); setScrapView(true); }}
+              {/* Misma página «Cuentas guía» que adentro de una modelo, arrancando en «Todas las modelos» (con selector de modelo) */}
+              <button type="button" onClick={() => openAcctPage({ model: '' })}
                 className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-bold text-on-accent hover:opacity-90">
                 <Search size={15} /> Buscar en IG
               </button>
@@ -919,6 +1849,7 @@ export default function KitchenPage() {
                         {ready
                           ? <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300"><CheckCircle2 size={11} /> Soul lista</div>
                           : <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-paper-dim"><AlertTriangle size={11} className="text-amber-400" /> Sin soul</div>}
+                        {hasAcctInfo && <div className={`truncate text-[10px] ${acctOf(c.id) ? 'text-paper-dim' : 'text-amber-300/80'}`}>{acctOf(c.id)?.label || 'sin cuenta Higgsfield'}</div>}
                       </div>
                     </div>
                     <div className="flex w-full items-center gap-3 text-[11px] text-paper-dim">
@@ -948,16 +1879,22 @@ export default function KitchenPage() {
                 {selReady
                   ? <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300"><IdCard size={13} /> Soul real enlazada</div>
                   : <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300"><AlertTriangle size={12} /> Sin soul — avisame y la enlazo</div>}
+                {selBlock && <div className="mt-0.5 flex max-w-md items-start gap-1.5 text-[11px] text-rose-300"><AlertTriangle size={11} className="mt-0.5 shrink-0" /><span className="break-words">{selBlock}</span></div>}
               </div>
-              <div className="ml-auto flex items-center gap-2">
-                <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center" title={`Total gastado en ${selCreator.full_name}: ${money(mine.credits)} = ${mine.credits.toFixed(2)} créditos en ${mine.total} fotos (${money(0.12)} c/foto)`}>
-                  <div className="text-sm font-bold tabular-nums text-amber-300">{money(mine.credits)} <span className="text-paper-dim">·</span> {mine.credits.toFixed(1)} créd</div>
-                  <div className="text-[10px] text-paper-dim">total gastado</div>
-                </div>
-                <div className="rounded-xl border border-line bg-ink-2 px-3 py-2 text-center">
-                  <div className="text-sm font-bold tabular-nums text-paper">{mine.total}</div>
-                  <div className="text-[10px] text-paper-dim">fotos</div>
-                </div>
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                <button type="button" onClick={() => setSpendOpen(true)} className="group flex items-center gap-3 rounded-2xl border border-line bg-ink-2 px-4 py-2.5 text-left transition-colors hover:border-brand/40" title="Ver el detalle: saldo, gasto y cuántas hiciste">
+                  <div>
+                    <div className={`text-base font-bold tabular-nums ${selBal != null && selBal < VIDEO_MIN_CREDITS ? 'text-rose-300' : 'text-emerald-300'}`}>{selBal != null ? selBal.toFixed(0) : '—'} <span className="text-[11px] opacity-60">créd</span></div>
+                    <div className="text-[10px] text-paper-dim">te quedan{selBal != null ? ` · ${money(selBal)}` : ''}</div>
+                    {hasAcctInfo && <div className={`max-w-[150px] truncate text-[10px] font-semibold ${selAcct ? 'text-brand' : 'text-amber-300'}`} title={selAcct ? `Cuenta de Higgsfield de esta modelo: ${selAcct.label}` : 'Esta modelo no tiene cuenta de Higgsfield asignada'}>{selAcct?.label || 'sin cuenta'}</div>}
+                  </div>
+                  <div className="h-8 w-px bg-line" />
+                  <div>
+                    <div className="text-base font-bold tabular-nums text-amber-300">{money(mine.credits)}</div>
+                    <div className="text-[10px] text-paper-dim">gastado acá</div>
+                  </div>
+                  <ChevronDown size={15} className="ml-1 text-paper-dim transition-transform group-hover:translate-y-0.5" />
+                </button>
                 <button type="button" onClick={() => { loadGens(); loadVault(); loadSummary(); }} className="grid h-10 w-10 place-items-center rounded-xl border border-line text-paper-mute hover:text-paper" title="Actualizar"><RefreshCw size={15} /></button>
               </div>
             </div>
@@ -966,33 +1903,43 @@ export default function KitchenPage() {
             <div className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
               {[
                 { id: 'cocinar', label: 'Cocinar', icon: Flame },
-                { id: 'resultados', label: 'Resultados', icon: Images, badge: (reviewRows.length + cookingRows.length) || null, spin: cookingRows.length > 0 },
-                { id: 'buscar', label: 'Buscar en IG', icon: Search },
+                { id: 'voz', label: 'Voz', icon: AudioLines, badge: audioReviewN || null },
+                { id: 'resultados', label: 'Resultados', icon: Images, badge: cookingRows.length || null, spin: cookingRows.length > 0 },
               ].map((t) => {
-                const Icon = t.icon; const on = subtab === t.id;
+                const Icon = t.icon; const on = subtab === t.id || (t.id === 'cocinar' && subtab === 'buscar');
                 return (
                   <button key={t.id} type="button" onClick={() => setSubtab(t.id)}
                     className={`inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors ${on ? 'border-brand text-brand' : 'border-transparent text-paper-mute hover:text-paper'}`}>
                     <Icon size={15} className={t.spin ? 'animate-spin text-amber-300' : ''} /> {t.label}
-                    {t.badge ? <span className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold ${on ? 'bg-brand text-on-accent' : 'bg-hair/20 text-paper-mute'}`}>{t.badge}</span> : null}
+                    {t.badge ? <span className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold ${t.spin ? 'bg-amber-500/25 text-amber-200' : on ? 'bg-brand text-on-accent' : 'bg-hair/20 text-paper-mute'}`}>{t.badge}</span> : null}
                   </button>
                 );
               })}
             </div>
 
+            {/* Chips de biblioteca (compartidos entre Cocinar y Buscar en IG): Guías · Buscar en IG · Favoritas */}
+            {(subtab === 'cocinar' || subtab === 'buscar') && (
+              <div className="mb-3 inline-flex flex-wrap items-center gap-1 rounded-full border border-line bg-card p-1 text-xs font-semibold">
+                <button type="button" onClick={() => { setSubtab('cocinar'); setBaulFilter('guias'); }}
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors ${subtab === 'cocinar' && baulFilter === 'guias' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>
+                  Guías <span className="opacity-70">{baulCounts.guias || 0}</span>
+                </button>
+                <button type="button" onClick={() => setSubtab('buscar')}
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors ${subtab === 'buscar' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>
+                  <Search size={11} /> Buscar en IG
+                </button>
+                <button type="button" onClick={() => { setSubtab('cocinar'); setBaulFilter('favoritas'); }}
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors ${subtab === 'cocinar' && baulFilter === 'favoritas' ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>
+                  <Star size={11} /> Favoritas <span className="opacity-70">{baulCounts.favoritas || 0}</span>
+                </button>
+              </div>
+            )}
+
             {/* ── COCINAR — biblioteca de guías (pool compartido) ── */}
             {subtab === 'cocinar' && (
               <div className="pb-24">
-                {/* Qué mirás · cómo lo ordenás · agregar */}
+                {/* Filtro por modelo · orden · agregar (los chips Guías/Buscar/Favoritas están compartidos arriba) */}
                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-line bg-card p-1 text-xs font-semibold">
-                    {[['guias', 'Guías'], ['reales', 'Reales'], ['favoritas', 'Favoritas']].map(([k, label]) => (
-                      <button key={k} type="button" onClick={() => setBaulFilter(k)}
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors ${baulFilter === k ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>
-                        {k === 'favoritas' && <Star size={11} />}{label} <span className="opacity-70">{baulCounts[k] || 0}</span>
-                      </button>
-                    ))}
-                  </div>
                   {baulFilter === 'guias' && guideModels.length > 1 && (
                     <div className="relative">
                       <select value={baulModel} onChange={(e) => setBaulModel(e.target.value)}
@@ -1011,10 +1958,6 @@ export default function KitchenPage() {
                     <button type="button" onClick={() => setShowUpload((v) => !v)}
                       className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition-colors ${showUpload ? 'border-brand bg-brand/10 text-brand' : 'border-line bg-card text-paper-mute hover:text-paper'}`}>
                       <Upload size={14} /> Subir fotos
-                    </button>
-                    <button type="button" onClick={() => setSubtab('buscar')}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-2 text-sm font-semibold text-paper-mute hover:text-paper">
-                      <Search size={14} /> Buscar en IG
                     </button>
                   </div>
                 </div>
@@ -1077,22 +2020,39 @@ export default function KitchenPage() {
                 {/* Header limpio: resumen + agregar (wizard) + panel de cuentas */}
                 <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card p-3.5">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                      <span className="font-bold text-paper">{accounts.length} cuenta{accounts.length === 1 ? '' : 's'}</span>
-                      <span className="text-paper-dim"><b className="text-paper">{scrapeModelTotal.fotos}</b> fotos bajadas</span>
-                      <span className="text-paper-dim">gasto <b className="text-amber-300">{scrapeModelTotal.costReal > 0 ? usd(scrapeModelTotal.costReal) : scraperMoney(scrapeModelTotal.fotos)}</b> <span className="text-paper-dim/60">{scrapeModelTotal.costReal > 0 ? 'real' : 'est'}</span></span>
-                    </div>
+                    {(() => {
+                      const S = scrapeStats.byModel[sel] || EMPTY_STAT; const C = costStats.byModel[sel] || EMPTY_COST; const tag = costTag(C);
+                      return (
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                          <span className="font-bold text-paper">{seedsFor(sel).length} cuenta{seedsFor(sel).length === 1 ? '' : 's'} guía</span>
+                          <span className="text-paper-dim"><b className="text-paper">{S.bajadas}</b> bajadas</span>
+                          <span className="text-paper-dim"><b className="text-paper">{S.enMesa}</b> en la mesa</span>
+                          <span className="text-paper-dim">gasto <b className="text-amber-300">{usdS(C.total)}</b> <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${tag.cls}`}>{tag.t}</span></span>
+                        </div>
+                      );
+                    })()}
                     <div className="mt-0.5 text-[11px] text-paper-dim">De Instagram, filtrado solo (mujeres/cuerpo, sin hombres ni basura). Lo que traés aparece abajo.</div>
                   </div>
                   <button type="button" onClick={() => { setWiz({ step: 1, mode: null }); }}
                     className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-bold text-on-accent hover:opacity-90">
                     <Plus size={15} /> Agregar (cuenta o tema)
                   </button>
-                  <button type="button" onClick={() => setAcctView(true)}
+                  <button type="button" onClick={() => openAcctPage()}
                     className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-500/40 bg-fuchsia-500/[0.06] px-3.5 py-2 text-sm font-semibold text-fuchsia-200 hover:bg-fuchsia-500/[0.12]">
                     <Compass size={15} /> Cuentas guía
                   </button>
                 </div>
+
+                {/* Búsquedas en curso de esta modelo (cuentas, temas y reels por link): siguen en el servidor aunque cierres */}
+                {selActiveJobs.length > 0 && (
+                  <div className="rounded-2xl border border-line bg-card p-3.5">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Búsquedas en curso · {selActiveJobs.length}</span>
+                      <span className="text-[10px] text-paper-dim/80">{workerOnline ? 'el cocinero de la Mac las termina aunque cierres' : 'dejá la cocina abierta: el cocinero de la Mac está apagado'}</span>
+                    </div>
+                    <div className="space-y-3">{selActiveJobs.map((j) => <div key={j.id}>{jobProgress(j, true)}</div>)}</div>
+                  </div>
+                )}
 
                 {/* Filtros — MISMO layout que la vista global "Buscar en IG" (chips media + vibe + orden + buscador en una fila) */}
                 <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -1130,68 +2090,265 @@ export default function KitchenPage() {
               </div>
             )}
 
+            {/* ── VOZ — audios con la voz FIJA de la modelo (ElevenLabs): guion → audio → revisar → aprobar (baúl, carpeta Cocina) ── */}
+            {subtab === 'voz' && (() => {
+              const vLen = vText.trim().length;
+              const vOver = vLen > VOICE_MAX_CHARS;
+              const canGen = !!(voiceSum?.configured && selVoice && selConsent && vLen > 0 && !vOver && !vBusy);
+              const firstName = (selCreator.stage_name || selCreator.full_name || '').split(' ')[0];
+              const chip = (on) => `inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${on ? 'border-transparent bg-brand text-on-accent' : 'border-line text-paper-mute hover:border-hair hover:text-paper'}`;
+              const why = !voiceSum ? null
+                : !voiceSum.configured ? 'Falta conectar ElevenLabs'
+                  : !selVoice ? 'Esta modelo todavía no tiene voz'
+                    : !selConsent ? 'Falta el consentimiento de voz'
+                      : vOver ? `El guion pasa los ${VOICE_MAX_CHARS} caracteres — acortalo`
+                        : vLen === 0 ? 'Pegá el guion para generar' : null;
+              const actBtn = 'inline-flex items-center justify-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-semibold text-paper-mute transition active:scale-95 hover:border-brand/40 disabled:pointer-events-none disabled:opacity-40';
+              return (
+                <div className="pb-24 space-y-4">
+                  {/* Estado de la voz: cargando · falta ElevenLabs · error · sin voz · cabecera con su voz */}
+                  {!voiceSum ? (
+                    <div className="flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-3 text-sm text-paper-mute"><Loader2 size={15} className="animate-spin text-brand" /> Leyendo la voz de {selCreator.full_name}…</div>
+                  ) : voiceSum.configured === false ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                      <AlertTriangle size={16} className="shrink-0" />
+                      <span className="min-w-0 flex-1"><b>Falta conectar ElevenLabs</b> — sin la llave no se pueden generar audios.</span>
+                      <Link href="/conexion" className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold">Conectar <ArrowRight size={12} /></Link>
+                    </div>
+                  ) : voiceSum.error ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                      <AlertTriangle size={16} className="shrink-0" />
+                      <span className="min-w-0 flex-1 break-words">No pude leer el motor de voz: {voiceSum.error}</span>
+                      <button type="button" onClick={loadVoice} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold"><RefreshCw size={12} /> Reintentar</button>
+                    </div>
+                  ) : !selVoice ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card p-4">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-hair/10 text-paper-dim"><Mic size={17} /></span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-paper">Esta modelo todavía no tiene voz</div>
+                        <div className="mt-0.5 text-[12px] text-paper-mute">Configurala en su cartilla: Admin → Creadoras → {selCreator.full_name} → Voz</div>
+                      </div>
+                      {myRole === 'supervisor'
+                        ? <span className="text-xs text-paper-mute">Pedile a un admin que se la configure en la cartilla.</span>
+                        : <Link href={`/admin?tab=registros&creator=${encodeURIComponent(selCreator.id)}&ctab=voz`} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold">Ir a Admin <ArrowRight size={12} /></Link>}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-card p-4">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand/15 text-brand"><Mic size={18} /></span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate font-display text-base font-bold text-paper">{selVoice.voice_name || 'Voz de la modelo'}</span>
+                          <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold text-paper-mute">{selVoice.source === 'cloned' ? 'Clonada en LetShoot' : 'De tu biblioteca ElevenLabs'}</span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-paper-dim">
+                          <span>Motor: <b className="font-semibold text-brand">{voiceStatus?.model_label || 'ElevenLabs'}</b></span>
+                          {voiceStatus?.sub && <span>Te quedan <b className="font-semibold text-emerald-300">{Number(voiceStatus.sub.remaining || 0).toLocaleString('es')}</b> créditos de ElevenLabs</span>}
+                        </div>
+                      </div>
+                      {selVoice.preview_url && (
+                        // eslint-disable-next-line jsx-a11y/media-has-caption
+                        <audio controls preload="none" src={selVoice.preview_url} className="h-9 w-full sm:w-64" />
+                      )}
+                    </div>
+                  )}
+                  {voiceSum?.configured && selVoice && !selConsent && (
+                    <div className="flex items-center gap-2 rounded-2xl border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                      <AlertTriangle size={16} className="shrink-0" /> Falta el consentimiento de voz (se marca en la cartilla)
+                    </div>
+                  )}
+
+                  <div className="grid items-start gap-4 lg:grid-cols-5">
+                    {/* Compositor: etiqueta · guion · idioma → Generar audio */}
+                    <section ref={vComposerRef} className="card3d scroll-mt-24 rounded-3xl border border-line bg-card p-5 lg:col-span-2">
+                      <h3 className="mb-4 inline-flex items-center gap-2 font-display text-base font-bold text-paper"><Wand2 size={16} className="text-brand" /> Generar audio</h3>
+                      <div className="space-y-4">
+                        <div>
+                          <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">Etiqueta</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {VOICE_TYPES.map((t) => (
+                              <button key={t.id} type="button" onClick={() => setVType(t.id)} className={chip(vType === t.id)}>
+                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.dot} ${vType === t.id ? 'ring-1 ring-white/80' : ''}`} /> {t.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1.5 flex items-center justify-between gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">
+                            <span>Guion</span>
+                            <span className={`tabular-nums tracking-normal ${vOver ? 'text-rose-300' : 'text-paper-dim'}`}>{vLen} / {VOICE_MAX_CHARS}</span>
+                          </div>
+                          <textarea ref={vTextRef} value={vText} onChange={(e) => setVText(e.target.value)} rows={6}
+                            placeholder="Pegá el párrafo que va a decir con su voz…"
+                            className={`w-full resize-y rounded-xl border bg-ink-2 px-3 py-2.5 text-sm text-paper placeholder:text-paper-dim outline-none ${vOver ? 'border-rose-500/60 focus:border-rose-500' : 'border-line focus:border-brand/60'}`} />
+                        </div>
+                        <div>
+                          <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">Idioma del audio</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {VOICE_LANGS.map((l) => (
+                              <button key={l.id} type="button" onClick={() => setVLang(l.id)} className={chip(vLang === l.id)}>{l.flag} {l.label}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <button type="button" onClick={genAudio} disabled={!canGen}
+                          className="btn3d inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-bold disabled:pointer-events-none disabled:opacity-40">
+                          {vBusy ? <><Loader2 size={16} className="animate-spin" /> Generando…</> : <><Wand2 size={16} /> Generar audio</>}
+                        </button>
+                        {why && !vBusy && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-paper-mute"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" /> {why}</div>
+                        )}
+                        {vMsg && (
+                          <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[12px] ${vMsg.kind === 'err' ? 'border-rose-500/40 bg-rose-500/10 text-rose-200' : vMsg.kind === 'ok' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200' : 'border-line bg-ink-2 text-paper-mute'}`}>
+                            {vMsg.kind === 'err' ? <AlertTriangle size={14} className="mt-0.5 shrink-0" /> : vMsg.kind === 'ok' ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <Sparkles size={14} className="mt-0.5 shrink-0" />}
+                            <span className="min-w-0 flex-1 break-words">
+                              {vMsg.text}
+                              {vMsg.needsKey && <> <Link href="/conexion" className="font-semibold underline">Conectar ElevenLabs</Link></>}
+                              {(vMsg.needsVoice || vMsg.needsConsent) && (myRole === 'supervisor' ? <> Pedile a un admin que lo marque en la cartilla.</> : <> <Link href={`/admin?tab=registros&creator=${encodeURIComponent(selCreator.id)}&ctab=voz`} className="font-semibold underline">Abrir la cartilla en Admin</Link></>)}
+                            </span>
+                            <button type="button" onClick={() => setVMsg(null)} className="shrink-0 opacity-70 hover:opacity-100"><X size={13} /></button>
+                          </div>
+                        )}
+                      </div>
+                    </section>
+
+                    {/* Catálogo de audios de ESTA modelo (el último primero) */}
+                    <section className="card3d rounded-3xl border border-line bg-card p-5 lg:col-span-3">
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <h3 className="min-w-0 truncate font-display text-base font-bold text-paper">Audios de {firstName}</h3>
+                        <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-paper-mute">{audioRows.length} audio{audioRows.length === 1 ? '' : 's'}{audioReviewN ? ` · ${audioReviewN} por revisar` : ''}</span>
+                      </div>
+                      {audioRows.length === 0 ? (
+                        <div className="grid place-items-center rounded-2xl border border-line bg-ink-2 px-4 py-12 text-center">
+                          <AudioLines size={26} className="mb-2 text-paper-dim" />
+                          <div className="text-sm font-semibold text-paper">Todavía no hay audios</div>
+                          <div className="mt-1 text-[12px] text-paper-mute">Pegá un guion y generá el primero.</div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {audioRows.map((g) => {
+                            const t = voiceType(g); const l = voiceLang(g);
+                            const busy = vRow[g.id] === 'regen'; const pend = deciding[g.id];
+                            const st = g.status;
+                            const [bLabel, bCls] = st === 'approved' ? ['Aprobado', 'border-emerald-500/30 bg-emerald-500/15 text-emerald-200']
+                              : st === 'rejected' ? ['Descartado', 'border-line bg-hair/10 text-paper-dim']
+                                : st === 'failed' ? ['No salió', 'border-rose-500/30 bg-rose-500/15 text-rose-200']
+                                  : ['Por revisar', 'border-amber-500/30 bg-amber-500/15 text-amber-200'];
+                            return (
+                              <article key={g.id} id={`voz-clip-${g.id}`}
+                                className={`scroll-mt-24 rounded-2xl border bg-ink-2 p-3.5 transition-shadow ${vFocus === g.id ? 'border-brand ring-2 ring-brand/50' : st === 'approved' ? 'border-emerald-500/30' : st === 'failed' ? 'border-rose-500/30' : 'border-line'} ${st === 'rejected' && vFocus !== g.id ? 'opacity-60' : ''}`}>
+                                <div className="mb-2 flex flex-wrap items-center gap-2">
+                                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-paper"><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.dot}`} /> {t.label}</span>
+                                  <span className="text-paper-dim">·</span>
+                                  <span className="font-mono text-[11px] text-paper-mute">{l.flag} {l.label}</span>
+                                  <span className="text-paper-dim">·</span>
+                                  <span className="font-mono text-[10px] text-paper-dim">{fmtWhen(g.created_at)}</span>
+                                  <span className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${bCls}`}>{pend ? <Loader2 size={10} className="animate-spin" /> : null}{bLabel}</span>
+                                </div>
+                                {st === 'failed' && <p className="mb-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[12px] leading-snug text-rose-200">{g.note || 'El motor de voz no pudo generarlo.'}</p>}
+                                <p className="mb-2.5 line-clamp-3 text-[13px] leading-relaxed text-paper-mute">{g.prompt}</p>
+                                {busy ? (
+                                  <div className="mb-2.5 flex h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-400/30 bg-amber-500/10 text-xs font-semibold text-amber-200"><Loader2 size={14} className="animate-spin" /> Generando otra toma…</div>
+                                ) : g.result_url ? (
+                                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                                  <audio key={g.result_url} controls preload="none" src={g.result_url} className="mb-2.5 h-9 w-full" />
+                                ) : null}
+                                <div className="mb-2.5 text-[10px] text-paper-dim">Motor: <span className="font-semibold text-brand">{g.engine_label || 'ElevenLabs'}</span> · {charsOf(g).toLocaleString('es')} créditos ElevenLabs</div>
+                                {vRowErr[g.id] && <p className="mb-2 text-[11px] leading-snug text-rose-300">{vRowErr[g.id]}</p>}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {st === 'failed' ? (
+                                    <button type="button" onClick={() => regenAudio(g)} disabled={busy} className={`${actBtn} flex-1 hover:text-paper`}><RefreshCw size={12} /> Reintentar</button>
+                                  ) : st === 'approved' ? (
+                                    <span className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-200">En el baúl ✓</span>
+                                  ) : (
+                                    <button type="button" onClick={() => decide(g, true, true)} disabled={busy || !!pend}
+                                      className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-bold text-emerald-200 transition active:scale-95 hover:bg-emerald-500/30 disabled:pointer-events-none disabled:opacity-50"><Heart size={12} /> Aprobar</button>
+                                  )}
+                                  {st !== 'failed' && <button type="button" onClick={() => regenAudio(g)} disabled={busy || !!pend} className={`${actBtn} hover:text-amber-300`} title="Otra toma con el mismo guion"><RefreshCw size={12} className={busy ? 'animate-spin' : ''} /> Rehacer</button>}
+                                  <button type="button" onClick={() => editAudio(g)} className={`${actBtn} hover:text-paper`} title="Cargar el guion arriba para cambiarlo"><Pencil size={12} /> Editar</button>
+                                  {st === 'done' && <button type="button" onClick={() => decide(g, false, true)} disabled={busy || !!pend} className={`${actBtn} hover:text-rose-300`} title="No va — descartar"><Trash2 size={12} /> Descartar</button>}
+                                  {g.result_url && !busy && (
+                                    <a href={g.result_url} download target="_blank" rel="noreferrer" className={`${actBtn} hover:text-paper`}><Download size={12} /> Descargar</a>
+                                  )}
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ── RESULTADOS — todo lo cocinado en un solo lugar (chips) ── */}
             {subtab === 'resultados' && (
               <div className="pb-24">
-                {/* Chips: Para revisar · Aprobadas · No salieron · Todas */}
+                {/* Barra de Resultados — UNA sola fila: estado a la izquierda, filtros chicos a la derecha */}
                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-line bg-card p-1 text-xs font-semibold">
+                  {/* Estado: un solo control segmentado (las que se cocinan salen inline en Para revisar y Todas) */}
+                  <div className="inline-flex items-center rounded-full border border-line bg-card p-1 text-xs font-semibold">
                     {[
-                      ['revisar', 'Para revisar', reviewRows.length, null],
-                      ['aprobadas', 'Aprobadas', approvedRows.length, Check],
-                      ['nosalieron', 'No salieron', failedRows.length, AlertTriangle],
-                      ['todas', 'Todas', allRows.length, LayoutGrid],
-                    ].map(([k, label, n, Icon]) => {
+                      ['revisar', 'Para revisar', reviewRows.length],
+                      ['aprobadas', 'Aprobadas', approvedRows.length],
+                      ['nosalieron', 'No salieron', failedRows.length],
+                      ['todas', 'Todas', allRows.length],
+                    ].map(([k, label, n]) => {
                       const on = resTab === k;
+                      const danger = k === 'nosalieron';
                       return (
                         <button key={k} type="button" onClick={() => setResTab(k)}
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors ${on ? (k === 'nosalieron' ? 'bg-rose-500 text-white' : 'bg-brand text-on-accent') : (k === 'nosalieron' && n > 0 ? 'text-rose-300 hover:text-rose-200' : 'text-paper-mute hover:text-paper')}`}>
-                          {Icon ? <Icon size={11} /> : null}{label} <span className="opacity-70">{n}</span>
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors ${on ? (danger ? 'bg-rose-500 text-white' : 'bg-brand text-on-accent') : (danger && n > 0 ? 'text-rose-300 hover:text-rose-200' : 'text-paper-mute hover:text-paper')}`}>
+                          {label} <span className="opacity-70">{n}</span>
                         </button>
                       );
                     })}
                   </div>
-                  {(resTab === 'revisar' || resTab === 'todas') && (reviewRows.length + allRows.length) > 0 && (
-                    <div className="inline-flex items-center gap-1 rounded-full border border-line bg-card p-0.5 text-[11px] font-semibold">
-                      <button type="button" onClick={() => setReviewFlat(true)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 transition-colors ${reviewFlat ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}><LayoutGrid size={11} /> Todas sueltas</button>
-                      <button type="button" onClick={() => setReviewFlat(false)} className={`rounded-full px-2.5 py-1 transition-colors ${!reviewFlat ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>Agrupadas</button>
-                    </div>
-                  )}
+                  {/* Filtros secundarios, chicos, a la derecha */}
+                  <div className="ml-auto flex items-center gap-2">
+                    {(resHasVideo || resHasAudio) && (
+                      <div className="inline-flex items-center rounded-full border border-line bg-card p-0.5 text-[11px] font-semibold" role="group" aria-label="Tipo">
+                        {[['todo', 'Todo', null], ['fotos', 'Fotos', null], resHasVideo && ['videos', 'Videos', Play], resHasAudio && ['audios', 'Audios', AudioLines]].filter(Boolean).map(([k, label, Ic]) => (
+                          <button key={k} type="button" title={label} onClick={() => setResMedia(k)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 transition-colors ${resEff === k ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>{Ic ? <Ic size={11} className={k === 'videos' ? 'fill-current' : ''} /> : null}{label}</button>
+                        ))}
+                      </div>
+                    )}
+                    {(resTab === 'revisar' || resTab === 'todas') && (reviewRows.length + allRows.length) > 0 && (
+                      <div className="inline-flex items-center rounded-full border border-line bg-card p-0.5 text-[11px] font-semibold" role="group" aria-label="Vista">
+                        <button type="button" title="Sueltas (cada una por separado)" onClick={() => setReviewFlat(true)} className={`inline-flex items-center rounded-full px-2.5 py-1.5 transition-colors ${reviewFlat ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}><LayoutGrid size={13} /></button>
+                        <button type="button" title="Agrupadas (por carrusel)" onClick={() => setReviewFlat(false)} className={`inline-flex items-center rounded-full px-2.5 py-1.5 transition-colors ${!reviewFlat ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}><Images size={13} /></button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Cocinándose — en camino, con su reloj (visible en Para revisar y Todas) */}
-                {cookingRows.length > 0 && (resTab === 'revisar' || resTab === 'todas') && (
-                  <section className="mb-5">
-                    <h3 className="mb-1 inline-flex items-center gap-1.5 font-display text-sm font-bold text-amber-300"><Loader2 size={14} className="animate-spin" /> Cocinándose · {cookingRows.length}</h3>
-                    <p className="mb-2 text-xs text-paper-dim">El reloj marca cuánto lleva; a los 15 min se marca <span className="font-semibold text-rose-300">¿trabada?</span>. Al terminar caen acá abajo.</p>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                      {cookingRows.map((g) => cookingTile(g))}
-                    </div>
-                  </section>
-                )}
-
-                {/* PARA REVISAR — aprobar/descartar (rollo de cámara o agrupado) */}
+                {/* PARA REVISAR — aprobar/descartar. Las que se están cocinando salen INLINE arriba (con su reloj). */}
                 {resTab === 'revisar' && (
-                  reviewRows.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">{cookingRows.length > 0 ? 'Se están cocinando; caen acá al terminar.' : <>No hay nada esperando tu OK. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button>.</>}</p>
+                  (reviewRows.length === 0 && cookingRows.length === 0) ? (
+                    <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">No hay nada esperando tu OK. Andá a <button onClick={() => setSubtab('cocinar')} className="font-semibold text-brand hover:underline">Cocinar</button>.</p>
                   ) : (
                     <>
-                      <p className="mb-2 text-xs text-paper-dim">{reviewFlat ? 'Cada foto por separado, la última primero (como el rollo de tu cámara). Tocá una para verla grande y aprobarla.' : 'Agrupadas por carrusel. Tocá una para ver el grupo, aprobar y armar más.'}</p>
+                      <p className="mb-2 text-xs text-paper-dim">{cookingRows.length > 0 ? <><span className="font-semibold text-amber-300">{cookingRows.length} cocinándose</span> arriba (con su reloj). </> : null}{reviewFlat ? 'Cada foto por separado, la última primero. Tocá una para verla grande y aprobarla.' : 'Agrupadas por carrusel. Tocá una para ver el grupo, aprobar y armar más.'}</p>
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                        {cookingRows.map((g) => cookingTile(g))}
                         {reviewRows.slice(0, visN).map((g) => {
-                          const kids = reviewFlat ? 0 : carouselCount(g.id);
+                          const aud = isAudioGen(g);
+                          const kids = reviewFlat || aud ? 0 : carouselCount(g.id);
+                          const Tap = aud ? 'div' : 'button'; // audio: <div> (un <audio controls> no puede ir dentro de un <button>)
+                          const busy = aud && vRow[g.id] === 'regen';
                           return (
                           <div key={g.id} className="overflow-hidden rounded-xl border border-line bg-ink-2">
-                            <button type="button" onClick={() => setCompare({ root: rootOf(g), creator_id: g.creator_id })} className="relative block w-full">
-                              {g.result_url ? <img src={g.result_url} alt="" loading="lazy" decoding="async" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                            <Tap {...(aud ? { role: 'button', tabIndex: 0, title: 'Abrir en Voz', onKeyDown: (e) => { if (e.key === 'Enter') openGen(g); } } : { type: 'button' })} onClick={() => openGen(g)} className={`relative block w-full ${aud ? 'cursor-pointer' : ''}`}>
+                              {genMedia(g, 'aspect-[3/4] w-full object-cover')}{g.media_type === 'video' && g.result_url && <span className="pointer-events-none absolute inset-0 grid place-items-center"><span className="grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"><Play size={16} className="fill-current" /></span></span>}
                               {kids > 0 && <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
-                            </button>
+                            </Tap>
                             {motorLine(g)}
                             <div className="flex items-center gap-1 p-2 pt-1">
-                              <button type="button" onClick={() => decide(g, true)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={12} /> Aprobar</button>
-                              <button type="button" onClick={() => setCompare({ root: g.id, creator_id: g.creator_id })} className="inline-flex items-center justify-center gap-1 rounded-full border border-brand/40 px-2 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/10" title="Armar carrusel"><LayoutGrid size={12} /></button>
-                              <button type="button" onClick={() => decide(g, false)} className="inline-flex items-center justify-center rounded-full border border-line px-2 py-1.5 text-paper-mute hover:text-rose-300"><Trash2 size={12} /></button>
+                              <button type="button" onClick={() => decide(g, true)} disabled={busy} className="inline-flex flex-1 items-center justify-center gap-1 rounded-full bg-emerald-500/20 px-2 py-1.5 text-[11px] font-bold text-emerald-200 transition active:scale-95 hover:bg-emerald-500/30 disabled:opacity-50"><Heart size={12} /> Aprobar</button>
+                              {!aud && <button type="button" onClick={() => setCompare({ root: g.id, creator_id: g.creator_id })} className="inline-flex items-center justify-center gap-1 rounded-full border border-brand/40 px-2 py-1.5 text-[11px] font-semibold text-brand hover:bg-brand/10" title="Armar carrusel"><LayoutGrid size={12} /></button>}
+                              <button type="button" onClick={() => redo(g)} disabled={busy} className="inline-flex items-center justify-center rounded-full border border-line px-2 py-1.5 text-paper-mute transition active:scale-95 hover:text-amber-300 disabled:opacity-50" title={aud ? 'Rehacer (otra toma del audio)' : 'Rehacer (otra versión)'}><RefreshCw size={12} className={busy ? 'animate-spin' : ''} /></button>
+                              <button type="button" onClick={() => decide(g, false)} disabled={busy} className="inline-flex items-center justify-center rounded-full border border-line px-2 py-1.5 text-paper-mute transition active:scale-95 hover:text-rose-300 disabled:opacity-50" title="Descartar"><Trash2 size={12} /></button>
                             </div>
+                            {decideErr[g.id] && <p title={decideErr[g.id]} className="line-clamp-3 px-2 pb-2 text-[10px] leading-snug text-rose-300">{decideErr[g.id]}</p>}
                           </div>
                           );
                         })}
@@ -1209,12 +2366,18 @@ export default function KitchenPage() {
                     <>
                       <p className="mb-2 inline-flex items-center gap-1 text-xs text-emerald-300/80"><Check size={12} /> Limpias (sin metadata) en el baúl. Tocá una réplica para hacerle más carrusel.</p>
                       <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
-                        {approvedRows.slice(0, visN).map((g) => (
-                          <button type="button" key={g.id} onClick={() => setCompare({ root: rootOf(g), creator_id: g.creator_id })} className="group relative block overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
-                            {g.result_url ? <img src={g.result_url} alt="" loading="lazy" decoding="async" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                        {approvedRows.slice(0, visN).map((g) => (isAudioGen(g) ? (
+                          // Audio aprobado: <div> (el reproductor no puede ir dentro de un <button>); tocarlo te lleva a Voz.
+                          <div key={g.id} role="button" tabIndex={0} title="Abrir en Voz" onClick={() => openGen(g)} onKeyDown={(e) => { if (e.key === 'Enter') openGen(g); }} className="group relative block cursor-pointer overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
+                            {genMedia(g, 'aspect-[3/4] w-full object-cover')}
+                            <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/60 py-1 text-[10px] font-semibold text-white"><Check size={10} /> en el baúl</span>
+                          </div>
+                        ) : (
+                          <button type="button" key={g.id} onClick={() => openGen(g)} className="group relative block overflow-hidden rounded-xl border border-emerald-500/30 bg-ink-2">
+                            {genMedia(g, 'aspect-[3/4] w-full object-cover')}{g.media_type === 'video' && g.result_url && <span className="pointer-events-none absolute inset-0 grid place-items-center"><span className="grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"><Play size={16} className="fill-current" /></span></span>}
                             <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/60 py-1 text-[10px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100"><LayoutGrid size={10} /> carrusel</span>
                           </button>
-                        ))}
+                        )))}
                       </div>
                       {visN < approvedRows.length && <div ref={sentinelRef} className="h-8" />}
                     </>
@@ -1229,18 +2392,23 @@ export default function KitchenPage() {
                     <>
                       <p className="mb-2 text-xs text-paper-dim">Estas no se lograron cocinar. La foto es la referencia que mandaste; abajo <b className="text-paper-mute">el porqué</b>. Podés reintentar.</p>
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                        {failedRows.slice(0, visN).map((g) => (
+                        {failedRows.slice(0, visN).map((g) => {
+                          const aud = isAudioGen(g);
+                          const busy = aud && vRow[g.id] === 'regen';
+                          return (
                           <div key={g.id} className="overflow-hidden rounded-xl border border-rose-500/30 bg-ink-2">
                             <div className="relative">
-                              {g.reference_url ? <img src={g.reference_url} alt="" className="aspect-[3/4] w-full object-cover opacity-50" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                              {aud ? <div className="opacity-60">{audioTile(g, 'aspect-[3/4] w-full pt-8')}</div> : mediaTile(g.reference_url, "aspect-[3/4] w-full object-cover opacity-50")}
                               <div className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-rose-500/80 px-2 py-0.5 text-[10px] font-bold text-white"><AlertTriangle size={10} /> No salió</div>
                             </div>
                             <div className="p-2">
-                              <p className="mb-1.5 text-[11px] leading-snug text-rose-200">{g.note || 'No salió — el motor la rechazó (suele ser por contenido +18 o un error).'}</p>
-                              <button type="button" onClick={() => retry(g)} className="inline-flex w-full items-center justify-center gap-1 rounded-full border border-line px-2 py-1.5 text-[11px] font-semibold text-paper-mute hover:border-brand/40 hover:text-paper"><RefreshCw size={11} /> Reintentar</button>
+                              <p className="mb-1.5 text-[11px] leading-snug text-rose-200">{g.note || (aud ? 'No salió — el motor de voz no pudo generarlo.' : 'No salió — el motor la rechazó (suele ser por contenido +18 o un error).')}</p>
+                              <p className="mb-1.5 text-[10px] font-semibold text-amber-300/90">{aud ? `Motor: ${g.engine_label || 'ElevenLabs'} · ${charsOf(g).toLocaleString('es')} créditos ElevenLabs` : Number(g.credits) > 0 ? `Costó ${money(Number(g.credits))} · ${Number(g.credits).toFixed(1)} créd (el motor cobró igual)` : 'Sin costo (el motor rechazó gratis)'}</p>
+                              <button type="button" onClick={() => retry(g)} disabled={busy} className="inline-flex w-full items-center justify-center gap-1 rounded-full border border-line px-2 py-1.5 text-[11px] font-semibold text-paper-mute transition active:scale-95 hover:border-brand/40 hover:text-paper disabled:opacity-50">{busy ? <><Loader2 size={11} className="animate-spin" /> Generando…</> : <><RefreshCw size={11} /> Reintentar</>}</button>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       {visN < failedRows.length && <div ref={sentinelRef} className="h-8" />}
                     </>
@@ -1257,14 +2425,27 @@ export default function KitchenPage() {
                         {allRows.slice(0, visN).map((g) => {
                           if (['queued', 'in_progress'].includes(g.status)) return cookingTile(g);
                           const isApproved = g.status === 'approved';
-                          const kids = isRoot(g) ? carouselCount(g.id) : 0;
+                          const isRejected = g.status === 'rejected';
+                          const aud = isAudioGen(g);
+                          const busy = aud && vRow[g.id] === 'regen';
+                          const kids = isRoot(g) && !aud ? carouselCount(g.id) : 0;
+                          const Tap = aud ? 'div' : 'button'; // audio: <div> (el reproductor no puede ir dentro de un <button>)
                           return (
-                            <button type="button" key={g.id} onClick={() => setCompare({ root: rootOf(g), creator_id: g.creator_id })} className={`group relative block overflow-hidden rounded-xl border bg-ink-2 ${isApproved ? 'border-emerald-500/30' : 'border-line'}`}>
-                              {g.result_url ? <img src={g.result_url} alt="" loading="lazy" decoding="async" className="aspect-[3/4] w-full object-cover" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
-                              {isApproved && <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white"><Check size={11} /></span>}
-                              {kids > 0 && <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
-                              <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1.5 py-0.5 text-[9px] font-semibold text-white/90">{isApproved ? 'aprobada' : 'para revisar'} · {engineOf(g)}</span>
-                            </button>
+                            <div key={g.id} className={`group relative overflow-hidden rounded-xl border bg-ink-2 transition-opacity ${isApproved ? 'border-emerald-500/30' : 'border-line'} ${isRejected ? 'opacity-50' : ''}`}>
+                              <Tap {...(aud ? { role: 'button', tabIndex: 0, title: 'Abrir en Voz', onKeyDown: (e) => { if (e.key === 'Enter') openGen(g); } } : { type: 'button' })} onClick={() => openGen(g)} className={`relative block w-full ${aud ? 'cursor-pointer' : ''}`}>
+                                {genMedia(g, 'aspect-[3/4] w-full object-cover')}{g.media_type === 'video' && g.result_url && <span className="pointer-events-none absolute inset-0 grid place-items-center"><span className="grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"><Play size={16} className="fill-current" /></span></span>}
+                                {isApproved && <span className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white transition-opacity group-hover:opacity-0"><Check size={11} /></span>}
+                                {kids > 0 && <span className="absolute left-1.5 bottom-6 inline-flex items-center gap-1 rounded-full bg-brand/90 px-2 py-0.5 text-[10px] font-bold text-on-accent"><LayoutGrid size={10} /> {kids + 1}</span>}
+                                <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/55 px-1.5 py-0.5 text-[9px] font-semibold text-white/90">{isApproved ? (aud ? 'aprobado' : 'aprobada') : isRejected ? (aud ? 'descartado' : 'descartada') : 'para revisar'} · {engineOf(g)}{aud ? ` · ${charsOf(g)} car.` : Number(g.credits) > 0 ? ` · ${money(Number(g.credits))}` : ''}</span>
+                              </Tap>
+                              {/* Acciones rápidas al pasar el mouse — para la que NO te gusta, sin abrir */}
+                              <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                {!isApproved && <button type="button" onClick={(e) => { e.stopPropagation(); decide(g, true); }} disabled={busy} title="Aprobar" className="grid h-7 w-7 place-items-center rounded-full bg-emerald-500/90 text-white shadow transition active:scale-90 hover:bg-emerald-500 disabled:opacity-50"><Heart size={13} /></button>}
+                                <button type="button" onClick={(e) => { e.stopPropagation(); redo(g); }} disabled={busy} title={aud ? 'Rehacer (otra toma del audio)' : 'Rehacer (otra versión)'} className="grid h-7 w-7 place-items-center rounded-full bg-black/65 text-amber-200 shadow backdrop-blur transition active:scale-90 hover:bg-black/85 disabled:opacity-50"><RefreshCw size={13} className={busy ? 'animate-spin' : ''} /></button>
+                                {!isRejected && !(aud && isApproved) && <button type="button" onClick={(e) => { e.stopPropagation(); decide(g, false); }} disabled={busy} title={isApproved ? 'Sacar del baúl' : 'No me gusta — descartar'} className="grid h-7 w-7 place-items-center rounded-full bg-black/65 text-rose-200 shadow backdrop-blur transition active:scale-90 hover:bg-black/85 disabled:opacity-50"><Trash2 size={13} /></button>}
+                              </div>
+                              {decideErr[g.id] && <p title={decideErr[g.id]} className="line-clamp-3 px-1.5 py-1 text-[9px] leading-snug text-rose-300">{decideErr[g.id]}</p>}
+                            </div>
                           );
                         })}
                       </div>
@@ -1337,6 +2518,7 @@ export default function KitchenPage() {
                 <div className="truncate text-[11px] text-paper-dim">Todo lo traído de Instagram, de todas las modelos. Para traer más, entrá a una modelo.</div>
               </div>
             </div>
+            {msg && <div className="mx-auto max-w-6xl px-4 pb-3 lg:px-6">{msgBanner()}</div>}
           </div>
           <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
             {/* Header como la pestaña: resumen + Agregar + Cuentas guía */}
@@ -1344,13 +2526,14 @@ export default function KitchenPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                   <span className="font-bold text-paper">{scrapGlobalModels.length} modelo{scrapGlobalModels.length === 1 ? '' : 's'}</span>
-                  <span className="text-paper-dim"><b className="text-paper">{scrapGlobalDeduped.length}</b> traídas de IG</span>
-                  <span className="text-paper-dim"><b className="text-paper">{scrapGlobalVideoCount}</b> videos</span>
+                  <span className="text-paper-dim"><b className="text-paper">{scrapeStats.all.bajadas}</b> bajadas</span>
+                  <span className="text-paper-dim"><b className="text-paper">{scrapeStats.all.enMesa}</b> en la mesa</span>
+                  <span className="text-paper-dim"><b className="text-paper">{scrapeStats.all.mesaVideos}</b> videos</span>
                 </div>
                 <div className="mt-0.5 text-[11px] text-paper-dim">De Instagram, filtrado solo (mujeres/cuerpo). Lo mejor de lo mejor.</div>
               </div>
               <button type="button" onClick={() => setWiz({ step: 0, mode: null })} className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-bold text-on-accent hover:opacity-90"><Plus size={15} /> Agregar (cuenta o tema)</button>
-              <button type="button" onClick={() => { loadScrapedGlobal(); loadScraperGlobal(); setAcctGlobal(true); }} className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-500/40 bg-fuchsia-500/[0.06] px-3.5 py-2 text-sm font-semibold text-fuchsia-200 hover:bg-fuchsia-500/[0.12]"><Compass size={15} /> Cuentas guía</button>
+              <button type="button" onClick={() => openAcctPage({ model: '' })} className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-500/40 bg-fuchsia-500/[0.06] px-3.5 py-2 text-sm font-semibold text-fuchsia-200 hover:bg-fuchsia-500/[0.12]"><Compass size={15} /> Cuentas guía</button>
             </div>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               {scrapGlobalVideoCount > 0 && (
@@ -1394,85 +2577,62 @@ export default function KitchenPage() {
         </div>
       )}
 
-      {/* ── CUENTAS GUÍA GLOBAL (dashboard de TODAS las modelos, desde la vista global — sin pop-up) ── */}
-      {acctGlobal && (
-        <div className="fixed inset-0 z-40 overflow-y-auto bg-ink">
-          <div className="sticky top-0 z-10 border-b border-line bg-ink/95 backdrop-blur">
-            <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 lg:px-6">
-              <button type="button" onClick={() => setAcctGlobal(false)} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-sm font-semibold text-paper-mute hover:text-paper"><ArrowLeft size={16} /> Volver</button>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 font-display text-base font-bold text-paper"><Compass size={16} className="text-fuchsia-300" /> Cuentas guía <span className="text-paper-dim">· todas las modelos</span></div>
-                <div className="truncate text-[11px] text-paper-dim">Todas las cuentas que alimentan a cada modelo. Tocá una para ver todo lo suyo.</div>
+      {/* ── DETALLE DE GASTO / SALDO (pop-up) ── */}
+      {spendOpen && selCreator && (() => {
+        const spentPhotos = mineGens.filter((g) => g.status !== 'failed' && isPhotoGen(g)).reduce((a, g) => a + Number(g.credits || 0), 0);
+        const spentVideos = mineGens.filter((g) => g.status !== 'failed' && g.media_type === 'video').reduce((a, g) => a + Number(g.credits || 0), 0);
+        const spentFailed = mineGens.filter((g) => g.status === 'failed' && !isAudioGen(g)).reduce((a, g) => a + Number(g.credits || 0), 0);
+        const Row = ({ label, cred, sub, tone }) => (
+          <div className="flex items-center justify-between gap-3 py-2.5">
+            <div><div className="text-sm text-paper">{label}</div>{sub && <div className="text-[11px] text-paper-dim">{sub}</div>}</div>
+            <div className="text-right"><div className={`text-sm font-bold tabular-nums ${tone || 'text-paper'}`}>{money(cred)}</div><div className="text-[10px] text-paper-dim tabular-nums">{cred.toFixed(1)} créd</div></div>
+          </div>
+        );
+        const low = selBal != null && selBal < VIDEO_MIN_CREDITS;
+        return (
+          <div className="fixed inset-0 z-[60] grid place-items-center bg-black/80 p-4" onClick={() => setSpendOpen(false)}>
+            <div className="w-full max-w-md rounded-3xl border border-line bg-card p-5" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-display text-lg font-bold text-paper">Plata · {selCreator.full_name}</h3>
+                <button type="button" onClick={() => setSpendOpen(false)} className="text-paper-dim hover:text-paper"><X size={18} /></button>
               </div>
+              <div className={`mb-3 rounded-2xl border p-4 ${low ? 'border-rose-500/40 bg-rose-500/10' : 'border-emerald-500/30 bg-emerald-500/5'}`}>
+                <div className="text-[11px] uppercase tracking-wide text-paper-dim">Te queda en Higgsfield{selAcct?.label ? ` · ${selAcct.label}` : hasAcctInfo ? ' · sin cuenta asignada' : ''}</div>
+                <div className={`text-3xl font-bold tabular-nums ${low ? 'text-rose-300' : 'text-emerald-300'}`}>{selBal != null ? selBal.toFixed(1) : '—'} <span className="text-lg opacity-60">créd</span></div>
+                <div className="text-sm text-paper-mute">{selBal != null ? `≈ ${money(selBal)} · alcanza para ~${Math.floor(selBal / 56)} video(s)` : 'sin dato — actualizá'}</div>
+              </div>
+              <div className="divide-y divide-line rounded-2xl border border-line bg-ink-2 px-4">
+                <Row label="Gastado en fotos" cred={spentPhotos} sub={`${mine.photos} foto${mine.photos === 1 ? '' : 's'}`} tone="text-amber-300" />
+                <Row label="Gastado en videos" cred={spentVideos} sub={`${mine.videos} video${mine.videos === 1 ? '' : 's'}`} tone="text-amber-300" />
+                {spentFailed > 0 && <Row label="Perdido en las que no salieron" cred={spentFailed} sub="el motor cobró y falló igual" tone="text-rose-300" />}
+                <Row label={`Total con ${selCreator.full_name}`} cred={mine.credits} sub={`${mine.photos + mine.videos} hechas`} tone="text-paper" />
+              </div>
+              {mine.audios > 0 && <p className="mt-2 text-center text-[11px] text-paper-dim"><AudioLines size={11} className="mr-1 inline text-brand" />{mine.audios} audio{mine.audios === 1 ? '' : 's'} de voz — se cobran en créditos de ElevenLabs, no suman a Higgsfield.</p>}
+              <p className="mt-3 text-center text-[11px] text-paper-dim">Gastado en TODA la app: <b className="text-paper">{money(totalCredits)}</b> · {totalCredits.toFixed(0)} créd</p>
             </div>
           </div>
-          <div className="mx-auto max-w-5xl px-4 py-6 lg:px-6">
-            <div className="mb-4 rounded-2xl border border-line bg-card p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Total del scraper · todas las modelos</div>
-              <div className="mt-1.5 flex flex-wrap items-end gap-x-5 gap-y-2">
-                <div><div className="text-xl font-bold tabular-nums text-paper">{scraperGlobal.photos}</div><div className="text-[10px] text-paper-dim">fotos bajadas</div></div>
-                <div><div className="text-xl font-bold tabular-nums text-amber-300">{scraperMoney(scraperGlobal.photos)}</div><div className="text-[10px] text-paper-dim">gasto estimado</div></div>
-                <div><div className="text-xl font-bold tabular-nums text-paper">{scraperGlobal.accounts}</div><div className="text-[10px] text-paper-dim">cuentas</div></div>
-                <div><div className="text-xl font-bold tabular-nums text-paper">{globalGuideModels.length}</div><div className="text-[10px] text-paper-dim">modelos</div></div>
-              </div>
-            </div>
-            <div className="relative mb-4">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
-              <input value={acctSearch} onChange={(e) => setAcctSearch(e.target.value)} placeholder="Buscar cuenta o modelo…" className="w-full rounded-full border border-line bg-ink-2 py-2 pl-9 pr-3 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
-            </div>
-            {globalGuideModels.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-line bg-card/40 p-10 text-center text-sm text-paper-dim">Todavía no trajiste nada de Instagram. Entrá a una modelo, tocá «Buscar en IG» y agregá cuentas guía.</p>
-            ) : globalGuideModels.map((mod) => {
-              const term = acctSearch.trim().toLowerCase();
-              const accts = mod.accounts.filter((a) => !term || a.handle.toLowerCase().includes(term) || mod.name.toLowerCase().includes(term));
-              if (accts.length === 0) return null;
-              return (
-                <div key={mod.id} className="mb-6">
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className="font-display text-sm font-bold text-paper">{mod.name}</span>
-                    <span className="text-[11px] text-paper-dim">{accts.length} cuenta{accts.length === 1 ? '' : 's'} · {mod.totalFotos} fotos</span>
-                    <span className="h-px flex-1 bg-line/60" />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {accts.map((a) => (
-                      <button key={a.handle} type="button" onClick={() => { setAcctGlobal(false); setScrapView(false); setSel(mod.id); setSubtab('buscar'); setAcctDetail(a.handle); setAcctView(true); }}
-                        className="overflow-hidden rounded-2xl border border-line bg-card text-left transition-colors hover:border-fuchsia-400/40">
-                        <div className="flex items-center gap-2 p-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-bold text-paper">@{a.handle} <span className="text-[10px] font-semibold text-fuchsia-300">ver todas →</span></div>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-                              <span className="text-paper-dim"><b className="text-paper">{a.fotos}</b> bajadas</span>
-                              {a.videos > 0 && <span className="inline-flex items-center gap-1 text-sky-300"><Play size={9} className="fill-current" /> {a.videos}</span>}
-                              <span className="text-paper-dim">gasto <b className="text-amber-300">{scraperMoney(a.fotos)}</b> <span className="text-paper-dim/60">est</span></span>
-                              <span className="text-paper-dim/70">· {agoLabel(a.lastAt)}</span>
-                            </div>
-                          </div>
-                        </div>
-                        {a.tops.length > 0 && (
-                          <div className="grid grid-cols-5 gap-0.5 border-t border-line/60 bg-ink-2">
-                            {a.tops.map((r) => (
-                              <div key={r.id} className="relative aspect-square overflow-hidden">
-                                <img src={r.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                                {r.media_type === 'video' && <span className="absolute inset-0 grid place-items-center"><span className="grid h-6 w-6 place-items-center rounded-full bg-black/55"><Play size={11} className="fill-white text-white" /></span></span>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── REPRODUCTOR DE VIDEO ── */}
       {videoPlay && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-black/80 p-4" onClick={() => setVideoPlay(null)}>
-          <div className="relative w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <video src={videoPlay.url} poster={videoPlay.poster} controls autoPlay playsInline className="max-h-[80vh] w-full rounded-2xl border border-line bg-black" />
+          <div className={`relative w-full ${videoPlay.refUrl ? 'max-w-3xl' : 'max-w-md'}`} onClick={(e) => e.stopPropagation()}>
+            {videoPlay.refUrl ? (
+              // Comparativo: el reel ORIGINAL vs la versión de la modelo (como el "versus" de las fotos). Ambos en silencio.
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="mb-1 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-paper-dim">Original</div>
+                  <video src={videoPlay.refUrl} muted loop autoPlay playsInline controls className="max-h-[72vh] w-full rounded-2xl border border-line bg-black" />
+                </div>
+                <div>
+                  <div className="mb-1 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-brand">{selCreator?.stage_name || selCreator?.full_name || 'La modelo'}</div>
+                  <video src={videoPlay.url} muted loop autoPlay playsInline controls className="max-h-[72vh] w-full rounded-2xl border border-brand/40 bg-black" />
+                </div>
+              </div>
+            ) : (
+              <video src={videoPlay.url} poster={videoPlay.poster} muted controls autoPlay playsInline className="max-h-[80vh] w-full rounded-2xl border border-line bg-black" />
+            )}
             <div className="mt-2 flex items-center justify-between gap-2">
               <a href={videoPlay.url} download target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-sm font-bold text-black hover:bg-white"><Download size={14} /> Descargar</a>
               <button type="button" onClick={() => setVideoPlay(null)} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-4 py-2 text-sm font-semibold text-paper-mute hover:text-paper"><X size={14} /> Cerrar</button>
@@ -1486,19 +2646,19 @@ export default function KitchenPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={() => setWiz(null)}>
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-ink shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
-              <div className="text-sm font-bold text-paper">{wiz.step === 0 ? 'Buscar en Instagram' : <>Agregar a {selCreator?.full_name || 'la modelo'} <span className="font-normal text-paper-dim">· paso {wiz.step} de 4</span></>}</div>
+              <div className="text-sm font-bold text-paper">{wiz.step === 0 ? 'Buscar en Instagram' : <>Agregar a {selCreator?.full_name || 'la modelo'} <span className="font-normal text-paper-dim">· paso {wiz.step} de 3</span></>}</div>
               <button type="button" onClick={() => setWiz(null)} className="grid h-7 w-7 place-items-center rounded-full text-paper-mute hover:text-paper"><X size={16} /></button>
             </div>
             <div className="p-4">
               {wiz.step === 0 && (
                 <div className="space-y-2">
                   <p className="text-xs text-paper-dim">¿Para qué modelo traigo las fotos?</p>
-                  <select autoFocus defaultValue="" onChange={(e) => { if (e.target.value) { const cuentas = wiz.mode === 'cuentas'; setSel(e.target.value); setScrapView(false); if (cuentas) { setAcctView(true); setWiz(null); } else { setSubtab('buscar'); setWiz({ step: 1, mode: null }); } } }}
+                  <select autoFocus defaultValue="" onChange={(e) => { if (e.target.value) { setSel(e.target.value); setScrapView(false); setSubtab('buscar'); setWiz({ step: 1, mode: null }); } }}
                     className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-paper outline-none focus:border-brand/60">
                     <option value="">Elegí una modelo…</option>
                     {creators.map((c) => <option key={c.id} value={c.id}>{c.stage_name || c.full_name}</option>)}
                   </select>
-                  <p className="text-[11px] text-paper-dim">{wiz.mode === 'cuentas' ? 'Abrís el panel de cuentas guía de esa modelo.' : 'Lo que traigas queda en el baúl de esa modelo.'}</p>
+                  <p className="text-[11px] text-paper-dim">Lo que traigas queda en el baúl de esa modelo.</p>
                 </div>
               )}
               {wiz.step === 1 && (
@@ -1544,6 +2704,13 @@ export default function KitchenPage() {
               )}
               {wiz.step === 3 && (
                 <div className="space-y-3">
+                  {(wiz.mode === 'cuenta' ? newAccount.trim() : (niches.length || newNiche.trim())) && (
+                    <div className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/[0.05] px-3 py-2 text-sm font-bold text-paper">
+                      {wiz.mode === 'cuenta'
+                        ? newAccount.split(/[\s,\n]+/).map(parseHandle).filter(Boolean).map((h) => '@' + h).join(', ')
+                        : (niches.length ? niches.join(' · ') : newNiche.trim())}
+                    </div>
+                  )}
                   <div>
                     <p className="mb-2 text-xs text-paper-dim">¿Qué traigo? <span className="text-paper-dim/70">(los mejores éxitos)</span></p>
                     <div className="inline-flex items-center gap-1 rounded-full border border-line bg-card p-0.5 text-xs font-semibold">
@@ -1560,19 +2727,7 @@ export default function KitchenPage() {
                     {wizType !== 'fotos' && <label className="flex items-center gap-2 text-sm text-paper"><span className="text-paper-dim">Videos</span>
                       <input type="number" min="0" max="12" value={qtyVideos} onFocus={(e) => e.target.select()} onChange={(e) => setQtyVideos(Math.max(0, Math.min(12, Number(e.target.value) || 0)))} className="w-16 rounded-lg border border-line bg-ink-2 px-2 py-1 text-sm text-paper outline-none focus:border-brand/60" /></label>}
                   </div>
-                  <p className="text-[11px] text-paper-dim">Traigo los de más likes/views y te documento por qué (la «i» en cada foto). Los videos se bajan a tu storage.</p>
-                </div>
-              )}
-              {wiz.step === 4 && (
-                <div className="space-y-2">
-                  <p className="text-xs text-paper-dim">Listo para buscar en Instagram:</p>
-                  <div className="rounded-xl border border-line bg-card p-3 text-sm font-semibold text-paper">
-                    {wiz.mode === 'cuenta'
-                      ? (newAccount.trim() ? newAccount.split(/[\s,\n]+/).map(parseHandle).filter(Boolean).map((h) => '@' + h).join(', ') : '—')
-                      : (niches.length ? niches.join(' · ') : (newNiche.trim() || '—'))}
-                    <div className="mt-1 text-[11px] font-normal text-paper-dim">{qtyPhotos > 0 ? `${qtyPhotos} foto${qtyPhotos === 1 ? '' : 's'}` : ''}{qtyPhotos > 0 && qtyVideos > 0 ? ' + ' : ''}{qtyVideos > 0 ? `${qtyVideos} video${qtyVideos === 1 ? '' : 's'}` : ''}</div>
-                  </div>
-                  <p className="text-[11px] text-paper-dim">Tarda 1-2 min. Lo filtro solo y lo que sirva aparece en la grilla y suma a la ficha de la cuenta.</p>
+                  <p className="text-[11px] text-paper-dim">Traigo los de más likes/views (la «i» te dice por qué). Solo nuevos, no repite. {jobsOff ? 'Tarda 1-2 min.' : 'Lo busco en el servidor: ves el avance en la tarjeta de la cuenta.'}</p>
                 </div>
               )}
             </div>
@@ -1588,21 +2743,19 @@ export default function KitchenPage() {
                   className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-on-accent hover:opacity-90 disabled:opacity-40">Siguiente <ArrowRight size={14} /></button>
               )}
               {wiz.step === 3 && (
-                <button type="button" disabled={qtyPhotos + qtyVideos <= 0}
-                  onClick={() => setWiz({ ...wiz, step: 4 })}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-sm font-bold text-on-accent hover:opacity-90 disabled:opacity-40">Siguiente <ArrowRight size={14} /></button>
-              )}
-              {wiz.step === 4 && (
-                <button type="button" disabled={scraping || scrapingAcc || !!checkingAcct}
+                // Paso final: cantidad + Buscar (fusionado — antes había un paso 4 redundante de "confirmar cuenta").
+                <button type="button" disabled={qtyPhotos + qtyVideos <= 0 || scraping || scrapingAcc || !!checkingAcct || (wiz.mode === 'cuenta' && !acctsReady)}
                   onClick={async () => {
                     const m = wiz.mode; setWiz(null);
                     if (m === 'cuenta') {
                       const handles = newAccount.split(/[\s,\n]+/).map(parseHandle).filter(Boolean);
                       if (!handles.length) return;
-                      const merged = [...new Set([...accounts, ...handles])].slice(0, 20); await saveAccounts(merged); setNewAccount('');
-                      for (const h of handles) { await checkOneAccount(h); } // scrapea SOLO las que agregaste, una por una
+                      const merged = [...new Set([...accounts, ...handles])].slice(0, 20); if (!(await saveAccounts(merged))) return; setNewAccount('');
+                      // Motor nuevo: UNA llamada, una búsqueda por cuenta (fotos + videos juntos). Viejo: SOLO las que agregaste, una por una.
+                      const r = asyncRef.current !== false && qtyPhotos + qtyVideos > 0 ? await startAccounts(sel, handles) : { legacy: true };
+                      if (r.legacy) { for (const h of handles) { await checkOneAccountLegacy(h); } }
                     } else { await doScrape(); }
-                    loadScrapeRuns(); loadScraperGlobal();
+                    loadScrapeRuns(); loadScrapedGlobal();
                   }}
                   className="inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-1.5 text-sm font-bold text-on-accent hover:opacity-90 disabled:opacity-50">
                   {(scraping || scrapingAcc || checkingAcct) ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Buscar
@@ -1613,213 +2766,448 @@ export default function KitchenPage() {
         </div>
       )}
 
-      {/* ── DASHBOARD DE CUENTAS GUÍA (pantalla completa) ── */}
-      {acctView && selCreator && (
-        <div className="fixed inset-0 z-40 overflow-y-auto bg-ink">
-          <div className="sticky top-0 z-10 border-b border-line bg-ink/95 backdrop-blur">
-            <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3 lg:px-6">
-              <button type="button" onClick={() => setAcctView(false)} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-sm font-semibold text-paper-mute hover:text-paper"><ArrowLeft size={16} /> Volver a la mesa</button>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 font-display text-base font-bold text-paper"><Compass size={16} className="text-fuchsia-300" /> Cuentas guía</div>
-                <div className="truncate text-[11px] text-paper-dim">Influencers de {selCreator.full_name} · sus fotos alimentan tu mesa</div>
+      {/* ── CUENTAS GUÍA (pantalla completa): UNA sola página para las dos entradas ──
+          Desde el selector de modelos («Buscar en IG») arranca en «Todas las modelos»; desde «Buscar en IG → Cuentas guía» de una
+          modelo, en esa modelo. Arriba se elige la modelo. Mismos números (ver «NÚMEROS DEL SCRAPER») y mismas tarjetas en los dos modos. */}
+      {acctView && (() => {
+        const cid = selCreator ? sel : '';
+        const allMode = !cid;
+        const S = allMode ? scrapeStats.all : (scrapeStats.byModel[cid] || EMPTY_STAT);
+        const C = allMode ? costStats.all : (costStats.byModel[cid] || EMPTY_COST);
+        // Cuentas guía de TODAS las modelos (también las que no están en la lista: inactivas / de prueba), igual que bajadas y gasto.
+        const seedIds = [...new Set([...creators.map((c) => c.id), ...Object.keys(allSeeds)])];
+        const totalSeeds = seedIds.reduce((n, id) => n + seedsFor(id).length, 0);
+        const activeIds = new Set(creators.map((c) => c.id));
+        const restSeeds = seedIds.filter((id) => !activeIds.has(id)).reduce((n, id) => n + seedsFor(id).length, 0);
+        const busyAny = scrapingAcc || !!checkingAcct;
+        const term = acctSearch.trim().toLowerCase();
+        const filterAcct = (cidX, h) => {
+          if (term && !String(h).toLowerCase().includes(term) && !(allMode && String(nameById[cidX] || '').toLowerCase().includes(term))) return false;
+          if (acctDate !== 'todas') {
+            const t = scrapeStats.byAcct[cidX]?.[normH(h)]?.lastAt || 0; if (!t) return false;
+            const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+            const diff = Math.round((startOf(new Date()) - startOf(new Date(t))) / 86400000);
+            if (acctDate === 'hoy' && diff !== 0) return false;
+            if (acctDate === 'ayer' && diff !== 1) return false;
+            if (acctDate === 'semana' && diff > 6) return false;
+          }
+          return true;
+        };
+        const statBox = (n, label, sub, tone) => (
+          <div><div className={`text-xl font-bold tabular-nums ${tone || 'text-paper'}`}>{n}</div><div className="text-[10px] text-paper-dim">{label}{sub ? <span className="text-paper-dim/70"> · {sub}</span> : null}</div></div>
+        );
+        const costRow = (c) => {
+          const tag = costTag(c);
+          return (
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-1.5">
+              <div><div className="text-sm font-bold tabular-nums text-amber-300">{usdS(c.fotos)}</div><div className="text-[10px] text-paper-dim">fotos (Apify)</div></div>
+              <div><div className="text-sm font-bold tabular-nums text-amber-300">{videosCell(c)}</div><div className="text-[10px] text-paper-dim">videos (Apify){videosNote(c)}</div></div>
+              <div><div className="text-sm font-bold tabular-nums text-amber-300">{c.aiRuns ? usdS(c.ai) : '—'}</div><div className="text-[10px] text-paper-dim">filtro IA{c.aiRuns && c.runs > c.aiRuns ? ` · ${c.runs - c.aiRuns} viejas sin dato` : !c.aiRuns && c.runs ? ' · sin dato (viejas)' : ''}</div></div>
+              <div><div className="text-lg font-bold tabular-nums text-amber-200">{usdS(c.total)}</div><div className="text-[10px] text-paper-dim">total</div></div>
+              <span className={`mb-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${tag.cls}`}>{tag.t}</span>
+              {c.searches > 0 && <span className="mb-0.5 text-[10px] text-paper-dim">Apify trajo {c.found} resultado{c.found === 1 ? '' : 's'} en {c.searches} búsqueda{c.searches === 1 ? '' : 's'}</span>}
+            </div>
+          );
+        };
+        const totalsCard = (title, st, c, nSeeds, accent) => (
+          <div className={`rounded-2xl border p-4 ${accent ? 'border-fuchsia-500/30 bg-fuchsia-500/[0.05]' : 'border-line bg-card'}`}>
+            <div className={`text-[11px] font-semibold uppercase tracking-wide ${accent ? 'text-fuchsia-200/80' : 'text-paper-dim'}`}>{title}</div>
+            <div className="mt-1.5 flex flex-wrap items-end gap-x-5 gap-y-2">
+              {statBox(nSeeds, 'cuentas guía')}
+              {statBox(st.bajadas, 'bajadas', `${st.fotos} fotos · ${st.videos} videos`)}
+              {statBox(st.enMesa, 'en la mesa')}
+              {statBox(st.iaSaco, 'la IA sacó', null, 'text-paper-mute')}
+              {statBox(st.descartadas, 'descartadas', null, 'text-paper-mute')}
+            </div>
+            <div className="mt-3 border-t border-line/60 pt-2.5">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">Gasto del scraper</div>
+              {costRow(c)}
+            </div>
+          </div>
+        );
+        // Tarjeta de UNA cuenta guía — la misma en «Todas las modelos» y en una modelo.
+        const acctCard = (cidX, h) => {
+          const k = normH(h);
+          const st = scrapeStats.byAcct[cidX]?.[k] || EMPTY_STAT;
+          const c = costStats.byAcct[cidX]?.[k] || EMPTY_COST;
+          const tag = costTag(c);
+          const aj = activeJobFor(cidX, h); // búsqueda en segundo plano de ESTA cuenta (motor nuevo)
+          const ji = lastJobIssue(cidX, h); // motivo de la última búsqueda nueva terminada (persiste al recargar)
+          const issueTxt = ji !== undefined ? (ji ? ISSUE_CARD[ji] || ISSUE_CARD.blocked : null) : (acctIssue[h] || null);
+          const priv = ji !== undefined ? ji === 'private' : privateAccts.has(h);
+          const busy = !aj && cidX === sel && checkingAcct === h;
+          const srvBusy = !aj && !busy && recentRunning(cidX, h); // (camino viejo) el navegador dejó de esperar pero el servidor sigue
+          const tops = acctTops[`${cidX}|${k}`] || [];
+          const dayList = Object.entries(st.days || {}).sort((x, y) => String(y[0]).localeCompare(String(x[0]))).slice(0, 8);
+          return (
+            <div key={`${cidX}|${h}`} className={`overflow-hidden rounded-2xl border ${priv && !aj ? 'border-rose-500/40 bg-rose-500/[0.05]' : 'border-line bg-card'}`}>
+              <div className="flex items-start gap-2 p-3">
+                <button type="button" onClick={() => openAcctDetail(cidX, h)} className="min-w-0 flex-1 text-left">
+                  <div className="truncate text-sm font-bold text-paper hover:underline">@{h} <span className="text-[10px] font-semibold text-fuchsia-300">ver todas →</span></div>
+                  {busy ? (
+                    <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-300"><Loader2 size={11} className="animate-spin" /> {jobsOff ? 'Buscando… (1-3 min)' : 'Empezando la búsqueda…'}</div>
+                  ) : srvBusy ? (
+                    <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-300"><Loader2 size={11} className="animate-spin" /> Sigue buscando en el servidor… aparece en 2-3 min</div>
+                  ) : (!aj && (issueTxt || priv)) ? (
+                    <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-rose-300"><AlertTriangle size={11} /> {issueTxt || 'Privada o +18 — Instagram no la deja ver.'}</div>
+                  ) : (
+                    <>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                        <span className="text-paper-dim"><b className="text-paper">{st.bajadas}</b> bajadas</span>
+                        <span className="text-paper-dim"><b className="text-paper">{st.enMesa}</b> en la mesa</span>
+                        {st.videos > 0 && <span className="inline-flex items-center gap-1 text-sky-300"><Play size={9} className="fill-current" /> {st.videos}</span>}
+                        {st.bajadas === 0 && !st.lastAt
+                          ? <span className="font-semibold text-fuchsia-300">· nueva — tocá «Buscar más» para traerla</span>
+                          : <span className="text-paper-dim/70">· última {agoLabel(st.lastAt)}</span>}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-paper-dim">
+                        <span>gasto <b className="text-amber-300">{usdS(c.total)}</b></span>
+                        {c.runs > 0 && <span>fotos {usdS(c.fotos)} · videos {videosCell(c)} · IA {c.aiRuns ? usdS(c.ai) : '—'}</span>}
+                        <span className={`rounded-full px-1.5 py-0.5 font-semibold ${tag.cls}`}>{tag.t}</span>
+                      </div>
+                    </>
+                  )}
+                </button>
+                <button type="button" onClick={() => buscarMas(cidX, h)} disabled={jobsOff ? busyAny : (!!aj || busy)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-fuchsia-400/40 px-3 py-1.5 text-xs font-semibold text-fuchsia-200 hover:bg-fuchsia-500/10 active:translate-y-px disabled:opacity-40" title="Traer sus últimas fotos/videos (solo nuevos)">
+                  {busy || aj ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} {busy || aj ? 'Buscando…' : 'Buscar más'}
+                </button>
+                <button type="button" onClick={() => removeAccount(cidX, h)} disabled={(jobsOff ? busyAny : busy) || (cidX === sel && !acctsReady)}
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-line text-paper-mute hover:border-rose-400 hover:text-rose-300 disabled:opacity-40" title="Quitar cuenta"><X size={13} /></button>
               </div>
-              {accounts.length > 0 && (
-                <button type="button" onClick={doScrapeAccounts} disabled={scrapingAcc || !!checkingAcct}
-                  className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia-500 px-4 py-2 text-sm font-bold text-white hover:bg-fuchsia-600 disabled:opacity-50">
-                  {scrapingAcc ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} {scrapingAcc ? 'Buscando…' : `Buscar en todas (${accounts.length})`}
+              {aj && <div className="border-t border-line/60 px-3 py-2">{jobProgress(aj)}</div>}
+              {dayList.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1 border-t border-line/60 px-3 py-2">
+                  <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wide text-paper-dim/70">Historial</span>
+                  {dayList.map(([d, n]) => (
+                    <span key={d} className="inline-flex items-center gap-1 rounded-full bg-ink-2 px-2 py-0.5 text-[10px] font-semibold text-paper-mute">{fmtDay(d)} <span className="text-fuchsia-300">+{n}</span></span>
+                  ))}
+                </div>
+              )}
+              {tops.length > 0 && (
+                <div className="grid grid-cols-5 gap-0.5 border-t border-line/60 bg-ink-2">
+                  {tops.map((r) => (
+                    <div key={r.id} className="relative aspect-square overflow-hidden">
+                      <img src={r.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                      {r.media_type === 'video' && <span className="absolute inset-0 grid place-items-center"><span className="grid h-6 w-6 place-items-center rounded-full bg-black/55"><Play size={11} className="fill-white text-white" /></span></span>}
+                      {Number(r.likes) > 0 && <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1 py-0.5 text-center text-[9px] font-bold text-white">{fmtLikes(r.likes)}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        };
+        // Lo que NO es de una cuenta guía: temas/hashtags, reels por link, cuentas quitadas y búsquedas viejas en varias cuentas a la vez.
+        const extrasRow = (cidX) => {
+          const so = scrapeStats.other[cidX]; const co = costStats.other[cidX]; const cm = costStats.multi[cidX];
+          if (!(so?.bajadas || co?.runs || cm?.runs)) return null;
+          return (
+            <div className="mt-3 space-y-1 rounded-xl border border-dashed border-line bg-card/40 px-3 py-2 text-[11px] text-paper-dim">
+              {(so?.bajadas || co?.runs) ? (
+                <div><b className="text-paper-mute">Fuera de las cuentas guía</b> (temas, reels por link, cuentas quitadas y el filtro IA de fotos pendientes de antes): <b className="text-paper">{so?.bajadas || 0}</b> bajadas · <b className="text-paper">{so?.enMesa || 0}</b> en la mesa · gasto <b className="text-amber-300">{usdS(co?.total || 0)}</b>{co?.runs ? <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${costTag(co).cls}`}>{costTag(co).t}</span> : null}</div>
+              ) : null}
+              {cm?.runs ? (
+                <div><b className="text-paper-mute">Búsquedas viejas en varias cuentas a la vez</b>: {cm.runs} · gasto <b className="text-amber-300">{usdS(cm.total)}</b><span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${costTag(cm).cls}`}>{costTag(cm).t}</span> — no se puede repartir por cuenta (ahora «Buscar en todas» va de a una).</div>
+              ) : null}
+            </div>
+          );
+        };
+        // Factura real de Apify del ciclo vs lo que la app tiene registrado en ese ciclo.
+        const billStrip = (() => {
+          const b = apifyBill;
+          let regReal = 0, regEst = 0;
+          if (b && b.ok && b.cycle_start) {
+            const t0 = Date.parse(b.cycle_start) || 0; const t1 = b.cycle_end ? (Date.parse(b.cycle_end) || Infinity) : Infinity;
+            scrapeRuns.forEach((r) => { const t = Date.parse(r.run_at) || 0; if (t >= t0 && t <= t1) { const rc = runCostOf(r); regReal += rc.real; regEst += rc.est; } });
+          }
+          const gap = b && b.ok && b.month_usd != null ? b.month_usd - regReal - regEst : 0;
+          const fmtD = (iso) => { try { return new Date(iso).toLocaleDateString('es-US', { day: 'numeric', month: 'short' }); } catch { return ''; } };
+          return (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-card p-3.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Apify este mes · lo que cobró Apify de verdad</div>
+                {!b ? (
+                  <div className="mt-1 inline-flex items-center gap-1.5 text-xs text-paper-dim"><Loader2 size={12} className="animate-spin" /> Leyendo la factura de Apify…</div>
+                ) : b.error ? (
+                  <div className="mt-1 text-xs text-paper-dim">{b.error}</div>
+                ) : (
+                  <div className="mt-1 flex flex-wrap items-end gap-x-5 gap-y-1.5">
+                    <div><div className="text-xl font-bold tabular-nums text-amber-300">{b.month_usd != null ? usd(b.month_usd) : '—'}</div><div className="text-[10px] text-paper-dim">factura de Apify{b.cycle_start ? ` · ${fmtD(b.cycle_start)} – ${fmtD(b.cycle_end)}` : ''}{b.limit_usd != null ? ` · tope ${usd(b.limit_usd)}` : ''}</div></div>
+                    <div><div className="text-sm font-bold tabular-nums text-emerald-300">{usdS(regReal)}</div><div className="text-[10px] text-paper-dim">registrado real en la app</div></div>
+                    {regEst > 0.0005 && <div><div className="text-sm font-bold tabular-nums text-amber-200">{usdS(regEst)}</div><div className="text-[10px] text-paper-dim">registrado estimado (sin verificar)</div></div>}
+                    {gap > 0.01 && <div><div className="text-sm font-bold tabular-nums text-rose-300">{usdS(gap)}</div><div className="text-[10px] text-paper-dim">cobrado y sin registrar en la app</div></div>}
+                  </div>
+                )}
+                <div className="mt-1 text-[10px] text-paper-dim/80">Es TODO lo que corrió en tu cuenta de Apify: todas las modelos, pruebas y lo de antes del 28 sep.</div>
+              </div>
+              {myRole === 'admin' && (
+                <button type="button" onClick={runBackfill} disabled={backfilling} title="Busca en Apify el costo real de cada búsqueda vieja (las que hoy dicen «estimado»)"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-ink-2 px-3.5 py-2 text-xs font-semibold text-paper-mute hover:text-paper disabled:opacity-50">
+                  {backfilling ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Traer costo real de Apify
                 </button>
               )}
             </div>
+          );
+        })();
+        const startAdd = () => {
+          if (!newAccount.trim()) return;
+          if (allMode) { if (!addFor) { setMsg({ kind: 'info', text: 'Elegí primero a qué modelo le agregás la cuenta.' }); return; } pickAcctModel(addFor); }
+          setWiz({ step: 2, mode: 'cuenta' });
+        };
+        const addBox = (
+          <div className="mb-5 rounded-2xl border border-line bg-card p-4">
+            <div className="mb-2 text-sm font-semibold text-paper">Agregar cuenta{allMode ? '' : ` a ${selCreator.full_name}`}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {allMode && (
+                <div className="relative">
+                  <select value={addFor} onChange={(e) => setAddFor(e.target.value)}
+                    className="appearance-none rounded-full border border-line bg-ink-2 py-2 pl-3.5 pr-8 text-sm text-paper outline-none focus:border-fuchsia-400/60">
+                    <option value="">¿A qué modelo?</option>
+                    {creators.map((c) => <option key={c.id} value={c.id}>{c.stage_name || c.full_name}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper-dim" />
+                </div>
+              )}
+              <input value={newAccount} onChange={(e) => setNewAccount(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && newAccount.trim()) { e.preventDefault(); startAdd(); } }}
+                placeholder="@cuenta pública o link (o pegá varias separadas por coma)" className="min-w-[200px] flex-1 rounded-full border border-line bg-ink-2 px-4 py-2 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
+              <button type="button" onClick={startAdd} disabled={!newAccount.trim() || busyAny || (allMode ? !addFor : !acctsReady)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500 px-4 py-2 text-sm font-bold text-white hover:bg-fuchsia-600 disabled:opacity-40">
+                <Search size={15} /> Agregar y buscar
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-paper-dim">Te pregunto cuántas <b className="text-paper-mute">fotos</b> y cuántos <b className="text-paper-mute">videos</b> y traigo los mejores éxitos (solo nuevos). Solo cuentas <b className="text-paper-mute">públicas</b> (las privadas/+18 te las marco en rojo).</p>
           </div>
-          <div className="mx-auto max-w-5xl px-4 py-6 lg:px-6">
-            {acctDetail ? (() => {
-              const a = acctDetail; const priv = privateAccts.has(a);
-              const st = scrapeByAcct[a] || { fotos: 0, enMesa: 0, lastAt: 0, days: {} };
-              const myRuns = scrapeRuns.filter((r) => r.kind === 'account' && String(r.query || '').replace(/^@/, '') === a);
-              const realCost = myRuns.reduce((s, r) => s + (Number(r.cost_real) || 0), 0);
-              const dayList = Object.entries(st.days || {}).sort((x, y) => String(y[0]).localeCompare(String(x[0])));
-              const allA = vault.filter((r) => r.kind === 'ref' && String(r.source_handle || '').replace(/^@/, '') === a && r.creator_id === sel);
-              const vidCount = allA.filter((r) => r.media_type === 'video').length;
-              const effF = vidCount > 0 ? mediaFilter : 'todo';
-              const photos = allA.filter((r) => (effF === 'fotos' ? r.media_type !== 'video' : effF === 'videos' ? r.media_type === 'video' : true)).sort((x, y) => (Number(y.likes) || 0) - (Number(x.likes) || 0));
-              return (
-                <div>
-                  <button type="button" onClick={() => setAcctDetail(null)} className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-sm font-semibold text-paper-mute hover:text-paper"><ArrowLeft size={15} /> Todas las cuentas</button>
-                  <div className="mb-4 rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/[0.05] p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-lg font-bold text-paper">@{a}</div>
-                      <button type="button" onClick={() => { setNewAccount(a); setWiz({ step: 3, mode: 'cuenta' }); }} disabled={scrapingAcc || !!checkingAcct} className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-fuchsia-600 disabled:opacity-40" title="Traer sus fotos nuevas (no repite las que ya tenés)">{checkingAcct === a ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Buscar más</button>
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-end gap-x-5 gap-y-2">
-                      <div><div className="text-xl font-bold tabular-nums text-paper">{st.fotos}</div><div className="text-[10px] text-paper-dim">bajadas</div></div>
-                      <div><div className="text-xl font-bold tabular-nums text-paper">{st.enMesa}</div><div className="text-[10px] text-paper-dim">en mesa</div></div>
-                      <div><div className="text-xl font-bold tabular-nums text-amber-300">{realCost > 0 ? usd(realCost) : scraperMoney(st.fotos)}</div><div className="text-[10px] text-paper-dim">gasto {realCost > 0 ? 'real' : 'est'}</div></div>
-                      <div><div className="text-sm font-bold tabular-nums text-paper">{agoLabel(st.lastAt)}</div><div className="text-[10px] text-paper-dim">última</div></div>
-                    </div>
-                    {priv && <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-rose-300"><AlertTriangle size={11} /> privada o +18 — Instagram no la deja ver</div>}
-                  </div>
-                  {dayList.length > 0 && (
-                    <div className="mb-4">
-                      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Historial · fotos por día</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {dayList.map(([d, c]) => <span key={d} className="inline-flex items-center gap-1 rounded-full border border-line bg-card px-2.5 py-1 text-xs font-semibold text-paper-mute">{fmtDay(d)} <span className="text-fuchsia-300">+{c}</span></span>)}
-                      </div>
-                    </div>
-                  )}
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Todo lo bajado · {photos.length}</span>
-                    {vidCount > 0 && (
-                      <div className="inline-flex items-center gap-1 rounded-full border border-line bg-card p-0.5 text-[11px] font-semibold">
-                        {[['todo', 'Todo'], ['fotos', 'Fotos'], ['videos', 'Videos']].map(([k, label]) => (
-                          <button key={k} type="button" onClick={() => setMediaFilter(k)}
-                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 transition-colors ${mediaFilter === k ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>
-                            {k === 'videos' && <Play size={9} className="fill-current" />}{label}{k === 'videos' && <span className="opacity-70">{vidCount}</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {photos.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Nada con este filtro.</p>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">{photos.map(renderTodaCard)}</div>
-                  )}
-                </div>
-              );
-            })() : (<>
-            {/* Totales del scraper: esta modelo + global */}
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/[0.05] p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-fuchsia-200/80">{selCreator.full_name}</div>
-                <div className="mt-1.5 flex flex-wrap items-end gap-x-5 gap-y-2">
-                  <div><div className="text-xl font-bold tabular-nums text-paper">{scrapeModelTotal.fotos}</div><div className="text-[10px] text-paper-dim">fotos bajadas</div></div>
-                  <div><div className="text-xl font-bold tabular-nums text-amber-300">{scrapeModelTotal.costReal > 0 ? usd(scrapeModelTotal.costReal) : scraperMoney(scrapeModelTotal.fotos)}</div><div className="text-[10px] text-paper-dim">gasto {scrapeModelTotal.costReal > 0 ? 'real' : 'estimado'}</div></div>
-                  <div><div className="text-xl font-bold tabular-nums text-paper">{accounts.length}</div><div className="text-[10px] text-paper-dim">cuentas guía</div></div>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-line bg-card p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Total del scraper · todas las modelos</div>
-                <div className="mt-1.5 flex flex-wrap items-end gap-x-5 gap-y-2">
-                  <div><div className="text-xl font-bold tabular-nums text-paper">{scraperGlobal.photos}</div><div className="text-[10px] text-paper-dim">fotos bajadas</div></div>
-                  <div><div className="text-xl font-bold tabular-nums text-amber-300">{scraperMoney(scraperGlobal.photos)}</div><div className="text-[10px] text-paper-dim">gasto estimado</div></div>
-                  <div><div className="text-xl font-bold tabular-nums text-paper">{scraperGlobal.accounts}</div><div className="text-[10px] text-paper-dim">cuentas</div></div>
-                </div>
-              </div>
+        );
+        const filters = (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[180px] flex-1">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+              <input value={acctSearch} onChange={(e) => setAcctSearch(e.target.value)} placeholder={allMode ? 'Buscar cuenta o modelo…' : 'Buscar cuenta…'} className="w-full rounded-full border border-line bg-ink-2 py-1.5 pl-9 pr-3 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
             </div>
-            <p className="mb-4 text-[11px] text-paper-dim">El gasto es <b className="text-paper-mute">estimado</b> (≈US$2.30 por 1.000 fotos). El <b className="text-paper-mute">real</b> de Apify aparece por corrida cuando el motor lo registre.</p>
-
-            {/* Agregar cuenta */}
-            <div className="mb-5 rounded-2xl border border-line bg-card p-4">
-              <div className="mb-2 text-sm font-semibold text-paper">Agregar cuenta</div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input value={newAccount} onChange={(e) => setNewAccount(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && newAccount.trim()) { e.preventDefault(); setWiz({ step: 2, mode: 'cuenta' }); } }}
-                  placeholder="@cuenta pública o link (o pegá varias separadas por coma)" className="min-w-[200px] flex-1 rounded-full border border-line bg-ink-2 px-4 py-2 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-fuchsia-400/60" />
-                <button type="button" onClick={() => setWiz({ step: 2, mode: 'cuenta' })} disabled={!newAccount.trim() || scrapingAcc} className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500 px-4 py-2 text-sm font-bold text-white hover:bg-fuchsia-600 disabled:opacity-40">
-                  <Search size={15} /> Agregar y buscar
-                </button>
-              </div>
-              <p className="mt-2 text-[11px] text-paper-dim">Te pregunto cuántas <b className="text-paper-mute">fotos</b> y cuántos <b className="text-paper-mute">videos</b> y traigo los mejores éxitos. Solo cuentas <b className="text-paper-mute">públicas</b> (las privadas/+18 te las marco en rojo).</p>
+            <div className="inline-flex items-center gap-1 rounded-full border border-line bg-card p-0.5 text-xs font-semibold">
+              {[['todas', 'Todas'], ['hoy', 'Hoy'], ['ayer', 'Ayer'], ['semana', '7 días']].map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setAcctDate(k)} className={`rounded-full px-2.5 py-1 transition-colors ${acctDate === k ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>{label}</button>
+              ))}
             </div>
+          </div>
+        );
+        // Ir a la grilla de TODO lo bajado (de esta modelo o de todas).
+        const goToGrid = () => {
+          setAcctView(false); setAcctDetail(null); setAcctBack(null);
+          setMediaFilter('todo'); setBaulSearch('');
+          if (allMode) { setBaulModel(''); setScrapView(true); } else { setScrapView(false); setSubtab('buscar'); }
+        };
 
-            {accounts.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-line bg-card/40 p-10 text-center">
-                <Compass size={26} className="mx-auto mb-2 text-fuchsia-300/70" />
-                <p className="text-sm font-semibold text-paper">Todavía no tenés cuentas guía</p>
-                <p className="mx-auto mt-1 max-w-sm text-xs text-paper-dim">Agregá arriba las influencers públicas que te gustan. Traigo sus mejores fotos (por likes) y las dejo listas para cocinar.</p>
-              </div>
-            ) : (
-              <>
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <div className="relative min-w-[180px] flex-1">
-                  <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
-                  <input value={acctSearch} onChange={(e) => setAcctSearch(e.target.value)} placeholder="Buscar cuenta…" className="w-full rounded-full border border-line bg-ink-2 py-1.5 pl-9 pr-3 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+        // Ficha de UNA cuenta (solo con una modelo elegida).
+        const detailView = (!allMode && acctDetail) ? (() => {
+          const a = acctDetail; const k = normH(a);
+          const ajD = activeJobFor(cid, a); const jiD = lastJobIssue(cid, a);
+          const priv = !ajD && (jiD !== undefined ? jiD === 'private' : privateAccts.has(a));
+          const st = scrapeStats.byAcct[cid]?.[k] || EMPTY_STAT;
+          const c = costStats.byAcct[cid]?.[k] || EMPTY_COST;
+          const runs = runsOfAcct(cid, a);
+          const dayList = Object.entries(st.days || {}).sort((x, y) => String(y[0]).localeCompare(String(x[0])));
+          const mesaRows = mesaMedia(vault.filter((r) => r.kind === 'ref' && r.creator_id === cid && isScraped(r))).filter((r) => normH(r.source_handle) === k);
+          const vidCount = mesaRows.filter((r) => r.media_type === 'video').length;
+          const effF = vidCount > 0 ? mediaFilter : 'todo';
+          const photos = mesaRows.filter((r) => (effF === 'fotos' ? r.media_type !== 'video' : effF === 'videos' ? r.media_type === 'video' : true)).sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
+          return (
+            <div>
+              <button type="button" onClick={() => setAcctDetail(null)} className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-sm font-semibold text-paper-mute hover:text-paper"><ArrowLeft size={15} /> Todas las cuentas</button>
+              <div className="mb-4 rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/[0.05] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-lg font-bold text-paper">@{a}</div>
+                  <button type="button" onClick={() => buscarMas(cid, a)} disabled={jobsOff ? busyAny : (!!ajD || checkingAcct === a)} className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-fuchsia-600 active:translate-y-px disabled:opacity-40" title="Traer sus fotos nuevas (no repite las que ya tenés)">{checkingAcct === a || ajD ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} {ajD ? 'Buscando…' : 'Buscar más'}</button>
                 </div>
-                <div className="inline-flex items-center gap-1 rounded-full border border-line bg-card p-0.5 text-xs font-semibold">
-                  {[['todas', 'Todas'], ['hoy', 'Hoy'], ['ayer', 'Ayer'], ['semana', '7 días']].map(([k, label]) => (
-                    <button key={k} type="button" onClick={() => setAcctDate(k)} className={`rounded-full px-2.5 py-1 transition-colors ${acctDate === k ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>{label}</button>
-                  ))}
+                {ajD && <div className="mt-2 rounded-xl border border-line bg-ink-2/40 px-3 py-2">{jobProgress(ajD)}</div>}
+                {!ajD && jiD && jiD !== 'private' && <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-rose-300"><AlertTriangle size={11} /> {ISSUE_CARD[jiD] || ISSUE_CARD.blocked}</div>}
+                <div className="mt-2 flex flex-wrap items-end gap-x-5 gap-y-2">
+                  {statBox(st.bajadas, 'bajadas', `${st.fotos} fotos · ${st.videos} videos`)}
+                  {statBox(st.enMesa, 'en la mesa')}
+                  {statBox(st.iaSaco, 'la IA sacó', null, 'text-paper-mute')}
+                  {statBox(st.descartadas, 'descartadas', null, 'text-paper-mute')}
+                  <div><div className="text-sm font-bold tabular-nums text-paper">{agoLabel(st.lastAt)}</div><div className="text-[10px] text-paper-dim">última</div></div>
+                </div>
+                <div className="mt-3 border-t border-fuchsia-500/20 pt-2.5">
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-paper-dim">Gasto de esta cuenta</div>
+                  {costRow(c)}
+                </div>
+                {priv && <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-rose-300"><AlertTriangle size={11} /> privada o +18 — Instagram no la deja ver</div>}
+              </div>
+              {runs.length > 0 && (
+                <div className="mb-4">
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Búsquedas ({runs.length}) · lo que trajo Apify, lo nuevo que se guardó y lo que costó</div>
+                  <div className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-card">
+                    {runs.map((r) => {
+                      const rc = runCostOf(r); const one = newCost(); addCost(one, rc); const tg = costTag(one);
+                      return (
+                        <div key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-[11px]">
+                          <span className="w-28 shrink-0 font-semibold text-paper-mute">{fmtWhen(r.run_at)}</span>
+                          <span className="text-paper-dim">Apify trajo <b className="text-paper">{rc.found}</b></span>
+                          <span className="text-paper-dim">guardó <b className="text-paper">{rc.saved}</b> foto{rc.saved === 1 ? '' : 's'}{r.videos != null ? <> · <b className="text-paper">{rc.savedVideos}</b> video{rc.savedVideos === 1 ? '' : 's'}</> : null}</span>
+                          {r.status === 'error' && <span className="font-semibold text-rose-300" title={r.error || ''}>falló</span>}
+                          {rc.running && <span className="inline-flex items-center gap-1 font-semibold text-amber-300"><Loader2 size={10} className="animate-spin" /> en curso en el servidor</span>}
+                          {rc.paused && <span className="font-semibold text-paper-mute" title="Nadie la está manejando ahora: sigue sola cuando abras la cocina o prendas el cocinero de la Mac.">en pausa</span>}
+                          {rc.cut && <span className="font-semibold text-rose-300" title="La función se cortó antes de terminar. Apify sí cobró: «Traer costo real de Apify» completa el costo.">se cortó</span>}
+                          <span className="ml-auto text-paper-dim">fotos {usdS(rc.fotos)} · videos {!rc.videosKnown ? '— (sin dato)' : rc.vidPend ? (rc.videos > 0.000001 ? `${usdS(rc.videos)} estimado` : 'falta el costo') : usdS(rc.videos)} · IA {rc.aiKnown ? usdS(rc.ai) : '—'} · <b className="text-amber-300">{usdS(rc.fotos + rc.videos + rc.ai)}</b></span>
+                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${tg.cls}`}>{tg.t}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {dayList.length > 0 && (
+                <div className="mb-4">
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-paper-dim">Historial · bajadas por día</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {dayList.map(([d, n]) => <span key={d} className="inline-flex items-center gap-1 rounded-full border border-line bg-card px-2.5 py-1 text-xs font-semibold text-paper-mute">{fmtDay(d)} <span className="text-fuchsia-300">+{n}</span></span>)}
+                  </div>
+                </div>
+              )}
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-paper-dim">En la mesa · {photos.length}</span>
+                {vidCount > 0 && (
+                  <div className="inline-flex items-center gap-1 rounded-full border border-line bg-card p-0.5 text-[11px] font-semibold">
+                    {[['todo', 'Todo'], ['fotos', 'Fotos'], ['videos', 'Videos']].map(([kk, label]) => (
+                      <button key={kk} type="button" onClick={() => setMediaFilter(kk)}
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 transition-colors ${mediaFilter === kk ? 'bg-brand text-on-accent' : 'text-paper-mute hover:text-paper'}`}>
+                        {kk === 'videos' && <Play size={9} className="fill-current" />}{label}{kk === 'videos' && <span className="opacity-70">{vidCount}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {photos.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-line bg-card/40 p-8 text-center text-sm text-paper-dim">Nada en la mesa con este filtro.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">{photos.map(renderTodaCard)}</div>
+              )}
+            </div>
+          );
+        })() : null;
+
+        // «Todas las modelos»: una sección por modelo con las MISMAS tarjetas.
+        const modelsWith = allMode ? creators.filter((c) => seedsFor(c.id).length || scrapeStats.byModel[c.id]?.bajadas || costStats.byModel[c.id]?.runs) : [];
+
+        return (
+          <div className="fixed inset-0 z-40 overflow-y-auto bg-ink">
+            <div className="sticky top-0 z-10 border-b border-line bg-ink/95 backdrop-blur">
+              <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3 px-4 py-3 lg:px-6">
+                <button type="button" onClick={closeAcctPage} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-sm font-semibold text-paper-mute hover:text-paper"><ArrowLeft size={16} /> Volver</button>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 font-display text-base font-bold text-paper"><Compass size={16} className="text-fuchsia-300" /> Cuentas guía</div>
+                  <div className="truncate text-[11px] text-paper-dim">{allMode ? 'Todas las modelos · elegí una para agregar cuentas y buscar' : `Influencers de ${selCreator.full_name} · sus fotos alimentan tu mesa`}</div>
+                </div>
+                <div className="relative">
+                  <select value={cid} onChange={(e) => pickAcctModel(e.target.value)} disabled={busyAny} title="Elegí la modelo"
+                    className="appearance-none rounded-full border border-line bg-card py-1.5 pl-3 pr-7 text-xs font-semibold text-paper outline-none hover:border-brand/40 focus:border-brand/60 disabled:opacity-50">
+                    <option value="">Todas las modelos</option>
+                    {creators.map((c) => <option key={c.id} value={c.id}>{c.stage_name || c.full_name} · {seedsFor(c.id).length} cuenta{seedsFor(c.id).length === 1 ? '' : 's'}</option>)}
+                  </select>
+                  <ChevronDown size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-paper-dim" />
+                </div>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <button type="button" onClick={goToGrid} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper" title="Ver la grilla de todo lo que está en la mesa"><LayoutGrid size={13} /> Ver lo bajado</button>
+                  {!allMode && acctsReady && accounts.length > 0 && (() => {
+                    const bt = jobsOff ? null : activeBatchOf(cid); // «Buscar en todas» del motor nuevo en curso
+                    return (
+                      <button type="button" onClick={doScrapeAccounts} disabled={busyAny || !acctsReady || !!bt}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia-500 px-4 py-2 text-sm font-bold text-white hover:bg-fuchsia-600 active:translate-y-px disabled:opacity-50">
+                        {scrapingAcc || bt ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} {bt ? `Buscando… ${bt.done}/${bt.n} listas` : scrapingAcc ? `Buscando${bulkProg ? ` ${bulkProg.i} de ${bulkProg.n}` : ''}…` : `Buscar en todas (${accounts.length})`}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {accounts.filter((a) => {
-                  const term = acctSearch.trim().toLowerCase();
-                  if (term && !a.toLowerCase().includes(term)) return false;
-                  if (acctDate !== 'todas') {
-                    const t = scrapeByAcct[a]?.lastAt || 0; if (!t) return false;
-                    const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-                    const diff = Math.round((startOf(new Date()) - startOf(new Date(t))) / 86400000);
-                    if (acctDate === 'hoy' && diff !== 0) return false;
-                    if (acctDate === 'ayer' && diff !== 1) return false;
-                    if (acctDate === 'semana' && diff > 6) return false;
-                  }
-                  return true;
-                }).map((a) => {
-                  const priv = privateAccts.has(a); const busy = checkingAcct === a; const running = busy || scrapingAcc; const tops = acctTopPhotos(a);
-                  const st = scrapeByAcct[a] || { fotos: 0, enMesa: acctCounts[a] || 0, lastAt: acctLastAt(a), days: {} };
-                  const myRuns = scrapeRuns.filter((r) => r.kind === 'account' && String(r.query || '').replace(/^@/, '') === a);
-                  const realCost = myRuns.reduce((s, r) => s + (Number(r.cost_real) || 0), 0);
-                  const dayList = Object.entries(st.days || {}).sort((x, y) => String(y[0]).localeCompare(String(x[0]))).slice(0, 8);
-                  return (
-                    <div key={a} className={`overflow-hidden rounded-2xl border ${priv ? 'border-rose-500/40 bg-rose-500/[0.05]' : 'border-line bg-card'}`}>
-                      <div className="flex items-start gap-2 p-3">
-                        <button type="button" onClick={() => setAcctDetail(a)} className="min-w-0 flex-1 text-left">
-                          <div className="truncate text-sm font-bold text-paper hover:underline">@{a} <span className="text-[10px] font-semibold text-fuchsia-300">ver todas →</span></div>
-                          {running ? (
-                            <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-300"><Loader2 size={11} className="animate-spin" /> Buscando fotos… (1-2 min)</div>
-                          ) : (acctIssue[a] || priv) ? (
-                            <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-rose-300"><AlertTriangle size={11} /> {acctIssue[a] || 'Privada o +18 — Instagram no la deja ver.'}</div>
+              {msg && <div className="mx-auto max-w-5xl px-4 pb-3 lg:px-6">{msgBanner()}</div>}
+            </div>
+            <div className="mx-auto max-w-5xl px-4 py-6 lg:px-6">
+              {detailView || (<>
+                {/* Totales: la modelo + el total del scraper (o solo el total en «Todas») — mismas definiciones */}
+                <div className={`mb-4 grid gap-3 ${allMode ? '' : 'lg:grid-cols-2'}`}>
+                  {!allMode && totalsCard(selCreator.full_name, S, C, seedsFor(cid).length, true)}
+                  {totalsCard('Total del scraper · todas las modelos', scrapeStats.all, costStats.all, totalSeeds, allMode)}
+                </div>
+                {billStrip}
+                <p className="mb-4 text-[11px] leading-relaxed text-paper-dim">
+                  <b className="text-paper-mute">Bajadas</b> = todo lo que el scraper guardó (sin repetidas). <b className="text-paper-mute">En la mesa</b> = lo que sigue usable (ni la IA ni vos lo sacaron).
+                  {' '}<b className="text-paper-mute">Real (Apify)</b> = lo que Apify cobró por esa búsqueda. <b className="text-paper-mute">Estimado</b> = búsquedas sin costo verificado todavía (≈US$2.30 por 1.000 resultados que trae Apify); «falta el costo real» = arrancó y Apify todavía no dio el número.
+                  {' '}<b className="text-paper-mute">Videos</b> = el actor de reels, aparte de las fotos (en las búsquedas viejas no se registraba: «sin dato»). <b className="text-paper-mute">Filtro IA</b> = lo que cuesta la IA que revisa cada foto y cada video.
+                </p>
+                {addBox}
+                {allMode ? (
+                  <>
+                    {filters}
+                    {modelsWith.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-line bg-card/40 p-10 text-center text-sm text-paper-dim">Todavía no hay cuentas guía. Elegí una modelo arriba y agregale influencers públicas.</p>
+                    ) : modelsWith.map((c) => {
+                      const seeds = seedsFor(c.id).filter((h) => filterAcct(c.id, h));
+                      const nameHit = !!term && String(c.stage_name || c.full_name || '').toLowerCase().includes(term);
+                      if ((term || acctDate !== 'todas') && !seeds.length && !nameHit) return null;
+                      const Sm = scrapeStats.byModel[c.id] || EMPTY_STAT; const Cm = costStats.byModel[c.id] || EMPTY_COST; const tg = costTag(Cm);
+                      return (
+                        <div key={c.id} className="mb-6">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <button type="button" onClick={() => pickAcctModel(c.id)} className="font-display text-sm font-bold text-paper hover:underline">{c.stage_name || c.full_name}</button>
+                            <span className="text-[11px] text-paper-dim">{seedsFor(c.id).length} cuentas guía · {Sm.bajadas} bajadas · {Sm.enMesa} en la mesa · gasto <b className="text-amber-300">{usdS(Cm.total)}</b></span>
+                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${tg.cls}`}>{tg.t}</span>
+                            <span className="h-px flex-1 bg-line/60" />
+                            <button type="button" onClick={() => pickAcctModel(c.id)} className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/40 px-3 py-1 text-xs font-semibold text-fuchsia-200 hover:bg-fuchsia-500/10">Abrir <ArrowRight size={12} /></button>
+                          </div>
+                          {seeds.length ? (
+                            <div className="grid gap-3 sm:grid-cols-2">{seeds.map((h) => acctCard(c.id, h))}</div>
                           ) : (
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-                              <span className="text-paper-dim"><b className="text-paper">{st.fotos}</b> bajadas</span>
-                              <span className="text-paper-dim"><b className="text-paper">{st.enMesa}</b> en mesa</span>
-                              <span className="text-paper-dim">gasto <b className="text-amber-300">{realCost > 0 ? usd(realCost) : scraperMoney(st.fotos)}</b> <span className="text-paper-dim/60">{realCost > 0 ? 'real' : 'est'}</span></span>
-                              {st.fotos === 0 && !st.lastAt
-                                ? <span className="font-semibold text-fuchsia-300">· nueva — tocá «Buscar más» para traerla</span>
-                                : <span className="text-paper-dim/70">· última {agoLabel(st.lastAt)}</span>}
-                            </div>
+                            <p className="rounded-xl border border-dashed border-line bg-card/40 p-4 text-center text-xs text-paper-dim">Sin cuentas guía{term || acctDate !== 'todas' ? ' con este filtro' : ''}. Tocá «Abrir» para agregarle.</p>
                           )}
-                        </button>
-                        <button type="button" onClick={() => { setNewAccount(a); setWiz({ step: 3, mode: 'cuenta' }); }} disabled={scrapingAcc || !!checkingAcct}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-fuchsia-400/40 px-3 py-1.5 text-xs font-semibold text-fuchsia-200 hover:bg-fuchsia-500/10 disabled:opacity-40" title="Traer sus últimas fotos (y más abajo de su feed)">
-                          {busy ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} {busy ? 'Buscando…' : 'Buscar más'}
-                        </button>
-                        <button type="button" onClick={() => { saveAccounts(accounts.filter((x) => x !== a)); setPrivateAccts((p) => { const q = new Set(p); q.delete(a); return q; }); }}
-                          className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-line text-paper-mute hover:border-rose-400 hover:text-rose-300" title="Quitar cuenta"><X size={13} /></button>
+                          {extrasRow(c.id)}
+                        </div>
+                      );
+                    })}
+                    {/* Lo que suma el total y no tiene sección: modelos que no están en la lista (inactivas o de prueba). */}
+                    {(scrapeStats.rest?.bajadas || costStats.rest?.runs || restSeeds) ? (
+                      <div className="mb-6 rounded-xl border border-dashed border-line bg-card/40 px-3 py-2 text-[11px] text-paper-dim">
+                        <b className="text-paper-mute">Otras modelos (inactivas o de prueba)</b>: <b className="text-paper">{restSeeds}</b> cuentas guía · <b className="text-paper">{scrapeStats.rest?.bajadas || 0}</b> bajadas · <b className="text-paper">{scrapeStats.rest?.enMesa || 0}</b> en la mesa · gasto <b className="text-amber-300">{usdS(costStats.rest?.total || 0)}</b>
+                        {costStats.rest?.runs ? <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${costTag(costStats.rest).cls}`}>{costTag(costStats.rest).t}</span> : null}
+                        <span className="text-paper-dim/80"> — están en el total de arriba; no aparecen en la lista de modelos.</span>
                       </div>
-                      {dayList.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1 border-t border-line/60 px-3 py-2">
-                          <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wide text-paper-dim/70">Historial</span>
-                          {dayList.map(([d, c]) => (
-                            <span key={d} className="inline-flex items-center gap-1 rounded-full bg-ink-2 px-2 py-0.5 text-[10px] font-semibold text-paper-mute">{fmtDay(d)} <span className="text-fuchsia-300">+{c}</span></span>
-                          ))}
-                        </div>
-                      )}
-                      {tops.length > 0 && (
-                        <div className="grid grid-cols-5 gap-0.5 border-t border-line/60 bg-ink-2">
-                          {tops.map((r) => (
-                            <div key={r.id} className="relative aspect-square overflow-hidden">
-                              <img src={r.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                              {Number(r.likes) > 0 && <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1 py-0.5 text-center text-[9px] font-bold text-white">{fmtLikes(r.likes)}</span>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                    ) : null}
+                  </>
+                ) : !acctsReady && acctsErr ? (
+                  <div className="flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/[0.05] p-8 text-sm text-rose-200">
+                    <AlertTriangle size={15} className="shrink-0" /> No pude leer las cuentas guía de {selCreator.full_name}: {acctsErr}
+                    <button type="button" onClick={() => { setAcctsErr(''); setSeedsReload((n) => n + 1); }} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold text-paper-mute hover:text-paper"><RefreshCw size={12} /> Reintentar</button>
+                  </div>
+                ) : !acctsReady ? (
+                  <div className="flex items-center justify-center gap-2 rounded-2xl border border-line bg-card/40 p-10 text-sm text-paper-dim"><Loader2 size={15} className="animate-spin" /> Leyendo las cuentas guía de {selCreator.full_name}…</div>
+                ) : accounts.length === 0 ? (
+                  <>
+                    <div className="rounded-2xl border border-dashed border-line bg-card/40 p-10 text-center">
+                      <Compass size={26} className="mx-auto mb-2 text-fuchsia-300/70" />
+                      <p className="text-sm font-semibold text-paper">Todavía no tenés cuentas guía</p>
+                      <p className="mx-auto mt-1 max-w-sm text-xs text-paper-dim">Agregá arriba las influencers públicas que te gustan. Traigo sus mejores fotos (por likes) y las dejo listas para cocinar.</p>
                     </div>
-                  );
-                })}
-              </div>
-              </>
-            )}
-            </>)}
+                    {extrasRow(cid)}
+                  </>
+                ) : (
+                  <>
+                    {filters}
+                    <div className="grid gap-3 sm:grid-cols-2">{accounts.filter((h) => filterAcct(cid, h)).map((h) => acctCard(cid, h))}</div>
+                    {extrasRow(cid)}
+                  </>
+                )}
+              </>)}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── RUEDITA FLOTANTE (identificador global): gira mientras cocina, se pone verde cuando hay listas ── */}
       {(cookingAll.length > 0 || readyAll.length > 0) && (
         <button type="button" onClick={goToCooking}
           className={`fixed right-4 z-30 inline-flex items-center gap-2.5 rounded-full border px-4 py-2.5 text-sm font-bold shadow-lg backdrop-blur transition-colors ${queueBarShown ? 'bottom-20' : 'bottom-4'} ${cookingAll.length > 0 ? 'border-amber-400/40 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25' : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25'}`}
-          title={cookingAll.length > 0 ? 'Se están creando fotos — tocá para verlas' : 'Hay fotos listas para revisar — tocá para verlas'}>
+          title={cookingAll.length > 0 ? 'Se está cocinando — tocá para ver' : 'Hay cosas listas para revisar — tocá para verlas'}>
           {cookingAll.length > 0 ? (
             <>
               <Loader2 size={17} className="animate-spin" />
@@ -1924,9 +3312,31 @@ export default function KitchenPage() {
                 <div><div className="mb-1.5 text-center font-mono text-[10px] font-semibold uppercase tracking-wider text-brand">Su versión · <span className={engineOf(cmpRoot) === 'Nano' ? 'text-rose-300' : 'text-brand'}>{engineOf(cmpRoot)}</span> {cmpRoot.status === 'approved' && <span className="text-emerald-300">· aprobada ✓</span>}</div><img src={cmpRoot.result_url} alt="" onClick={() => setLightbox({ url: cmpRoot.result_url, label: `Su versión · ${engineOf(cmpRoot)}` })} className="w-full cursor-zoom-in rounded-xl border border-brand/40 object-cover" /></div>
               </div>
               {cmpRoot.status === 'done' && (
-                <div className="mt-3 flex items-center justify-end gap-2">
-                  <button type="button" onClick={() => decide(cmpRoot, false, false)} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold"><Trash2 size={14} /> Descartar</button>
-                  <button type="button" onClick={() => decide(cmpRoot, true, true)} className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold"><Heart size={14} /> Aprobar → baúl</button>
+                <div className="mt-3">
+                  <label className="mb-1 block text-[11px] font-semibold text-paper-dim">¿Algo para ajustar antes de rehacer? (opcional)</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input value={redoNote} onChange={(e) => setRedoNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') redo(cmpRoot, redoNote); }}
+                      placeholder="ej: más glúteo · más sonrisa · menos filtro · que se vea mejor la cara…"
+                      className="min-w-[200px] flex-1 rounded-full border border-line bg-ink-2 px-4 py-2 text-sm text-paper placeholder:text-paper-dim outline-none focus:border-brand/60" />
+                    <button type="button" onClick={() => redo(cmpRoot, redoNote)} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold" title="Cocinar otra versión (con tu ajuste si escribiste algo)"><RefreshCw size={14} /> Rehacer</button>
+                    <button type="button" onClick={() => decide(cmpRoot, false, false)} className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition active:scale-95"><Trash2 size={14} /> Descartar</button>
+                    <button type="button" onClick={() => decide(cmpRoot, true, true)} className="btn3d inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold transition active:scale-95"><Heart size={14} /> Aprobar → baúl</button>
+                  </div>
+                </div>
+              )}
+              {/* Aprobada: feedback INSTANTÁNEO (optimista) mientras el server limpia la metadata y la guarda en el baúl */}
+              {cmpRoot.status === 'approved' && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-200">
+                  <CheckCircle2 size={16} className="shrink-0" /> Aprobada ✓ — va al baúl
+                  {deciding[cmpRoot.id] && <span className="inline-flex items-center gap-1 text-[11px] font-normal text-emerald-200/70"><Loader2 size={11} className="animate-spin" /> guardándola limpia (sin metadata)…</span>}
+                </div>
+              )}
+              {/* Si el aprobar/descartar falló: la foto volvió a como estaba y el motivo se ve ACÁ (el banner de arriba queda tapado por el pop-up) */}
+              {decideErr[cmpRoot.id] && (
+                <div className="mt-3 flex items-start gap-2 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-200">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                  <span className="min-w-0 flex-1 break-words">{decideErr[cmpRoot.id]}</span>
+                  <button type="button" onClick={() => dropDecideErr(cmpRoot.id)} className="shrink-0 opacity-70 hover:opacity-100"><X size={14} /></button>
                 </div>
               )}
 
@@ -1979,12 +3389,12 @@ export default function KitchenPage() {
                       <div key={k.id} className={`overflow-hidden rounded-lg border bg-card ${k.status === 'approved' ? 'border-emerald-500/40' : k.status === 'failed' ? 'border-rose-500/30' : 'border-line'}`}>
                         {['queued', 'in_progress'].includes(k.status) ? (
                           <div className="relative">
-                            {k.reference_url ? <img src={k.reference_url} alt="" className="aspect-[3/4] w-full scale-105 object-cover blur-md brightness-[0.4]" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                            {mediaTile(k.reference_url, "aspect-[3/4] w-full scale-105 object-cover blur-md brightness-[0.4]")}
                             <div className="absolute inset-0 grid place-items-center"><Loader2 size={20} className="animate-spin text-amber-300" /></div>
                           </div>
                         ) : k.status === 'failed' ? (
                           <div className="relative">
-                            {k.reference_url ? <img src={k.reference_url} alt="" className="aspect-[3/4] w-full object-cover opacity-40" /> : <div className="aspect-[3/4] w-full bg-hair/10" />}
+                            {mediaTile(k.reference_url, "aspect-[3/4] w-full object-cover opacity-40")}
                             <button type="button" onClick={() => retry(k)} className="absolute inset-0 grid place-items-center text-[10px] font-semibold text-rose-200"><RefreshCw size={16} /></button>
                           </div>
                         ) : (
@@ -1996,10 +3406,11 @@ export default function KitchenPage() {
                             {motorLine(k)}
                             {k.status === 'done' && (
                               <div className="flex items-center gap-1 p-1.5">
-                                <button type="button" onClick={() => decide(k, true, true)} className="inline-flex flex-1 items-center justify-center gap-0.5 rounded-full bg-emerald-500/20 px-1 py-1 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/30"><Heart size={10} /></button>
-                                <button type="button" onClick={() => decide(k, false, true)} className="inline-flex items-center justify-center rounded-full border border-line px-1.5 py-1 text-paper-mute hover:text-rose-300"><Trash2 size={10} /></button>
+                                <button type="button" onClick={() => decide(k, true, true)} className="inline-flex flex-1 items-center justify-center gap-0.5 rounded-full bg-emerald-500/20 px-1 py-1 text-[10px] font-bold text-emerald-200 transition active:scale-90 hover:bg-emerald-500/30"><Heart size={10} /></button>
+                                <button type="button" onClick={() => decide(k, false, true)} className="inline-flex items-center justify-center rounded-full border border-line px-1.5 py-1 text-paper-mute transition active:scale-90 hover:text-rose-300"><Trash2 size={10} /></button>
                               </div>
                             )}
+                            {decideErr[k.id] && <p title={decideErr[k.id]} className="line-clamp-3 px-1.5 pb-1.5 text-[9px] leading-snug text-rose-300">{decideErr[k.id]}</p>}
                           </>
                         )}
                       </div>

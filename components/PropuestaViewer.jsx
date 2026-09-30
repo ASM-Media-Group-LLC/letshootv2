@@ -19,10 +19,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, ArrowRight, Sparkles, KeyRound, Eye, EyeOff, Check, Play, Pause, Download } from 'lucide-react';
+import { Heart, X, MessageSquare, ChevronDown, Lock, Clock, Send, User, Mail, ArrowRight, Sparkles, KeyRound, Eye, EyeOff, Check, Play, Pause, Download, Mic } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { getSupabase } from '@/lib/supabase/client';
 import { buildZip } from '@/lib/zip';
+import { stripImageMeta } from '@/lib/strip-meta';
 import { propDict, PROP_LANGS } from '@/lib/propuesta-i18n';
 import { PROPOSAL_LOGOS } from '@/lib/proposal-logos';
 
@@ -83,6 +84,19 @@ function detectPropLang() {
   return null; // sin señal clara → se usa el idioma con el que se armó la propuesta
 }
 
+// Comparativo de voz (photo_proposals.voice_compare): { real: { src }, ia: { src, text } }.
+// Solo vale si trae los DOS src; si no → null. NO es un look: no entra en
+// likes / progreso / stats / feedback (se muestra aparte, arriba de los audios).
+function normVoiceCompare(vc) {
+  const real = vc?.real;
+  const ia = vc?.ia;
+  if (typeof real?.src !== 'string' || !real.src || typeof ia?.src !== 'string' || !ia.src) return null;
+  return {
+    real: { src: real.src },
+    ia: { src: ia.src, text: typeof ia.text === 'string' ? ia.text.trim() : '' },
+  };
+}
+
 // Mapea la fila cruda de get_proposal_by_link → cfg que consume el viewer.
 // (el link_id hace de "code" del watermark/nav; looks ya viene como jsonb).
 function mapRow(row) {
@@ -107,6 +121,7 @@ function mapRow(row) {
     logos: Array.isArray(row?.logos) ? row.logos : [],
     proposalType: ['visual', 'audio', 'both'].includes(row?.proposal_type) ? row.proposal_type : 'visual',
     audios: Array.isArray(row?.audios) ? row.audios.filter((a) => a?.id && a?.src) : [],
+    voiceCompare: normVoiceCompare(row?.voice_compare),
     approvalRequired: !!row?.approval_required,
     approvalStatus: row?.approval_status || null,       // 'pending' | 'approved' | 'rejected'
     approvalReviewer: row?.approval_reviewer_name || '',
@@ -183,7 +198,7 @@ export default function PropuestaViewer({ linkId }) {
             : [];
           const someAudio = Array.isArray(d?.audios) && d.audios.some((a) => a?.id && a?.src);
           if (d?.v === 1 && (complete.length > 0 || someAudio)) {
-            setCfg({ ...DEMO, ...d, model: { ...DEMO.model, ...(d.model || {}) }, looks: complete });
+            setCfg({ ...DEMO, ...d, model: { ...DEMO.model, ...(d.model || {}) }, looks: complete, voiceCompare: normVoiceCompare(d.voice_compare ?? d.voiceCompare) });
             propLang = d.lang;
           }
         }
@@ -713,6 +728,57 @@ function AudioPlayer({ src }) {
   );
 }
 
+// Comparativo de voz — "Tu voz real" ▶ junto a "Tu voz con IA" ▶ (con el saludo
+// debajo). Va arriba de los audios de la propuesta. NO es un look: no se marca
+// me gusta/paso, no cuenta en progreso/stats ni se guarda como feedback.
+// Dentro del bloque suena UNO a la vez (al dar play a uno, se pausa el otro).
+function VoiceCompare({ t, vc }) {
+  const boxRef = useRef(null);
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return undefined;
+    // 'play' no burbujea, pero la fase de CAPTURA sí pasa por el contenedor.
+    const onPlay = (e) => {
+      box.querySelectorAll('audio').forEach((a) => { if (a !== e.target && !a.paused) a.pause(); });
+    };
+    box.addEventListener('play', onPlay, true);
+    return () => box.removeEventListener('play', onPlay, true);
+  }, []);
+  return (
+    <div ref={boxRef} className="mb-10">
+      <div className="mb-2 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">
+        <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" /> {t.voiceCompareEyebrow || 'Comparativo de voz'}
+      </div>
+      <h3 className="font-display text-[clamp(1.4rem,3.4vw,1.9rem)] font-bold leading-tight tracking-[-0.02em] text-white">
+        {t.voiceCompareTitle || 'Tu voz, real y con IA'}
+      </h3>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/12 bg-ink/45 p-3.5 backdrop-blur-xl">
+          <div className="flex items-center gap-2">
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-white/80"><Mic size={12} /></span>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{t.voiceReal || 'Tu voz real'}</span>
+          </div>
+          <div className="mt-3">
+            <AudioPlayer src={vc.real.src} />
+          </div>
+        </div>
+        <div className="rounded-2xl border border-brand/40 bg-ink/45 p-3.5 backdrop-blur-xl">
+          <div className="flex items-center gap-2">
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/15 text-brand"><Sparkles size={12} /></span>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{t.voiceAi || 'Tu voz con IA'}</span>
+          </div>
+          <div className="mt-3">
+            <AudioPlayer src={vc.ia.src} />
+          </div>
+          {vc.ia.text && (
+            <p className="mt-2.5 text-[12px] italic leading-snug text-white/65">{vc.ia.text}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false, asModel = false }) {
   // Mismo formato para fotos y audios. Para audio, los "looks" son los audios
   // (cada uno { id, label, src }); la portada, el cierre, el feedback y el flujo
@@ -722,6 +788,9 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false, as
   const wantsAudio = cfg.proposalType === 'audio' || cfg.proposalType === 'both';
   const photos = wantsVisual ? (cfg.looks || []) : [];
   const audios = wantsAudio ? (cfg.audios || []) : [];
+  // Comparativo real vs IA: bloque aparte arriba de los audios — FUERA de looks
+  // (no cuenta en stats / progreso / feedback).
+  const voiceCompare = wantsAudio ? (cfg.voiceCompare || null) : null;
   const looks = [...photos, ...audios];   // combinado: alimenta stats, envío y el observer
   const total = looks.length;
   const audioIdx = photos.length;         // la sección de audios ocupa UNA pantalla, después de las fotos
@@ -951,11 +1020,13 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false, as
           const res = await fetch(l.result);
           if (!res.ok) continue;
           const blob = await res.blob();
-          const buf = new Uint8Array(await blob.arrayBuffer());
+          const raw = new Uint8Array(await blob.arrayBuffer());
           const ext = ((l.result.split('?')[0].split('.').pop() || 'webp').toLowerCase().replace(/[^a-z0-9]/g, '') || 'webp').slice(0, 4);
+          // Regla del negocio: lo que baja la modelo NO lleva metadata (EXIF/XMP/C2PA "hecho con IA").
+          const buf = await stripImageMeta(raw, blob.type || ext);
           const name = `${base}-${pad2(i + 1)}.${ext}`;
           zipItems.push({ name, data: buf });
-          imgFiles.push(new File([blob], name, { type: blob.type || 'image/webp' }));
+          imgFiles.push(new File([buf], name, { type: blob.type || 'image/webp' }));
         } catch { /* una foto que falla (CORS/borrada) NO tumba las demás — seguimos */ }
       }
       if (!imgFiles.length) throw new Error('fetch');
@@ -1160,12 +1231,13 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false, as
                 resultado grande. El texto va sobre la foto del resultado. */}
             <div className="mx-auto hidden h-[74svh] aspect-[13/10] overflow-hidden rounded-3xl bg-white/10 shadow-glow ring-1 ring-brand/25 sm:flex gap-[2px] [perspective:1200px]">
               {/* Fuentes: dos celdas apiladas, mitad y mitad de la altura */}
+              {/* Orden del dueño: MODELO REAL + INSPIRACIÓN = RESULTADO. */}
               <div className="flex h-full basis-[38%] flex-col gap-[2px]">
                 <div className="relative min-h-0 flex-1">
-                  <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-0" className="h-full w-full ring-0" />
+                  <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-0" className="h-full w-full ring-0" />
                 </div>
                 <div className="relative min-h-0 flex-1">
-                  <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-re`} active={active} delay="delay-150" className="h-full w-full ring-0" />
+                  <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-in`} active={active} delay="delay-150" className="h-full w-full ring-0" />
                 </div>
               </div>
               {/* Resultado: celda grande, caption superpuesto abajo */}
@@ -1214,8 +1286,8 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false, as
                 </div>
                 {/* Fuentes: dos celdas pegadas, mitad y mitad del ancho */}
                 <div className="flex min-h-0 flex-1 gap-[2px]">
-                  <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-min`} active={active} delay="delay-0" className="h-full flex-1 ring-0" />
-                  <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-mre`} active={active} delay="delay-150" className="h-full flex-1 ring-0" />
+                  <Shot src={l.real} alt={l.caption} label={t.realModel} dot="bg-emerald-400" code={cfg.code} uid={`${l.id}-mre`} active={active} delay="delay-0" className="h-full flex-1 ring-0" />
+                  <Shot src={l.inspiration} alt={l.caption} label={t.inspiration} dot="bg-amber-400" code={cfg.code} uid={`${l.id}-min`} active={active} delay="delay-150" className="h-full flex-1 ring-0" />
                 </div>
               </div>
             </div>
@@ -1261,9 +1333,12 @@ function ProposalBody({ t, cfg, linkId, reg, isDemo, viewer, preview = false, as
         >
           <Watermark code={cfg.code} uid="audios" />
           <div className="relative z-10 mx-auto w-full max-w-xl">
-            <div className="mb-5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" /> {t.audios || 'Audios'} · {pad2(audios.length)}
-            </div>
+            {voiceCompare && <VoiceCompare t={t} vc={voiceCompare} />}
+            {(audios.length > 0 || !voiceCompare) && (
+              <div className="mb-5 flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">
+                <span className="h-1.5 w-1.5 rounded-full bg-brand shadow-[0_0_10px_rgba(0,177,246,0.9)]" /> {t.audios || 'Audios'} · {pad2(audios.length)}
+              </div>
+            )}
             <div className="space-y-3">
               {audios.map((l, i) => {
                 const st = fb(l.id);

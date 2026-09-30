@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox, ChevronsLeft, ChevronsRight, Plug, ChefHat } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox, ChevronsLeft, ChevronsRight, Plug, ChefHat, Mic, AudioLines, UploadCloud, Play, Pause, Wand2 } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import StatusDot from '@/components/StatusDot';
 import PortalHeader from '@/components/PortalHeader';
@@ -50,6 +50,15 @@ const lastDelivLabel = (iso) => {
   return new Date(iso).toLocaleDateString('es-US', { day: 'numeric', month: 'short' });
 };
 
+// Edge function `voice` (ElevenLabs): voz fija por modelo. Mismo patrón que
+// callFn de /kitchen → siempre devuelve { ok, ... } o { ok:false, error, ...flags }.
+async function callVoice(action, extra) {
+  const { data, error } = await getSupabase().functions.invoke('voice', { body: { action, ...(extra || {}) } });
+  let out = data;
+  if (error && !out) { try { out = await error.context.json(); } catch { out = { error: error.message }; } }
+  return out || {};
+}
+
 
 // Dynamic staff functions — assigned one by one to internal team members.
 // Only the admin has all functions implicitly. There is NO "servicio al
@@ -93,11 +102,17 @@ export default function AdminPage() {
   const [mobNav, setMobNav] = useState(false);  // móvil: menú de secciones desplegable abierto
   const [propCounts, setPropCounts] = useState({ backlog: 0 }); // backlog de propuestas (lo reporta AdminPropuestas)
   // Permite abrir /admin directo en una pestaña por URL (?tab=propuestas, etc.).
+  // + la cartilla de una creadora en una pestaña suya: ?tab=registros&creator=<id>&ctab=voz ('creadoras' = alias de 'registros').
+  const deepCreatorRef = useRef(null); // { id, ctab } — se abre cuando cargan los perfiles
   useEffect(() => {
     try {
-      const q = new URLSearchParams(window.location.search).get('tab');
+      const sp = new URLSearchParams(window.location.search);
+      let q = sp.get('tab');
+      if (q === 'creadoras') q = 'registros';
       const valid = ['registros', 'metricas', 'reacciones', 'verificaciones', 'equipo', 'agencias', 'actividad', 'propuestas', 'peticiones'];
       if (q && valid.includes(q)) setTab(q);
+      const c = sp.get('creator');
+      if (c) deepCreatorRef.current = { id: c, ctab: sp.get('ctab') || null };
     } catch {}
   }, []);
   const [profiles, setProfiles] = useState([]);
@@ -111,6 +126,7 @@ export default function AdminPage() {
   const pickRole = (role) => { setNu((v) => ({ ...v, role })); setNuCaps(ROLE_CAPS[role] || []); };
   const [createdCreds, setCreatedCreds] = useState(null); // { email, password } para mostrar tras crear
   const [selCreator, setSelCreator] = useState(null); // creator id whose profile drawer is open
+  const [selCreatorTab, setSelCreatorTab] = useState(null); // pestaña con la que abre la cartilla (deep link ?ctab=)
   const [selStaff, setSelStaff] = useState(null);      // team member id whose profile drawer is open
   const [agencyLinks, setAgencyLinks] = useState([]); // agency_creators rows
   const [agencyMembers, setAgencyMembers] = useState([]); // agency_members rows (empleados de cada agencia)
@@ -173,7 +189,7 @@ export default function AdminPage() {
     const supabase = getSupabase();
     setLoading(true);
     const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: auditRows }, { data: lastDeliv }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test, delivery_cadence, manager_emails').order('role'),
+      supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test, delivery_cadence, manager_emails, consent_voice').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
       supabase.from('agency_creators').select('agency_id, creator_id'),
@@ -241,6 +257,22 @@ export default function AdminPage() {
       load();
     })();
   }, [router, load]);
+
+  // Deep link ?creator=<id>&ctab=voz: cuando ya cargaron los perfiles se abre SU cartilla en esa pestaña
+  // (una sola vez) y se limpian esos parámetros de la URL, así recargar no la vuelve a abrir.
+  useEffect(() => {
+    const d = deepCreatorRef.current;
+    if (!d || loading) return;
+    deepCreatorRef.current = null;
+    if (profiles.some((p) => p.id === d.id && p.role === 'creator')) { setSelCreatorTab(d.ctab); setSelCreator(d.id); }
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      sp.delete('creator'); sp.delete('ctab');
+      const qs = sp.toString();
+      // null (no history.state): así Next sincroniza su router con la URL nueva (con __NA la trata como interna y la ignora).
+      window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+    } catch {}
+  }, [loading, profiles]);
 
   function flash(msg) { setToast(msg); setTimeout(() => setToast(''), 2500); }
 
@@ -1434,12 +1466,13 @@ export default function AdminPage() {
       {selCreator && (
         <CreatorProfile
           creator={profiles.find((p) => p.id === selCreator)}
-          onClose={() => setSelCreator(null)}
+          initialTab={selCreatorTab}
+          onClose={() => { setSelCreator(null); setSelCreatorTab(null); }}
           onReview={reviewKyc}
           savingId={savingId}
           flash={flash}
           onSaved={load}
-          onDeleted={() => { setSelCreator(null); load(); }}
+          onDeleted={() => { setSelCreator(null); setSelCreatorTab(null); load(); }}
           canSetCadence={me?.role === 'admin' || isOwnerAccount(me)}
         />
       )}
@@ -2393,7 +2426,8 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
   );
 }
 
-function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, onDeleted, canSetCadence = false }) {
+const CREATOR_TABS = ['entregable', 'datos', 'identidad', 'suscripcion', 'clon', 'voz', 'propuesta'];
+function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingId, flash, onSaved, onDeleted, canSetCadence = false }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
   const [kycZoom, setKycZoom] = useState(null); // { url, label } — foto de ID ampliada (visor con cerrar)
   useEffect(() => {
@@ -2409,7 +2443,8 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);       // editar datos personales
   const [form, setForm] = useState(null);              // borrador de datos al editar
-  const [tab, setTab] = useState('datos');             // entregable | datos | identidad | suscripcion | clon | propuesta
+  const [tab, setTab] = useState(() => (CREATOR_TABS.includes(initialTab) ? initialTab : 'datos')); // entregable | datos | identidad | suscripcion | clon | voz | propuesta
+  const [hasVoice, setHasVoice] = useState(null);      // la pestaña Voz avisa si la modelo ya tiene voz (dot de la pestaña)
   const [cadDraft, setCadDraft] = useState(creator?.delivery_cadence || null); // borrador del entregable (elegir → Guardar)
   // Managers de la creadora (copia de propuestas) — se autocompletan en el wizard.
   const normMgrs = (arr) => Array.isArray(arr) ? arr.filter((m) => m?.email).map((m) => ({ email: String(m.email).toLowerCase(), role: m.role === 'decide' ? 'decide' : 'viewer' })) : [];
@@ -2586,6 +2621,7 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
             { id: 'identidad', label: 'Identidad', icon: IdCard, state: idApproved ? 'ok' : idRejected ? 'bad' : idPending ? 'warn' : 'todo' },
             { id: 'suscripcion', label: 'Suscripción', icon: CreditCard, state: paid ? 'ok' : 'todo' },
             { id: 'clon', label: 'Clon', icon: Sparkles, state: lc >= LORA_MIN ? 'ok' : 'todo' },
+            { id: 'voz', label: 'Voz', icon: AudioLines, state: hasVoice ? 'ok' : 'todo' },
             { id: 'propuesta', label: 'Propuesta', icon: Sparkles, state: 'todo' },
           ].map((tb) => (
             <button key={tb.id} onClick={() => setTab(tb.id)}
@@ -2993,6 +3029,11 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
           </Row>
           )}
 
+          {/* ── VOZ ── voz fija de ElevenLabs: elegir de la biblioteca o clonar desde un clip. */}
+          {tab === 'voz' && (
+            <CreatorVoiceTab creator={creator} patch={patch} saving={saving} flash={flash} onVoiceState={setHasVoice} />
+          )}
+
           {tab === 'propuesta' && (
             <ProposalEditor creator={creator} onClose={() => setTab('datos')} flash={flash} />
           )}
@@ -3025,6 +3066,1466 @@ function CreatorProfile({ creator, onClose, onReview, savingId, flash, onSaved, 
         </div>
       </div>
     </div>
+  );
+}
+
+/* ── Voz de la modelo (pestaña «Voz» de la cartilla) — ElevenLabs vía edge `voice` ──
+   Una sola voz FIJA por modelo (mismo voice_id + mismos ajustes → siempre suena igual).
+   Dos caminos: (A) elegir una voz que ya está en la cuenta de ElevenLabs, (B) subir
+   un clip de la creadora y clonarla acá. Clonar (y generar audios) exige consentimiento. */
+const VOICE_CAT = { cloned: 'Clonada', professional: 'Profesional', premade: 'Biblioteca', generated: 'Diseñada' };
+const VOICE_TEST_TEXT = 'Hola amor, qué bueno tenerte por acá… te preparé algo que te va a encantar.';
+// Afinar: la MISMA frase en 3 tomas con 3 ajustes; el elegido queda FIJO para la modelo (todo lo cocinado sale igual).
+const VOICE_PRESETS = [
+  { id: 'estable', label: 'Estable', hint: 'La más parecida y pareja. Bienvenidas y PPV.', settings: { stability: 0.75, similarity_boost: 0.9, style: 0, use_speaker_boost: true, speed: 1 } },
+  { id: 'natural', label: 'Natural', hint: 'Equilibrio entre parecido y emoción.', settings: { stability: 0.5, similarity_boost: 0.8, style: 0, use_speaker_boost: true, speed: 1 } },
+  { id: 'expresiva', label: 'Expresiva', hint: 'Más emoción y juego. Coqueto y explícito.', settings: { stability: 0.3, similarity_boost: 0.75, style: 0.35, use_speaker_boost: true, speed: 1 } },
+];
+const presetLabel = (id) => VOICE_PRESETS.find((p) => p.id === id)?.label || (id ? 'Personalizado' : 'Natural');
+const VOICE_ACCEPT = 'audio/*,.mp3,.wav,.m4a,.ogg,.webm,.flac';
+const VOICE_EXT_RE = /\.(mp3|wav|m4a|ogg|webm|flac)$/i;
+const VOICE_MAX_FILES = 5;
+const VOICE_MAX_MB = 10;
+const VOICE_LANGS = [
+  { id: 'es', flag: '🇪🇸', label: 'ES' }, { id: 'en', flag: '🇺🇸', label: 'EN' }, { id: 'pt', flag: '🇧🇷', label: 'PT' },
+  { id: 'fr', flag: '🇫🇷', label: 'FR' }, { id: 'de', flag: '🇩🇪', label: 'DE' }, { id: 'it', flag: '🇮🇹', label: 'IT' },
+];
+
+// Ajustes en palabras ("estabilidad 0.50 · parecido 0.80 · estilo 0 · velocidad 1.0 · motor ElevenLabs v4").
+function voiceSettingsText(s, motor) {
+  const num = (v, d) => { const n = Number(v ?? d); return Number.isFinite(n) ? n : d; };
+  const style = num(s?.style, 0);
+  return [
+    `estabilidad ${num(s?.stability, 0.5).toFixed(2)}`,
+    `parecido ${num(s?.similarity_boost, 0.8).toFixed(2)}`,
+    `estilo ${style === 0 ? '0' : style.toFixed(2)}`,
+    `velocidad ${num(s?.speed, 1).toFixed(1)}`,
+    motor ? `motor ${motor}` : null,
+  ].filter(Boolean).join(' · ');
+}
+
+/* ── Casting de voz: voces de la biblioteca PÚBLICA de ElevenLabs diciendo las MISMAS frases de la modelo ──
+   Escuchar no agrega nada a la cuenta (cast_take con allow_add:false → no ocupa lugares de voz); cada toma
+   gasta créditos, por eso se genera solo al tocarla y queda guardada. "Elegir" (adopt_shared) recién ahí la
+   agrega a la cuenta y la amarra como la voz fija de la modelo. */
+// Lista sugerida curada: chica joven americana, vibra Florida (en este orden). c = cuántos la usan · p = muestra.
+const CAST_SEEDS = [
+  { voice_id: 'eXpIbVcVbLo8ZJQDlDnl', public_owner_id: 'ed3ea42f4eb1cfab34c8560d6ee55ef69a190a638cc33094a90d7d3f5ef77cda', name: 'Siren - Natural realistic conversational voice', hint: 'Natural y conversacional: casi no se nota que es IA.', cloned_by_count: 119640, preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/workspace/cbfaa74d559547979fa92c07eae49b0f/voices/eXpIbVcVbLo8ZJQDlDnl/nvbKCMRoZnwNqgIhVjJE.mp3' },
+  { voice_id: 'SaqYcK3ZpDKBAImA8AdW', public_owner_id: 'e9a6840c69b79812b77ea81fa11d55aaf80dcf1938fa0137bf7f514f67f75c99', name: 'Jane Doe - Intimate', hint: 'Íntima: joven, cálida, suave.', cloned_by_count: 62483, preview_url: 'https://api.us.elevenlabs.io/v1/voices/SaqYcK3ZpDKBAImA8AdW/previews/audio?payload=eyJ2b2ljZV9zb3VyY2UiOiJjdXN0b20iLCJ3b3Jrc3BhY2VfaWQiOiIzZTM2MTk3MTE5ZTE0MGIzOWZiYmE2MGZkZDRjZTgzZCIsImZpbGVuYW1lIjoiYjdqRUFaZ2k1bmJkak94dlNGNU0ubXAzIiwidGltZXN0YW1wIjoxNzkwNzE1NjAwMDAwMDAwfQ%3D%3D' },
+  { voice_id: 'vCHG6sKIqAbXWNNm5vpY', public_owner_id: '4989e475bffcca847fccb0ffdd45796b3f8612e23ad78051e6e206317ddb451c', name: 'Cindy - casual narrator (South Florida native)', hint: 'Nacida en el sur de Florida, natural.', cloned_by_count: 3296, preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/user/Qae9t2058ERclThfdUOrfukGEfW2/voices/vCHG6sKIqAbXWNNm5vpY/0b41e9cd-ede3-4b1c-b6ef-e73008b82860.mp3' },
+  { voice_id: 'uYXf8XasLslADfZ2MB4u', public_owner_id: '7d272ea0221fbc9ce382a3eaf4d7f907179558360d93b351ec7d344d30023cf9', name: 'Hope - Bubbly, Gossipy and Girly', hint: 'Chismosa y girly, con risitas y pausas.', cloned_by_count: 261447, preview_url: 'https://api.us.elevenlabs.io/v1/voices/uYXf8XasLslADfZ2MB4u/previews/audio?payload=eyJ2b2ljZV9zb3VyY2UiOiJjdXN0b20iLCJ1c2VyX2lkIjoic0Q5MkhuTUhTOVdaTFhLTlRLeG1uQzhYbUozMiIsImZpbGVuYW1lIjoiTTBVVGZORmlnSW5oejhMTWI0REEubXAzIiwidGltZXN0YW1wIjoxNzkwNzE1NjAwMDAwMDAwfQ%3D%3D' },
+  { voice_id: 'WAhoMTNdLdMoq1j3wf3I', public_owner_id: '7d272ea0221fbc9ce382a3eaf4d7f907179558360d93b351ec7d344d30023cf9', name: 'Hope - Smooth, Engaging and Kind', hint: 'Suave, sensual y romántica.', cloned_by_count: 119346, preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/user/sD92HnMHS9WZLXKNTKxmnC8XmJ32/voices/WAhoMTNdLdMoq1j3wf3I/OdHq2JoogTP6B2rbqeKz.mp3' },
+  { voice_id: '8DzKSPdgEQPaK5vKG0Rs', public_owner_id: '08504f2f7adf4206260a2166458936bacc9385957f11cb0d69e6879efdec2349', name: 'Vanessa - Beach Girl', hint: 'Chica de playa, tierna, para redes.', cloned_by_count: 151469, preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/user/pJj966DxwEg3jXdcUkoTbMzkPsL2/voices/8DzKSPdgEQPaK5vKG0Rs/AeRt8yvbNanY84fSNvRc.mp3' },
+  { voice_id: 'tQ4MEZFJOzsahSEEZtHK', public_owner_id: '76fb06688ef565775843b4efa41dd61de204a6cf28aa7ba86536140378d39188', name: 'Ivanna - Seductive & Intimate', hint: 'Seductora e íntima, suave y susurrada.', cloned_by_count: 140979, preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/user/PbKq2iR4OIeherAWi2xD3ELKlfe2/voices/tQ4MEZFJOzsahSEEZtHK/62iX5gJdopY8r63K3CJf.mp3' },
+  { voice_id: 'LEnmbrrxYsUYS7vsRRwD', public_owner_id: 'ca80533a28d1629da32b38131eb3d90e286a17a56ee77c165d5bc207f6b2b15e', name: 'Jessica - Intimate and Sensual', hint: 'Sensual, para notas de voz coquetas.', cloned_by_count: 46137, preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/user/J4h991GHbFgiqH3MWFYXECli4hB3/voices/LEnmbrrxYsUYS7vsRRwD/XbuzjwjKc5rprnRx5Tgm.mp3' },
+  { voice_id: 'T7eLpgAAhoXHlrNajG8v', public_owner_id: 'adfd156ac1d89b744a90f5b9ab3077791e58db5e9ae768c9f9c800419abd3603', name: 'Gracie Valley - Seductive and Sassy', hint: 'Seductora y atrevida, vibra influencer.', cloned_by_count: 27789, preview_url: 'https://api.us.elevenlabs.io/v1/voices/T7eLpgAAhoXHlrNajG8v/previews/audio?payload=eyJ2b2ljZV9zb3VyY2UiOiJjdXN0b20iLCJ3b3Jrc3BhY2VfaWQiOiJmZjlkZTQxNTcyNzI0MWZjYWQ5ODg5OThlYmUzYzhiYyIsImZpbGVuYW1lIjoiNXlFT0dBMUUzZEpMQUg5V3l6dXcubXAzIiwidGltZXN0YW1wIjoxNzkwNzE1NjAwMDAwMDAwfQ%3D%3D' },
+  { voice_id: 'j7KV53NgP8U4LRS2k2Gs', public_owner_id: '8a95c14eec614c8dc201a67dc1d0a23cf6069820822686d3c635a48998c26fa4', name: 'Violet - Soft, Wistful and Inviting', hint: 'Como nota de voz de tu novia: cariñosa, tranquila.', cloned_by_count: 4870, preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/workspace/d0423bdda7b04bc980634b5e65468313/voices/j7KV53NgP8U4LRS2k2Gs/fA0kn7assrx8Wpt6ewCH.mp3' },
+  { voice_id: 'JDPatEvlpEV4gU041hTM', public_owner_id: '929391613c398e947bb220fb41d979047751cefe4df2ac88ae0691ec04ccce8c', name: 'Sydney - Sultry, Breathy and Reassuring', hint: 'Sensual, ronquita, cariñosa.', cloned_by_count: 3576, preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/user/1OyFVG41A4VxpjESQpCiJFRjRaA3/voices/JDPatEvlpEV4gU041hTM/ZEnw6L5qW8zOVsrpTDwT.mp3' },
+  { voice_id: '6j8uSqQkZH2WrWDVIiRB', public_owner_id: 'a5796f27eece6423cb3320da07463d46aca66520892267b0e136cdc27f7e8700', name: 'Luna - Late Night Sweetheart', hint: 'Novia de noche: susurrada, dulce.', cloned_by_count: 8420, preview_url: 'https://storage.googleapis.com/eleven-public-prod/database/user/7geQkDeuy2aS1bPpYMr1vc5pDy23/voices/6j8uSqQkZH2WrWDVIiRB/Hxmv3ggvnbjDEEp8wrKs.mp3' },
+];
+// Datos frescos de la biblioteca (acento, edad, idiomas, muestra) por voice_id — se piden una vez por sesión.
+const castSeedMeta = new Map();
+// Tomas de casting ya pagadas (castKey → url): sobreviven al cambiar de pestaña o cerrar la cartilla.
+const castTakeCache = new Map();
+// Estimado ANTES de la primera toma: medido ~10 créditos por frase de ~85 caracteres con v4 (después se usa lo real).
+const CAST_CREDITS_PER_CHAR = 0.12;
+const CAST_MAX = 300; // tope de cast_take por frase
+const CAST_NATURAL = { preset: 'natural', ...VOICE_PRESETS.find((p) => p.id === 'natural').settings };
+// Filtros de la búsqueda (valores tal cual los usa la biblioteca de ElevenLabs).
+const CAST_GENDERS = [{ id: 'female', label: 'Mujer' }, { id: 'male', label: 'Hombre' }, { id: '', label: 'Cualquier género' }];
+const CAST_ACCENTS = [
+  { id: '', label: 'Cualquier acento' }, { id: 'american', label: 'Americano' }, { id: 'latin american', label: 'Latino' },
+  { id: 'peninsular', label: 'Español (España)' }, { id: 'british', label: 'Británico' }, { id: 'australian', label: 'Australiano' },
+];
+const CAST_AGES = [{ id: '', label: 'Cualquier edad' }, { id: 'young', label: 'Joven' }, { id: 'middle_aged', label: 'Media' }];
+const CAST_LANG_NAMES = { es: 'Español', en: 'Inglés', pt: 'Portugués', fr: 'Francés', de: 'Alemán', it: 'Italiano' };
+const CAST_ACCENT_LABEL = { american: 'Americano', 'latin american': 'Latino', peninsular: 'España', british: 'Británico', australian: 'Australiano', canadian: 'Canadiense', irish: 'Irlandés', standard: 'Estándar' };
+const CAST_AGE_LABEL = { young: 'Joven', middle_aged: 'Media', 'middle-aged': 'Media', old: 'Mayor' };
+const castShort = (name) => String(name || '').split(' - ')[0].trim() || 'Voz';
+const castDesc = (name) => { const s = String(name || ''); const i = s.indexOf(' - '); return i >= 0 ? s.slice(i + 3).trim() : ''; };
+// La edge borra los saltos de línea (pegaría palabras): se normalizan a espacios antes de pedir/guardar la toma.
+const castText = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+const castKey = (vid, l) => `${vid}|${l.lang}|${castText(l.text)}`;
+function castPop(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x) || x <= 0) return '';
+  if (x >= 1e6) return `${(x / 1e6).toLocaleString('es', { maximumFractionDigits: 1 })} M la usan`;
+  if (x >= 1000) return `${Math.round(x / 1000).toLocaleString('es')} mil la usan`;
+  return x === 1 ? '1 la usa' : `${x} la usan`;
+}
+// Idiomas que maneja la voz (su idioma + los verificados), solo los que la plataforma usa.
+function castLangsOf(v) {
+  const ids = new Set();
+  if (v?.language) ids.add(String(v.language).slice(0, 2));
+  for (const l of (Array.isArray(v?.verified_languages) ? v.verified_languages : [])) if (l?.language) ids.add(String(l.language).slice(0, 2));
+  return VOICE_LANGS.filter((l) => ids.has(l.id));
+}
+// Frases de prueba en SU voz (las mismas para todas las candidatas → se comparan parejo).
+function castLinesFor(n) {
+  return [
+    { id: 'l1', lang: 'en', text: `Hey babe, it's ${n || 'me'}… I just got back from the beach, and I made something really special for you.` },
+    { id: 'l2', lang: 'en', text: "Mmm… I've been thinking about you all day. Don't make me wait too long, okay?" },
+    { id: 'l3', lang: 'es', text: `Hola amor, soy ${n || 'yo'}… te preparé algo muy especial. ¿Lo quieres ver?` },
+  ];
+}
+// Corre fn sobre items con n en paralelo como máximo; stop() corta la cola (lo que está en curso termina).
+async function runPool(items, n, fn, stop) {
+  let i = 0;
+  const worker = async () => {
+    while (i < items.length && !(stop && stop())) {
+      const it = items[i++];
+      try { await fn(it); } catch { /* cada tarea maneja su error */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, worker));
+}
+
+// Voz REAL para el comparativo de la propuesta (real vs IA). El clip se pasa en el navegador a un
+// WAV mono 16-bit NUEVO (≤30 s) antes de subirlo: nada del archivo original (metadatos del teléfono/app) sobrevive.
+const REAL_ACCEPT = 'audio/*,.mp3,.wav,.m4a,.ogg,.webm,.flac,.aac';
+const REAL_EXT_RE = /\.(mp3|wav|m4a|ogg|webm|flac|aac)$/i;
+const REAL_MAX_MB = 20;
+const REAL_MAX_SEC = 30;
+const realChip = (on) => `inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+  on ? 'border-transparent bg-brand text-on-accent' : 'border-line text-paper-mute hover:border-hair hover:text-paper'}`;
+
+async function cleanRealClip(file) {
+  const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
+  if (!AC) throw new Error('Este navegador no puede procesar audio. Probá con Chrome o Safari actualizados.');
+  const ctx = new AC();
+  try {
+    let buf;
+    try {
+      const ab = await file.arrayBuffer();
+      // Safari viejo solo tiene la versión con callbacks de decodeAudioData.
+      buf = await new Promise((res, rej) => {
+        const p = ctx.decodeAudioData(ab, res, rej);
+        if (p && typeof p.then === 'function') p.then(res, rej);
+      });
+    } catch { throw new Error('No pude leer ese audio'); }
+    if (!buf) throw new Error('No pude leer ese audio');
+    const sr = buf.sampleRate;
+    const len = Math.min(buf.length, Math.floor(sr * REAL_MAX_SEC));
+    if (len < sr * 0.5) throw new Error('Ese audio es demasiado corto: subí un saludo de 5 a 20 segundos.');
+    const chans = [];
+    for (let c = 0; c < buf.numberOfChannels; c++) chans.push(buf.getChannelData(c));
+    const n = chans.length || 1;
+    // WAV PCM 16-bit mono: cabecera RIFF estándar de 44 bytes + muestras int16 little-endian.
+    const out = new ArrayBuffer(44 + len * 2);
+    const dv = new DataView(out);
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+    str(0, 'RIFF'); dv.setUint32(4, 36 + len * 2, true); str(8, 'WAVE');
+    str(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    str(36, 'data'); dv.setUint32(40, len * 2, true);
+    for (let i = 0; i < len; i++) {
+      let s = 0;
+      for (let c = 0; c < chans.length; c++) s += chans[c][i];
+      s = Math.max(-1, Math.min(1, s / n));
+      dv.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return { blob: new Blob([out], { type: 'audio/wav' }), trimmed: buf.length > len };
+  } finally {
+    try { await ctx.close(); } catch { /* noop */ }
+  }
+}
+
+// Respuesta de error del function → { msg, needsKey } listo para mostrar.
+function voiceErr(out, fallback = 'Algo salió mal. Probá de nuevo.') {
+  if (out?.needsKey) return { msg: 'Falta conectar ElevenLabs: pegá la clave en Conexión.', needsKey: true };
+  if (out?.needsConsent) return { msg: 'Falta el consentimiento de la creadora: marcalo arriba para poder clonar y generar audios.' };
+  if (out?.needsVoice) return { msg: out?.error || 'Esta modelo todavía no tiene voz: elegí una de tus voces o cloná desde un clip.' };
+  return { msg: out?.error || fallback };
+}
+
+function VoiceErr({ e, className = '' }) {
+  if (!e) return null;
+  return (
+    <div className={`flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/[0.06] px-3 py-2 text-[11px] leading-relaxed text-rose-300 ${className}`}>
+      <AlertTriangle size={13} className="mt-px shrink-0" />
+      <span className="min-w-0 flex-1">
+        {e.msg}
+        {e.needsKey && <Link href="/conexion" className="ml-1 font-semibold text-paper underline underline-offset-2">Ir a Conexión</Link>}
+      </span>
+    </div>
+  );
+}
+
+function CreatorVoiceTab({ creator, patch, saving, flash, onVoiceState }) {
+  const cid = creator.id;
+  const aliveRef = useRef(true);
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
+
+  const [status, setStatus] = useState(null);        // respuesta de 'status' (null = cargando)
+  const [loaded, setLoaded] = useState(false);       // ya llegó el 'summary'
+  const [voice, setVoice] = useState(null);          // voz vinculada a esta modelo | null
+  const [sumConsent, setSumConsent] = useState(undefined);
+  const [topErr, setTopErr] = useState(null);
+
+  // Consentimiento: la fuente es profiles.consent_voice (se refresca vía patch → onSaved → load).
+  // El override local muestra el valor nuevo apenas se guarda, sin esperar la recarga.
+  const [consentOverride, setConsentOverride] = useState(null);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [consentErr, setConsentErr] = useState(null);
+  const pendingConsentRef = useRef(null); // valor que se acaba de escribir, a confirmar con la recarga
+  // Cada recarga (load() arma objetos nuevos) trae el valor REAL de la base: se descarta el override
+  // aunque el valor no haya cambiado. Si el guardado no se aplicó (p. ej. 0 filas por permisos), se avisa.
+  useEffect(() => {
+    setConsentOverride(null);
+    const pending = pendingConsentRef.current;
+    pendingConsentRef.current = null;
+    if (pending != null && typeof creator.consent_voice === 'boolean' && creator.consent_voice !== pending) {
+      setConsentErr({ msg: 'El consentimiento no se guardó: tu rol no tiene permiso para editar la ficha de la creadora. Pedíselo a un admin.' });
+    }
+  }, [creator]);
+  const consent = consentOverride ?? (typeof creator.consent_voice === 'boolean' ? creator.consent_voice : !!sumConsent);
+
+  // Probar / quitar la voz actual
+  const [testing, setTesting] = useState(false);
+  const [testUrl, setTestUrl] = useState('');
+  const [testErr, setTestErr] = useState(null);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearErr, setClearErr] = useState(null);
+
+  // (A) voces de la cuenta de ElevenLabs
+  const [libVoices, setLibVoices] = useState(null);  // null = todavía no se pidieron
+  const [libBusy, setLibBusy] = useState(false);
+  const [libErr, setLibErr] = useState(null);
+  const [libQ, setLibQ] = useState('');
+  const [assigning, setAssigning] = useState(null);  // voice_id en curso
+  const playerRef = useRef(null);
+  const playingRef = useRef(null);
+  const [playingId, setPlayingId] = useState(null);
+
+  // (B) clonar desde un clip
+  const fileRef = useRef(null);
+  const [files, setFiles] = useState([]);
+  const [fileErrs, setFileErrs] = useState([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [cloning, setCloning] = useState(false);
+  const [cloneErr, setCloneErr] = useState(null);
+
+  // Afinar la voz (3 tomas → elegir → queda fijo)
+  const [tuneText, setTuneText] = useState(VOICE_TEST_TEXT);
+  const [tuneTakes, setTuneTakes] = useState(null); // [{ ...preset, url, err }]
+  const [tuneBusy, setTuneBusy] = useState(false);
+  const [tuneSaving, setTuneSaving] = useState(null); // preset id en curso
+  const [tuneErr, setTuneErr] = useState(null);
+  const [tuneLang, setTuneLang] = useState('es');    // idioma de las 3 tomas (la frase de prueba puede ser en inglés)
+  const tuneRef = useRef(null);                      // caja "Afinar la voz" (el casting salta acá después de elegir)
+  const pendingTuneRef = useRef(null);               // { text, lang }: afinar apenas aparezca la voz recién elegida
+  const [tuneFresh, setTuneFresh] = useState('');    // nombre de la voz recién elegida en el casting (aviso en Afinar)
+
+  // Voz real para el comparativo (voice.real_url / real_source / real_text vienen del summary)
+  const realFileRef = useRef(null);
+  const [realBusy, setRealBusy] = useState(null);    // 'upload' | 'voice' | 'clear' | null
+  const [realErr, setRealErr] = useState(null);
+  const [realNote, setRealNote] = useState('');      // "Se recortó a 30 s"
+  const [realLang, setRealLang] = useState('es');
+  const [realChange, setRealChange] = useState(false); // ya tiene voz real y se abrió "Cambiar"
+  const [realClearOpen, setRealClearOpen] = useState(false);
+
+  // Casting de voz (biblioteca pública de ElevenLabs): sin voz se muestra abierto; con voz, detrás de un botón.
+  const [castOpen, setCastOpen] = useState(false);
+  const [castLines, setCastLines] = useState(() => castLinesFor((creator.stage_name || creator.full_name || '').trim().split(/\s+/)[0] || ''));
+  // castKey → { status: 'busy'|'ok'|'err', url, err }; arranca con las tomas ya pagadas en esta sesión.
+  const [castTakes, setCastTakes] = useState(() => Object.fromEntries([...castTakeCache].map(([k, url]) => [k, { status: 'ok', url }])));
+  const castTakesRef = useRef(castTakes);            // espejo sincrónico (la cola no pide dos veces la misma toma)
+  const castLinesRef = useRef(null);                 // frases y lista ACTUALES (la cola salta lo que ya no está en pantalla)
+  const castListRef = useRef(null);
+  const castSearchSeqRef = useRef(0);                // descarta búsquedas viejas (volver a la lista sugerida / buscar otra vez)
+  const tuneSeqRef = useRef(0);                      // descarta un "Afinar" viejo si la voz cambió mientras generaba
+  const rootRef = useRef(null);                      // pestaña entera: para pausar los <audio> nativos
+  const [castSeedInfo, setCastSeedInfo] = useState(() => Object.fromEntries(castSeedMeta));
+  const castHydratingRef = useRef(false);
+  const [castResults, setCastResults] = useState(null); // null = lista sugerida · [] = resultados de la búsqueda
+  const [castQ, setCastQ] = useState('');
+  const [castGender, setCastGender] = useState('female');
+  const [castAccent, setCastAccent] = useState('');
+  const [castAge, setCastAge] = useState('');
+  const [castLangF, setCastLangF] = useState('');
+  const [castSearching, setCastSearching] = useState(false);
+  const [castSearchErr, setCastSearchErr] = useState(null);
+  const [castHasMore, setCastHasMore] = useState(false);
+  const [castPage, setCastPage] = useState(0);
+  const castParamsRef = useRef(null);                // filtros de la última búsqueda (para "Ver más")
+  const [castAllBusy, setCastAllBusy] = useState(false);
+  const castStopRef = useRef(false);
+  const castWantRef = useRef(null);                  // la última toma que se pidió escuchar (suena al estar lista)
+  const [castPick, setCastPick] = useState(null);    // voice_id con la confirmación abierta
+  const [castAdopting, setCastAdopting] = useState(null);
+  const [castAdopted, setCastAdopted] = useState(null); // { from: voice_id de la biblioteca, to: voice_id que quedó amarrado }
+  const [castErrs, setCastErrs] = useState({});      // voice_id → { msg }
+  const [castSpent, setCastSpent] = useState({ takes: 0, credits: 0, chars: 0 });
+
+  const loadSummary = useCallback(async () => {
+    const out = await callVoice('summary');
+    if (!aliveRef.current) return;
+    setLoaded(true);
+    if (!out.ok) {
+      // Sin clave lo avisa el cartel de "Falta conectar ElevenLabs"; el resto se muestra.
+      if (!out.needsKey) setTopErr(voiceErr(out, 'No se pudo cargar la voz de la modelo.'));
+      return;
+    }
+    setTopErr(null);
+    setVoice((out.voices || []).find((v) => v.creator_id === cid) || null);
+    setSumConsent(out.consent ? out.consent[cid] : undefined);
+  }, [cid]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [st] = await Promise.all([callVoice('status'), loadSummary()]);
+      if (!alive || !aliveRef.current) return;
+      setStatus(st);
+      if (!st.ok && !st.needsKey) setTopErr((e) => e || voiceErr(st, 'No se pudo consultar ElevenLabs.'));
+    })();
+    return () => { alive = false; };
+  }, [loadSummary]);
+
+  // Avisa a la cartilla si ya tiene voz (dot de la pestaña).
+  useEffect(() => { if (loaded && onVoiceState) onVoiceState(!!voice); }, [loaded, voice, onVoiceState]);
+  // Cortar la muestra que esté sonando al salir de la pestaña.
+  useEffect(() => () => { try { playerRef.current?.pause(); } catch { /* noop */ } }, []);
+
+  const configured = status == null ? null : status.ok ? !!status.configured : status.needsKey ? false : null;
+  const first = (creator.stage_name || creator.full_name || '').trim().split(/\s+/)[0] || 'la modelo';
+  const fmtMB = (b) => `${(b / (1024 * 1024)).toFixed(1)} MB`;
+
+  async function toggleConsent() {
+    if (consentBusy || saving) return;
+    const next = !consent;
+    setConsentBusy(true); setConsentErr(null);
+    const ok = await patch({ consent_voice: next }, 'Consentimiento de voz actualizado');
+    if (!aliveRef.current) return;
+    setConsentBusy(false);
+    if (ok) { pendingConsentRef.current = next; setConsentOverride(next); setSumConsent(next); if (next) setCloneErr(null); }
+  }
+
+  async function testVoice() {
+    setTesting(true); setTestErr(null); setTestUrl('');
+    const out = await callVoice('preview_voice', { creator_id: cid, text: VOICE_TEST_TEXT });
+    if (!aliveRef.current) return;
+    setTesting(false);
+    if (!out.ok || !out.url) { setTestErr(out.ok ? { msg: 'No llegó el audio de prueba. Probá de nuevo.' } : voiceErr(out, 'No se pudo generar la prueba.')); return; }
+    setTestUrl(out.url);
+  }
+
+  async function doClear() {
+    setClearing(true); setClearErr(null);
+    const out = await callVoice('clear_voice', { creator_id: cid });
+    if (!aliveRef.current) return;
+    setClearing(false);
+    if (!out.ok) { setClearErr(voiceErr(out, 'No se pudo quitar la voz.')); return; }
+    setClearOpen(false); setVoice(null); setTestUrl(''); setTestErr(null);
+    tuneSeqRef.current++; setTuneBusy(false); setTuneTakes(null); setTuneFresh(''); pendingTuneRef.current = null;
+    flash && flash('Voz quitada');
+    loadSummary();
+  }
+
+  async function loadLibrary() {
+    setLibBusy(true); setLibErr(null);
+    const out = await callVoice('list_voices');
+    if (!aliveRef.current) return;
+    setLibBusy(false);
+    if (!out.ok) { setLibErr(voiceErr(out, 'No se pudieron traer tus voces.')); return; }
+    setLibVoices(Array.isArray(out.voices) ? out.voices : []);
+  }
+
+  async function assign(v) {
+    if (assigning) return;
+    setAssigning(v.voice_id); setLibErr(null);
+    const out = await callVoice('assign_voice', { creator_id: cid, voice_id: v.voice_id });
+    if (!aliveRef.current) return;
+    setAssigning(null);
+    if (!out.ok) { setLibErr(voiceErr(out, 'No se pudo asignar la voz.')); return; }
+    if (out.voice) setVoice(out.voice);
+    setTestUrl(''); setTestErr(null); setClearOpen(false); setTuneTakes(null); setTuneErr(null);
+    tuneSeqRef.current++; setTuneBusy(false); setTuneFresh(''); pendingTuneRef.current = null;
+    flash && flash(`Voz asignada: ${out.voice?.voice_name || v.name || 'listo'}`);
+    loadSummary();
+  }
+
+  // Las 3 tomas salen en paralelo (misma frase, 3 ajustes). Cada una trae su propio error si falla.
+  // opts { text, lang, force } → el casting la dispara con la frase de la voz recién elegida (sin esperar al estado);
+  // force = aunque haya un Afinar viejo en curso (ese queda descartado por tuneSeqRef).
+  async function tune(opts) {
+    const text = String(opts?.text ?? tuneText).trim();
+    const lang = opts?.lang || tuneLang;
+    if (!text || (tuneBusy && !opts?.force)) return;
+    const seq = ++tuneSeqRef.current;
+    setTuneBusy(true); setTuneErr(null); setTuneTakes(null);
+    const outs = await Promise.all(VOICE_PRESETS.map((p) => callVoice('preview_voice', { creator_id: cid, text, lang, settings: p.settings })));
+    if (!aliveRef.current || seq !== tuneSeqRef.current) return;
+    setTuneBusy(false);
+    const takes = VOICE_PRESETS.map((p, i) => ({ ...p, url: outs[i]?.ok ? outs[i].url : '', err: outs[i]?.ok ? '' : voiceErr(outs[i] || {}, 'No salió esta toma.').msg }));
+    if (takes.every((t) => !t.url)) { setTuneErr({ msg: takes[0].err || 'No salió ninguna toma. Probá de nuevo.' }); return; }
+    setTuneTakes(takes);
+  }
+
+  async function choosePreset(t) {
+    if (tuneSaving) return;
+    setTuneSaving(t.id); setTuneErr(null);
+    const out = await callVoice('set_voice_settings', { creator_id: cid, preset: t.id, settings: t.settings });
+    if (!aliveRef.current) return;
+    setTuneSaving(null);
+    if (!out.ok) { setTuneErr(voiceErr(out, 'No se pudo guardar el ajuste.')); return; }
+    if (out.voice) setVoice(out.voice);
+    setTuneFresh('');
+    flash && flash(`Ajuste fijo: ${t.label} — todo lo de ${first} sale así`);
+  }
+
+  // Un solo reproductor para toda la pestaña: muestras de la cuenta, del casting y sus tomas (suena una a la vez).
+  function ensurePlayer() {
+    let a = playerRef.current;
+    if (!a) {
+      a = new Audio();
+      a.onended = () => { playingRef.current = null; if (aliveRef.current) setPlayingId(null); };
+      playerRef.current = a;
+    }
+    return a;
+  }
+  function stopPlayer() {
+    try { playerRef.current?.pause(); } catch { /* noop */ }
+    playingRef.current = null; castWantRef.current = null;
+    setPlayingId(null);
+  }
+  // Los <audio> con controles de la pestaña (voz actual, prueba, Afinar, voz real) también van de a uno con el reproductor.
+  function pauseNative(except) {
+    try { rootRef.current?.querySelectorAll('audio').forEach((el) => { if (el !== except) el.pause(); }); } catch { /* noop */ }
+  }
+  const onNativePlay = (e) => { stopPlayer(); pauseNative(e.currentTarget); };
+  // pid = id de lo que suena ('cast:<toma>' / 'castprev:<voz>'); volver a tocarlo lo pausa.
+  function playUrl(pid, url, onFail) {
+    const a = ensurePlayer();
+    if (playingRef.current === pid) { a.pause(); playingRef.current = null; castWantRef.current = null; setPlayingId(null); return; }
+    castWantRef.current = pid;
+    pauseNative();
+    a.pause();
+    a.src = url;
+    playingRef.current = pid;
+    setPlayingId(pid);
+    a.play().catch((e) => {
+      if (e?.name === 'AbortError' || playingRef.current !== pid || !aliveRef.current) return;
+      playingRef.current = null; setPlayingId(null);
+      // Safari puede frenar el play() que llega después de generar: la toma queda lista para tocarla.
+      if (e?.name !== 'NotAllowedError' && onFail) onFail();
+    });
+  }
+
+  function togglePlay(v) {
+    if (!v.preview_url) return;
+    const a = ensurePlayer();
+    castWantRef.current = null;
+    if (playingRef.current === v.voice_id) { a.pause(); playingRef.current = null; setPlayingId(null); return; }
+    pauseNative();
+    a.pause();
+    a.src = v.preview_url;
+    playingRef.current = v.voice_id;
+    setPlayingId(v.voice_id);
+    a.play().catch((e) => {
+      if (e?.name === 'AbortError' || playingRef.current !== v.voice_id || !aliveRef.current) return;
+      playingRef.current = null; setPlayingId(null);
+      setLibErr({ msg: 'No se pudo reproducir la muestra de esa voz.' });
+    });
+  }
+
+  // ── Casting ──
+  const setCastLine = (i, p) => setCastLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
+  const setTake = (k, val) => { castTakesRef.current = { ...castTakesRef.current, [k]: val }; setCastTakes(castTakesRef.current); };
+  const setCastErr = (vid, e) => setCastErrs((m) => ({ ...m, [vid]: e }));
+
+  // Toma de casting: se genera SOLO la primera vez que se pide (ajuste Natural, sin agregar la voz a la cuenta)
+  // y queda guardada por voz + idioma + frase. Devuelve la url o null.
+  async function genTake(v, l) {
+    const text = castText(l.text);
+    if (!text) return null;
+    const k = castKey(v.voice_id, l);
+    const cur = castTakesRef.current[k];
+    if (cur?.status === 'busy') return null;
+    if (cur?.status === 'ok') return cur.url;
+    setTake(k, { status: 'busy' });
+    const out = await callVoice('cast_take', {
+      voice_id: v.voice_id, public_owner_id: v.public_owner_id || null, name: v.name || null,
+      text, lang: l.lang, settings: CAST_NATURAL, allow_add: false,
+    });
+    // Ya se pagó: se guarda aunque se haya salido de la pestaña (al volver no se cobra de nuevo).
+    if (out?.ok && out.url) castTakeCache.set(k, out.url);
+    if (!aliveRef.current) return null;
+    if (!out.ok || !out.url) {
+      setTake(k, { status: 'err', err: out.ok ? 'No llegó el audio. Probá de nuevo.' : voiceErr(out, 'No salió esta toma.').msg });
+      return null;
+    }
+    setTake(k, { status: 'ok', url: out.url });
+    setCastSpent((s) => ({ takes: s.takes + 1, credits: s.credits + (Number(out.chars) || text.length), chars: s.chars + text.length }));
+    return out.url;
+  }
+
+  async function playTake(v, l) {
+    const k = castKey(v.voice_id, l);
+    const pid = `cast:${k}`;
+    const onFail = () => { castTakeCache.delete(k); setTake(k, { status: 'err', err: 'No se pudo reproducir esta toma. Tocá para generarla de nuevo.' }); };
+    const t = castTakesRef.current[k];
+    if (t?.status === 'busy') return;
+    if (t?.status === 'ok') { playUrl(pid, t.url, onFail); return; }
+    castWantRef.current = pid; // si mientras se genera se pide otra cosa, esta ya no suena sola
+    const url = await genTake(v, l);
+    if (url && aliveRef.current && castWantRef.current === pid) playUrl(pid, url, onFail);
+  }
+
+  function playCastPreview(v) {
+    if (!v.preview_url) return;
+    playUrl(`castprev:${v.voice_id}`, v.preview_url, () => setCastErr(v.voice_id, { msg: 'No se pudo reproducir la muestra original de esta voz.' }));
+  }
+
+  // Botón explícito: genera las tomas que faltan (o fallaron) de las voces en pantalla, de a 3 a la vez.
+  // Antes de cada toma se mira lo que hay AHORA: si la frase cambió o la voz ya no está en la lista, se salta (no se paga).
+  async function genAllTakes(jobs) {
+    if (castAllBusy || !jobs.length) return;
+    castStopRef.current = false;
+    setCastAllBusy(true);
+    await runPool(jobs, 3, (j) => {
+      const cur = (castLinesRef.current || []).find((x) => x.id === j.l.id);
+      if (!cur || castText(cur.text) !== castText(j.l.text) || cur.lang !== j.l.lang) return null;
+      if (!(castListRef.current || []).some((x) => x.voice_id === j.v.voice_id)) return null;
+      return genTake(j.v, j.l);
+    }, () => castStopRef.current || !aliveRef.current);
+    if (aliveRef.current) setCastAllBusy(false);
+  }
+
+  // Buscar en la biblioteca pública (reemplaza la lista sugerida). page > 0 → "Ver más" con los mismos filtros.
+  async function castSearch(page = 0) {
+    if (castSearching) return;
+    const params = page > 0 && castParamsRef.current ? castParamsRef.current : {
+      ...(castGender ? { gender: castGender } : {}),
+      ...(castAccent ? { accent: castAccent } : {}),
+      ...(castAge ? { age: castAge } : {}),
+      ...(castLangF ? { language: castLangF } : {}),
+      ...(castQ.trim() ? { search: castQ.trim() } : {}),
+    };
+    castParamsRef.current = params;
+    const seq = ++castSearchSeqRef.current;
+    setCastSearching(true); setCastSearchErr(null);
+    const out = await callVoice('search_shared', { ...params, page, page_size: 30 });
+    if (!aliveRef.current || seq !== castSearchSeqRef.current) return;
+    setCastSearching(false);
+    if (!out.ok) { setCastSearchErr(voiceErr(out, 'No se pudo buscar en la biblioteca de ElevenLabs.')); return; }
+    const got = (Array.isArray(out.voices) ? out.voices : []).filter((v) => v?.voice_id);
+    setCastResults((prev) => {
+      if (page > 0 && prev) { const have = new Set(prev.map((v) => v.voice_id)); return [...prev, ...got.filter((v) => !have.has(v.voice_id))]; }
+      return got;
+    });
+    setCastHasMore(!!out.has_more); setCastPage(page);
+    if (page === 0) setCastPick(null);
+  }
+  function castBackToSeeds() {
+    castSearchSeqRef.current++; // una búsqueda que siga en curso ya no pisa la lista sugerida
+    setCastResults(null); setCastSearchErr(null); setCastHasMore(false); setCastPage(0); setCastPick(null); setCastSearching(false);
+    castParamsRef.current = null;
+  }
+
+  // "Elegir esta voz" → confirmar → adopt_shared: se agrega a la cuenta y queda como SU voz fija.
+  // Después se abre "Afinar la voz" con las 3 tomas (estable / natural / expresiva) para fijar el ajuste.
+  async function adoptCast(v) {
+    if (castAdopting) return;
+    setCastAdopting(v.voice_id); setCastErr(v.voice_id, null);
+    const out = await callVoice('adopt_shared', {
+      creator_id: cid, voice_id: v.voice_id, public_owner_id: v.public_owner_id || null,
+      name: v.name || null, preview_url: v.preview_url || null,
+    });
+    if (!aliveRef.current) return;
+    setCastAdopting(null);
+    if (!out.ok) { setCastErr(v.voice_id, voiceErr(out, 'No se pudo elegir esta voz. Probá de nuevo.')); return; }
+    castStopRef.current = true; // el casting se cierra: "Generar todas" deja de gastar
+    stopPlayer();
+    setCastPick(null); setCastAdopted({ from: v.voice_id, to: out.voice?.voice_id || v.voice_id }); setCastOpen(false);
+    // Afinar con la primera frase del casting (en su idioma): así se escuchan los ajustes con lo que va a decir.
+    const l0 = castLines.find((l) => castText(l.text));
+    const text = (l0 ? castText(l0.text) : tuneText.trim()).slice(0, 200);
+    const lang = l0 ? l0.lang : tuneLang;
+    setTuneText(text); setTuneLang(lang);
+    pendingTuneRef.current = { text, lang, force: true };
+    setTuneFresh(castShort(v.name));
+    tuneSeqRef.current++; setTuneBusy(false); // un Afinar de la voz anterior que siga en curso ya no llena la caja
+    if (out.voice) setVoice(out.voice);
+    setTestUrl(''); setTestErr(null); setClearOpen(false); setTuneTakes(null); setTuneErr(null);
+    flash && flash(`Voz elegida: ${castShort(v.name)} — ahora elegí el ajuste`);
+    loadSummary();
+  }
+
+  function addFiles(list) {
+    const incoming = Array.from(list || []);
+    if (!incoming.length) return;
+    const errs = [];
+    const next = [...files];
+    for (const f of incoming) {
+      const isAudio = (f.type || '').startsWith('audio/') || VOICE_EXT_RE.test(f.name || '');
+      if (!isAudio) { errs.push(`${f.name}: no es un archivo de audio (mp3, wav, m4a, ogg, webm o flac).`); continue; }
+      if (f.size > VOICE_MAX_MB * 1024 * 1024) { errs.push(`${f.name}: pesa ${fmtMB(f.size)}, el máximo es ${VOICE_MAX_MB} MB.`); continue; }
+      if (next.some((x) => x.name === f.name && x.size === f.size)) continue;
+      if (next.length >= VOICE_MAX_FILES) { errs.push(`Máximo ${VOICE_MAX_FILES} archivos: ${f.name} quedó afuera.`); continue; }
+      next.push(f);
+    }
+    setFiles(next); setFileErrs(errs); setCloneErr(null);
+  }
+  const removeFile = (i) => { setFiles((s) => s.filter((_, j) => j !== i)); setFileErrs([]); };
+  const pickFiles = () => {
+    if (cloning) return;
+    if (!consent) { setCloneErr(voiceErr({ needsConsent: true })); return; }
+    fileRef.current?.click();
+  };
+
+  async function doClone() {
+    if (!consent) { setCloneErr(voiceErr({ needsConsent: true })); return; }
+    if (!files.length || cloning) return;
+    setCloning(true); setCloneErr(null);
+    const supabase = getSupabase();
+    const paths = [];
+    for (const f of files) {
+      const safeName = (f.name || 'audio').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'audio';
+      const { data, error } = await supabase.storage.from('voice-samples')
+        .upload(`${cid}/${Date.now()}-${safeName}`, f, { contentType: f.type || 'audio/mpeg' });
+      if (!aliveRef.current) return;
+      if (error || !data?.path) { setCloning(false); setCloneErr({ msg: `No se pudo subir ${f.name}: ${error?.message || 'error desconocido'}.` }); return; }
+      paths.push(data.path);
+    }
+    const out = await callVoice('clone_voice', { creator_id: cid, sample_paths: paths, name: creator.stage_name || creator.full_name });
+    if (!aliveRef.current) return;
+    setCloning(false);
+    if (!out.ok) { setCloneErr(voiceErr(out, 'No se pudo clonar la voz.')); return; }
+    setFiles([]); setFileErrs([]);
+    if (out.voice) setVoice(out.voice);
+    setTestUrl(''); setTestErr(null); setClearOpen(false);
+    tuneSeqRef.current++; setTuneBusy(false); setTuneTakes(null); setTuneErr(null); setTuneFresh(''); pendingTuneRef.current = null;
+    flash && flash('Voz clonada');
+    loadSummary();
+  }
+
+  // Sin voz vinculada no hay comparativo: se cierra lo que haya quedado abierto.
+  useEffect(() => { if (!voice) { setRealChange(false); setRealClearOpen(false); setRealErr(null); setRealNote(''); } }, [voice]);
+  const hasReal = !!voice?.real_url;
+
+  // Opción 1: su voz real subida → WAV limpio → proposal-audios/real/{modelo}/{ts}.wav → set_real_voice 'upload'.
+  async function uploadReal(file) {
+    if (!file || realBusy) return;
+    setRealErr(null); setRealNote(''); setRealClearOpen(false);
+    // Sin ElevenLabs conectado el guardado falla → no subimos nada (si no, queda un clip huérfano en el bucket público).
+    if (configured === false) { setRealErr(voiceErr({ needsKey: true })); return; }
+    const isAudio = (file.type || '').startsWith('audio/') || REAL_EXT_RE.test(file.name || '');
+    if (!isAudio) { setRealErr({ msg: `${file.name}: no es un archivo de audio (mp3, wav, m4a, ogg, webm, flac o aac).` }); return; }
+    if (file.size > REAL_MAX_MB * 1024 * 1024) { setRealErr({ msg: `${file.name}: pesa ${fmtMB(file.size)}, el máximo es ${REAL_MAX_MB} MB.` }); return; }
+    setRealBusy('upload');
+    let clip;
+    try { clip = await cleanRealClip(file); } catch (e) {
+      if (!aliveRef.current) return;
+      setRealBusy(null); setRealErr({ msg: e?.message || 'No pude leer ese audio' }); return;
+    }
+    if (!aliveRef.current) return;
+    const sb = getSupabase();
+    const path = `real/${cid}/${Date.now()}.wav`;
+    const { error: upErr } = await sb.storage.from('proposal-audios').upload(path, clip.blob, { contentType: 'audio/wav', upsert: false });
+    if (!aliveRef.current) return;
+    if (upErr) { setRealBusy(null); setRealErr({ msg: `No se pudo subir el clip: ${upErr.message || 'error de subida'}. Probá de nuevo.` }); return; }
+    const url = sb.storage.from('proposal-audios').getPublicUrl(path)?.data?.publicUrl;
+    if (!url) { setRealBusy(null); setRealErr({ msg: 'No se pudo obtener el link del clip. Probá de nuevo.' }); return; }
+    const out = await callVoice('set_real_voice', { creator_id: cid, mode: 'upload', url });
+    if (!aliveRef.current) return;
+    setRealBusy(null);
+    if (!out.ok) {
+      // No se guardó → borramos el clip recién subido para no dejar audios sueltos en el bucket público.
+      sb.storage.from('proposal-audios').remove([path]).catch(() => {});
+      setRealErr(voiceErr(out, 'No se pudo guardar la voz real.')); return;
+    }
+    if (out.voice) setVoice(out.voice);
+    setRealChange(false);
+    setRealNote(clip.trimmed ? `Se recortó a ${REAL_MAX_SEC} s` : '');
+    flash && flash('Voz real guardada');
+  }
+
+  // Opción 2: modelo sin voz real (p. ej. modelo IA) → una toma de su misma voz fija con otra frase.
+  async function makeRealTake() {
+    if (realBusy) return;
+    setRealBusy('voice'); setRealErr(null); setRealNote(''); setRealClearOpen(false);
+    const out = await callVoice('set_real_voice', { creator_id: cid, mode: 'voice', lang: realLang });
+    if (!aliveRef.current) return;
+    setRealBusy(null);
+    if (!out.ok) { setRealErr(voiceErr(out, 'No se pudo generar la toma de su voz.')); return; }
+    if (out.voice) setVoice(out.voice);
+    setRealChange(false);
+    flash && flash('Toma de su voz guardada');
+  }
+
+  async function clearReal() {
+    if (realBusy) return;
+    setRealBusy('clear'); setRealErr(null);
+    const out = await callVoice('clear_real_voice', { creator_id: cid });
+    if (!aliveRef.current) return;
+    setRealBusy(null);
+    if (!out.ok) { setRealErr(voiceErr(out, 'No se pudo quitar la voz real.')); return; }
+    setVoice((v) => out.voice || (v ? { ...v, real_url: null, real_source: null, real_text: null } : v));
+    setRealClearOpen(false); setRealChange(false); setRealNote('');
+    flash && flash('Voz real quitada');
+  }
+
+  const q = libQ.trim().toLowerCase();
+  const libShown = (libVoices || []).filter((v) => !q || [
+    v.name, v.description, v.category, VOICE_CAT[v.category],
+    ...(v.labels && typeof v.labels === 'object' ? Object.values(v.labels) : []),
+  ].some((s) => typeof s === 'string' && s.toLowerCase().includes(q)));
+  const showOptions = status != null && configured !== false;
+
+  // Casting: abierto de entrada si no tiene voz; con voz, solo si se pidió.
+  const castShown = loaded && showOptions && (!voice || castOpen);
+  const castSeedList = CAST_SEEDS.map((s) => {
+    const m = castSeedInfo[s.voice_id];
+    return m ? { ...s, ...m, voice_id: s.voice_id, name: s.name, hint: s.hint, public_owner_id: m.public_owner_id || s.public_owner_id, preview_url: m.preview_url || s.preview_url, cloned_by_count: m.cloned_by_count ?? s.cloned_by_count } : s;
+  });
+  const castList = castResults || castSeedList;
+  castLinesRef.current = castLines; castListRef.current = castList;
+  const castLinesOk = castLines.filter((l) => castText(l.text));
+  const castJobs = [];
+  for (const v of castList) for (const l of castLinesOk) {
+    const t = castTakes[castKey(v.voice_id, l)];
+    if (!t || t.status === 'err') castJobs.push({ v, l });
+  }
+  // Con tomas ya hechas se usa lo que costaron de verdad por carácter; antes, lo medido con v4.
+  const castRatio = castSpent.chars > 0 ? castSpent.credits / castSpent.chars : CAST_CREDITS_PER_CHAR;
+  const castEst = Math.max(1, Math.round(castJobs.reduce((a, j) => a + castText(j.l.text).length, 0) * castRatio));
+  const castPending = castJobs.length + Object.values(castTakes).filter((t) => t?.status === 'busy').length;
+  // Casting cerrado (se eligió voz o se tocó la X) → "Generar todas" corta la cola (lo que está en curso termina).
+  useEffect(() => { if (!castShown) castStopRef.current = true; }, [castShown]);
+
+  // Datos frescos de las voces sugeridas (acento, edad, idiomas, muestra): una vez por sesión, de a 3.
+  useEffect(() => {
+    if (!castShown || castHydratingRef.current) return;
+    const todo = CAST_SEEDS.filter((s) => !castSeedMeta.has(s.voice_id));
+    if (!todo.length) return;
+    castHydratingRef.current = true;
+    (async () => {
+      await runPool(todo, 3, async (s) => {
+        const find = async (params) => {
+          const out = await callVoice('search_shared', params);
+          return out?.ok ? { hit: (out.voices || []).find((v) => v?.voice_id === s.voice_id) || null } : null;
+        };
+        let r = await find({ search: s.name, page_size: 30 });
+        if (r && !r.hit) r = (await find({ search: castShort(s.name), gender: 'female', page_size: 100 })) || r;
+        if (!r) return; // la consulta falló: se reintenta la próxima vez que se abra el casting
+        castSeedMeta.set(s.voice_id, r.hit);
+        if (aliveRef.current && r.hit) setCastSeedInfo((m) => ({ ...m, [s.voice_id]: r.hit }));
+      }, () => !aliveRef.current);
+      castHydratingRef.current = false;
+    })();
+  }, [castShown]);
+
+  // Voz recién elegida en el casting → saltar a "Afinar la voz" y sacar las 3 tomas.
+  useEffect(() => {
+    const p = pendingTuneRef.current;
+    if (!p || !voice) return;
+    pendingTuneRef.current = null;
+    try { tuneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* noop */ }
+    tune(p);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice]);
+
+  const castSel = 'w-full min-w-0 rounded-lg border border-line bg-ink px-2 py-1.5 text-[11px] text-paper outline-none focus:border-brand/60';
+  const castChip = 'inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold text-paper-mute';
+  const castRow = (on) => `flex w-full min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+    on ? 'border-brand/60 bg-brand/10 text-brand' : 'border-line bg-ink-2 text-paper-mute hover:border-hair hover:text-paper'}`;
+
+  return (
+    <section ref={rootRef} className="card3d mb-4 rounded-3xl border border-line bg-card p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="min-w-0 truncate font-display text-base font-bold text-paper">Voz de {first}</h3>
+        {!loaded
+          ? <StatusDot tone="zinc">Cargando…</StatusDot>
+          : <StatusDot tone={voice ? 'ok' : 'warn'}>{voice ? 'Con voz' : 'Sin voz'}</StatusDot>}
+      </div>
+
+      {/* Sin clave de ElevenLabs */}
+      {configured === false && (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3">
+          <Plug size={15} className="mt-0.5 shrink-0 text-amber-300" />
+          <span className="min-w-0 flex-1 text-sm text-paper">
+            Falta conectar ElevenLabs
+            <span className="mt-0.5 block text-[11px] text-paper-mute">Sin la clave no se puede elegir, clonar ni probar la voz.</span>
+          </span>
+          <Link href="/conexion" className="btn3d-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold">
+            <Plug size={12} /> Ir a Conexión
+          </Link>
+        </div>
+      )}
+      <VoiceErr e={topErr} className="mb-4" />
+
+      {/* Consentimiento */}
+      <button
+        type="button"
+        onClick={toggleConsent}
+        disabled={consentBusy || saving}
+        className="flex w-full items-start gap-3 rounded-2xl border border-line bg-ink-2 p-3 text-left transition-colors hover:border-hair disabled:opacity-60"
+      >
+        <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${
+          consent ? 'border-brand bg-brand text-on-accent' : 'border-line bg-ink'}`}>
+          {consentBusy ? <Loader2 size={12} className="animate-spin" /> : consent && <Check size={13} />}
+        </span>
+        <span className="min-w-0 flex-1 text-sm text-paper">
+          La creadora dio consentimiento para clonar y usar su voz
+          <span className="mt-0.5 block text-[11px] text-paper-mute">Obligatorio para clonar y generar audios</span>
+        </span>
+      </button>
+      <VoiceErr e={consentErr} className="mt-2" />
+
+      {/* Voz actual */}
+      {!loaded ? (
+        <div className="mt-4 flex items-center gap-2 rounded-2xl border border-line bg-ink-2 p-4 text-sm text-paper-mute">
+          <Loader2 size={15} className="animate-spin" /> Cargando la voz…
+        </div>
+      ) : voice ? (
+        <div className="mt-4 rounded-2xl border border-line bg-ink-2 p-4">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-hair/10 text-brand">
+              <Mic size={17} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-paper">{voice.voice_name || 'Voz sin nombre'}</div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-paper-mute">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                {voice.source === 'cloned' ? 'Clonada en LetShoot' : 'De tu biblioteca ElevenLabs'}
+              </div>
+            </div>
+          </div>
+          {/* Los settings fijos de la voz, en palabras */}
+          <p className="mt-2 text-[11px] leading-relaxed text-paper-dim">
+            <span className="font-semibold text-paper-mute">Ajuste {presetLabel(voice.settings?.preset)}</span>
+            {' · '}{voiceSettingsText(voice.settings, status?.ok ? status.model_label : null)}
+          </p>
+
+          {voice.preview_url && (
+            // eslint-disable-next-line jsx-a11y/media-has-caption
+            <audio controls preload="none" src={voice.preview_url} onPlay={onNativePlay} className="mt-3 h-9 w-full" />
+          )}
+
+          {testUrl && (
+            <div className="mt-3">
+              <div className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-mute">Prueba</div>
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <audio key={testUrl} controls autoPlay src={testUrl} onPlay={onNativePlay} className="h-9 w-full" />
+            </div>
+          )}
+          <VoiceErr e={testErr} className="mt-3" />
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={testVoice} disabled={testing || configured === false}
+              className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+              {testing ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} {testing ? 'Generando…' : 'Probar voz'}
+            </button>
+            {!clearOpen && (
+              <button type="button" onClick={() => { setClearOpen(true); setClearErr(null); }}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:bg-rose-500/10 hover:text-rose-300">
+                <Trash2 size={12} /> Quitar voz
+              </button>
+            )}
+          </div>
+
+          {clearOpen && (
+            <div className="mt-3 rounded-xl border border-rose-500/25 bg-rose-500/[0.04] p-3">
+              <p className="text-[11px] leading-relaxed text-paper-mute">
+                ¿Quitarle esta voz a {first}? Se desvincula de la modelo; la voz <span className="text-paper">no se borra</span> de ElevenLabs.
+              </p>
+              <VoiceErr e={clearErr} className="mt-2" />
+              <div className="mt-2.5 flex justify-end gap-2">
+                <button type="button" onClick={() => { setClearOpen(false); setClearErr(null); }}
+                  className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper">Cancelar</button>
+                <button type="button" onClick={doClear} disabled={clearing}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">
+                  {clearing ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Sí, quitar voz
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Afinar: misma frase, 3 ajustes → el elegido queda FIJO para todo lo que se cocine. */}
+          <div ref={tuneRef} className={`mt-4 scroll-mt-36 rounded-xl border p-3 ${tuneFresh ? 'border-brand/50 bg-ink' : 'border-line bg-ink'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-paper"><SlidersHorizontal size={13} className="text-brand" /> Afinar la voz</div>
+              <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-semibold text-brand">Ajuste fijo: {presetLabel(voice.settings?.preset)}</span>
+            </div>
+            {tuneFresh && (
+              <p className="mt-2 rounded-lg bg-brand/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-brand">
+                Elegiste {tuneFresh}. Escuchá las 3 tomas y quedate con el ajuste que mejor le quede a {first}.
+              </p>
+            )}
+            <p className="mt-1 text-[11px] leading-relaxed text-paper-mute">
+              La misma frase en 3 tomas. Quedate con la que más suene a {first}: ese ajuste queda fijo y todo lo que se cocine sale igual.
+            </p>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <input value={tuneText} onChange={(e) => setTuneText(e.target.value.slice(0, 200))} placeholder="Frase de prueba (la que más usen)"
+                className="min-w-0 flex-1 basis-[200px] rounded-lg border border-line bg-ink-2 px-3 py-2 text-xs text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              <select value={tuneLang} onChange={(e) => setTuneLang(e.target.value)} disabled={tuneBusy} aria-label="Idioma de las tomas"
+                className="shrink-0 rounded-lg border border-line bg-ink-2 px-2 py-2 text-xs text-paper outline-none focus:border-brand/60 disabled:opacity-50">
+                {VOICE_LANGS.map((l) => <option key={l.id} value={l.id}>{l.flag} {l.label}</option>)}
+              </select>
+              <button type="button" onClick={() => tune()} disabled={tuneBusy || configured === false || !tuneText.trim()}
+                className="btn3d inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold disabled:opacity-50">
+                {tuneBusy ? <Loader2 size={12} className="animate-spin" /> : <SlidersHorizontal size={12} />} {tuneBusy ? 'Generando 3 tomas…' : 'Afinar: 3 tomas'}
+              </button>
+            </div>
+            <VoiceErr e={tuneErr} className="mt-2" />
+            {tuneTakes && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                {tuneTakes.map((t) => {
+                  const inUse = (voice.settings?.preset || 'natural') === t.id;
+                  return (
+                    <div key={t.id} className={`flex flex-col rounded-xl border p-2.5 ${inUse ? 'border-brand/60 bg-brand/5' : 'border-line bg-ink-2'}`}>
+                      <div className="text-xs font-semibold text-paper">{t.label}</div>
+                      <div className="mt-0.5 text-[10px] leading-snug text-paper-mute">{t.hint}</div>
+                      {t.url
+                        // eslint-disable-next-line jsx-a11y/media-has-caption
+                        ? <audio controls preload="auto" src={t.url} onPlay={onNativePlay} className="mt-2 h-8 w-full" />
+                        : <p className="mt-2 text-[11px] text-rose-300">{t.err}</p>}
+                      <button type="button" onClick={() => choosePreset(t)} disabled={!t.url || !!tuneSaving || inUse}
+                        className={`mt-2 inline-flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold ${inUse ? 'bg-emerald-500/15 text-emerald-300' : 'btn3d-ghost disabled:opacity-50'}`}>
+                        {inUse ? <><Check size={12} /> En uso</> : tuneSaving === t.id ? <><Loader2 size={12} className="animate-spin" /> Guardando…</> : 'Usar esta'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <p className="mt-3 text-[11px] text-paper-dim">La voz queda fija: siempre se usa esta misma voz y este mismo ajuste para esta modelo.</p>
+        </div>
+      ) : (
+        <div className="mt-4 flex items-center gap-3 rounded-2xl border border-line bg-ink-2 p-4">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-hair/10 text-paper-dim">
+            <Mic size={17} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-paper">Todavía no tiene voz</div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-paper-mute">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" /> Hacé el casting de abajo, elegí una de tus voces o cloná la suya desde un clip.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Casting de voz — voces de la biblioteca pública de ElevenLabs diciendo las mismas frases de la modelo */}
+      {loaded && showOptions && !castShown && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-ink-2 p-4">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-hair/10 text-brand">
+            <Search size={17} />
+          </span>
+          <div className="min-w-0 flex-1 basis-[180px]">
+            <h4 className="font-display text-sm font-semibold text-paper">Casting de voz</h4>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-paper-mute">Escuchá otras voces de la biblioteca de ElevenLabs diciendo las frases de {first}.</p>
+          </div>
+          <button type="button" onClick={() => setCastOpen(true)}
+            className="btn3d-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold">
+            <Search size={12} /> Buscar otra voz (casting)
+          </button>
+        </div>
+      )}
+      {castShown && (
+        <div className="mt-4 rounded-2xl border border-line bg-ink-2 p-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-hair/10 text-brand">
+              <AudioLines size={17} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h4 className="font-display text-sm font-semibold text-paper">Casting de voz</h4>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-paper-mute">
+                Voces de la biblioteca de ElevenLabs diciendo las mismas frases de {first}. Escuchá, compará y elegí: la que elijas queda como su voz fija.
+              </p>
+            </div>
+            {voice && (
+              <button type="button" onClick={() => { castStopRef.current = true; setCastOpen(false); setCastPick(null); stopPlayer(); }} title="Cerrar el casting"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:text-paper">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Frases de prueba: las mismas para todas las voces */}
+          <div className="mt-3 rounded-xl border border-line bg-ink p-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+              <div className="text-xs font-semibold text-paper">Frases de prueba</div>
+              <button type="button" onClick={() => setCastLines(castLinesFor(first === 'la modelo' ? '' : first))}
+                className="text-[10px] font-semibold text-paper-dim transition-colors hover:text-paper">Volver a las frases de {first}</button>
+            </div>
+            <div className="mt-2 space-y-2.5">
+              {castLines.map((l, i) => (
+                <div key={l.id}>
+                  <div className="flex items-start gap-2">
+                    <span className="mt-2 w-3 shrink-0 text-center font-mono text-[10px] font-semibold text-paper-dim">{i + 1}</span>
+                    <textarea rows={2} value={l.text} onChange={(e) => setCastLine(i, { text: e.target.value.slice(0, CAST_MAX) })}
+                      placeholder="Una frase que diría ella…" aria-label={`Frase de prueba ${i + 1}`}
+                      className="min-w-0 flex-1 resize-y rounded-lg border border-line bg-ink-2 px-2.5 py-2 text-xs leading-relaxed text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2 pl-5">
+                    <select value={l.lang} onChange={(e) => setCastLine(i, { lang: e.target.value })} aria-label={`Idioma de la frase ${i + 1}`}
+                      className="rounded-full border border-line bg-ink-2 px-2 py-0.5 text-[11px] font-semibold text-paper-mute outline-none focus:border-brand/60">
+                      {VOICE_LANGS.map((x) => <option key={x.id} value={x.id}>{x.flag} {x.label}</option>)}
+                    </select>
+                    <span className={`font-mono text-[10px] tabular-nums ${l.text.length >= CAST_MAX ? 'text-amber-300' : 'text-paper-dim'}`}>{l.text.length} / {CAST_MAX}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Buscar otras candidatas en la biblioteca */}
+          <form onSubmit={(e) => { e.preventDefault(); castSearch(0); }} className="mt-3">
+            <div className="flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+                <input value={castQ} onChange={(e) => setCastQ(e.target.value)} placeholder="Buscar otras voces…" title="Ej.: sexy, whisper, Miami, girlfriend"
+                  className="w-full rounded-xl border border-line bg-ink py-2 pl-9 pr-3 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+              </div>
+              <button type="submit" disabled={castSearching}
+                className="btn3d-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold disabled:opacity-50">
+                {castSearching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />} Buscar
+              </button>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <select value={castGender} onChange={(e) => setCastGender(e.target.value)} aria-label="Género" className={castSel}>
+                {CAST_GENDERS.map((o) => <option key={o.id || 'any'} value={o.id}>{o.label}</option>)}
+              </select>
+              <select value={castAccent} onChange={(e) => setCastAccent(e.target.value)} aria-label="Acento" className={castSel}>
+                {CAST_ACCENTS.map((o) => <option key={o.id || 'any'} value={o.id}>{o.label}</option>)}
+              </select>
+              <select value={castAge} onChange={(e) => setCastAge(e.target.value)} aria-label="Edad" className={castSel}>
+                {CAST_AGES.map((o) => <option key={o.id || 'any'} value={o.id}>{o.label}</option>)}
+              </select>
+              <select value={castLangF} onChange={(e) => setCastLangF(e.target.value)} aria-label="Idioma" className={castSel}>
+                <option value="">Cualquier idioma</option>
+                {VOICE_LANGS.map((l) => <option key={l.id} value={l.id}>{l.flag} {CAST_LANG_NAMES[l.id]}</option>)}
+              </select>
+            </div>
+          </form>
+          <VoiceErr e={castSearchErr} className="mt-2" />
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 text-[11px] text-paper-mute">
+              {castResults
+                ? `${castResults.length} ${castResults.length === 1 ? 'voz encontrada' : 'voces encontradas'}`
+                : 'Lista sugerida: chica joven americana, vibra Florida'}
+            </span>
+            {castResults && (
+              <button type="button" onClick={castBackToSeeds}
+                className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-brand transition-colors hover:text-paper">
+                <RefreshCw size={11} /> Volver a la lista sugerida
+              </button>
+            )}
+          </div>
+
+          {/* Costo: cada toma se genera solo al tocarla; generar todas es un botón aparte */}
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
+            <p className="min-w-0 flex-1 basis-[200px] text-[11px] leading-relaxed text-paper-mute">
+              Cada toma se genera la primera vez que la tocás (ajuste Natural{status?.ok && status.model_label ? ` · ${status.model_label}` : ''}) y queda guardada. Escuchar no ocupa lugares de voz en tu cuenta.
+              {castSpent.takes > 0 && (
+                <span className="block text-paper-dim">
+                  Casting: {castSpent.takes} {castSpent.takes === 1 ? 'toma' : 'tomas'} · {castSpent.credits.toLocaleString('es')} créditos gastados
+                </span>
+              )}
+            </p>
+            {castAllBusy ? (
+              <button type="button" onClick={() => { castStopRef.current = true; }}
+                className="btn3d-ghost inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-left text-xs font-semibold">
+                <Loader2 size={12} className="animate-spin" /> Generando ({castPending})… Detener
+              </button>
+            ) : (
+              <button type="button" onClick={() => genAllTakes(castJobs)} disabled={!castJobs.length}
+                className="btn3d-ghost inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-left text-xs font-semibold disabled:opacity-50">
+                <Wand2 size={12} className="shrink-0" />
+                <span className="min-w-0">{castLinesOk.length === 0 ? 'Escribí al menos una frase de prueba'
+                  : castJobs.length ? `Generar todas las tomas (${castEst.toLocaleString('es')} créditos aprox.)` : 'Todas las tomas listas'}</span>
+              </button>
+            )}
+          </div>
+
+          {castResults && castResults.length === 0 ? (
+            <p className="mt-3 rounded-xl border border-line bg-ink px-3 py-4 text-center text-[11px] text-paper-dim">
+              Ninguna voz con esa búsqueda. Probá con menos filtros o volvé a la lista sugerida.
+            </p>
+          ) : (
+            <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(min(100%,200px),1fr))] gap-2.5">
+              {castList.map((v) => {
+                const inUse = !!voice && (voice.voice_id === v.voice_id || (castAdopted?.from === v.voice_id && castAdopted?.to === voice.voice_id));
+                const desc = castDesc(v.name);
+                const langs = castLangsOf(v);
+                const pop = castPop(v.cloned_by_count);
+                const picking = castPick === v.voice_id;
+                const adopting = castAdopting === v.voice_id;
+                const prevOn = playingId === `castprev:${v.voice_id}`;
+                const cardOn = typeof playingId === 'string' && (playingId === `castprev:${v.voice_id}` || playingId.startsWith(`cast:${v.voice_id}|`));
+                return (
+                  <div key={v.voice_id}
+                    className={`flex min-w-0 flex-col rounded-xl border p-3 transition-colors ${inUse ? 'border-brand/60 bg-brand/5' : cardOn ? 'border-brand/40 bg-ink' : 'border-line bg-ink'}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-paper">{castShort(v.name)}</div>
+                        {desc && <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-paper-mute">{desc}</div>}
+                      </div>
+                      {inUse && <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-brand"><Check size={12} /> En uso</span>}
+                    </div>
+                    {v.hint
+                      ? <p className="mt-1 text-[11px] leading-snug text-paper-dim">{v.hint}</p>
+                      : v.description ? <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-paper-dim">{v.description}</p> : null}
+                    {(v.accent || v.age || langs.length > 0 || pop) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1">
+                        {v.accent && <span className={castChip}>{CAST_ACCENT_LABEL[v.accent] || v.accent}</span>}
+                        {v.age && <span className={castChip}>{CAST_AGE_LABEL[v.age] || v.age}</span>}
+                        {langs.length > 0 && <span className={castChip} title={`Habla: ${langs.map((l) => CAST_LANG_NAMES[l.id]).join(', ')}`}>{langs.map((l) => l.flag).join(' ')}</span>}
+                        {pop && <span className="text-[10px] text-paper-dim">{pop}</span>}
+                      </div>
+                    )}
+
+                    {/* Escuchar: muestra original + las frases de prueba */}
+                    <div className="mt-2.5 space-y-1">
+                      <button type="button" onClick={() => playCastPreview(v)} disabled={!v.preview_url}
+                        title={v.preview_url ? '' : 'Esta voz no tiene muestra'} className={castRow(prevOn)}>
+                        {prevOn ? <Pause size={12} className="shrink-0" /> : <Play size={12} className="shrink-0" />}
+                        <span className="min-w-0 flex-1 truncate text-left">Muestra original</span>
+                      </button>
+                      {castLinesOk.map((l) => {
+                        const idx = castLines.indexOf(l) + 1;
+                        const k = castKey(v.voice_id, l);
+                        const t = castTakes[k];
+                        const on = playingId === `cast:${k}`;
+                        const lf = VOICE_LANGS.find((x) => x.id === l.lang);
+                        return (
+                          <div key={l.id}>
+                            <button type="button" onClick={() => playTake(v, l)} disabled={t?.status === 'busy'} className={castRow(on)}>
+                              {t?.status === 'busy' ? <Loader2 size={12} className="shrink-0 animate-spin" />
+                                : on ? <Pause size={12} className="shrink-0" />
+                                : t?.status === 'err' ? <RefreshCw size={12} className="shrink-0" />
+                                : <Play size={12} className="shrink-0" />}
+                              <span className="min-w-0 flex-1 truncate text-left">Frase {idx} {lf?.flag}</span>
+                              <span className="shrink-0 text-[10px] font-normal text-paper-dim">
+                                {t?.status === 'busy' ? 'Generando…' : t?.status === 'ok' ? (on ? 'Sonando' : 'Lista') : t?.status === 'err' ? 'Reintentar' : 'Generar'}
+                              </span>
+                            </button>
+                            {t?.status === 'err' && <p className="mt-0.5 px-1 text-[10px] leading-snug text-rose-300">{t.err}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <VoiceErr e={castErrs[v.voice_id]} className="mt-2" />
+
+                    {/* Elegir → confirmar en la misma tarjeta */}
+                    {!inUse && (
+                      <div className="mt-auto pt-2.5">
+                        {picking ? (
+                          <div className="rounded-xl border border-brand/40 bg-brand/5 p-2.5">
+                            <p className="text-[11px] leading-relaxed text-paper">Va a ser la voz fija de {first}: todo lo que se cocine sale con esta voz.</p>
+                            {voice && <p className="mt-1 text-[10px] leading-snug text-paper-mute">Reemplaza a {voice.voice_name || 'su voz actual'}.</p>}
+                            {!consent && (
+                              <p className="mt-1.5 flex items-start gap-1.5 text-[10px] leading-snug text-amber-300">
+                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                                Para generar audios en la cocina con esta voz tiene que estar marcado el consentimiento de voz (arriba).
+                              </p>
+                            )}
+                            <div className="mt-2 flex justify-end gap-2">
+                              <button type="button" onClick={() => setCastPick(null)} disabled={adopting}
+                                className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper disabled:opacity-40">Cancelar</button>
+                              <button type="button" onClick={() => adoptCast(v)} disabled={!!castAdopting}
+                                className="btn3d inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+                                {adopting ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} {adopting ? 'Guardando…' : 'Confirmar'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => { setCastPick(v.voice_id); setCastErr(v.voice_id, null); }} disabled={!!castAdopting}
+                            className="btn3d-ghost inline-flex w-full items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+                            <Check size={12} /> Elegir esta voz
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {castResults && castHasMore && (
+            <div className="mt-3 flex justify-center">
+              <button type="button" onClick={() => castSearch(castPage + 1)} disabled={castSearching}
+                className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold disabled:opacity-50">
+                {castSearching ? <Loader2 size={12} className="animate-spin" /> : <ChevronDown size={12} />} Ver más voces
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Voz real — para el comparativo de la propuesta (real vs IA). Solo con voz vinculada. */}
+      {loaded && voice && (
+        <div className="mt-4 rounded-2xl border border-line bg-ink-2 p-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-hair/10 text-brand">
+              <AudioLines size={17} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h4 className="font-display text-sm font-semibold text-paper">Voz real — para el comparativo</h4>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-paper-mute">
+                Un clip corto de su voz real (un saludo de 5 a 20 segundos). Sale en la propuesta al lado de su voz con IA.
+              </p>
+            </div>
+            {!hasReal && (
+              <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold text-paper-mute">Sin voz real</span>
+            )}
+          </div>
+
+          {hasReal && (
+            <div className="mt-3 rounded-xl border border-line bg-ink p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {voice.real_source === 'voice' ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                    <Mic size={11} /> Toma de su voz — modelo sin voz real
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                    <Check size={11} /> Subida
+                  </span>
+                )}
+                {realNote && <span className="text-[10px] text-paper-dim">{realNote}</span>}
+              </div>
+              {voice.real_source === 'voice' && voice.real_text && (
+                <p className="mt-1.5 text-[11px] italic leading-relaxed text-paper-dim">“{voice.real_text}”</p>
+              )}
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <audio key={voice.real_url} controls preload="none" src={voice.real_url} onPlay={onNativePlay} className="mt-2 h-9 w-full" />
+
+              {!realClearOpen ? (
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => { setRealChange((v) => !v); setRealErr(null); }} disabled={!!realBusy}
+                    className="btn3d-ghost inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+                    {realChange ? <X size={12} /> : <RefreshCw size={12} />} {realChange ? 'Cancelar' : 'Cambiar'}
+                  </button>
+                  <button type="button" onClick={() => { setRealClearOpen(true); setRealChange(false); setRealErr(null); }} disabled={!!realBusy || configured === false}
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:bg-rose-500/10 hover:text-rose-300 disabled:opacity-50">
+                    <Trash2 size={12} /> Quitar
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-xl border border-rose-500/25 bg-rose-500/[0.04] p-3">
+                  <p className="text-[11px] leading-relaxed text-paper-mute">
+                    ¿Quitar la voz real de {first}? Las propuestas nuevas salen sin el comparativo hasta que cargues otra.
+                  </p>
+                  <div className="mt-2.5 flex justify-end gap-2">
+                    <button type="button" onClick={() => setRealClearOpen(false)} disabled={realBusy === 'clear'}
+                      className="rounded-lg border border-line px-3 py-1.5 text-xs text-paper-mute hover:text-paper disabled:opacity-40">Cancelar</button>
+                    <button type="button" onClick={clearReal} disabled={!!realBusy}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-40">
+                      {realBusy === 'clear' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Sí, quitar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(!hasReal || realChange) && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {/* Opción 1: subir su voz real */}
+              <div className="flex flex-col rounded-xl border border-line bg-ink p-3">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-paper">
+                  <UploadCloud size={13} className="text-brand" /> Subir su voz real
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-paper-mute">
+                  Un audio suyo (mp3, wav, m4a…), hasta {REAL_MAX_MB} MB. Se usan los primeros {REAL_MAX_SEC} s.
+                </p>
+                <input ref={realFileRef} type="file" accept={REAL_ACCEPT} className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; uploadReal(f); }} />
+                <div className="mt-auto pt-2.5">
+                  <button type="button" onClick={() => { if (!realBusy) realFileRef.current?.click(); }} disabled={!!realBusy || configured === false}
+                    className="btn3d inline-flex w-full items-center justify-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold disabled:opacity-50">
+                    {realBusy === 'upload' ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                    {realBusy === 'upload' ? 'Limpiando y subiendo…' : 'Elegir audio'}
+                  </button>
+                  <p className="mt-1.5 flex items-center gap-1 text-[10px] text-paper-dim">
+                    <ShieldCheck size={11} className="shrink-0" /> Se guarda limpio, sin datos del teléfono.
+                  </p>
+                </div>
+              </div>
+
+              {/* Opción 2: modelo sin voz real → una toma de su misma voz */}
+              <div className="flex flex-col rounded-xl border border-line bg-ink p-3">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-paper">
+                  <Mic size={13} className="text-brand" /> No tengo su voz real → usar una toma de su voz
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-paper-mute">
+                  Para modelos IA sin voz real: una toma de su misma voz con otra frase.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {VOICE_LANGS.map((l) => (
+                    <button key={l.id} type="button" onClick={() => setRealLang(l.id)} disabled={!!realBusy} className={realChip(realLang === l.id)}>
+                      {l.flag} {l.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-auto pt-2.5">
+                  <button type="button" onClick={makeRealTake} disabled={!!realBusy || configured === false}
+                    className="btn3d-ghost inline-flex w-full items-center justify-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold disabled:opacity-50">
+                    {realBusy === 'voice' ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                    {realBusy === 'voice' ? 'Generando…' : 'Usar una toma de su voz'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          <VoiceErr e={realErr} className="mt-2" />
+        </div>
+      )}
+
+      {showOptions && (
+        <>
+          {/* (A) Elegir de la cuenta de ElevenLabs */}
+          <div className="mt-4 rounded-2xl border border-line bg-ink-2 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h4 className="font-display text-sm font-semibold text-paper">Elegir de tus voces de ElevenLabs</h4>
+                <p className="mt-0.5 text-[11px] text-paper-mute">Usá una voz que ya tengas en tu cuenta.</p>
+              </div>
+              <button type="button" onClick={loadLibrary} disabled={libBusy}
+                className="btn3d-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+                {libBusy ? <Loader2 size={12} className="animate-spin" /> : libVoices ? <RefreshCw size={12} /> : <AudioLines size={12} />}
+                {libVoices ? 'Actualizar' : 'Ver mis voces'}
+              </button>
+            </div>
+            <VoiceErr e={libErr} className="mt-3" />
+
+            {libVoices && (
+              <div className="mt-3">
+                <div className="relative">
+                  <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-paper-dim" />
+                  <input value={libQ} onChange={(e) => setLibQ(e.target.value)} placeholder="Buscar voz por nombre…"
+                    className="w-full rounded-xl border border-line bg-ink py-2 pl-9 pr-3 text-sm text-paper outline-none placeholder:text-paper-dim focus:border-brand/60" />
+                </div>
+                {libShown.length === 0 ? (
+                  <p className="mt-3 text-center text-[11px] text-paper-dim">
+                    {libVoices.length === 0 ? 'Tu cuenta de ElevenLabs no tiene voces todavía.' : 'Ninguna voz coincide con la búsqueda.'}
+                  </p>
+                ) : (
+                  <ul className="mt-2.5 max-h-[340px] space-y-1.5 overflow-y-auto pr-1">
+                    {libShown.map((v) => {
+                      const linked = voice?.voice_id === v.voice_id;
+                      return (
+                        <li key={v.voice_id}
+                          className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors ${
+                            linked ? 'border-brand/60 bg-brand/10' : 'border-line bg-ink hover:border-hair'}`}>
+                          <button type="button" onClick={() => togglePlay(v)} disabled={!v.preview_url}
+                            title={v.preview_url ? (playingId === v.voice_id ? 'Pausar' : 'Escuchar muestra') : 'Sin muestra'}
+                            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-paper-mute transition-colors hover:border-brand/40 hover:text-paper disabled:opacity-30">
+                            {playingId === v.voice_id ? <Pause size={13} /> : <Play size={13} />}
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate text-sm font-semibold text-paper">{v.name || 'Sin nombre'}</span>
+                              <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold text-paper-mute">
+                                {VOICE_CAT[v.category] || v.category || 'Voz'}
+                              </span>
+                            </div>
+                            {v.description && <p className="mt-0.5 truncate text-[11px] text-paper-dim">{v.description}</p>}
+                          </div>
+                          {linked ? (
+                            <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-brand"><Check size={13} /> En uso</span>
+                          ) : (
+                            <button type="button" onClick={() => assign(v)} disabled={!!assigning}
+                              className="btn3d-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-50">
+                              {assigning === v.voice_id && <Loader2 size={12} className="animate-spin" />} Usar esta
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* (B) Clonar desde un clip */}
+          <div className="mt-4 rounded-2xl border border-line bg-ink-2 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h4 className="font-display text-sm font-semibold text-paper">Clonar desde un clip</h4>
+                <p className="mt-0.5 text-[11px] text-paper-mute">Subí audios de la creadora y ElevenLabs clona su voz.</p>
+              </div>
+              <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-paper-dim">{files.length} / {VOICE_MAX_FILES}</span>
+            </div>
+
+            <input ref={fileRef} type="file" accept={VOICE_ACCEPT} multiple className="hidden"
+              onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
+            <div
+              role="button"
+              tabIndex={consent && !cloning ? 0 : -1}
+              aria-disabled={!consent || cloning}
+              onClick={pickFiles}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickFiles(); } }}
+              onDragOver={(e) => { e.preventDefault(); if (consent && !cloning) setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault(); setDragOver(false);
+                if (cloning) return;
+                if (!consent) { setCloneErr(voiceErr({ needsConsent: true })); return; }
+                addFiles(e.dataTransfer?.files);
+              }}
+              className={`mt-3 grid w-full place-items-center rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors ${
+                !consent || cloning ? 'cursor-not-allowed border-line text-paper-dim opacity-50'
+                  : dragOver ? 'cursor-pointer border-brand/60 text-paper-mute'
+                  : 'cursor-pointer border-line text-paper-dim hover:border-brand/50 hover:text-paper-mute'}`}
+            >
+              <span className="flex flex-col items-center gap-2">
+                <UploadCloud size={22} />
+                <span className="text-sm font-semibold text-paper-mute">Arrastrá el audio de la creadora o buscá</span>
+                <span className="text-[11px]">1–3 minutos de su voz, limpia, sin música ni otras voces</span>
+              </span>
+            </div>
+
+            {files.length > 0 && (
+              <ul className="mt-3 space-y-1.5">
+                {files.map((f, i) => (
+                  <li key={`${f.name}-${f.size}-${i}`} className="flex items-center gap-2 rounded-xl border border-line bg-ink px-3 py-2">
+                    <AudioLines size={13} className="shrink-0 text-brand" />
+                    <span className="min-w-0 flex-1 truncate text-xs text-paper">{f.name}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-paper-dim">{fmtMB(f.size)}</span>
+                    <button type="button" onClick={() => removeFile(i)} disabled={cloning} title="Quitar archivo"
+                      className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-paper-dim transition-colors hover:bg-hair/10 hover:text-paper disabled:opacity-40">
+                      <X size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {fileErrs.length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                {fileErrs.map((m, i) => <VoiceErr key={i} e={{ msg: m }} />)}
+              </div>
+            )}
+            <VoiceErr e={cloneErr} className="mt-2" />
+
+            <button type="button" onClick={doClone} disabled={!consent || !files.length || cloning}
+              className="btn3d mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold disabled:pointer-events-none disabled:opacity-40">
+              {cloning ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />} {cloning ? 'Clonando…' : 'Clonar voz'}
+            </button>
+            {!consent ? (
+              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-paper-mute">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Falta el consentimiento de la creadora: marcalo arriba para poder clonar.
+              </div>
+            ) : !files.length ? (
+              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-paper-mute">
+                <span className="h-1.5 w-1.5 rounded-full bg-paper-dim/60" /> Subí al menos un audio (máx. {VOICE_MAX_FILES}, hasta {VOICE_MAX_MB} MB cada uno).
+              </div>
+            ) : voice ? (
+              <p className="mt-2 text-[11px] text-paper-dim">Clonar reemplaza la voz actual de {first}.</p>
+            ) : null}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
