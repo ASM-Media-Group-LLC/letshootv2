@@ -94,6 +94,29 @@ const TONE = {
   brand: 'border-brand/40 text-brand card3d-active',
 };
 
+// Miniatura de documento KYC (bucket privado). Cada una firma su propia URL con validez larga (24 h) y,
+// si la carga falla (URL vencida / fallo transitorio de firma), se RE-FIRMA sola una vez antes de rendirse.
+// Si de verdad no hay archivo o no se puede firmar, muestra "falta" en vez de una imagen rota.
+function KycImg({ path, className = '' }) {
+  const [url, setUrl] = useState(null);
+  const [state, setState] = useState('loading'); // loading | ready | missing
+  const triedRef = useRef(0);
+  const sign = useCallback(async () => {
+    if (!path) { setState('missing'); return; }
+    if (path.startsWith('/') || path.startsWith('http')) { setUrl(path); setState('ready'); return; }
+    try {
+      const { data } = await getSupabase().storage.from('kyc').createSignedUrl(path, 86400);
+      if (data?.signedUrl) { setUrl(`${data.signedUrl}${data.signedUrl.includes('?') ? '&' : '?'}r=${triedRef.current}`); setState('ready'); }
+      else setState('missing');
+    } catch { setState('missing'); }
+  }, [path]);
+  useEffect(() => { triedRef.current = 0; setState('loading'); sign(); }, [sign]);
+  if (state === 'missing') return <span className={`${className} grid place-items-center border border-dashed border-line text-[9px] text-paper-dim`}>falta</span>;
+  if (state === 'loading' || !url) return <span className={`${className} animate-pulse bg-hair/10`} aria-hidden />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt="" className={className} onError={() => { if (triedRef.current < 2) { triedRef.current += 1; sign(); } else setState('missing'); }} />;
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [me, setMe] = useState(undefined);
@@ -172,15 +195,11 @@ export default function AdminPage() {
     const list = [];
     for (const p of pend || []) {
       const { data: docs } = await supabase.from('kyc_documents').select('doc_type, storage_path').eq('user_id', p.id);
-      const signed = {};
-      for (const d of docs || []) {
-        if (!d.storage_path) continue;
-        // Demo/seed docs use a bundled /public (or full URL) path — show directly.
-        if (d.storage_path.startsWith('/') || d.storage_path.startsWith('http')) { signed[d.doc_type] = d.storage_path; continue; }
-        const { data: s } = await supabase.storage.from('kyc').createSignedUrl(d.storage_path, 600);
-        if (s?.signedUrl) signed[d.doc_type] = s.signedUrl;
-      }
-      list.push({ ...p, docs: signed });
+      // Guardamos la RUTA cruda; <KycImg> firma cada miniatura y la re-firma sola si falla (antes se firmaba acá
+      // con 10 min de validez y si la URL moría la miniatura salía rota — por eso "admin no trabajaba las fotos").
+      const paths = {};
+      for (const d of docs || []) { if (d.storage_path) paths[d.doc_type] = d.storage_path; }
+      list.push({ ...p, docs: paths });
     }
     setKyc(list);
   }, []);
@@ -980,10 +999,7 @@ export default function AdminPage() {
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex shrink-0 gap-1.5">
                     {['id_front', 'id_back', 'selfie_id'].map((k) => (
-                      u.docs[k]
-                        // eslint-disable-next-line @next/next/no-img-element
-                        ? <img key={k} src={u.docs[k]} alt="" className="h-12 w-10 rounded-md object-cover ring-1 ring-line" />
-                        : <span key={k} className="grid h-12 w-10 place-items-center rounded-md border border-dashed border-line text-[9px] text-paper-dim">falta</span>
+                      <KycImg key={k} path={u.docs[k]} className="h-12 w-10 rounded-md object-cover ring-1 ring-line" />
                     ))}
                   </div>
                   <div className="min-w-0">
@@ -2547,7 +2563,7 @@ function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingI
       for (const d of kd || []) {
         if (!d.storage_path) continue;
         if (d.storage_path.startsWith('/') || d.storage_path.startsWith('http')) { signed[d.doc_type] = d.storage_path; continue; }
-        const { data: s } = await supabase.storage.from('kyc').createSignedUrl(d.storage_path, 600);
+        const { data: s } = await supabase.storage.from('kyc').createSignedUrl(d.storage_path, 86400);
         if (s?.signedUrl) signed[d.doc_type] = s.signedUrl;
       }
       setDocs(signed);
