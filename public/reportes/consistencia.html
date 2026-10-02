@@ -28,6 +28,8 @@
   th,td{padding:9px 11px;text-align:left;border-bottom:1px solid var(--line)}
   th{color:var(--dim);font-weight:700;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;background:var(--card2)}
   td.n{text-align:center;font-variant-numeric:tabular-nums}
+  td.rec{color:var(--mute);font-size:13px;line-height:1.42}
+  td.rec b{color:var(--ink)}
   tr td:first-child{font-weight:700;color:var(--ink)}
   .v{font-weight:800;font-size:12px;padding:3px 9px;border-radius:999px;white-space:nowrap}
   .v-ok{background:rgba(83,208,138,.16);color:var(--good)}
@@ -44,7 +46,7 @@
 <div class="wrap">
   <span class="tag">LetShoot · Diagnóstico interno</span>
   <h1>Consistencia de clones — todas las modelos</h1>
-  <p class="sub">La misma prueba para cada una: ¿el clon saca a la MISMA persona cada vez? 2 de octubre.</p>
+  <p class="sub">La misma prueba para cada una: ¿el clon saca a la MISMA persona cada vez? Con una <b>recomendación por modelo</b> de cómo dejarla aún mejor. 2 de octubre.</p>
 
   <div class="how">
     <b>Cómo se hizo:</b> a cada clon se le pidió lo mismo — 4 fotos, mismo texto (cuerpo entero, pose neutra, top gris, bikini negro, fondo de estudio), cambiando solo la semilla, <b>sin foto-guía y sin candados</b>. Así se ve, pelado, si el clon mantiene el mismo cuerpo y la misma cara. Es una prueba <b>exigente</b> (hasta a las buenas les mueve algo); por eso se cruza con lo que cada modelo <b>ya aprobó</b> en sus propuestas.
@@ -56,25 +58,27 @@
     <span><span class="dot" style="background:var(--bad)"></span>Inconsistente → re-entrenar</span>
   </div>
 
-  <table>
-    <thead><tr><th>Modelo</th><th style="text-align:center">Aprob.</th><th style="text-align:center">Likes</th><th>Consistencia (prueba cruda)</th></tr></thead>
+  <div style="overflow-x:auto">
+  <table style="min-width:720px">
+    <thead><tr><th>Modelo</th><th style="text-align:center">Aprob.</th><th style="text-align:center">Likes</th><th>Consistencia</th><th>Recomendación — cómo mejorarla</th></tr></thead>
     <tbody>
-      <tr><td>Julia Parker</td><td class="n">7</td><td class="n">—</td><td><span class="v v-ok">muy consistente</span></td></tr>
-      <tr><td>DANIK MICHELL</td><td class="n">8</td><td class="n">16</td><td><span class="v v-ok">consistente</span></td></tr>
-      <tr><td>DANYANCAT</td><td class="n">5</td><td class="n">6</td><td><span class="v v-ok">muy consistente</span></td></tr>
-      <tr><td>ALEMIA ROJAS</td><td class="n">9</td><td class="n">51</td><td><span class="v v-ok">consistente</span></td></tr>
-      <tr><td>Berenaa</td><td class="n">5</td><td class="n">3</td><td><span class="v v-ok">consistente</span></td></tr>
-      <tr><td>CAROLANE</td><td class="n">9</td><td class="n">37</td><td><span class="v v-eye">el cuerpo varía un poco</span></td></tr>
-      <tr><td>Dayoranmx</td><td class="n">3</td><td class="n">0</td><td><span class="v v-ok">consistente</span></td></tr>
-      <tr><td>Gabbielondon</td><td class="n">7</td><td class="n">30</td><td><span class="v v-eye">el pelo varía un poco</span></td></tr>
-      <tr><td>Julieta R</td><td class="n">9</td><td class="n">35</td><td><span class="v v-eye">el pelo varía un poco</span></td></tr>
-      <tr><td>Msmartinasmith1</td><td class="n">7</td><td class="n">57</td><td><span class="v v-ok">consistente</span></td></tr>
-      <tr><td>Saritac</td><td class="n">4</td><td class="n">35</td><td><span class="v v-ok">consistente</span></td></tr>
-      <tr><td>Steph Torres</td><td class="n">2</td><td class="n">0</td><td><span class="v v-ok">consistente</span></td></tr>
-      <tr><td>Wanderslovers</td><td class="n">0</td><td class="n">0</td><td><span class="v v-ok">consistente</span></td></tr>
-      <tr><td>Celia</td><td class="n">5</td><td class="n">29</td><td><span class="v v-bad">inconsistente → re-entrenar</span></td></tr>
+      <tr><td>Julia Parker</td><td class="n">7</td><td class="n">—</td><td><span class="v v-ok">muy consistente</span></td><td class="rec">Lista. Es el patrón de oro — no tocar.</td></tr>
+      <tr><td>DANIK MICHELL</td><td class="n">8</td><td class="n">16</td><td><span class="v v-ok">consistente</span></td><td class="rec"><b>Re-enlazar</b> su soul en /conexion (quedó desenlazado); con eso queda redonda.</td></tr>
+      <tr><td>DANYANCAT</td><td class="n">5</td><td class="n">6</td><td><span class="v v-ok">muy consistente</span></td><td class="rec">Lista. Mantener.</td></tr>
+      <tr><td>ALEMIA ROJAS</td><td class="n">9</td><td class="n">51</td><td><span class="v v-ok">consistente</span></td><td class="rec">Lista. Para subir un punto: sumar fotos reales variadas (ángulos/luz).</td></tr>
+      <tr><td>Berenaa</td><td class="n">5</td><td class="n">3</td><td><span class="v v-ok">consistente</span></td><td class="rec">Lista. Mandarle más propuestas (solo 3 likes) para validar más.</td></tr>
+      <tr><td>CAROLANE</td><td class="n">9</td><td class="n">37</td><td><span class="v v-eye">el cuerpo varía un poco</span></td><td class="rec"><b>Afinar:</b> re-entrenar sumando fotos de la MISMA sesión y peso, para fijar la silueta.</td></tr>
+      <tr><td>Dayoranmx</td><td class="n">3</td><td class="n">0</td><td><span class="v v-ok">consistente</span></td><td class="rec">Lista. Mandarle propuestas (sin likes aún) para validar.</td></tr>
+      <tr><td>Gabbielondon</td><td class="n">7</td><td class="n">30</td><td><span class="v v-eye">el pelo varía un poco</span></td><td class="rec"><b>Re-enlazar</b> + sumar fotos con su color/corte real para fijar el pelo.</td></tr>
+      <tr><td>Julieta R</td><td class="n">9</td><td class="n">35</td><td><span class="v v-eye">el pelo varía un poco</span></td><td class="rec"><b>Afinar:</b> sumar fotos con su color de pelo exacto para que no varíe (castaño vs rubio).</td></tr>
+      <tr><td>Msmartinasmith1</td><td class="n">7</td><td class="n">57</td><td><span class="v v-ok">consistente</span></td><td class="rec">Lista. Fuerte aceptación — no tocar.</td></tr>
+      <tr><td>Saritac</td><td class="n">4</td><td class="n">35</td><td><span class="v v-ok">consistente</span></td><td class="rec"><b>Re-enlazar</b> su soul en /conexion; queda lista.</td></tr>
+      <tr><td>Steph Torres</td><td class="n">2</td><td class="n">0</td><td><span class="v v-ok">consistente</span></td><td class="rec">Lista. Mandarle más propuestas (solo 2 aprob) para validar.</td></tr>
+      <tr><td>Wanderslovers</td><td class="n">0</td><td class="n">0</td><td><span class="v v-ok">consistente</span></td><td class="rec"><b>Re-enlazar</b> + mandarle propuestas (no tiene aún) para validar.</td></tr>
+      <tr><td>Celia</td><td class="n">5</td><td class="n">29</td><td><span class="v v-bad">inconsistente</span></td><td class="rec"><b>Re-entrenar</b> con 15–25 fotos reales (hoy tiene 1 sola). Ver el PDF de Celia.</td></tr>
     </tbody>
   </table>
+  </div>
   <p style="font-size:13.5px;color:var(--dim);margin-top:2px">«Aprob.» y «Likes» = lo que la modelo ya aceptó en sus propuestas (el QA real). Casi todas tienen fuerte aceptación; la prueba cruda confirma que el clon está sano. Solo Celia falla en las dos.</p>
 
   <figure>
