@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Consistencia de clones</title>
+<style>
+  :root{
+    --bg:#0b0b0e; --card:#15151b; --card2:#1c1c24; --line:#2a2a34;
+    --ink:#eef2f8; --mute:#aab0be; --dim:#7d8494;
+    --good:#53d08a; --warn:#ffb35c; --bad:#ff6b6b;
+    --maxw:1000px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding-block:40px 72px;padding-left:16px;padding-right:16px}
+  .tag{display:inline-block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:700}
+  h1{font-size:29px;line-height:1.15;margin:.3em 0 .12em;font-weight:800;letter-spacing:-.01em}
+  .sub{color:var(--mute);font-size:15px;margin-top:.2em}
+  p{color:var(--mute);font-size:15.5px}
+  .how{margin-top:20px;border:1px solid var(--line);border-radius:14px;background:var(--card);padding:16px 18px;font-size:15px;color:var(--mute)}
+  .how b{color:var(--ink)}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:16px 0 4px;font-size:13.5px;color:var(--mute)}
+  .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+  table{width:100%;border-collapse:collapse;margin:18px 0 6px;font-size:14px;border-radius:12px;overflow:hidden}
+  th,td{padding:9px 11px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:700;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;background:var(--card2)}
+  td.n{text-align:center;font-variant-numeric:tabular-nums}
+  tr td:first-child{font-weight:700;color:var(--ink)}
+  .v{font-weight:800;font-size:12px;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .v-ok{background:rgba(83,208,138,.16);color:var(--good)}
+  .v-eye{background:rgba(255,179,92,.16);color:var(--warn)}
+  .v-bad{background:rgba(255,107,107,.16);color:var(--bad)}
+  figure{margin:22px 0 6px}
+  figure img{width:100%;height:auto;display:block;border-radius:14px;border:1px solid var(--line)}
+  figcaption{color:var(--dim);font-size:13px;margin-top:8px}
+  .why{border-left:3px solid var(--warn);padding:2px 0 2px 16px;margin:18px 0}
+  .foot{margin-top:40px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">LetShoot · Diagnóstico interno</span>
+  <h1>Consistencia de clones — todas las modelos</h1>
+  <p class="sub">La misma prueba para cada una: ¿el clon saca a la MISMA persona cada vez? 2 de octubre.</p>
+
+  <div class="how">
+    <b>Cómo se hizo:</b> a cada clon se le pidió lo mismo — 4 fotos, mismo texto (cuerpo entero, pose neutra, top gris, bikini negro, fondo de estudio), cambiando solo la semilla, <b>sin foto-guía y sin candados</b>. Así se ve, pelado, si el clon mantiene el mismo cuerpo y la misma cara. Es una prueba <b>exigente</b> (hasta a las buenas les mueve algo); por eso se cruza con lo que cada modelo <b>ya aprobó</b> en sus propuestas.
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--good)"></span>Consistente</span>
+    <span><span class="dot" style="background:var(--warn)"></span>Buena, con algo de variación (mirá y decidí)</span>
+    <span><span class="dot" style="background:var(--bad)"></span>Inconsistente → re-entrenar</span>
+  </div>
+
+  <table>
+    <thead><tr><th>Modelo</th><th style="text-align:center">Aprob.</th><th style="text-align:center">Likes</th><th>Consistencia (prueba cruda)</th></tr></thead>
+    <tbody>
+      <tr><td>Julia Parker</td><td class="n">7</td><td class="n">—</td><td><span class="v v-ok">muy consistente</span></td></tr>
+      <tr><td>DANIK MICHELL</td><td class="n">8</td><td class="n">16</td><td><span class="v v-ok">consistente</span></td></tr>
+      <tr><td>DANYANCAT</td><td class="n">5</td><td class="n">6</td><td><span class="v v-ok">muy consistente</span></td></tr>
+      <tr><td>ALEMIA ROJAS</td><td class="n">9</td><td class="n">51</td><td><span class="v v-ok">consistente</span></td></tr>
+      <tr><td>Berenaa</td><td class="n">5</td><td class="n">3</td><td><span class="v v-ok">consistente</span></td></tr>
+      <tr><td>CAROLANE</td><td class="n">9</td><td class="n">37</td><td><span class="v v-eye">el cuerpo varía un poco</span></td></tr>
+      <tr><td>Dayoranmx</td><td class="n">3</td><td class="n">0</td><td><span class="v v-ok">consistente</span></td></tr>
+      <tr><td>Gabbielondon</td><td class="n">7</td><td class="n">30</td><td><span class="v v-eye">el pelo varía un poco</span></td></tr>
+      <tr><td>Julieta R</td><td class="n">9</td><td class="n">35</td><td><span class="v v-eye">el pelo varía un poco</span></td></tr>
+      <tr><td>Msmartinasmith1</td><td class="n">7</td><td class="n">57</td><td><span class="v v-ok">consistente</span></td></tr>
+      <tr><td>Saritac</td><td class="n">4</td><td class="n">35</td><td><span class="v v-ok">consistente</span></td></tr>
+      <tr><td>Steph Torres</td><td class="n">2</td><td class="n">0</td><td><span class="v v-ok">consistente</span></td></tr>
+      <tr><td>Wanderslovers</td><td class="n">0</td><td class="n">0</td><td><span class="v v-ok">consistente</span></td></tr>
+      <tr><td>Celia</td><td class="n">5</td><td class="n">29</td><td><span class="v v-bad">inconsistente → re-entrenar</span></td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:13.5px;color:var(--dim);margin-top:2px">«Aprob.» y «Likes» = lo que la modelo ya aceptó en sus propuestas (el QA real). Casi todas tienen fuerte aceptación; la prueba cruda confirma que el clon está sano. Solo Celia falla en las dos.</p>
+
+  <figure>
+    <img src="/reportes/consistencia-todas.jpg" alt="Cada fila una modelo, 4 fotos solo-soul" loading="lazy" />
+    <figcaption>Cada fila = una modelo. Las 4 fotos se pidieron igual, solo con su clon. Mirá fila por fila: si las 4 son la misma persona (mismo cuerpo, misma cara) el clon está bien. Julia es el patrón; Celia (abajo) es la que se mueve.</figcaption>
+  </figure>
+
+  <div class="why">
+    <p><b>Lectura:</b> 13 de 14 clones mantienen a la persona (algunas con una variación menor de cuerpo o pelo, señaladas en ámbar — vos mirás y decidís si te molesta). La única que claramente no clava a la misma mujer es <b>Celia</b>, que además se entrenó con una sola foto real → es la que hay que <b>re-entrenar</b>.</p>
+  </div>
+
+  <p class="foot">Prueba: 56 imágenes, Soul 2.0, solo-soul, mismo prompt neutral, 4 semillas por modelo. Documento interno de LetShoot.</p>
+</div>
+</body>
+</html>

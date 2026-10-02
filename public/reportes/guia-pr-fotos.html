@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Bajar fotos — Guía PR</title>
+<style>
+  :root{
+    --bg:#0b0b0e; --card:#15151b; --card2:#1c1c24; --line:#2a2a34;
+    --ink:#eef2f8; --mute:#aab0be; --dim:#7d8494;
+    --brand:#6bc3ff; --good:#53d08a; --warn:#ffb35c;
+    --maxw:760px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding-block:40px 72px;padding-left:18px;padding-right:18px}
+  .tag{display:inline-block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:700}
+  h1{font-size:28px;line-height:1.15;margin:.3em 0 .15em;font-weight:800;letter-spacing:-.01em}
+  .sub{color:var(--mute);font-size:15px;margin:.2em 0 0}
+  .where{margin-top:22px;border:1px solid var(--line);border-radius:14px;background:var(--card);padding:16px 18px;font-size:16px}
+  .where b{color:var(--brand)}
+  .kbd{display:inline-block;padding:2px 8px;border:1px solid var(--line);border-radius:7px;background:var(--card2);font-weight:700;font-size:14px;color:var(--ink)}
+  ol.steps{list-style:none;counter-reset:s;margin:26px 0 0;padding:0}
+  ol.steps>li{counter-increment:s;position:relative;padding:0 0 22px 52px;border-left:2px solid var(--line);margin-left:16px}
+  ol.steps>li:last-child{border-left:0}
+  ol.steps>li::before{content:counter(s);position:absolute;left:-18px;top:-2px;width:34px;height:34px;border-radius:50%;
+    background:var(--brand);color:#06202e;font-weight:800;font-size:16px;display:grid;place-items:center}
+  ol.steps h3{margin:2px 0 4px;font-size:17px;font-weight:800}
+  ol.steps p{margin:.2em 0;color:var(--mute);font-size:15px}
+  .btn{display:inline-block;padding:3px 10px;border-radius:8px;background:var(--card2);border:1px solid var(--line);font-weight:700;font-size:14px;color:var(--ink);white-space:nowrap}
+  .callout{margin:28px 0 6px;border:1px solid #2e4a5c;border-radius:16px;
+    background:linear-gradient(180deg,rgba(107,195,255,.10),rgba(0,0,0,0) 70%),var(--card);padding:18px 20px}
+  .callout h2{margin:0 0 .3em;font-size:19px;font-weight:800;color:var(--brand)}
+  .callout .two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  @media (max-width:560px){.callout .two{grid-template-columns:1fr}}
+  .pstep{border:1px solid var(--line);border-radius:12px;background:var(--card2);padding:13px 14px}
+  .pstep .n{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  .pstep .t{font-size:16px;font-weight:800;margin:3px 0}
+  .pstep p{margin:.2em 0 0;font-size:14px;color:var(--mute)}
+  .note{margin-top:14px;border-left:3px solid var(--good);padding:4px 0 4px 15px}
+  .note b{color:var(--good)}
+  h2.sec{font-size:17px;margin:34px 0 8px;font-weight:800}
+  ul.plain{margin:.3em 0;padding-left:20px;color:var(--mute);font-size:15px}
+  ul.plain li{margin:.35em 0}
+  .foot{margin-top:40px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">LetShoot · Guía para PR</span>
+  <h1>Cómo bajar las fotos de las modelos</h1>
+  <p class="sub">Paso a paso para descargar el contenido aprobado y entregárselo a la modelo. Todo sale limpio, sin metadata.</p>
+
+  <div class="where">
+    📍 <b>Dónde:</b> entrá a <span class="kbd">/trabajo</span> y tocá arriba la pestaña <span class="kbd">Propuestas</span>. Ahí está todo el historial de fotos de todas las modelos.
+  </div>
+
+  <ol class="steps">
+    <li>
+      <h3>Abrí /trabajo → Propuestas</h3>
+      <p>Al entrar ves la lista <span class="btn">Por modelo</span>: una tarjeta por cada modelo, con su última foto aprobada de portada.</p>
+      <p>Arriba podés filtrar: buscar por nombre, elegir el período, y cambiar entre <span class="btn">Mías</span> y <span class="btn">Todo el equipo</span> (por defecto ves todo el equipo). También hay tres vistas: <span class="btn">Por modelo</span> · <span class="btn">Por propuesta</span> · <span class="btn">Aprobadas</span>.</p>
+    </li>
+    <li>
+      <h3>Tocá la modelo que querés</h3>
+      <p>Se abre SU página con todo lo suyo. Ahí mismo tenés el botón <span class="btn">Bajar sus aprobadas (N)</span> — eso baja <b>todas</b> las fotos que ella aprobó en el período, de una.</p>
+    </li>
+    <li>
+      <h3>¿Querés elegir fotos sueltas? Entrá a «Sus aprobadas»</h3>
+      <p>Dentro de la modelo, tocá la pestaña <span class="btn">Sus aprobadas</span> (o la vista <span class="btn">Aprobadas</span> para ver las de todas juntas). Es una grilla con todas las fotos aprobadas.</p>
+      <p>Para elegir: tocá la <b>casilla</b> arriba a la izquierda de una foto. Con una ya elegida, tocar otra foto la marca también. <b>Shift</b> = marcar un rango. Después tocás <span class="btn">Bajar N (.zip)</span>. O <span class="btn">Bajar todas</span> para llevarte todo lo que hay con los filtros puestos.</p>
+    </li>
+    <li>
+      <h3>Se baja en DOS pasos (esto es lo importante)</h3>
+      <p>No es un solo clic. Son dos, a propósito, para que el teléfono (iOS) no bloquee la descarga. Mirá el recuadro de abajo.</p>
+    </li>
+  </ol>
+
+  <div class="callout">
+    <h2>Los 2 pasos de la descarga</h2>
+    <div class="two">
+      <div class="pstep">
+        <div class="n">Paso 1 · Preparar</div>
+        <div class="t">Tocás «Bajar…»</div>
+        <p>Aparece <b>«Preparando…»</b>. El sistema baja cada foto, le saca la metadata y arma el .zip. Esperá a que termine (unos segundos; más fotos = más tiempo).</p>
+      </div>
+      <div class="pstep">
+        <div class="n">Paso 2 · Guardar</div>
+        <div class="t">Tocás «Guardar .zip»</div>
+        <p>Cuando el .zip está listo, aparece el botón <b>«Guardar .zip»</b>. Tocalo y se guarda en el teléfono/compu. <b>Este segundo toque es obligatorio</b> — si no, no se guarda nada.</p>
+      </div>
+    </div>
+    <div class="note">
+      <p><b>Si son muchas fotos</b> (más de ~200 MB) se baja <b>por partes</b>: va apareciendo <span class="btn">Guardar parte 1</span>, <span class="btn">Guardar parte 2</span>… Guardá cada una cuando aparezca y seguí hasta que no queden más.</p>
+    </div>
+  </div>
+
+  <h2 class="sec">Cosas que conviene saber</h2>
+  <ul class="plain">
+    <li><b>Solo se bajan las APROBADAS</b> — las fotos que la modelo aceptó/likeó. Es lo que se le entrega.</li>
+    <li><b>Todas salen sin metadata</b> (sin EXIF, sin marca «hecho con IA», sin texto escondido). Eso es automático: no tenés que limpiar nada a mano.</li>
+    <li><b>Otras formas de bajar lo mismo:</b> en <span class="btn">Por propuesta</span>, cada propuesta tiene su <span class="btn">Bajar aprobadas (N)</span>. Y si abrís una foto en grande, el botón <span class="btn">Descargar foto</span> la baja igual de limpia.</li>
+    <li><b>No se rompe nada:</b> esta pantalla solo LEE. Bajar fotos no cambia ni borra ninguna propuesta.</li>
+  </ul>
+
+  <p class="foot">LetShoot · Guía interna para el rol PR · /trabajo › Propuestas.</p>
+</div>
+</body>
+</html>
