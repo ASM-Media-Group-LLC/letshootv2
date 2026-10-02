@@ -238,7 +238,7 @@ export default function AlmacenPropuestas({ creators = [], me, flash, readOnly =
               {(p.recipient_name || 'Creadora').split(/\s+/)[0]} respondió · {hace(p.fb.updated_at)}
             </span>
           ))}
-          <span className="ml-auto text-[11px] text-paper-mute">✉ además le llegó un correo a quien la creó</span>
+          <span className="ml-auto text-[11px] text-paper-mute">además le llegó un correo a quien la creó</span>
         </div>
       )}
 
@@ -442,7 +442,7 @@ function PropCard({ p, origin, busy, readOnly, copied, onCopy, mailHref, onDeliv
           <ExternalLink size={12} className="shrink-0 text-paper-dim" />
           <span className="truncate font-mono">{link.replace(/^https?:\/\//, '')}</span>
         </span>
-        {killed ? <span className="text-paper-dim">🔒 link apagado{delivered ? ' (entregado)' : ''}</span>
+        {killed ? <span className="text-paper-dim">link apagado{delivered ? ' (entregado)' : ''}</span>
           : p.first_opened_at ? <span className="text-emerald-300">● abierto {hace(p.first_opened_at)}</span>
           : <span className="text-paper-dim">○ todavía no lo abre</span>}
         <span className="ml-auto flex items-center gap-1.5">

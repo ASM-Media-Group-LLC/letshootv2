@@ -43,12 +43,12 @@ const TYPES = [
 const TYPE_MAP = Object.fromEntries(TYPES.map((t) => [t.id, t]));
 
 const LANGS = [
-  { id: 'es', flag: '🇪🇸', label: 'ES' },
-  { id: 'en', flag: '🇺🇸', label: 'EN' },
-  { id: 'pt', flag: '🇧🇷', label: 'PT' },
-  { id: 'fr', flag: '🇫🇷', label: 'FR' },
-  { id: 'de', flag: '🇩🇪', label: 'DE' },
-  { id: 'it', flag: '🇮🇹', label: 'IT' },
+  { id: 'es', flag: '', label: 'ES' },
+  { id: 'en', flag: '', label: 'EN' },
+  { id: 'pt', flag: '', label: 'PT' },
+  { id: 'fr', flag: '', label: 'FR' },
+  { id: 'de', flag: '', label: 'DE' },
+  { id: 'it', flag: '', label: 'IT' },
 ];
 
 const avatar = (seed) => `https://picsum.photos/seed/${seed}/96/96`;
@@ -458,7 +458,7 @@ export default function VozAdmin() {
               <div className="max-h-[560px] space-y-3 overflow-y-auto pr-1">
                 {cur.clips.map((clip) => {
                   const meta = TYPE_MAP[clip.type] || TYPE_MAP.personalizado;
-                  const flag = LANGS.find((l) => l.id === clip.lang)?.flag ?? '🌐';
+                  const flag = LANGS.find((l) => l.id === clip.lang)?.flag ?? '';
                   return (
                     <article key={clip.id} className="rounded-2xl border border-line bg-ink-2 p-3.5">
                       <div className="mb-2 flex items-center gap-2">

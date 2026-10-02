@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Propuesta pública — formato TRÍPTICO por look. Ruta dinámica /p/[linkId].
 //   · Cada slide 100svh: INSPIRACIÓN + MODELO REAL = RESULTADO (hero).
-//   · Feedback por look (❤ / ✕ / 💬), watermark + anti-descarga siempre.
+//   · Feedback por look (/ ✕ /), watermark + anti-descarga siempre.
 //   · BACKEND real (migración 0062): get_proposal_by_link carga la propuesta
 //     publicada y no vencida; save_proposal_feedback guarda el feedback.
 //   · GATE DE REGISTRO obligatorio (si linkId !== 'demo'): el receptor crea una

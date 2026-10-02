@@ -72,7 +72,7 @@ const MAILS_OUT = [ // plataforma -> modelo/agencia (YA FUNCIONA)
   { ev: 'Su suscripción está por vencer', who: 'La modelo' },
 ];
 const MAILS_IN = [ // la modelo hace algo -> ¿quién se entera?
-  { ev: 'Reacciona a una foto (❤️ le gustó / ✏️ cambiar)', live: 'Editor + Manager/PR de esa modelo + Admin. Resumen a los 5 min (correo + campanita), aunque no termine la sesión.' },
+  { ev: 'Reacciona a una foto (le gustó / cambiar)', live: 'Editor + Manager/PR de esa modelo + Admin. Resumen a los 5 min (correo + campanita), aunque no termine la sesión.' },
   { ev: 'Completa su registro (sus datos)', live: 'Admin + quien la trajo (agencia/agente). Al instante — correo + campanita.' },
   { ev: 'Sube su ID (para revisar)', live: 'Quien verifica IDs + Admin. Al instante — correo + campanita.' },
   { ev: 'Sube sus fotos del clon (LoRA)', live: 'Equipo de esa modelo + Admin. Al instante — correo + campanita.' },

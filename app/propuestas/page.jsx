@@ -110,8 +110,8 @@ const VOICE_TYPES = [
   { id: 'personalizado', label: 'Personalizado', dot: 'bg-paper-mute' },
 ];
 const VOICE_LANGS = [
-  { id: 'es', flag: '🇪🇸', label: 'ES' }, { id: 'en', flag: '🇺🇸', label: 'EN' }, { id: 'pt', flag: '🇧🇷', label: 'PT' },
-  { id: 'fr', flag: '🇫🇷', label: 'FR' }, { id: 'de', flag: '🇩🇪', label: 'DE' }, { id: 'it', flag: '🇮🇹', label: 'IT' },
+  { id: 'es', flag: '', label: 'ES' }, { id: 'en', flag: '', label: 'EN' }, { id: 'pt', flag: '', label: 'PT' },
+  { id: 'fr', flag: '', label: 'FR' }, { id: 'de', flag: '', label: 'DE' }, { id: 'it', flag: '', label: 'IT' },
 ];
 // Idioma de voz válido para el motor (los del link están todos; fallback 'es').
 const toVoiceLang = (l) => (VOICE_LANGS.some((v) => v.id === l) ? l : 'es');
@@ -147,7 +147,7 @@ const audioInfo = (p) => {
   return {
     typeLabel: type?.label || 'Audio',
     dot: type?.dot || 'bg-brand',
-    flag: lang?.flag || (langId ? '🌐' : ''),
+    flag: lang?.flag || (langId ? '' : ''),
     langLabel: lang?.label || langId.toUpperCase(),
     dur: Number.isFinite(secs) && secs > 0 ? `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : '',
     text: typeof meta.text === 'string' && meta.text.trim() ? meta.text.trim() : String(p?.caption || ''),
@@ -1083,7 +1083,7 @@ export default function PropuestaAdmin() {
   const baulSource = useMemo(() => (
     vaultCreatorId
       ? vaultRows
-          // COCINA = SOLO lo aprobado con ❤️ desde /kitchen (caption "Generada en /kitchen" / "Video generado en /kitchen").
+          // COCINA = SOLO lo aprobado con desde /kitchen (caption "Generada en /kitchen" / "Video generado en /kitchen").
           // El resto de kind='ia' (imports viejos con nombre "hf ...", que el dueño NUNCA aprobó) NO se muestra en la propuesta.
           .filter((r) => r.kind !== 'ia' || /kitchen/i.test(String(r.caption || '')))
           .map((r) => ({ id: r.id, src: r.url, kind: r.kind, caption: r.caption || '', mediaType: r.media_type, videoUrl: r.video_url, duration: r.duration, meta: r.meta }))

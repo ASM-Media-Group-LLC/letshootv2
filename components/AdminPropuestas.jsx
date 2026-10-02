@@ -1435,7 +1435,7 @@ function eventLine(e) {
   if (e.kind === 'created') return <><b className="font-medium text-paper">{who}</b> armó una propuesta para <b className="font-medium text-paper">{to}</b></>;
   if (e.kind === 'approved') return <>Aprobada · <b className="font-medium text-paper">{to}</b>{rev && rev !== to ? <span className="text-paper-dim"> · por {rev}</span> : null}</>;
   if (e.kind === 'rejected') return <>Rechazada · <b className="font-medium text-paper">{to}</b>{rev && rev !== to ? <span className="text-paper-dim"> · por {rev}</span> : null}</>;
-  if (e.kind === 'responded') { const f = feedbackSummary(e.p._feedback); return <><b className="font-medium text-paper">{to}</b> respondió · {f.liked} ♥ · {f.rejected} ✕</>; }
+  if (e.kind === 'responded') { const f = feedbackSummary(e.p._feedback); return <><b className="font-medium text-paper">{to}</b> respondió · {f.liked} · {f.rejected} ✕</>; }
   if (e.kind === 'opened') {
     if (feedbackSummary(e.p._feedback).total > 0) return <><b className="font-medium text-paper">{to}</b> abrió · <span className="text-emerald-300">respondió</span></>;
     const pr = e.p._progress; const va = pr && pr.total ? ` · va ${pr.decided}/${pr.total}` : '';

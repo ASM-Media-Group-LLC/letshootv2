@@ -131,7 +131,7 @@ export default function ProposalEditor({ creator, onClose, flash }) {
     }).eq('id', proposal.id);
     setPublishing(false);
     setProposal((p) => ({ ...p, status: 'published', published_at: new Date().toISOString(), intro: intro.trim() || null }));
-    flash && flash(`✨ Propuesta publicada — ${creator.full_name || 'la creadora'} ya la ve en su cuenta.`);
+    flash && flash(`Propuesta publicada — ${creator.full_name || 'la creadora'} ya la ve en su cuenta.`);
   }
 
   async function unpublish() {

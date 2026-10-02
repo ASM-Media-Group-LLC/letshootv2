@@ -3164,8 +3164,8 @@ const VOICE_EXT_RE = /\.(mp3|wav|m4a|ogg|webm|flac)$/i;
 const VOICE_MAX_FILES = 5;
 const VOICE_MAX_MB = 10;
 const VOICE_LANGS = [
-  { id: 'es', flag: '🇪🇸', label: 'ES' }, { id: 'en', flag: '🇺🇸', label: 'EN' }, { id: 'pt', flag: '🇧🇷', label: 'PT' },
-  { id: 'fr', flag: '🇫🇷', label: 'FR' }, { id: 'de', flag: '🇩🇪', label: 'DE' }, { id: 'it', flag: '🇮🇹', label: 'IT' },
+  { id: 'es', flag: '', label: 'ES' }, { id: 'en', flag: '', label: 'EN' }, { id: 'pt', flag: '', label: 'PT' },
+  { id: 'fr', flag: '', label: 'FR' }, { id: 'de', flag: '', label: 'DE' }, { id: 'it', flag: '', label: 'IT' },
 ];
 
 // Ajustes en palabras ("estabilidad 0.50 · parecido 0.80 · estilo 0 · velocidad 1.0 · motor ElevenLabs v4").
