@@ -156,6 +156,7 @@ export default function AdminPage() {
   const [agencyLeads, setAgencyLeads] = useState([]);     // solicitudes desde el landing /agency
   const [assetStats, setAssetStats] = useState([]);   // una fila por foto entregada (conteo de producción)
   const [lastDelivByCreator, setLastDelivByCreator] = useState({}); // { creatorId: última entrega ISO } — semáforo de cadencia
+  const [lastLogin, setLastLogin] = useState({}); // { userId: último login ISO } — desde auth.users vía RPC
   const [audit, setAudit] = useState([]);             // bitácora (audit_log)
   const [invites, setInvites] = useState([]);         // pending staff invite links
   const [invBusy, setInvBusy] = useState(false);
@@ -207,7 +208,7 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     setLoading(true);
-    const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: auditRows }, { data: lastDeliv }] = await Promise.all([
+    const [{ data: profs, error: profErr }, { data: reqs }, { count: loraCount }, { data: agLinks }, { data: agMembers }, { data: assetRows }, { data: auditRows }, { data: lastDeliv }, { data: logins }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, job_title, email, role, onboarding_status, staff_status, created_at, capabilities, handle, avatar_url, stage_name, legal_first_name, legal_last_name, date_of_birth, country, phone, payment_status, plan, lora_status, consent_at, id_rejection_reason, id_reviewed_at, subscription_ends_at, billing_note, comp_until, is_test, delivery_cadence, manager_emails, consent_voice').order('role'),
       supabase.from('requests').select('id, status, created_at'),
       supabase.from('lora_photos').select('id', { count: 'exact', head: true }),
@@ -216,6 +217,7 @@ export default function AdminPage() {
       supabase.from('assets').select('creator_id'),
       supabase.from('audit_log').select('id, actor_id, action, target_id, meta, created_at').order('created_at', { ascending: false }).limit(200),
       supabase.rpc('last_delivery_by_creator'),
+      supabase.rpc('creator_last_logins'),
     ]);
     // Si la query base de perfiles falla (RLS/red), no pintamos listas vacías
     // como si la DB estuviera vacía — el admin toma decisiones de facturación
@@ -229,6 +231,9 @@ export default function AdminPage() {
     const ldMap = {};
     (Array.isArray(lastDeliv) ? lastDeliv : []).forEach((r) => { if (r?.creator_id) ldMap[r.creator_id] = r.last_at; });
     setLastDelivByCreator(ldMap);
+    const llMap = {};
+    (Array.isArray(logins) ? logins : []).forEach((r) => { if (r?.user_id) llMap[r.user_id] = r.last_sign_in_at; });
+    setLastLogin(llMap);
     const { data: inv } = await supabase.from('staff_invites').select('*').eq('status', 'pending').order('created_at', { ascending: false });
     setInvites(inv || []);
     // Solicitudes de registro de agencia (landing /agency) — pendientes de revisar.
@@ -1482,6 +1487,7 @@ export default function AdminPage() {
       {selCreator && (
         <CreatorProfile
           creator={profiles.find((p) => p.id === selCreator)}
+          lastLoginAt={lastLogin[selCreator]}
           initialTab={selCreatorTab}
           onClose={() => { setSelCreator(null); setSelCreatorTab(null); }}
           onReview={reviewKyc}
@@ -2443,7 +2449,7 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
 }
 
 const CREATOR_TABS = ['entregable', 'datos', 'identidad', 'suscripcion', 'clon', 'voz', 'propuesta'];
-function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingId, flash, onSaved, onDeleted, canSetCadence = false }) {
+function CreatorProfile({ creator, lastLoginAt = null, initialTab = null, onClose, onReview, savingId, flash, onSaved, onDeleted, canSetCadence = false }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
   const [kycZoom, setKycZoom] = useState(null); // { url, label } — ID o foto de perfil ampliada (zoom + rotar + mover)
   const [zv, setZv] = useState({ scale: 1, rot: 0, tx: 0, ty: 0 }); // zoom / rotación / desplazamiento del visor
@@ -2590,6 +2596,17 @@ function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingI
   const paid = creator.payment_status === 'paid' || ['active', 'paid'].includes(creator.onboarding_status);
   const lc = loraCount ?? 0;
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  // "Último acceso" en lenguaje humano: hace minutos/horas/días, o la fecha si es viejo.
+  const fmtSince = (d) => {
+    if (!d) return 'nunca entró';
+    const diff = Date.now() - new Date(d).getTime();
+    const min = Math.floor(diff / 60000), h = Math.floor(min / 60), dd = Math.floor(h / 24);
+    if (min < 1) return 'recién';
+    if (min < 60) return `hace ${min} min`;
+    if (h < 24) return `hace ${h} h`;
+    if (dd < 30) return `hace ${dd} día${dd === 1 ? '' : 's'}`;
+    return new Date(d).toLocaleDateString('es-US', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
 
   const idState = idApproved ? { label: 'Aprobada', tone: 'brand' }
     : idPending ? { label: 'Por revisar', tone: 'amber' }
@@ -2639,6 +2656,7 @@ function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingI
           <div className="min-w-0 flex-1">
             <p className="truncate font-display text-lg font-semibold text-paper">{creator.stage_name || creator.full_name || '—'}</p>
             <p className="truncate text-xs text-paper-dim">{creator.handle ? `@${creator.handle} · ` : ''}{creator.email}</p>
+            <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-paper-dim" title={lastLoginAt ? new Date(lastLoginAt).toLocaleString('es-US') : 'Nunca inició sesión'}><Clock size={11} /> Último acceso: <span className="font-medium text-paper-mute">{fmtSince(lastLoginAt)}</span></p>
           </div>
           {creator.is_test && <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2.5 py-1 text-xs font-semibold text-amber-300">Prueba</span>}
           <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${TONE2[st.tone]}`}>{st.label}</span>
