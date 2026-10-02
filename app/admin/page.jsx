@@ -2445,16 +2445,18 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
 const CREATOR_TABS = ['entregable', 'datos', 'identidad', 'suscripcion', 'clon', 'voz', 'propuesta'];
 function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingId, flash, onSaved, onDeleted, canSetCadence = false }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
-  const [kycZoom, setKycZoom] = useState(null); // { url, label } — foto de ID ampliada (visor con zoom + rotar)
-  const [zv, setZv] = useState({ scale: 1, rot: 0 }); // zoom y rotación del visor de ID
-  useEffect(() => { setZv({ scale: 1, rot: 0 }); }, [kycZoom]); // cada foto abre en 1x y 0°
+  const [kycZoom, setKycZoom] = useState(null); // { url, label } — ID o foto de perfil ampliada (zoom + rotar + mover)
+  const [zv, setZv] = useState({ scale: 1, rot: 0, tx: 0, ty: 0 }); // zoom / rotación / desplazamiento del visor
+  const dragRef = useRef(null); // arrastre para mover la foto cuando está con zoom
+  const [stepConfirm, setStepConfirm] = useState(null); // { v, l } — confirmar antes de cambiar el paso de la cuenta
+  useEffect(() => { setZv({ scale: 1, rot: 0, tx: 0, ty: 0 }); }, [kycZoom]); // cada foto abre centrada, 1x, 0°
   useEffect(() => {
     if (!kycZoom) return;
     const onKey = (e) => {
       if (e.key === 'Escape') setKycZoom(null);
       else if (e.key === 'r' || e.key === 'R') setZv((v) => ({ ...v, rot: (v.rot + 90) % 360 }));
       else if (e.key === '+' || e.key === '=') setZv((v) => ({ ...v, scale: Math.min(6, +(v.scale + 0.5).toFixed(2)) }));
-      else if (e.key === '-' || e.key === '_') setZv((v) => ({ ...v, scale: Math.max(1, +(v.scale - 0.5).toFixed(2)) }));
+      else if (e.key === '-' || e.key === '_') setZv((v) => { const s = Math.max(1, +(v.scale - 0.5).toFixed(2)); return s === 1 ? { ...v, scale: s, tx: 0, ty: 0 } : { ...v, scale: s }; });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -2626,7 +2628,14 @@ function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingI
       <div className="h-full w-full max-w-xl overflow-y-auto border-l border-line bg-ink" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-ink/90 px-5 py-4 backdrop-blur">
-          <Avatar src={creator.avatar_url} name={creator.full_name} size="md" />
+          {creator.avatar_url ? (
+            <button type="button" onClick={() => setKycZoom({ url: creator.avatar_url, label: creator.stage_name || creator.full_name || 'Foto de perfil' })}
+              className="shrink-0 rounded-full transition hover:ring-2 hover:ring-brand/50" title="Ver la foto en grande">
+              <Avatar src={creator.avatar_url} name={creator.full_name} size="md" />
+            </button>
+          ) : (
+            <Avatar src={creator.avatar_url} name={creator.full_name} size="md" />
+          )}
           <div className="min-w-0 flex-1">
             <p className="truncate font-display text-lg font-semibold text-paper">{creator.stage_name || creator.full_name || '—'}</p>
             <p className="truncate text-xs text-paper-dim">{creator.handle ? `@${creator.handle} · ` : ''}{creator.email}</p>
@@ -2795,13 +2804,22 @@ function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingI
               {[
                 ['registered', 'Registrada'], ['info', 'Datos'], ['id_pending', 'ID por revisar'], ['id_approved', 'ID aprobada'],
               ].map(([v, l]) => (
-                <button key={v} onClick={() => patch({ onboarding_status: v }, `Movida a «${l}»`)} disabled={saving}
+                <button key={v} onClick={() => { if (v === creator.onboarding_status) return; setStepConfirm({ v, l }); }} disabled={saving}
                   className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
                     creator.onboarding_status === v ? 'border-brand/60 bg-brand/15 text-brand' : 'border-line text-paper-mute hover:text-paper'}`}>
                   {l}
                 </button>
               ))}
             </div>
+            {stepConfirm && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                <span className="text-sm text-amber-200">¿Mover el estado a <b>«{stepConfirm.l}»</b>? Esto cambia el paso de la cuenta.</span>
+                <div className="ml-auto flex gap-2">
+                  <button type="button" onClick={() => setStepConfirm(null)} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-paper-mute transition-colors hover:text-paper">Cancelar</button>
+                  <button type="button" disabled={saving} onClick={() => { patch({ onboarding_status: stepConfirm.v }, `Movida a «${stepConfirm.l}»`); setStepConfirm(null); }} className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-3.5 py-1.5 text-xs font-bold text-black transition-colors hover:bg-amber-400 disabled:opacity-50">{saving ? <Loader2 size={13} className="animate-spin" /> : null} Sí, mover</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Managers (copia de propuestas) — se autocompletan en el wizard al elegirla. */}
@@ -2878,30 +2896,6 @@ function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingI
                 ))}
               </div>
             ) : <p className="text-sm text-paper-dim">Todavía no subió sus documentos de identidad.</p>}
-
-            {/* Visor de ID a pantalla completa — clic afuera, botón X o Escape para cerrar */}
-            {kycZoom && (
-              <div onClick={() => setKycZoom(null)} className="fixed inset-0 z-[60] flex flex-col bg-black/90 p-4 backdrop-blur-sm">
-                <div onClick={(e) => e.stopPropagation()} className="mb-2 flex w-full flex-wrap items-center justify-between gap-2 text-sm font-semibold text-white">
-                  <span className="truncate">{kycZoom.label}</span>
-                  <div className="flex items-center gap-1.5">
-                    <button type="button" title="Alejar (−)" onClick={() => setZv((v) => ({ ...v, scale: Math.max(1, +(v.scale - 0.5).toFixed(2)) }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><ZoomOut size={16} /></button>
-                    <span className="w-11 text-center text-xs tabular-nums text-white/80">{Math.round(zv.scale * 100)}%</span>
-                    <button type="button" title="Acercar (+)" onClick={() => setZv((v) => ({ ...v, scale: Math.min(6, +(v.scale + 0.5).toFixed(2)) }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><ZoomIn size={16} /></button>
-                    <span className="mx-0.5 h-5 w-px bg-white/20" />
-                    <button type="button" title="Rotar izquierda" onClick={() => setZv((v) => ({ ...v, rot: (v.rot + 270) % 360 }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><RotateCcw size={16} /></button>
-                    <button type="button" title="Rotar derecha (R)" onClick={() => setZv((v) => ({ ...v, rot: (v.rot + 90) % 360 }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><RotateCw size={16} /></button>
-                    <button type="button" title="Restablecer" onClick={() => setZv({ scale: 1, rot: 0 })} className="grid h-9 min-w-9 place-items-center rounded-full border border-white/25 bg-white/10 px-2 text-[11px] font-bold text-white transition-colors hover:bg-white/20">1:1</button>
-                    <button type="button" onClick={() => setKycZoom(null)} className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/10 px-3 py-2 text-white transition-colors hover:bg-white/20"><X size={15} /> Cerrar</button>
-                  </div>
-                </div>
-                <div onClick={(e) => e.stopPropagation()} onWheel={(e) => { const d = e.deltaY < 0 ? 0.5 : -0.5; setZv((v) => ({ ...v, scale: Math.min(6, Math.max(1, +(v.scale + d).toFixed(2))) })); }} className="grid w-full flex-1 place-items-center overflow-auto">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={kycZoom.url} alt={kycZoom.label} draggable={false} style={{ transform: `rotate(${zv.rot}deg) scale(${zv.scale})`, transition: 'transform .15s ease' }} className="max-h-[78vh] max-w-full select-none rounded-xl border border-white/20 object-contain" />
-                </div>
-                <p className="mt-2 text-center text-[11px] text-white/60">Rueda del mouse o +/− para acercar · R para rotar · Esc o tocá afuera para cerrar.</p>
-              </div>
-            )}
 
             {/* Review actions */}
             {hasDocs && (idPending || idRejected || idApproved) && (
@@ -3099,6 +3093,37 @@ function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingI
           </div>
         </div>
       </div>
+      {/* Visor a pantalla completa (ID o foto de perfil) — fuera de las pestañas, se abre desde cualquier lado.
+          Zoom (+/−/rueda), rotar (R), y ARRASTRAR para mover cuando está con zoom. */}
+      {kycZoom && (
+        <div onClick={() => setKycZoom(null)} className="fixed inset-0 z-[70] flex flex-col bg-black/90 p-4 backdrop-blur-sm">
+          <div onClick={(e) => e.stopPropagation()} className="mb-2 flex w-full flex-wrap items-center justify-between gap-2 text-sm font-semibold text-white">
+            <span className="truncate">{kycZoom.label}</span>
+            <div className="flex items-center gap-1.5">
+              <button type="button" title="Alejar (−)" onClick={() => setZv((v) => { const s = Math.max(1, +(v.scale - 0.5).toFixed(2)); return s === 1 ? { ...v, scale: s, tx: 0, ty: 0 } : { ...v, scale: s }; })} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><ZoomOut size={16} /></button>
+              <span className="w-11 text-center text-xs tabular-nums text-white/80">{Math.round(zv.scale * 100)}%</span>
+              <button type="button" title="Acercar (+)" onClick={() => setZv((v) => ({ ...v, scale: Math.min(6, +(v.scale + 0.5).toFixed(2)) }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><ZoomIn size={16} /></button>
+              <span className="mx-0.5 h-5 w-px bg-white/20" />
+              <button type="button" title="Rotar izquierda" onClick={() => setZv((v) => ({ ...v, rot: (v.rot + 270) % 360 }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><RotateCcw size={16} /></button>
+              <button type="button" title="Rotar derecha (R)" onClick={() => setZv((v) => ({ ...v, rot: (v.rot + 90) % 360 }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><RotateCw size={16} /></button>
+              <button type="button" title="Restablecer" onClick={() => setZv({ scale: 1, rot: 0, tx: 0, ty: 0 })} className="grid h-9 min-w-9 place-items-center rounded-full border border-white/25 bg-white/10 px-2 text-[11px] font-bold text-white transition-colors hover:bg-white/20">1:1</button>
+              <button type="button" onClick={() => setKycZoom(null)} className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/10 px-3 py-2 text-white transition-colors hover:bg-white/20"><X size={15} /> Cerrar</button>
+            </div>
+          </div>
+          <div onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => { const d = e.deltaY < 0 ? 0.5 : -0.5; setZv((v) => { const s = Math.min(6, Math.max(1, +(v.scale + d).toFixed(2))); return s === 1 ? { ...v, scale: s, tx: 0, ty: 0 } : { ...v, scale: s }; }); }}
+            onPointerDown={(e) => { if (zv.scale <= 1) return; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} dragRef.current = { x: e.clientX, y: e.clientY, tx: zv.tx, ty: zv.ty }; }}
+            onPointerMove={(e) => { const d = dragRef.current; if (!d) return; setZv((v) => ({ ...v, tx: d.tx + (e.clientX - d.x), ty: d.ty + (e.clientY - d.y) })); }}
+            onPointerUp={() => { dragRef.current = null; }}
+            onPointerCancel={() => { dragRef.current = null; }}
+            style={{ cursor: zv.scale > 1 ? 'grab' : 'default', touchAction: 'none' }}
+            className="grid w-full flex-1 place-items-center overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={kycZoom.url} alt={kycZoom.label} draggable={false} style={{ transform: `translate(${zv.tx}px, ${zv.ty}px) rotate(${zv.rot}deg) scale(${zv.scale})`, transition: dragRef.current ? 'none' : 'transform .15s ease' }} className="max-h-[78vh] max-w-full select-none rounded-xl border border-white/20 object-contain" />
+          </div>
+          <p className="mt-2 text-center text-[11px] text-white/60">Arrastrá para mover · rueda del mouse o +/− para acercar · R para rotar · Esc o tocá afuera para cerrar.</p>
+        </div>
+      )}
     </div>
   );
 }
