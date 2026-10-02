@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Diagnóstico de LoRAs</title>
+<style>
+  :root{
+    --bg:#0b0b0e; --card:#14141a; --card2:#1b1b23; --line:#2a2a34;
+    --ink:#eef2f8; --mute:#aab0be; --dim:#7d8494;
+    --good:#53d08a; --warn:#ffb35c; --bad:#ff6b6b; --sky:#6bc3ff;
+    --maxw:960px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding-block:40px 72px;padding-left:16px;padding-right:16px}
+  .tag{display:inline-block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:700}
+  h1{font-size:30px;line-height:1.15;margin:.3em 0 .1em;font-weight:800;letter-spacing:-.01em}
+  h2{font-size:21px;margin:2.2em 0 .5em;font-weight:800;letter-spacing:-.01em}
+  .sub{color:var(--mute);font-size:15px;margin-top:.3em}
+  .verdict{margin-top:26px;border:1px solid var(--line);border-radius:18px;background:
+    linear-gradient(180deg,rgba(255,179,92,.08),rgba(0,0,0,0) 60%),var(--card);padding:22px 22px 8px}
+  .verdict .big{font-size:19px;font-weight:800;margin:0 0 .4em}
+  .verdict ul{margin:.2em 0 1em;padding-left:0;list-style:none}
+  .verdict li{padding:9px 0;border-top:1px solid var(--line);display:flex;gap:10px;align-items:flex-start;font-size:15px}
+  .verdict li:first-child{border-top:0}
+  .pill{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.03em;padding:3px 9px;border-radius:999px;margin-top:2px;text-transform:uppercase}
+  .p-bad{background:rgba(255,107,107,.16);color:var(--bad)}
+  .p-good{background:rgba(83,208,138,.16);color:var(--good)}
+  .p-warn{background:rgba(255,179,92,.16);color:var(--warn)}
+  figure{margin:18px 0 6px}
+  figure img{width:100%;height:auto;display:block;border-radius:14px;border:1px solid var(--line)}
+  figcaption{color:var(--dim);font-size:13px;margin-top:8px}
+  p{color:var(--mute);font-size:15.5px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  @media (max-width:640px){.grid2{grid-template-columns:1fr}}
+  .mcard{border:1px solid var(--line);border-radius:16px;background:var(--card);padding:16px 17px}
+  .mcard h3{margin:0;font-size:17px;font-weight:800;display:flex;align-items:center;gap:9px}
+  .dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+  .mcard .role{font-size:12px;color:var(--dim);font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin:3px 0 10px}
+  .mcard p{margin:.2em 0 0;font-size:14px;color:var(--mute)}
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px;overflow:hidden;border-radius:12px}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:700;font-size:12px;letter-spacing:.05em;text-transform:uppercase;background:var(--card2)}
+  td.n{font-variant-numeric:tabular-nums;font-weight:700;text-align:right}
+  .score-good{color:var(--good)} .score-mid{color:var(--warn)} .score-bad{color:var(--bad)}
+  tr td:first-child{font-weight:700;color:var(--ink)}
+  .why{border-left:3px solid var(--warn);padding:2px 0 2px 16px;margin:14px 0}
+  .do{border:1px solid var(--line);border-radius:16px;background:var(--card);padding:6px 20px;margin-top:12px}
+  .do li{padding:12px 0;border-top:1px solid var(--line);font-size:15px;color:var(--ink)}
+  .do li:first-child{border-top:0}
+  .do b{color:var(--ink)}
+  .foot{margin-top:40px;color:var(--dim);font-size:12.5px;border-top:1px solid var(--line);padding-top:16px}
+  .hair{color:var(--sky)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">LetShoot · Diagnóstico interno</span>
+  <h1>¿Las fotos salen mal por el clon o por el sistema?</h1>
+  <p class="sub">Prueba controlada sobre las LoRAs (souls) de Higgsfield. Dos modelos de control (Julia, Caroline) y dos bajo sospecha (Celia, Danik). 2 de octubre.</p>
+
+  <div class="verdict">
+    <p class="big">Veredicto: el sistema está sano. El problema es el clon.</p>
+    <ul>
+      <li><span class="pill p-bad">Celia</span><span>Su LoRA está <b>mal hecha</b>. El cuerpo y la cara cambian de una foto a otra y la calidad es floja. <b>Hay que re-entrenarla.</b></span></li>
+      <li><span class="pill p-warn">Danik</span><span>Su LoRA es <b>decente</b> (la cara sí es la misma, buena calidad) pero <b>no fija bien el cuerpo</b> (pasa de curvy a flaca). Además su clon enlazado fue borrado en la limpieza → hay que <b>re-enlazarla</b> en /conexion.</span></li>
+      <li><span class="pill p-good">Julia · Caroline</span><span>Sus LoRAs están <b>bien hechas</b>. Caroline corre en la <b>misma cuenta</b> que Celia y Danik y sale perfecta — esa es la prueba de que el motor no es el culpable.</span></li>
+    </ul>
+  </div>
+
+  <h2>Cómo se hizo la prueba</h2>
+  <p>A las cuatro se les pidió <b>exactamente lo mismo</b>: el mismo motor (Soul 2.0), el mismo texto (cuerpo entero, pose neutra, top gris y bikini negro, fondo de estudio), 4 veces cada una cambiando solo la semilla. <b>Sin pegar ninguna foto viral y sin candados</b> — o sea, el clon puro y pelado. Como todo lo demás es idéntico, si una sale distinta cada vez, la única explicación es su propio clon.</p>
+
+  <figure>
+    <img src="/reportes/loradx-9f2-grid.jpg" alt="Grilla: cada fila una modelo, cada columna una semilla" />
+    <figcaption>Cada fila es una modelo; cada columna, la misma petición repetida. Julia y Caroline: las 4 iguales. Celia y Danik: el cuerpo se mueve.</figcaption>
+  </figure>
+
+  <h2>Qué muestra cada una</h2>
+  <div class="grid2">
+    <div class="mcard">
+      <h3><span class="dot" style="background:var(--good)"></span>Julia <span class="role" style="margin:0 0 0 2px">C1 · control</span></h3>
+      <div class="role">LoRA bien hecha</div>
+      <p>Las 4 son la misma mujer: mismo cuerpo, misma cara, mismo bronceado. Es el patrón de oro. (Su LoRA es la original, la buena.)</p>
+    </div>
+    <div class="mcard">
+      <h3><span class="dot" style="background:var(--good)"></span>Caroline <span class="role" style="margin:0 0 0 2px">C2 · control</span></h3>
+      <div class="role">LoRA buena — prueba que la Cuenta 2 anda</div>
+      <p>Muy consistente y natural, en la <b>misma cuenta</b> donde Celia y Danik fallan. Si fuera el sistema, Caroline también saldría mal. No sale mal.</p>
+    </div>
+    <div class="mcard">
+      <h3><span class="dot" style="background:var(--bad)"></span>Celia <span class="role" style="margin:0 0 0 2px">C2 · sujeto</span></h3>
+      <div class="role">LoRA mal hecha → re-entrenar</div>
+      <p>El busto y el peso cambian entre fotos (una llenita, otra flaca), el tono de pelo se corre a rojizo y la cara varía y se ve dura/rara. No lee como una sola persona definida. La más floja de las cuatro.</p>
+    </div>
+    <div class="mcard">
+      <h3><span class="dot" style="background:var(--warn)"></span>Danik <span class="role" style="margin:0 0 0 2px">C2 · sujeto</span></h3>
+      <div class="role">LoRA decente, cuerpo suelto → re-enlazar</div>
+      <p>La cara sí es la misma y la calidad es alta, pero el cuerpo pasa de curvy a flaca y los tatuajes cambian. En producción se le suma el modo "Exacta" (pega virales de otros cuerpos) y que su clon bueno quedó desenlazado.</p>
+    </div>
+  </div>
+
+  <h2>Los números del panel</h2>
+  <p>Panel ciego de jueces (no sabían cuál modelo era cuál). 0–100; más alto = mejor.</p>
+  <table>
+    <thead><tr><th>Modelo</th><th style="text-align:right">Mismo cuerpo</th><th style="text-align:right">Misma cara</th><th style="text-align:right">Calidad</th><th style="text-align:right">Total</th><th>¿Una persona?</th></tr></thead>
+    <tbody>
+      <tr><td>Julia</td><td class="n score-good">88</td><td class="n score-good">90</td><td class="n score-good">85</td><td class="n score-good">86</td><td>Sí</td></tr>
+      <tr><td>Caroline</td><td class="n score-good" colspan="4" style="text-align:center">Control — consistente y de buena calidad</td><td>Sí</td></tr>
+      <tr><td>Danik</td><td class="n score-bad">55</td><td class="n score-good">82</td><td class="n score-good">86</td><td class="n score-mid">67</td><td>Sí (cuerpo no)</td></tr>
+      <tr><td>Celia</td><td class="n score-bad">55</td><td class="n score-mid">73</td><td class="n score-good">83</td><td class="n score-mid">63</td><td><b class="score-bad">No</b></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Por qué pasa</h2>
+  <div class="why">
+    <p>Una LoRA aprende a la mujer de las fotos con las que la entrenaron. Si ese set es <b>limpio y parejo</b> (la misma persona, mismo cuerpo, buenas fotos), el clon la clava cada vez — como Julia y Caroline. Si el set es <b>inconsistente</b> (fotos de distinto peso, mezcladas con otra mujer, o con sub/sobre-entrenamiento), el clon aprende un promedio borroso y <b>deriva</b> en cuerpo, cara y pelo — como Celia. No se arregla tocando el motor: se arregla rehaciendo el entrenamiento.</p>
+  </div>
+
+  <h2>Qué hacer</h2>
+  <ol class="do">
+    <li><b>Celia → re-entrenar la LoRA.</b> Juntar un set limpio y parejo (solo ella, mismo cuerpo, buenas fotos) y volver a crear el soul. Es la raíz del "ninguna queda bien".</li>
+    <li><b>Danik → re-enlazar en /conexion</b> a su clon sobreviviente («Danik 2»), que quedó desenlazado tras la limpieza. Para apretar el cuerpo, conviene un re-entreno, pero no es urgente como Celia.</li>
+    <li><b>Para cualquier modelo: el modo "Exacta" copia el cuerpo de la viral.</b> Si elegís virales de cuerpos muy distintos, salen cuerpos distintos aunque el clon esté bien. Para cuerpo estable, usar "Recomendado".</li>
+    <li><b>Revisar los baúles "real".</b> Si tienen fotos de otra mujer mezcladas, contaminan el próximo entrenamiento. Limpiarlos antes de re-entrenar.</li>
+  </ol>
+
+  <p class="foot">Prueba: 16 imágenes, Soul 2.0, solo-soul, mismo prompt neutral, 4 semillas por modelo. Julia en Cuenta 1; Caroline, Celia y Danik en Cuenta 2. Documento interno de LetShoot.</p>
+</div>
+</body>
+</html>
