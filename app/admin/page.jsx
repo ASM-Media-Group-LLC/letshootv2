@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox, ChevronsLeft, ChevronsRight, Plug, ChefHat, Mic, AudioLines, UploadCloud, Play, Pause, Wand2 } from 'lucide-react';
+import { LogOut, Users, ShieldCheck, Check, Plus, X, RefreshCw, IdCard, Clock, UserPlus, ClipboardList, AlertTriangle, BarChart3, Building2, CreditCard, Sparkles, Link2, Copy, Search, Loader2, ChevronDown, SlidersHorizontal, ArrowUpDown, Upload, Heart, KeyRound, Activity, Mail, Send, Monitor, Smartphone, Eye, Pencil, Trash2, Info, Phone, MapPin, Calendar, MoreVertical, Inbox, ChevronsLeft, ChevronsRight, Plug, ChefHat, Mic, AudioLines, UploadCloud, Play, Pause, Wand2, RotateCw, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import Avatar from '@/components/Avatar';
 import StatusDot from '@/components/StatusDot';
 import PortalHeader from '@/components/PortalHeader';
@@ -2445,10 +2445,17 @@ function Dropdown({ icon: Icon, label, value, options, onChange }) {
 const CREATOR_TABS = ['entregable', 'datos', 'identidad', 'suscripcion', 'clon', 'voz', 'propuesta'];
 function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingId, flash, onSaved, onDeleted, canSetCadence = false }) {
   const [docs, setDocs] = useState(null); // { id_front, id_back, selfie_id }
-  const [kycZoom, setKycZoom] = useState(null); // { url, label } — foto de ID ampliada (visor con cerrar)
+  const [kycZoom, setKycZoom] = useState(null); // { url, label } — foto de ID ampliada (visor con zoom + rotar)
+  const [zv, setZv] = useState({ scale: 1, rot: 0 }); // zoom y rotación del visor de ID
+  useEffect(() => { setZv({ scale: 1, rot: 0 }); }, [kycZoom]); // cada foto abre en 1x y 0°
   useEffect(() => {
     if (!kycZoom) return;
-    const onKey = (e) => { if (e.key === 'Escape') setKycZoom(null); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setKycZoom(null);
+      else if (e.key === 'r' || e.key === 'R') setZv((v) => ({ ...v, rot: (v.rot + 90) % 360 }));
+      else if (e.key === '+' || e.key === '=') setZv((v) => ({ ...v, scale: Math.min(6, +(v.scale + 0.5).toFixed(2)) }));
+      else if (e.key === '-' || e.key === '_') setZv((v) => ({ ...v, scale: Math.max(1, +(v.scale - 0.5).toFixed(2)) }));
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [kycZoom]);
@@ -2874,14 +2881,25 @@ function CreatorProfile({ creator, initialTab = null, onClose, onReview, savingI
 
             {/* Visor de ID a pantalla completa — clic afuera, botón X o Escape para cerrar */}
             {kycZoom && (
-              <div onClick={() => setKycZoom(null)} className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
-                <div className="mb-2 flex w-full max-w-lg items-center justify-between text-sm font-semibold text-white">
-                  <span>{kycZoom.label}</span>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setKycZoom(null); }} className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-white hover:bg-white/20"><X size={15} /> Cerrar</button>
+              <div onClick={() => setKycZoom(null)} className="fixed inset-0 z-[60] flex flex-col bg-black/90 p-4 backdrop-blur-sm">
+                <div onClick={(e) => e.stopPropagation()} className="mb-2 flex w-full flex-wrap items-center justify-between gap-2 text-sm font-semibold text-white">
+                  <span className="truncate">{kycZoom.label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" title="Alejar (−)" onClick={() => setZv((v) => ({ ...v, scale: Math.max(1, +(v.scale - 0.5).toFixed(2)) }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><ZoomOut size={16} /></button>
+                    <span className="w-11 text-center text-xs tabular-nums text-white/80">{Math.round(zv.scale * 100)}%</span>
+                    <button type="button" title="Acercar (+)" onClick={() => setZv((v) => ({ ...v, scale: Math.min(6, +(v.scale + 0.5).toFixed(2)) }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><ZoomIn size={16} /></button>
+                    <span className="mx-0.5 h-5 w-px bg-white/20" />
+                    <button type="button" title="Rotar izquierda" onClick={() => setZv((v) => ({ ...v, rot: (v.rot + 270) % 360 }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><RotateCcw size={16} /></button>
+                    <button type="button" title="Rotar derecha (R)" onClick={() => setZv((v) => ({ ...v, rot: (v.rot + 90) % 360 }))} className="grid h-9 w-9 place-items-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20"><RotateCw size={16} /></button>
+                    <button type="button" title="Restablecer" onClick={() => setZv({ scale: 1, rot: 0 })} className="grid h-9 min-w-9 place-items-center rounded-full border border-white/25 bg-white/10 px-2 text-[11px] font-bold text-white transition-colors hover:bg-white/20">1:1</button>
+                    <button type="button" onClick={() => setKycZoom(null)} className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/10 px-3 py-2 text-white transition-colors hover:bg-white/20"><X size={15} /> Cerrar</button>
+                  </div>
                 </div>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={kycZoom.url} alt={kycZoom.label} onClick={(e) => e.stopPropagation()} className="max-h-[82vh] max-w-full rounded-xl border border-white/20 object-contain" />
-                <p className="mt-2 text-[11px] text-white/60">Tocá afuera, el botón Cerrar o la tecla Esc para cerrar.</p>
+                <div onClick={(e) => e.stopPropagation()} onWheel={(e) => { const d = e.deltaY < 0 ? 0.5 : -0.5; setZv((v) => ({ ...v, scale: Math.min(6, Math.max(1, +(v.scale + d).toFixed(2))) })); }} className="grid w-full flex-1 place-items-center overflow-auto">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={kycZoom.url} alt={kycZoom.label} draggable={false} style={{ transform: `rotate(${zv.rot}deg) scale(${zv.scale})`, transition: 'transform .15s ease' }} className="max-h-[78vh] max-w-full select-none rounded-xl border border-white/20 object-contain" />
+                </div>
+                <p className="mt-2 text-center text-[11px] text-white/60">Rueda del mouse o +/− para acercar · R para rotar · Esc o tocá afuera para cerrar.</p>
               </div>
             )}
 
